@@ -21,7 +21,9 @@ const REPORT_CACHE_MAX = 200;
 const reportCache = new Map();
 
 function reportCacheKey(userId, bookId, type, period) {
-    return `${userId}:${bookId}:${type}:${period}`;
+    // 用归一化后的 type 做 key：`yearly` 与 `annual` 是同一份数据，
+    // 不归一化会各存一份，缓存命中率减半且两份可能新旧不一致。
+    return `${userId}:${bookId}:${normalizeReportType(type)}:${period}`;
 }
 
 function getCachedReport(key) {
@@ -53,11 +55,75 @@ function lastDayOfMonth(y, m) {
     return new Date(y, m, 0).getDate();
 }
 
+/**
+ * 客户端粒度别名 → 服务端内部类型。
+ *
+ * ⚠️ 两端（安卓 ReportsViewModel:90-94、鸿蒙 Reports.ets:108）一直发的是
+ * `yearly` 和 `custom`，而这里原本只认 `annual`，导致「按年查看」和
+ * 「自定义区间」全部走到 throw('不支持的报表类型') → HTTP 400。
+ * 客户端拿到 400 后只显示空态，看起来像「这一年没数据」而不是「请求失败」，
+ * 所以这个 bug 一直没被发现。
+ *
+ * 这里做兼容而不是改客户端：`yearly` 比 `annual` 更符合 monthly 的构词，
+ * 且已有两端在用，改服务端只需一处。
+ */
+const PERIOD_TYPE_ALIAS = {
+    yearly: 'annual',
+    annually: 'annual',
+    year: 'annual',
+    month: 'monthly',
+    quarter: 'quarterly'
+};
+
+function normalizeReportType(type) {
+    return PERIOD_TYPE_ALIAS[type] || type;
+}
+
 function parseReportPeriod(type, period) {
+    type = normalizeReportType(type);
+    // 自定义区间：period 形如 'YYYY-MM~YYYY-MM'（含首月 1 日到末月最后一日）
+    // 也兼容 'YYYY-MM-DD~YYYY-MM-DD' 的日级区间
+    if (type === 'custom') {
+        const parts = String(period).split('~');
+        if (parts.length !== 2) throw new Error('自定义区间格式错误');
+        const rawStart = parts[0].trim();
+        const rawEnd = parts[1].trim();
+        const mStart = rawStart.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+        const mEnd = rawEnd.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+        if (!mStart || !mEnd) throw new Error('自定义区间格式错误');
+        const sy = parseInt(mStart[1]), sm = parseInt(mStart[2]);
+        const ey = parseInt(mEnd[1]), em = parseInt(mEnd[2]);
+        // ⚠️ 正则里的 \d{2} 只保证「两位数字」，13 月、02-30 号都能通过。
+        // 不做语义校验的后果不是抛错，而是**算出一个看似合法的日期串直接进 SQL**：
+        //   '2026-13~2026-14' → start='2026-13-01' end='2026-14-28'
+        //   （lastDayOfMonth(2026,14) 里 new Date(2026,14,0) 溢出到 2027-02 返回 28）
+        // 而 start > end 是字符串比较，'2026-13-01' < '2026-14-28' 所以那道校验也放行。
+        // 最终 Postgres 报 date/time field value out of range，或在别的驱动下静默返回空集。
+        if (sm < 1 || sm > 12 || em < 1 || em > 12) throw new Error('自定义区间格式错误');
+        // 日级区间还要校验「这一天在该月真实存在」——2 月 30 号同样能过正则
+        const sd = mStart[3] ? parseInt(mStart[3]) : 1;
+        const ed = mEnd[3] ? parseInt(mEnd[3]) : 1;
+        if (sd < 1 || sd > lastDayOfMonth(sy, sm)) throw new Error('自定义区间格式错误');
+        if (ed < 1 || ed > lastDayOfMonth(ey, em)) throw new Error('自定义区间格式错误');
+        const start = mStart[3]
+            ? rawStart
+            : `${sy}-${String(sm).padStart(2, '0')}-01`;
+        const end = mEnd[3]
+            ? rawEnd
+            : `${ey}-${String(em).padStart(2, '0')}-${lastDayOfMonth(ey, em)}`;
+        if (start > end) throw new Error('自定义区间格式错误');
+        const label = start.slice(0, 7) === end.slice(0, 7)
+            ? `${sy}年${sm}月`
+            : `${start.slice(0, 7)} ~ ${end.slice(0, 7)}`;
+        return { start, end, label };
+    }
     if (type === 'monthly') {
         const match = period.match(/^(\d{4})-(\d{2})$/);
         if (!match) throw new Error('月份格式错误');
         const y = parseInt(match[1]), m = parseInt(match[2]);
+        // \d{2} 只管位数不管范围：'2026-13' 会算出 start='2026-13-01' end='2026-13-31'
+        // 直接进 SQL。必须显式校验 1~12。
+        if (m < 1 || m > 12) throw new Error('月份格式错误');
         return {
             start: `${y}-${String(m).padStart(2, '0')}-01`,
             end: `${y}-${String(m).padStart(2, '0')}-${lastDayOfMonth(y, m)}`,
@@ -68,6 +134,8 @@ function parseReportPeriod(type, period) {
         const match = period.match(/^(\d{4})-Q(\d)$/);
         if (!match) throw new Error('季度格式错误');
         const y = parseInt(match[1]), q = parseInt(match[2]);
+        // 'Q0' → sm=-2 会拼出 '2026--2-01' 这种畸形串；'Q7' → '2026-19-01'
+        if (q < 1 || q > 4) throw new Error('季度格式错误');
         const sm = (q - 1) * 3 + 1, em = q * 3;
         return {
             start: `${y}-${String(sm).padStart(2, '0')}-01`,
@@ -84,6 +152,26 @@ function parseReportPeriod(type, period) {
 }
 
 function prevPeriod(type, period) {
+    type = normalizeReportType(type);
+    if (type === 'custom') {
+        // 自定义区间的环比：往前挪一个「等长区间」。
+        // 例如 2026-01~2026-03（3 个月）→ 2025-10~2025-12。
+        // 不能简单减 1 个月，否则 3 个月区间的环比只覆盖 1 个月，比值毫无意义。
+        const parts = String(period).split('~');
+        if (parts.length !== 2) return null;
+        const s = parts[0].trim().slice(0, 7).split('-').map(Number);
+        const e = parts[1].trim().slice(0, 7).split('-').map(Number);
+        if (s.length < 2 || e.length < 2) return null;
+        const span = (e[0] * 12 + e[1]) - (s[0] * 12 + s[1]) + 1;
+        const shift = (y, m, by) => {
+            const t = y * 12 + (m - 1) - by;
+            return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`;
+        };
+        return {
+            type: 'custom',
+            period: `${shift(s[0], s[1], span)}~${shift(e[0], e[1], span)}`
+        };
+    }
     if (type === 'monthly') {
         const [y, m] = period.split('-').map(Number);
         const d = new Date(y, m - 2, 1);
@@ -658,13 +746,36 @@ async function buildCashFlow(userId, bookId, start, end, income, expense, debtRe
 router.get('/top-transactions', async (req, res) => {
     try {
         const { period, type = 'expense' } = req.query;
-        if (!period || !/^\d{4}-\d{2}$/.test(period)) {
-            return res.status(400).json(fail('请指定月份（YYYY-MM）'));
+        // 支持三种周期形态，与 /reports 的 period 保持一致：
+        //   'YYYY-MM'            按月
+        //   'YYYY'               按年（原本会被 regex 拒掉 → 按年查看时明细排行一直是空的）
+        //   'YYYY-MM~YYYY-MM'    自定义区间
+        // 只认 YYYY-MM 的话，客户端在按年/自定义下拿到 400，
+        // 而前端对这个请求做了 catch 降级（失败就不显示卡片），所以一直没人发现。
+        let start;
+        let end;
+        if (!period) {
+            return res.status(400).json(fail('请指定周期（YYYY-MM / YYYY / YYYY-MM~YYYY-MM）'));
         }
-        const y = parseInt(period.slice(0, 4), 10);
-        const m = parseInt(period.slice(5, 7), 10);
-        const start = `${period}-01`;
-        const end = `${period}-${lastDayOfMonth(y, m)}`;
+        if (/^\d{4}-\d{2}$/.test(period)) {
+            const y = parseInt(period.slice(0, 4), 10);
+            const m = parseInt(period.slice(5, 7), 10);
+            start = `${period}-01`;
+            end = `${period}-${lastDayOfMonth(y, m)}`;
+        } else if (/^\d{4}$/.test(period)) {
+            start = `${period}-01-01`;
+            end = `${period}-12-31`;
+        } else if (period.indexOf('~') > 0) {
+            try {
+                const range = parseReportPeriod('custom', period);
+                start = range.start;
+                end = range.end;
+            } catch (e) {
+                return res.status(400).json(fail('自定义区间格式错误'));
+            }
+        } else {
+            return res.status(400).json(fail('请指定周期（YYYY-MM / YYYY / YYYY-MM~YYYY-MM）'));
+        }
         const tType = type === 'income' ? 'income' : 'expense';
         const rows = await db.query(
             `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
