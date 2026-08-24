@@ -5,8 +5,9 @@ import router from '@ohos.router';
 import { DebtRequest } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney } from '../common/theme';
-import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton } from '../common/components/Components';
+import { toast, toastLong } from '../common/ui';
+import { COLORS, fmtMoney, LAYOUT } from '../common/theme';
+import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton, BottomSheet, AppBackground , ConfirmDialog } from '../common/components/Components';
 
 interface Debt { id: number; name: string; type?: string; principal?: number; remaining?: number; monthly?: number; paid?: number; dueDate?: string; icon?: string; }
 
@@ -14,8 +15,10 @@ interface Debt { id: number; name: string; type?: string; principal?: number; re
 export struct DebtsPage {
   @StorageProp('themeMode') themeMode: string = 'system';
   @State data: ESObject = null;
-  @State loading: boolean = false;
+  @State loading: boolean = true;   // 首帧即骨架屏；load() 里 finally 复位
   @State showEdit: boolean = false;
+  // 待删除项：非 null 即弹确认框。删除是不可撤销操作，不能一点即删
+  @State pendingDelete: Debt | null = null;
   @State showRepay: boolean = false;
   @State editingId: number = 0;
   @State fName: string = '';
@@ -28,11 +31,12 @@ export struct DebtsPage {
   aboutToAppear(): void { this.load(); }
 
   async load(): Promise<void> {
-    this.loading = false;
+    this.loading = true;
     try {
       const r = await Api.getDebts();
       if (r.success) this.data = r.data;
     } catch (e) { console.error('Debts:', (e as ApiError).message); }
+    finally { this.loading = false; }
   }
 
   payable(): Debt[] { return (this.data?.payable || this.data?.debts || []) as Debt[]; }
@@ -42,6 +46,8 @@ export struct DebtsPage {
   openEdit(d: Debt): void { this.editingId = d.id; this.fName = d.name; this.fType = d.type || 'payable'; this.fPrincipal = String(d.principal || ''); this.fMonthly = String(d.monthly || ''); this.showEdit = true; }
 
   async save(): Promise<void> {
+    // 原先完全无校验：名称空着也会提交，后端返回 400 又被静默吞掉，用户毫无感知
+    if (!this.fName) { toast('请填写欠款名称'); return; }
     const req: DebtRequest = {
       name: this.fName,
       type: this.fType,
@@ -52,16 +58,34 @@ export struct DebtsPage {
       if (this.editingId) await Api.updateDebt(this.editingId, req);
       else await Api.createDebt(req);
       this.showEdit = false; this.load();
-    } catch (e) { /* ignore */ }
+      toast('已保存');
+    } catch (e) {
+      toastLong('保存欠款失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
   async remove(d: Debt): Promise<void> {
-    try { await Api.deleteDebt(d.id); this.load(); } catch (e) { /* ignore */ }
+    try {
+      await Api.deleteDebt(d.id);
+      toast('已删除');
+      this.load();
+    } catch (e) {
+      // 静默吞掉删除失败会让用户以为删成功了，刷新后条目又回来 —— 必须提示
+      toastLong('删除欠款失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
   openRepay(d: Debt): void { this.repayId = d.id; this.repayAmt = ''; this.showRepay = true; }
   async doRepay(): Promise<void> {
     const amt = Number(this.repayAmt);
-    if (!amt) return;
-    try { await Api.createRepayment(this.repayId, { amount: amt }); this.showRepay = false; this.load(); } catch (e) { /* ignore */ }
+    if (!amt) { toast('请填写还款金额'); return; }
+    try {
+      await Api.createRepayment(this.repayId, { amount: amt });
+      this.showRepay = false;
+      toast('已记录还款');
+      this.load();
+    } catch (e) {
+      // 还款是写操作，失败必须说明原因 —— 否则用户以为记上了，实际没有
+      toastLong('还款失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
 
   @Builder DebtRow(d: Debt) {
@@ -87,9 +111,10 @@ export struct DebtsPage {
       Row({ space: 12 }) {
         Text('还款').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openRepay(d))
         Text('编辑').fontSize(13).fontColor(COLORS.textSecondary).onClick(() => this.openEdit(d))
-        Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => this.remove(d))
+        Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => this.pendingDelete = d)
       }.justifyContent(FlexAlign.End)
-    }.width('100%').padding(14).backgroundColor(COLORS.card).borderRadius(12)
+    }.width('100%').padding(14).backgroundColor(COLORS.cardGlass).borderRadius(12)
+    .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 
   @Builder EditSheet() {
@@ -150,38 +175,49 @@ export struct DebtsPage {
               ForEach(this.receivable(), (d: Debt) => { this.DebtRow(d) }, (d: Debt) => d.id.toString())
             }
             if (!this.data) { EmptyState({ text: '暂无债务' }) }
-            Blank().height(20)
+            // FAB 悬浮在 88%，最后一项需避让，否则被圆钮压住无法点击
+            Blank().height(LAYOUT.fabSafe)
           }.padding(12)
         }.layoutWeight(1)
       }
       FloatingButton({ onTap: () => this.openAdd() })
-      if (this.showEdit) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      ConfirmDialog({
+        show: this.pendingDelete !== null,
+        title: '确认删除',
+        message: '删除「' + (this.pendingDelete?.name ?? '') + '」后无法恢复',
+        confirmText: '删除',
+        onCancel: () => { this.pendingDelete = null; },
+        onConfirm: () => {
+          const target = this.pendingDelete;
+          this.pendingDelete = null;
+          if (target) { this.remove(target); }
+        }
+      })
+      BottomSheet({ show: this.showEdit, maxHeight: '85%', onDismiss: () => { this.showEdit = false; } }) {
+        this.EditSheet()
       }
-      if (this.showRepay) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showRepay = false)
-          Column() { this.RepaySheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      BottomSheet({ show: this.showRepay, maxHeight: '65%', onDismiss: () => { this.showRepay = false; } }) {
+        this.RepaySheet()
       }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+    }.width('100%').height('100%')
   }
 
   @Builder SumCell(title: string, value: string, color: string) {
     Column({ space: 4 }) {
       Text(title).fontSize(12).fontColor(COLORS.textSecondary)
       Text(value).fontSize(16).fontWeight(FontWeight.Bold).fontColor(color)
-    }.layoutWeight(1).padding(12).backgroundColor(COLORS.card).borderRadius(12)
+    }.layoutWeight(1).padding(12).backgroundColor(COLORS.cardGlass).borderRadius(12)
+    .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 }
 
 @Entry
 @Component
 struct Debts {
-  build() { Column() { DebtsPage() }.width('100%').height('100%') }
+  build() {
+    Stack() {
+      AppBackground()
+      Column() { DebtsPage() }.width('100%').height('100%')
+    }.width('100%').height('100%')
+  }
 }

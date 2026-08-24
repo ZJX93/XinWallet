@@ -47,9 +47,16 @@ function fmtNum(n) {
     return _moneyFmt.format(v);
 }
 function fmtDate(d) {
-    // 返回 datetime-local 格式：YYYY-MM-DDTHH:mm
+    /**
+     * 返回 datetime-local 的 value：YYYY-MM-DDTHH:mm
+     *
+     * ⚠️ 这里**不能**补到秒。调用方里有三个 `type="date"` 的框
+     * （investBuyDate / reduceDate / interestDate），它们只接受
+     * YYYY-MM-DD，多给时间部分会被浏览器直接拒收、value 变空。
+     *
+     * 需要秒粒度的 datetime-local 框请用 fmtDateTimeLocal()。
+     */
     if (d) {
-        // 如果是后端返回的 datetime 字符串（含 T 或空格）
         const s = String(d).replace(' ', 'T');
         return s.slice(0, 16); // YYYY-MM-DDTHH:mm
     }
@@ -60,6 +67,31 @@ function fmtDate(d) {
     const h = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
     return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+/**
+ * 给 `<input type="datetime-local" step="1">` 用的 value，精确到秒。
+ *
+ * 为什么必须补秒：带 step 的控件会渲染秒位。只回填到分钟时秒位是**空的**，
+ * 用户明明没碰过秒，光标扫过去滚一下就变成 00:02:00 之类的值 ——
+ * 而且会当成用户输入提交上去（截图里日期显示 2026/08/23 00:02:00
+ * 而库里存的是 00:00:00，就是这么来的）。
+ *
+ * 只用在确认是 datetime-local 的框上（transDate / quickDate），
+ * 不要拿去喂 type="date"。
+ */
+function fmtDateTimeLocal(d) {
+    if (d) {
+        const s = String(d).replace(' ', 'T').replace('Z', '');
+        const base = s.slice(0, 19);
+        if (base.length === 10) return base + 'T00:00:00';  // 只有日期
+        if (base.length === 16) return base + ':00';        // 只到分钟
+        return base;
+    }
+    const now = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+        + `T${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
 }
 // 显示用：datetime → 短格式（精确到秒）
 function fmtDateTime(s) {
@@ -92,12 +124,44 @@ function fmtTransTime(s) {
 }
 // escapeHtml 已在 utils.js 中定义并挂载到 window，此处不再重复
 
-// 合并转账配对：将 transfer_in/transfer_out 合并为一条转账记录
+/**
+ * 合并转账配对：把 transfer_in / transfer_out 归并成一条转账记录。
+ *
+ * ⚠️ 现在服务端已在 SQL 层折叠（transactions.js：命中配对 out 腿的
+ * transfer_in 不再返回），所以列表里通常只有 out 腿一条，
+ * 下面的 `transactions.find(...)` 找不到配对 —— 若仍依赖客户端配对，
+ * 渲染就会变成「工资卡 → ?」。
+ *
+ * 因此优先吃服务端给的 t.transfer（{ id, from, to } 双端齐全），
+ * 直接合成 _transferOut / _transferIn 的等价结构，让下游 renderRow
+ * 与编辑弹窗的取值方式完全不变。
+ *
+ * 客户端配对逻辑保留作兜底：
+ *   1. 旧版服务端（未部署折叠）仍会返回两条腿，此时走原路径
+ *   2. transfer 字段要求双端账户名齐全才由服务端构造，账户被删时为 null
+ */
 function mergeTransferPairs(transactions) {
     const result = [];
     const pairedIds = new Set();
     for (const t of transactions) {
         if (pairedIds.has(t.id)) continue;
+        // 路径 1：服务端已折叠并给出完整双端信息 —— 不需要在列表里找配对
+        if (t.transfer && t.transfer.from && t.transfer.to) {
+            const outLeg = { ...t, account: t.transfer.from };
+            // in 腿在折叠后不存在于列表里，这里合成一个等价对象供渲染取 account.name。
+            // 注意 id 仍用 out 腿的 —— 编辑/删除都按 transfer_id 走 /transfers/:id，
+            // 不会真的用到这个合成 id 去操作单条 transactions。
+            const inLeg = { ...t, account: t.transfer.to };
+            pairedIds.add(t.id);
+            result.push({
+                ...t,
+                _pairOut: outLeg, _pairIn: inLeg,
+                _transferOut: outLeg, _transferIn: inLeg,
+                amount: Math.abs(t.amount), _merged: true
+            });
+            continue;
+        }
+        // 路径 2：旧版服务端返回两条腿，按 transfer_id 在列表内配对
         if ((t.type === 'transfer_in' || t.type === 'transfer_out') && t.transfer_id) {
             const pair = transactions.find(
                 x => x.transfer_id === t.transfer_id && x.id !== t.id && !pairedIds.has(x.id)

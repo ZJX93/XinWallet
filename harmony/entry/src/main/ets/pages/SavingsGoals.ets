@@ -2,23 +2,24 @@
  * 储蓄目标（对齐安卓 SavingsGoalsScreen.kt）：列表 + 进度条 + 存入/取回/流水。
  */
 import router from '@ohos.router';
-import { SavingsGoalRequest } from '../common/models';
+import { SavingsGoalRequest, Goal } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney } from '../common/theme';
-import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton } from '../common/components/Components';
+import { toast, toastLong } from '../common/ui';
+import { COLORS, fmtMoney, LAYOUT } from '../common/theme';
+import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton, BottomSheet, AppBackground , ConfirmDialog } from '../common/components/Components';
 
 const ICONS: string[] = ['🎯', '🏠', '🚗', '✈️', '💍', '📱', '🎓', '🐱'];
-
-interface Goal { id: number; name: string; icon?: string; accountId?: number; current?: number; target?: number; }
 
 @Component
 export struct SavingsGoalsPage {
   @StorageProp('themeMode') themeMode: string = 'system';
   @State list: Goal[] = [];
   @State accounts: ESObject[] = [];
-  @State loading: boolean = false;
+  @State loading: boolean = true;   // 首帧即骨架屏；load() 里 finally 复位
   @State showEdit: boolean = false;
+  // 待删除项：非 null 即弹确认框。删除是不可撤销操作，不能一点即删
+  @State pendingDelete: Goal | null = null;
   @State showAlloc: boolean = false;
   @State editingId: number = 0;
   @State fName: string = '';
@@ -32,7 +33,7 @@ export struct SavingsGoalsPage {
   aboutToAppear(): void { this.load(); }
 
   async load(): Promise<void> {
-    this.loading = false;
+    this.loading = true;
     try {
       const _r = await Promise.all([Api.getSavingsGoals(), Api.getAccounts()]);
       const g = _r[0];
@@ -40,6 +41,7 @@ export struct SavingsGoalsPage {
       if (g.success) this.list = g.data as Goal[] || [];
       if (a.success) this.accounts = (a.data as ESObject)?.accounts || [];
     } catch (e) { console.error('Savings:', (e as ApiError).message); }
+    finally { this.loading = false; }
   }
 
   openAdd(): void { this.editingId = 0; this.fName = ''; this.fIcon = '🎯'; this.fTarget = ''; this.fAccount = this.accounts[0]?.id || 0; this.showEdit = true; }
@@ -47,28 +49,44 @@ export struct SavingsGoalsPage {
 
   async save(): Promise<void> {
     const t = Number(this.fTarget);
-    if (!this.fName || !t) return;
+    if (!this.fName) { toast('请填写目标名称'); return; }
+    if (!t) { toast('请填写目标金额'); return; }
     const req: SavingsGoalRequest = { name: this.fName, icon: this.fIcon, target: t, accountId: this.fAccount };
     try {
       if (this.editingId) await Api.updateSavingsGoal(this.editingId, req);
       else await Api.createSavingsGoal(req);
       this.showEdit = false; this.load();
-    } catch (e) { /* ignore */ }
+      toast('已保存');
+    } catch (e) {
+      toastLong('保存目标失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
   async remove(g: Goal): Promise<void> {
-    try { await Api.deleteSavingsGoal(g.id); this.load(); } catch (e) { /* ignore */ }
+    try {
+      await Api.deleteSavingsGoal(g.id);
+      toast('已删除');
+      this.load();
+    } catch (e) {
+      // 静默吞掉删除失败会让用户以为删成功了，刷新后条目又回来 —— 必须提示
+      toastLong('删除目标失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
   openAlloc(g: Goal, mode: string): void {
     this.allocId = g.id; this.allocMode = mode; this.allocAmt = ''; this.showAlloc = true;
   }
   async doAlloc(): Promise<void> {
     const amt = Number(this.allocAmt);
-    if (!amt) return;
+    if (!amt) { toast('请填写金额'); return; }
     try {
       if (this.allocMode === '存入') await Api.allocateSavings(this.allocId, { amount: amt });
       else await Api.withdrawSavings(this.allocId, { amount: amt });
-      this.showAlloc = false; this.load();
-    } catch (e) { /* ignore */ }
+      this.showAlloc = false;
+      toast(this.allocMode === '存入' ? '已存入' : '已取出');
+      this.load();
+    } catch (e) {
+      // 涉及金额变动的写操作，静默失败最危险 —— 用户会以为钱已经划过去了
+      toastLong(this.allocMode + '失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
 
   @Builder EditSheet() {
@@ -138,36 +156,47 @@ export struct SavingsGoalsPage {
                     Text('存入').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openAlloc(g, '存入'))
                     Text('取回').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openAlloc(g, '取回'))
                     Text('编辑').fontSize(13).fontColor(COLORS.textSecondary).onClick(() => this.openEdit(g))
-                    Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => this.remove(g))
+                    Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => this.pendingDelete = g)
                   }.justifyContent(FlexAlign.End)
-                }.width('100%').padding(14).backgroundColor(COLORS.card).borderRadius(12)
+                }.width('100%').padding(14).backgroundColor(COLORS.cardGlass).borderRadius(12)
+                .border({ width: 0.5, color: COLORS.outlineVariant })
               }, (g: Goal) => g.id.toString())
             }
-            Blank().height(20)
+            // FAB 悬浮在 88%，最后一项需避让，否则被圆钮压住无法点击
+            Blank().height(LAYOUT.fabSafe)
           }.padding(12)
         }.layoutWeight(1)
       }
       FloatingButton({ onTap: () => this.openAdd() })
-      if (this.showEdit) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      ConfirmDialog({
+        show: this.pendingDelete !== null,
+        title: '确认删除',
+        message: '删除「' + (this.pendingDelete?.name ?? '') + '」后无法恢复',
+        confirmText: '删除',
+        onCancel: () => { this.pendingDelete = null; },
+        onConfirm: () => {
+          const target = this.pendingDelete;
+          this.pendingDelete = null;
+          if (target) { this.remove(target); }
+        }
+      })
+      BottomSheet({ show: this.showEdit, maxHeight: '85%', onDismiss: () => { this.showEdit = false; } }) {
+        this.EditSheet()
       }
-      if (this.showAlloc) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAlloc = false)
-          Column() { this.AllocSheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      BottomSheet({ show: this.showAlloc, maxHeight: '65%', onDismiss: () => { this.showAlloc = false; } }) {
+        this.AllocSheet()
       }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+    }.width('100%').height('100%')
   }
 }
 
 @Entry
 @Component
 struct SavingsGoals {
-  build() { Column() { SavingsGoalsPage() }.width('100%').height('100%') }
+  build() {
+    Stack() {
+      AppBackground()
+      Column() { SavingsGoalsPage() }.width('100%').height('100%')
+    }.width('100%').height('100%')
+  }
 }

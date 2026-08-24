@@ -2,7 +2,7 @@
  * 规划（对齐安卓 PlanningScreen.kt）：TabRow 4 Tab 聚合预算/储蓄/债务/理财。
  */
 import { COLORS } from '../common/theme';
-import { TopBar } from '../common/components/Components';
+import { TopBar, AppBackground } from '../common/components/Components';
 import { BudgetsPage } from './Budgets';
 import { SavingsGoalsPage } from './SavingsGoals';
 import { DebtsPage } from './Debts';
@@ -23,16 +23,19 @@ struct Planning {
   }
 
   build() {
-    Column() {
-      TopBar({ title: '规划' })
-      Tabs({ barPosition: BarPosition.Start }) {
-        TabContent() { BudgetsPage() }.tabBar(this.TabLabel('预算', 0))
-        TabContent() { SavingsGoalsPage() }.tabBar(this.TabLabel('储蓄', 1))
-        TabContent() { DebtsPage() }.tabBar(this.TabLabel('债务', 2))
-        TabContent() { InvestmentsPage() }.tabBar(this.TabLabel('理财', 3))
-      }.barBackgroundColor(COLORS.card)
-        .onChange((idx: number) => this.tab = idx)
-        .layoutWeight(1)
+    Stack() {
+      AppBackground()
+      Column() {
+        TopBar({ title: '规划' })
+        Tabs({ barPosition: BarPosition.Start }) {
+          TabContent() { BudgetsPage() }.tabBar(this.TabLabel('预算', 0))
+          TabContent() { SavingsGoalsPage() }.tabBar(this.TabLabel('储蓄', 1))
+          TabContent() { DebtsPage() }.tabBar(this.TabLabel('债务', 2))
+          TabContent() { InvestmentsPage() }.tabBar(this.TabLabel('理财', 3))
+        }.barBackgroundColor(COLORS.card)
+          .onChange((idx: number) => this.tab = idx)
+          .layoutWeight(1)
+      }.width('100%').height('100%')
     }.width('100%').height('100%')
   }
 }

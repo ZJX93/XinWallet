@@ -10,6 +10,21 @@
 //                    initCache、DashboardManager、DOM 元素
 //                    （reportType、reportPeriod、reportContent、importFullInput 等）
 
+// 全局数字滚动函数（报表中心用）
+window.countUpReport = function(el, target, duration, formatter) {
+    if (!el) return;
+    const startTime = performance.now();
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+    function tick(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const v = target * easeOut(t);
+        el.textContent = formatter ? formatter(v) : Math.round(v).toLocaleString('zh-CN');
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = formatter ? formatter(target) : Math.round(target).toLocaleString('zh-CN');
+    }
+    requestAnimationFrame(tick);
+};
+
 const ReportManager = {
     charts: {},
     currentData: null,
@@ -108,10 +123,34 @@ const ReportManager = {
     destroyCharts() {
         Object.keys(this.charts).forEach(id => { if (this.charts[id]) { this.charts[id].destroy(); delete this.charts[id]; } });
     },
+    // 数字滚动动画：所有 .report-kpi-value / .report-assets-value / .report-compare-value 从 0 滚动到当前显示值
+    animateNumbers(container) {
+        if (!container || !window.countUpReport) return;
+        const parseNum = str => {
+            const s = String(str).replace(/[¥,，%+\s]/g, '');
+            return parseFloat(s) || 0;
+        };
+        container.querySelectorAll('.report-kpi-value, .report-assets-value, .report-compare-value').forEach(el => {
+            const target = parseNum(el.textContent);
+            const isPct = el.textContent.includes('%');
+            const isSigned = /^[+\-]/.test(el.textContent.trim());
+            const sign = isSigned ? el.textContent.trim()[0] : '';
+            window.countUpReport(el, target, 900, v => {
+                let n = Math.round(v);
+                if (isPct) return sign + n.toFixed(1) + '%';
+                return sign + '¥' + n.toLocaleString('zh-CN');
+            });
+        });
+    },
     render(data) {
         const container = document.getElementById('reportContent');
         this.destroyCharts();
         const bsTitle = data.balanceSheet ? `🏛️ 资产负债表（${data.balanceSheet.period.end} 快照）` : '🏛️ 资产负债表';
+
+        // 渲染完成后触发数字滚动动画（延迟 100ms 让 CSS stagger 先执行）
+        requestAnimationFrame(() => {
+            setTimeout(() => this.animateNumbers(container), 100);
+        });
         container.innerHTML = `
             <div class="report-header">
                 <h2 class="report-title">📊 ${data.label} 财务报告</h2>
@@ -211,14 +250,14 @@ const ReportManager = {
                 <div class="glass-card report-chart-card">
                     <h3 class="card-title"><span id="reportExpPieTitle">支出类别占比</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
                     <canvas id="reportExpPieChart"></canvas>
-                    <div id="reportExpPieHint" class="pie-hint">👆 点击扇区查看二级明细</div>
+                    <div id="reportExpPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                 </div>
             </div>
             <div class="report-charts-row">
                 <div class="glass-card report-chart-card">
                     <h3 class="card-title"><span id="reportIncPieTitle">收入来源占比</span> <span id="reportIncPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
                     <canvas id="reportIncPieChart"></canvas>
-                    <div id="reportIncPieHint" class="pie-hint">👆 点击扇区查看二级明细</div>
+                    <div id="reportIncPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                 </div>
                 <div class="glass-card report-chart-card">
                     <h3 class="card-title">账户资金流向</h3>
@@ -621,35 +660,56 @@ const ReportManager = {
         `;
     },
     initCharts(data) {
+        ChartManager.applyDefaults();
         const c = ChartManager.colors();
         // 收支趋势
         const trendCtx = document.getElementById('reportTrendChart');
         if (trendCtx && data.dailyTrend.length > 0) {
             const labels = data.dailyTrend.map(d => d.date.slice(5));
+            const ctx = trendCtx.getContext('2d');
+            // 渐变填充
+            const incGrad = ctx.createLinearGradient(0, 0, 0, 220);
+            incGrad.addColorStop(0, c.inc + '30');
+            incGrad.addColorStop(1, c.inc + '04');
+            const expGrad = ctx.createLinearGradient(0, 0, 0, 220);
+            expGrad.addColorStop(0, c.exp + '30');
+            expGrad.addColorStop(1, c.exp + '04');
             this.charts.trend = new Chart(trendCtx, {
                 type: 'line',
                 data: {
                     labels,
                     datasets: [
-                        { label: '收入', data: data.dailyTrend.map(d => d.income), borderColor: c.inc, backgroundColor: c.inc + '25', fill: true, tension: 0.4, pointRadius: 3 },
-                        { label: '支出', data: data.dailyTrend.map(d => d.expense), borderColor: c.exp, backgroundColor: c.exp + '25', fill: true, tension: 0.4, pointRadius: 3 }
+                        { label: '收入', data: data.dailyTrend.map(d => d.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                        { label: '支出', data: data.dailyTrend.map(d => d.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 }
                     ]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: c.text, usePointStyle: true, boxWidth: 8 } } }, scales: { x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } } } }
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: ChartManager.reduceMotion() ? false : { duration: 1200, easing: 'easeOutQuart' },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: c.bg, titleColor: c.text, bodyColor: c.text, borderColor: c.grid, borderWidth: 1, cornerRadius: 10, padding: 12 }
+                    },
+                    scales: {
+                        x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } },
+                        y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } }
+                    }
+                }
             });
         }
-        // 支出饼图（仅显示一级 parent_id=null；点击扇区下钻子级，数据库已做子级向父级汇总）
+        // 支出饼图（仅显示一级 parent_id=null；单击看金额、双击下钻子级，数据库已做子级向父级汇总）
         const expPieCtx = document.getElementById('reportExpPieChart');
         if (expPieCtx && data.expenseByCategory && data.expenseByCategory.length > 0) {
             this._reportPieState = this._reportPieState || {};
-            this._reportPieState.exp = { full: data.expenseByCategory, stack: [] };
+            this._reportPieState.exp = { full: data.expenseByCategory, stack: [], selIdx: -1, selStackLen: 0 };
             this._drawReportPie('reportExpPieChart', 'exp');
         }
-        // 收入饼图（仅显示一级 + 点击下钻子级）
+        // 收入饼图（同上：单击看金额、双击下钻）
         const incPieCtx = document.getElementById('reportIncPieChart');
         if (incPieCtx && data.incomeByCategory && data.incomeByCategory.length > 0) {
             this._reportPieState = this._reportPieState || {};
-            this._reportPieState.inc = { full: data.incomeByCategory, stack: [] };
+            this._reportPieState.inc = { full: data.incomeByCategory, stack: [], selIdx: -1, selStackLen: 0 };
             this._drawReportPie('reportIncPieChart', 'inc');
         }
         // 饼图下钻「返回」按钮（每次 render 后 DOM 重建，需重新绑定 onclick）
@@ -660,17 +720,51 @@ const ReportManager = {
             if (backEl) {
                 backEl.onclick = () => {
                     const st = this._reportPieState && this._reportPieState[key];
-                    if (st && st.stack.length) { st.stack.pop(); this._drawReportPie(canvasId, key); }
+                    if (st && st.stack.length) {
+                        ChartManager._cancelPieClick(canvasId);
+                        st.selIdx = -1;
+                        st.stack.pop();
+                        this._drawReportPie(canvasId, key);
+                    }
                 };
             }
         });
         // 账户资金流向（柱状图卡片版）
         const accCtx = document.getElementById('reportAccountChart');
         if (accCtx && data.accountFlows && data.accountFlows.length > 0) {
+            const aCtx = accCtx.getContext('2d');
+            // 净流入/净流出条形渐变
+            const posGrad = aCtx.createLinearGradient(0, 0, 0, 220);
+            posGrad.addColorStop(0, c.inc + 'cc');
+            posGrad.addColorStop(1, c.inc + '66');
+            const negGrad = aCtx.createLinearGradient(0, 0, 0, 220);
+            negGrad.addColorStop(0, c.exp + 'cc');
+            negGrad.addColorStop(1, c.exp + '66');
             this.charts.accFlow = new Chart(accCtx, {
                 type: 'bar',
-                data: { labels: data.accountFlows.map(a => a.name), datasets: [{ label: '净流入', data: data.accountFlows.map(a => a.net), backgroundColor: data.accountFlows.map(a => a.net >= 0 ? c.inc + '90' : c.exp + '90'), borderRadius: 6 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } } } }
+                data: {
+                    labels: data.accountFlows.map(a => a.name),
+                    datasets: [{
+                        label: '净流入',
+                        data: data.accountFlows.map(a => a.net),
+                        backgroundColor: data.accountFlows.map(a => a.net >= 0 ? posGrad : negGrad),
+                        borderColor: data.accountFlows.map(a => a.net >= 0 ? c.inc : c.exp),
+                        borderWidth: 1, borderRadius: 8, borderSkipped: false,
+                        hoverBackgroundColor: data.accountFlows.map(a => a.net >= 0 ? c.inc : c.exp)
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    animation: ChartManager.reduceMotion() ? false : { duration: 1000, easing: 'easeOutQuart' },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { backgroundColor: c.bg, titleColor: c.text, bodyColor: c.text, borderColor: c.grid, borderWidth: 1, cornerRadius: 10, padding: 12 }
+                    },
+                    scales: {
+                        x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } },
+                        y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } }
+                    }
+                }
             });
         }
     },
@@ -707,23 +801,67 @@ const ReportManager = {
 
         const total = slices.reduce((s, e) => s + parseFloat(e.total || 0), 0);
         if (this.charts[canvasId]) this.charts[canvasId].destroy();
+        // 重绘前清掉待决的单击，避免定时器回调打到已 destroy 的 chart 上
+        ChartManager._cancelPieClick(canvasId);
+        // 层级变了，旧的选中下标指向的已是另一个分类
+        if (state.selIdx == null || state.selStackLen !== stack.length) {
+            state.selIdx = -1;
+            state.selStackLen = stack.length;
+        }
+        // 中心读数：未选中显示合计，单击某块后显示「分类名 · 占比」+ 该块金额。
+        // 原实现没有中心读数（只靠 hover tooltip），单击看金额就没有落点了。
+        const centerLabel = key === 'exp' ? '总支出' : '总收入';
+        const centerTextPlugin = ChartManager._pieCenterPlugin(canvasId + 'Center', c, () => {
+            const i = state.selIdx;
+            if (i != null && i >= 0 && i < slices.length) {
+                const e = slices[i];
+                const v = parseFloat(e.total || 0);
+                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                return {
+                    title: `${e.name} · ${pct}%`,
+                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                };
+            }
+            return { title: centerLabel, amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+        });
         this.charts[canvasId] = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: slices.map(e => (e.icon || '📌') + ' ' + e.name),
-                datasets: [{ data: slices.map(e => parseFloat(e.total || 0)), backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }]
+                datasets: [{
+                    data: slices.map(e => parseFloat(e.total || 0)),
+                    backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]),
+                    borderColor: 'rgba(255, 252, 245, 0.95)',
+                    borderWidth: 3,
+                    borderRadius: 6,
+                    spacing: 2,
+                    hoverOffset: 8,
+                    // 选中块外扩，让单击有明确的视觉落点（触屏没有 hover）
+                    offset: slices.map((_, i) => (i === state.selIdx ? 8 : 0))
+                }]
             },
             options: {
-                responsive: true, maintainAspectRatio: false, cutout: '55%',
+                responsive: true, maintainAspectRatio: false, cutout: '72%',
+                animation: ChartManager.reduceMotion() ? false : { duration: 800, easing: 'easeOutQuart' },
                 onClick: (evt, els) => {
                     if (!els.length) return;
-                    const cat = slices[els[0].index];
+                    const idx = els[0].index;
+                    const cat = slices[idx];
                     if (!cat) return;
                     const hasChildren = full.some(x => x.parent_id === cat.id);
-                    if (hasChildren) { state.stack.push(cat.id); this._drawReportPie(canvasId, key); }
+                    ChartManager._dispatchPieClick(
+                        canvasId,
+                        idx,
+                        // 单击：选中该块 → 环心显示它的金额与占比
+                        () => { state.selIdx = idx; this._drawReportPie(canvasId, key); },
+                        // 双击：下钻到二级（无子类则退化为单击）
+                        hasChildren
+                            ? () => { state.selIdx = -1; state.stack.push(cat.id); this._drawReportPie(canvasId, key); }
+                            : null
+                    );
                 },
                 plugins: {
-                    legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             label: cx => {
@@ -734,7 +872,8 @@ const ReportManager = {
                         }
                     }
                 }
-            }
+            },
+            plugins: [centerTextPlugin]
         });
     },
 

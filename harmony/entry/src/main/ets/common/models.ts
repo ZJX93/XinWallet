@@ -154,6 +154,19 @@ export interface TxTag {
   icon?: string;
 }
 
+/**
+ * 折叠后的转账双端信息（服务端 transactions.js 的 transfer 字段）。
+ *
+ * 一笔转账在库里是两条腿（transfer_out + transfer_in），列表已在 SQL 层折叠成
+ * 一条。这个字段让那一条记录能自己表达完整的「A → B」，同时告诉客户端：
+ * 编辑/删除要走 /transfers/:id —— 只改单条腿会让两个账户余额对不上。
+ */
+export interface TxTransfer {
+  id: number;
+  from: TxRef;
+  to: TxRef;
+}
+
 export interface TransactionItem {
   id: number;
   type: string;
@@ -169,6 +182,8 @@ export interface TransactionItem {
   destination?: TxRef;
   counterparty?: TxCounterparty;
   transfer_id?: number;
+  /** 非空即代表这是折叠后的转账记录，编辑/删除须走 /transfers/:id */
+  transfer?: TxTransfer;
   tags?: TxTag[];
 }
 
@@ -360,4 +375,35 @@ export interface SavingsGoalRequest {
   icon?: string;
   target: number;
   accountId?: number;
+}
+
+/* ----------------------------- 首页卡片复用实体 ----------------------------- */
+
+/** 预算实体（首页预算卡与预算管理页共用） */
+export interface Budget {
+  id: number;
+  name: string;
+  amount: number;
+  period?: string;
+  startDate?: string;
+  spent?: number;
+  used?: number;
+}
+
+/** 储蓄目标实体（首页目标卡与储蓄目标页共用） */
+export interface Goal {
+  id: number;
+  name: string;
+  icon?: string;
+  accountId?: number;
+  current?: number;
+  target?: number;
+}
+
+/** 分类支出聚合项（首页分类榜卡本地聚合产物） */
+export interface CategoryStat {
+  name: string;
+  icon: string;
+  amount: number;
+  ratio: number;
 }

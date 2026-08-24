@@ -2,9 +2,6 @@
   "src": [
     "pages/Login",
     "pages/Main",
-    "pages/Transactions",
-    "pages/Reports",
-    "pages/Profile",
     "pages/Accounts",
     "pages/AccountDetail",
     "pages/Category",

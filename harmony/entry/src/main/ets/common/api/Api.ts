@@ -55,8 +55,8 @@ export async function addAccountInterest(id: number, req: AddAccountInterestRequ
 }
 
 /* 交易 */
-export async function getTransactions(params: Record<string, Object>): Promise<ApiResponse<TransactionItem[]>> {
-  return get<TransactionItem[]>('transactions', params);
+export async function getTransactions(params: Record<string, Object>, extraHeaders?: Record<string, string>): Promise<ApiResponse<TransactionItem[]>> {
+  return get<TransactionItem[]>('transactions', params, extraHeaders);
 }
 export async function createTransaction(req: CreateTransactionRequest): Promise<ApiResponse<IdResponse>> {
   return post<IdResponse>('transactions', req);
@@ -80,6 +80,22 @@ export async function getTransfers(month?: string): Promise<ApiResponse<object[]
 }
 export async function createTransfer(req: object): Promise<ApiResponse<IdResponse>> {
   return post<IdResponse>('transfers', req);
+}
+/**
+ * 修改转账。**折叠后的转账记录必须走这里，不能走 updateTransaction。**
+ *
+ * 一笔转账在库里是两条 transactions 腿（transfer_out + transfer_in），
+ * 列表已折叠成一条展示。若拿那条腿的 id 去调 transactions/:id，
+ * 只会改动单条腿 —— 比如金额从 100 改成 200，转出账户扣了 200 而
+ * 转入账户还是加 100，两个账户余额从此永久对不上。
+ *
+ * 服务端 PUT /transfers/:id 是**全量替换**语义：内部先 DELETE 掉该
+ * transfer_id 的所有腿再重建两条，并重算涉及的全部账户余额。
+ * 所以 req 必须回填完整字段（from_account_id / to_account_id / amount /
+ * note / date），漏传 note 会被清成空串。
+ */
+export async function updateTransfer(id: number, req: object): Promise<ApiResponse<object>> {
+  return put<object>(`transfers/${id}`, req);
 }
 export async function deleteTransfer(id: number): Promise<ApiResponse<object>> {
   return del<object>(`transfers/${id}`);

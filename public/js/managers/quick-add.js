@@ -81,10 +81,8 @@ const QuickAdd = {
         document.getElementById('quickNote').value = '';
         document.getElementById('quickTransferAmount').value = '';
         // 日期时间默认当前（精确到秒）
-        const now = new Date();
-        const pad = n => String(n).padStart(2, '0');
-        document.getElementById('quickDate').value =
-            `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        // quickDate 是 datetime-local step="1"，必须给到秒（见 app.js 的 fmtDateTimeLocal）
+        document.getElementById('quickDate').value = fmtDateTimeLocal();
         this.updateCatSelect('expense');
         this.updateAccSelect();
         this.loadBudgets();

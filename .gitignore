@@ -11,6 +11,8 @@ dist-preview/
 dist.prebuild-*/
 .cache/
 .npm-cache*/
+# 本地联调临时产物（token、接口返回快照、进程排查输出等），随时可删
+.local-tmp/
 inspect-output/
 inspect-build-preview.mjs
 # 排除临时图片，但保留 logo、images 目录、安卓资源目录及鸿蒙资源目录下的图片
@@ -35,4 +37,34 @@ harmony/*_layout.json
 
 # 鸿蒙签名材料（CI 注入的临时目录 / 本地 base64 中间文件，严禁入库）
 harmony/.sign/
+
+# ============ 工作记录 / 调试产物，一律不入库（2026-08-24 清理） ============
+# 构建产物的时间戳备份目录（rm 前的保险副本，重新编译即可再生成，单个可达 190MB）
+*.bak-[0-9]*/
+*.old-[0-9]*/
+android/.gradle.bak-*/
+android/.gradle.old-*/
+android/app/build.bak-*/
+harmony/entry/build.bak-*/
+
+# 下划线前缀 = 本机调试中间文件的统一约定
+# _tok.txt 曾存放真实 demo JWT（已删）；_ui_dump.xml 是 uiautomator 布局快照
+scripts/_*
+public/_inject.html
+public/_inject/
+
+# 各轮 UI 改造的「对照预览」过程记录（不是产品文档，仅当轮沟通用）
+# 产品级文档请显式 git add，例如 docs/HANDOVER.md、docs/harmony-build.md、docs/harmony-style-guide.md
+docs/harmony-calendar-fix.html
+docs/harmony-color-fix.html
+docs/harmony-device-qa-fixes.html
+docs/harmony-home-cards-preview.html
+docs/harmony-period-picker.html
+docs/harmony-refined-preview.html
+docs/harmony-reports-align.html
+docs/harmony-reports-align-2.html
+docs/harmony-secondary-pages.html
+docs/harmony-surface-alpha.html
+docs/harmony-transactions-align.html
+docs/quick-add-android-preview.html
 

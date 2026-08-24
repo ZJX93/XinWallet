@@ -72,7 +72,7 @@ export async function startRecord(path: string): Promise<void> {
 
 export async function stopRecord(): Promise<string> {
   if (capturer) {
-    try { await capturer.stop(); await capturer.release(); } catch (e) { /* ignore */ }
+    try { await capturer.stop(); await capturer.release(); } catch (e) { /* 资源释放失败无补救手段，也不该阻断后续流程 */ }
     capturer = null;
   }
   if (fileStream) {

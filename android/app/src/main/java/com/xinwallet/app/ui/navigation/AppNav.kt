@@ -4,8 +4,13 @@ package com.xinwallet.app.ui.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -25,7 +30,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Home
@@ -39,12 +43,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +70,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavDestination
 import androidx.navigation.NavGraph
+import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown300
+import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
@@ -70,6 +80,7 @@ import com.xinwallet.app.ui.screens.AiScanScreen
 import com.xinwallet.app.ui.screens.AppLockScreen
 import com.xinwallet.app.ui.screens.CategoryScreen
 import com.xinwallet.app.ui.screens.ChatScreen
+import com.xinwallet.app.ui.screens.DataManagementScreen
 import com.xinwallet.app.ui.screens.HomeScreen
 import com.xinwallet.app.ui.screens.InvestmentDetailScreen
 import com.xinwallet.app.ui.screens.InvestmentTransactionsScreen
@@ -86,9 +97,9 @@ import com.xinwallet.app.ui.screens.LoanScreen
 import com.xinwallet.app.ui.screens.SettingsScreen
 import com.xinwallet.app.ui.screens.SearchScreen
 import com.xinwallet.app.ui.theme.Brown500
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import com.xinwallet.app.ui.theme.GlassBox
+import com.xinwallet.app.ui.theme.GlassFab
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -112,6 +123,15 @@ sealed class Screen(val route: String) {
         fun create(id: Int, month: String? = null) =
             if (month != null) "edit/$id?month=$month" else "edit/$id"
     }
+    /**
+     * 转账编辑：与支出/收入一致，也跳记账页改，只是走 PUT /transfers/{id}。
+     * 单独一条路由而不是复用 EditTransaction 的原因：这里的 id 是 transfers 表主键，
+     * 与 transactions 表主键是两套 id 空间，混用会改错记录。
+     */
+    object EditTransfer : Screen("edit-transfer/{id}?month={month}") {
+        fun create(id: Int, month: String? = null) =
+            if (month != null) "edit-transfer/$id?month=$month" else "edit-transfer/$id"
+    }
     object AiScan : Screen("ai-scan")
     object Investments : Screen("investments")
     object InvestmentDetail : Screen("investment/{id}") {
@@ -132,6 +152,7 @@ sealed class Screen(val route: String) {
     object Debts : Screen("debts")
     object Settings : Screen("settings")
     object AppLock : Screen("app_lock")
+    object DataManagement : Screen("data-management")
 }
 
 /**
@@ -200,8 +221,9 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("savings") -> Screen.Profile.route
     route.startsWith("debts") -> Screen.Profile.route
     route.startsWith("transactions") -> Screen.Transactions.route
-    route.startsWith("investment") -> Screen.Reports.route  // 理财明细归到「统计」
+    route.startsWith("investment") -> Screen.Profile.route   // 理财从「我的」进入，归到「我的」
     route.startsWith("planning") -> Screen.Profile.route    // 规划下沉到「我的」
+    route.startsWith("data-management") -> Screen.Profile.route  // 数据管理从「我的」宫格进入
     else -> route.substringBefore("/")
 }
 
@@ -234,6 +256,12 @@ fun MainScaffold(onLogout: () -> Unit) {
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomBar = !isNoTabRoute(currentRoute)
     var showAddMenu by remember { mutableStateOf(false) }
+    // FAB 旋转 45° → 「×」，作为关闭态
+    val fabRotation by animateFloatAsState(
+        targetValue = if (showAddMenu) 45f else 0f,
+        animationSpec = tween(durationMillis = 280),
+        label = "fabRotation"
+    )
 
     // 必须是 val lambda 而不是局部 fun：fun 名不能直接当 (String)->Unit 传递，
     // 而 TabItem 需要把它当值传过去（之前内联 clickable 直接调用没问题）。
@@ -245,26 +273,25 @@ fun MainScaffold(onLogout: () -> Unit) {
         navController.navigate(actual) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
-            restoreState = true
+            restoreState = false
         }
     }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            // 透出根布局的环境光背景，玻璃表面才能透出柔光
+            containerColor = Color.Transparent,
             bottomBar = {
                 // 沉浸页（chat/add/edit）直接隐藏整条 tab 栏，避免给输入区让出 64dp 视觉噪音
                 if (showBottomBar) {
-                    // 底部栏：bar 64dp（用户反馈 79dp 过高），圆 46dp 垂直居中
-                    // - 5 槽均分（首页/账单/圆/统计/我的）
-                    // - Scaffold.contentWindowInsets=WindowInsets(0) 阻断默认给 bottomBar 加系统栏 inset
+                    // 底部栏：玻璃本体 64dp（用户反馈 79dp 过高），圆 46dp 垂直居中，5 槽均分（首页/账单/圆/统计/我的）
+                    // contentWindowInsets=0 让 64dp 栏高度精确（不被系统栏撑高）；点击响应由各 TabItem 自行处理。
                     val navH = 64.dp
-                    Box(
-                        Modifier.fillMaxWidth()
-                            .height(navH)
-                            // 仅靠阴影营造「悬浮于内容之上」的层次感（更柔和）
-                            .shadow(elevation = 2.dp, clip = false)
-                            .background(MaterialTheme.colorScheme.surface)
+                    GlassBox(
+                        Modifier.fillMaxWidth().height(navH),
+                        shape = RoundedCornerShape(0.dp),
+                        elevated = true
                     ) {
                         Row(
                             Modifier.fillMaxWidth().fillMaxHeight(),
@@ -280,21 +307,14 @@ fun MainScaffold(onLogout: () -> Unit) {
                             bottomItems.drop(1).take(1).forEach { (screen, pair) ->
                                 TabItem(screen, pair, current, navigateRoot)
                             }
-                            // 中间「记账」暖棕圆形按钮：作为 Row 第 3 个成员参与等距分布
-                            Box(
-                                Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(Brown500)
-                                    .shadow(elevation = 4.dp, shape = CircleShape, clip = false, ambientColor = Brown500.copy(alpha = 0.5f), spotColor = Brown500.copy(alpha = 0.5f))
-                                    .clickable { showAddMenu = true },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.Add,
+                            // 中间「记账」玻璃圆钮：作为 Row 第 3 个成员参与等距分布；
+                            // 展开时旋转 45° 成「×」，再次点击关闭菜单
+                            Box(Modifier.rotate(fabRotation)) {
+                                GlassFab(
+                                    icon = Icons.Filled.Add,
                                     contentDescription = "记账",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(30.dp)
+                                    onClick = { showAddMenu = !showAddMenu },
+                                    size = 46.dp
                                 )
                             }
                             bottomItems.drop(2).take(1).forEach { (screen, pair) ->
@@ -311,26 +331,49 @@ fun MainScaffold(onLogout: () -> Unit) {
             AppNavHost(navController, padding, onLogout)
         }
 
-        if (showAddMenu) {
-            // 半透明遮罩：点在空白区域关闭；两个圆形按钮浮在 tab 栏上方 20mm 处
+        AnimatedVisibility(
+            visible = showAddMenu,
+            enter = fadeIn(tween(durationMillis = 220)),
+            exit = fadeOut(tween(durationMillis = 180))
+        ) {
+            // 遮罩仅覆盖导航栏以上区域（底部 64dp 留白，使 FAB 仍可点 = 关闭），
+            // 由透明过渡到深色，避免"死黑"呆板感
             Box(Modifier.fillMaxSize()) {
                 Box(
-                    Modifier.matchParentSize()
-                        .background(Color.Black.copy(alpha = 0.45f))
+                    Modifier.matchParentSize().padding(bottom = 64.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
+                            )
+                        )
                         .clickable { showAddMenu = false }
                 )
-                Row(
-                    Modifier.align(Alignment.BottomCenter).padding(bottom = 140.dp),
-                    horizontalArrangement = Arrangement.spacedBy(36.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // 自导航栏上方弹起的速选面板（错峰入场：AI 先、手动后）
+                Column(
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    AddQuickCircle("AI 记账", Icons.Filled.AutoAwesome) {
-                        showAddMenu = false
-                        navigateRoot(Screen.Chat.route)
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(tween(220, 0))
+                            + slideInVertically(animationSpec = tween(320, 0)) { 30 }
+                            + scaleIn(initialScale = 0.92f, animationSpec = tween(320, 0))
+                    ) {
+                        AddOptionRow("AI 记账", "对话或拍照，一句话入账", Icons.Filled.AutoAwesome, primary = true) {
+                            showAddMenu = false
+                            navigateRoot(Screen.Chat.route)
+                        }
                     }
-                    AddQuickCircle("手动记账", Icons.Filled.Edit) {
-                        showAddMenu = false
-                        navigateRoot(Screen.AddTransaction.route)
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(tween(220, 80))
+                            + slideInVertically(animationSpec = tween(320, 80)) { 30 }
+                            + scaleIn(initialScale = 0.92f, animationSpec = tween(320, 80))
+                    ) {
+                        AddOptionRow("手动记账", "逐项填写，精确记录", Icons.Filled.Edit, primary = false) {
+                            showAddMenu = false
+                            navigateRoot(Screen.AddTransaction.route)
+                        }
                     }
                 }
             }
@@ -339,25 +382,71 @@ fun MainScaffold(onLogout: () -> Unit) {
     }
 }
 
-/** 记账快捷圆形按钮：暖棕圆 + 白图标 + 下方文字 */
+/** 记账速选卡：主选项(AI)实心品牌渐变 + 次选项(手动)浅卡，图标 chip + 标题 + 副文案 */
 @Composable
-private fun AddQuickCircle(label: String, icon: ImageVector, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { onClick() }
+private fun AddOptionRow(
+    label: String,
+    sub: String,
+    icon: ImageVector,
+    primary: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .width(260.dp).height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .then(
+                if (primary) {
+                    Modifier.background(Brush.horizontalGradient(listOf(Brown500, Brown300)))
+                } else {
+                    Modifier
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                }
+            )
+            .shadow(
+                if (primary) 14.dp else 8.dp,
+                RoundedCornerShape(16.dp),
+                ambientColor = Brown500.copy(alpha = 0.3f),
+                spotColor = Brown500.copy(alpha = 0.3f)
+            )
+            .clickable { onClick() }
+            .padding(start = 12.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            Modifier
-                .size(66.dp)
-                .clip(CircleShape)
-                .background(Brown500)
-                .shadow(elevation = 6.dp, shape = CircleShape, clip = false, ambientColor = Brown500.copy(alpha = 0.5f), spotColor = Brown500.copy(alpha = 0.5f)),
+            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+                .background(if (primary) Color.White.copy(alpha = 0.18f) else Brown100),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(32.dp))
+            Icon(
+                icon, contentDescription = null,
+                tint = if (primary) Color.White else Brown500,
+                modifier = Modifier.size(24.dp)
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        Text(label, color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Column(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                label,
+                color = if (primary) Color.White else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp
+            )
+            Text(
+                sub,
+                color = if (primary) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+        Text(
+            "›",
+            color = if (primary) Color.White.copy(alpha = 0.6f) else Color.Gray,
+            fontSize = 18.sp
+        )
     }
 }
 
@@ -399,6 +488,17 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             val month = it.arguments?.getString("month")
             AddTransactionScreen(navController, editId = id, month = month)
         }
+        composable(
+            Screen.EditTransfer.route,
+            arguments = listOf(
+                navArgument("id") { type = androidx.navigation.NavType.IntType },
+                navArgument("month") { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) {
+            val id = it.arguments?.getInt("id") ?: 0
+            val month = it.arguments?.getString("month")
+            AddTransactionScreen(navController, editTransferId = id, month = month)
+        }
         composable(Screen.AiScan.route) { AiScanScreen(navController) }
         composable(Screen.Investments.route) { InvestmentsScreen(navController) }
         composable(
@@ -425,5 +525,6 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
         composable(Screen.Debts.route) { LoanScreen(navController) }
         composable(Screen.Settings.route) { SettingsScreen(navController) }
         composable(Screen.AppLock.route) { AppLockScreen(navController, mode = "Settings") }
+        composable(Screen.DataManagement.route) { DataManagementScreen(navController) }
     }
 }

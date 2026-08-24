@@ -10,9 +10,13 @@ import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.UpdateRepository
 import com.xinwallet.app.di.AppContainer
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ProfileUiState(
     val themeMode: String = "system",
@@ -38,6 +42,21 @@ data class UpdateUiState(
     val localApkPath: String? = null
 )
 
+/**
+ * 服务器自检结果（用于 [设置] 页一键探测当前 baseUrl 是否含 transfer 字段）。
+ *
+ * 为什么单独建一个 state 而不是塞进 ProfileUiState：
+ *  - 探测生命周期独立于资料态，不需要每次切换设置重置
+ *  - AlertDialog 关闭后清空，不污染下次显示
+ */
+data class ServerProbeState(
+    val probing: Boolean = false,
+    /** 三态文本：✅ 支持转账合并 / ❌ 不支持 / ⚠ 网络/鉴权错误 */
+    val summary: String? = null,
+    /** 补充说明：当前 baseUrl、HTTP code、响应样本（截短 240 字符） */
+    val detail: String = ""
+)
+
 private fun isPlaceholderUrl(url: String): Boolean =
     url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
 
@@ -52,6 +71,10 @@ class ProfileViewModel(
 
     private val _updateState = MutableStateFlow(UpdateUiState())
     val updateState: StateFlow<UpdateUiState> = _updateState
+
+    private val _probeState = MutableStateFlow(ServerProbeState())
+    /** 当前 baseUrl 是否支持转账合并字段（用于 [设置] 页一键自检） */
+    val probeState: StateFlow<ServerProbeState> = _probeState
 
     init {
         viewModelScope.launch {
@@ -132,6 +155,89 @@ class ProfileViewModel(
 
     fun logout() {
         viewModelScope.launch { authRepo.logout() }
+    }
+
+    // ---------- 服务器自检（transfer 字段） ----------
+
+    /**
+     * 用当前 baseUrl + token 发 GET /transactions?limit=1，扫描响应 JSON 中是否
+     * 含字段名 "transfer"。
+     *
+     * 为什么不用 Retrofit list()：
+     *  - 后端若不返回 transfer 字段，Gson 反序列化的 TransactionItem.transfer 仍是 null，
+     *    调用者区分不了「后端没返回」和「后端返回了 null」，判据不稳。
+     *  - 直接扫字节流最准，且只取一条数据，开销极小。
+     *
+     * 失败模式覆盖在 [probeTransferField] 中：网络层 / HTTP code / 字段缺失 / 找到。
+     */
+    fun probeServerSupportsTransfer() {
+        viewModelScope.launch {
+            _probeState.value = ServerProbeState(probing = true)
+            val rawBase = session.baseUrl()
+            val baseUrl = AppContainer.normalizeBaseUrl(rawBase)
+            if (baseUrl.isBlank()) {
+                _probeState.value = ServerProbeState(
+                    probing = false,
+                    summary = "⚠ 服务器地址未配置",
+                    detail = "请先在「服务器地址」中填入你的 NAS 地址，例如 http://10.0.2.2:18888"
+                )
+                return@launch
+            }
+            val token = session.accessToken()
+            val r = withContext(Dispatchers.IO) { probeTransferField(baseUrl, token) }
+            _probeState.value = ServerProbeState(
+                probing = false,
+                summary = r.summary,
+                detail = r.detail
+            )
+        }
+    }
+
+    fun clearProbe() {
+        _probeState.value = ServerProbeState()
+    }
+
+    private data class ProbeResult(val summary: String, val detail: String)
+
+    /**
+     * 实际探测逻辑。返回的 summary/detail 直接喂给 AlertDialog。
+     *
+     * 用 HttpURLConnection 而非 OkHttp 是因为 AppContainer 没把 client 导出；
+     * 再开一个 5 秒超时的短连接对设置页的一次性点击完全够用。
+     */
+    private fun probeTransferField(baseUrl: String, token: String): ProbeResult {
+        // baseUrl 形如 https://nas.com:18888/api/，拼接到 /transactions?limit=1
+        val urlStr = baseUrl.trimEnd('/') + "/transactions?limit=1"
+        return try {
+            val url = URL(urlStr)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 5000
+                readTimeout = 5000
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+                if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+            }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            conn.disconnect()
+            when {
+                code !in 200..299 ->
+                    ProbeResult("⚠ HTTP $code", "baseUrl=$baseUrl\n响应：${body.take(240)}")
+                body.contains("\"transfer\"") ->
+                    ProbeResult("✅ 当前服务器支持转账合并", "baseUrl=$baseUrl\n响应样本：${body.take(240)}")
+                else ->
+                    ProbeResult(
+                        "❌ 当前服务器不含 transfer 字段",
+                        "baseUrl=$baseUrl\n响应样本：${body.take(240)}\n这通常是 NAS 上的旧 Docker 镜像，需要重新部署最新镜像。"
+                    )
+            }
+        } catch (e: Exception) {
+            ProbeResult(
+                "⚠ 网络失败",
+                "baseUrl=$baseUrl\n${e.javaClass.simpleName}: ${e.message}\n请检查 baseUrl 是否正确、设备与服务器是否同网。"
+            )
+        }
     }
 
     // ---------- 应用内升级 ----------

@@ -296,23 +296,54 @@ const TransactionManager = {
                 const isTransfer = t.type === 'transfer_out' || t.type === 'transfer_in';
                 document.getElementById('transEditId').value = t.id;
                 document.getElementById('transAmount').value = t.amount;
-                document.getElementById('transDate').value = fmtDate(t.date);
+                // transDate 是 datetime-local step="1"，回填必须到秒，
+                // 否则秒位空着，用户没碰过也可能被滚成 00:02:00 提交上去
+                document.getElementById('transDate').value = fmtDateTimeLocal(t.date);
                 document.getElementById('transNote').value = t.note || '';
                 document.querySelectorAll('#transForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === (isTransfer ? 'transfer' : t.type)) { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
                 this.setFormMode(isTransfer ? 'transfer' : t.type);
                 if (isTransfer) {
-                    document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
-                    // 转入账户：优先从配对数据中取，否则通过 transfer_id 查询完整转账记录
-                    const pairIn = t._transferIn || (window._lastMergedTransfers && window._lastMergedTransfers.find(x => x._transferOut?.id === t.id)?._transferIn);
-                    if (pairIn) {
-                        document.getElementById('transToAccount').value = pairIn.account?.id;
-                    } else if (t.transfer_id) {
+                    /**
+                     * 双端账户的取值优先级：
+                     *   1. 单条接口的 transfer 字段（服务端已 JOIN transfers）—— 最准
+                     *   2. 列表缓存里那条折叠记录的 transfer.to / 配对结果 —— 旧服务端兜底
+                     *   3. 查 /transfers/:transfer_id
+                     *
+                     * 转出账户不能直接用 t.account.id：那是**这条腿自己**挂的账户。
+                     * 点到 out 腿时它恰好是转出方，但点到残留的 in 腿时它是转入方，
+                     * 直接填进「转出账户」就把方向弄反了，一保存钱倒着走。
+                     */
+                    const fromList = window._lastMergedTransfers &&
+                        window._lastMergedTransfers.find(x => x._transferOut?.id === t.id || x.id === t.id);
+
+                    // 记下 transfer 主记录 id，保存时零请求直接用（见 resolveTransferId）
+                    this._editingTxId = t.id;
+                    this._editingTransferId = t.transfer?.id || t.transfer_id
+                        || fromList?.transfer?.id || fromList?.transfer_id || null;
+
+                    const fromId = t.transfer?.from?.id
+                        || fromList?.transfer?.from?.id
+                        || fromList?._transferOut?.account?.id
+                        || t.account?.id || cache.accounts[0]?.id;
+                    document.getElementById('transAccount').value = fromId;
+
+                    const toId = t.transfer?.to?.id
+                        || fromList?.transfer?.to?.id
+                        || fromList?._transferIn?.account?.id
+                        || t._transferIn?.account?.id;
+                    if (toId) {
+                        document.getElementById('transToAccount').value = toId;
+                    } else if (this._editingTransferId) {
                         try {
-                            const full = await api(`/transfers/${t.transfer_id}`, 'GET', null, { silent: true });
+                            const full = await api(`/transfers/${this._editingTransferId}`, 'GET', null, { silent: true });
                             if (full) document.getElementById('transToAccount').value = full.to_account_id;
                         } catch (e) { /* ignore */ }
                     }
                 } else {
+                    // 清掉转账缓存：否则先编转账再编普通交易时，
+                    // resolveTransferId 的 ① 会命中上一笔的 transfer_id
+                    this._editingTxId = null;
+                    this._editingTransferId = null;
                     document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
                     document.getElementById('transCategory').value = t.category?.id;
                     document.getElementById('transBudget').value = t.budget_id || '';
@@ -321,9 +352,11 @@ const TransactionManager = {
             }
         } else {
             document.getElementById('transModalTitle').textContent = '新增交易';
+            this._editingTxId = null;
+            this._editingTransferId = null;
             document.getElementById('transEditId').value = '';
             document.getElementById('transAmount').value = '';
-            document.getElementById('transDate').value = fmtDate();
+            document.getElementById('transDate').value = fmtDateTimeLocal();
             document.getElementById('transNote').value = '';
             document.getElementById('transBudget').value = '';
             document.querySelectorAll('#transForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === 'expense') { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
@@ -333,15 +366,64 @@ const TransactionManager = {
     },
     updateBudgetSelect() {
         const sel = document.getElementById('transBudget');
-        const transDate = document.getElementById('transDate')?.value || fmtDate();
+        /**
+         * 只取日期部分再比。
+         *
+         * transDate 的 value 是 datetime-local（带 T 和时分秒），而
+         * b.start_date / b.end_date 是纯 'YYYY-MM-DD'。直接字符串比较时
+         * '2026-08-31T10:00:00' <= '2026-08-31' 为 **false** ——
+         * 预算区间最后一天记的账会筛不出任何预算（除了 00:00:00 那一瞬）。
+         */
+        const raw = document.getElementById('transDate')?.value || fmtDateTimeLocal();
+        const transDate = String(raw).slice(0, 10);
         // 从缓存获取预算列表，按交易日期匹配时间范围
         const budgets = cache.budgets || [];
         sel.innerHTML = '<option value="">不关联</option>' +
-            budgets.filter(b => transDate >= b.start_date && transDate <= b.end_date).map(b =>
+            budgets.filter(b => transDate >= String(b.start_date).slice(0, 10)
+                             && transDate <= String(b.end_date).slice(0, 10)).map(b =>
                 `<option value="${b.id}">${escapeHtml(b.name)} (${fmt(b.amount)})</option>`
             ).join('');
     },
     closeModal() { document.getElementById('transModal').classList.remove('show'); },
+
+    /**
+     * 由「某条转账腿的 transaction id」反查它所属的 transfers 主记录 id。
+     *
+     * 为什么需要三级回退：原先只有一条路 ——
+     *   `const old = await api('/transactions/'+id); if (!old.transfer_id) 报错`
+     * 而 GET /transactions/:id 当时**根本不返回 transfer_id**（它不 JOIN transfers），
+     * 于是编辑转账点保存必定弹「无法定位转账记录」，一次都存不进去。
+     *
+     * 服务端已补齐该字段，但这里仍保留回退：
+     *   ① 打开弹窗时缓存的 _editingTransferId —— 零请求，且这是**唯一**
+     *      在旧版服务端也能work的路径（弹窗回填本来就已经拿到了 transfer 信息）
+     *   ② 单条接口的 transfer_id / transfer.id —— 新服务端
+     *   ③ 列表缓存 _lastMergedTransfers —— 旧服务端返回两条腿时的配对结果
+     *
+     * 返回 null 才提示用户，且提示要给出下一步动作（刷新重试），
+     * 而不是一句死路式的「无法定位」。
+     */
+    async resolveTransferId(editId) {
+        const idNum = parseInt(editId);
+
+        // ① 打开编辑弹窗时就记下来的（见 openModal 的转账分支）
+        if (this._editingTransferId && this._editingTxId === idNum) {
+            return this._editingTransferId;
+        }
+
+        // ② 单条接口（服务端已 JOIN transfers）
+        try {
+            const old = await api(`/transactions/${editId}`, 'GET', null, { silent: true });
+            const tid = old?.transfer_id || old?.transfer?.id;
+            if (tid) return tid;
+        } catch (e) { /* 落到 ③ */ }
+
+        // ③ 列表缓存：新服务端给 transfer.id，旧服务端靠客户端配对给 transfer_id
+        const list = window._lastMergedTransfers || [];
+        const hit = list.find(x => x.id === idNum || x._transferOut?.id === idNum || x._transferIn?.id === idNum);
+        return hit?.transfer?.id || hit?.transfer_id || hit?._transferOut?.transfer_id || null;
+    },
+
     async save() {
         if (this._saving) return;
         const form = document.getElementById('transForm');
@@ -363,10 +445,12 @@ const TransactionManager = {
             if (fromId === toId) { showToast('转出和转入账户不能相同', 'error'); return; }
             const tBody = { from_account_id: fromId, to_account_id: toId, amount, date, note };
             if (editId) {
-                // 编辑转账：通过原交易关联的 transfer_id 调用 /transfers/:id
-                const old = await api(`/transactions/${editId}`, 'GET', null, { silent: true });
-                if (!old || !old.transfer_id) { showToast('无法定位转账记录', 'error'); return; }
-                await api(`/transfers/${old.transfer_id}`, 'PUT', tBody);
+                const tid = await this.resolveTransferId(editId);
+                if (!tid) {
+                    showToast('无法定位转账记录，请刷新页面后重试', 'error');
+                    return;
+                }
+                await api(`/transfers/${tid}`, 'PUT', tBody);
                 showToast('转账已更新', 'success');
             } else {
                 await api('/transfers', 'POST', tBody);
@@ -475,7 +559,10 @@ const TransactionManager = {
             const time = fmtTransTime(t.date);
             const typeLabel = isTransfer ? '转账' : (t.type === 'income' ? '收入' : '支出');
             const typeClass = isTransfer ? 'transfer' : t.type;
-            const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(t.category.icon || "📌")}</span><span>${escapeHtml(t.category.name)}</span>`;
+            const catObj = (t.category && (t.category.icon || t.category.name))
+                ? t.category
+                : (typeof getCat === 'function' ? getCat(t.categoryId || t.category_id) : { name: '未分类', icon: '📌' });
+            const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(catObj.icon || "📌")}</span><span>${escapeHtml(catObj.name || '未分类')}</span>`;
             const tagsHtml = (t.tags && t.tags.length)
                 ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
                 : '';

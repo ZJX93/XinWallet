@@ -141,8 +141,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return doRequest<T>(path, options);
 }
 
-export async function get<T>(path: string, params?: Record<string, Object>): Promise<ApiResponse<T>> {
-  return doRequest<T>(path, { method: http.RequestMethod.GET, params });
+export async function get<T>(path: string, params?: Record<string, Object>, extraHeaders?: Record<string, string>): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, { method: http.RequestMethod.GET, params, extraHeaders });
 }
 
 export async function post<T>(path: string, body?: Object, params?: Record<string, Object>): Promise<ApiResponse<T>> {

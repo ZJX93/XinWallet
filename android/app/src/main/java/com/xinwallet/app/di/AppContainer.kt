@@ -15,6 +15,7 @@ import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.remote.AuthInterceptor
 import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.AiRepository
+import com.xinwallet.app.data.repository.BackupRepository
 import com.xinwallet.app.data.repository.BudgetRepository
 import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.DebtRepository
@@ -71,6 +72,8 @@ object AppContainer {
     lateinit var tagRepository: TagRepository
         private set
     lateinit var bookRepository: BookRepository
+        private set
+    lateinit var backupRepository: BackupRepository
         private set
 
     /**
@@ -140,6 +143,7 @@ object AppContainer {
         reportRepository = ReportRepository { api }
         tagRepository = TagRepository { api }
         bookRepository = BookRepository { api }
+        backupRepository = BackupRepository { api }
     }
 
     /**

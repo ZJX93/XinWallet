@@ -10,7 +10,7 @@ import type Want from '@ohos.app.ability.Want';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS } from '../common/theme';
-import { TopBar, LoadingBox } from '../common/components/Components';
+import { TopBar, LoadingBox, AppBackground } from '../common/components/Components';
 
 @Entry
 @Component
@@ -92,36 +92,40 @@ struct DataManagement {
       Text(title).fontSize(16).fontWeight(FontWeight.Medium).fontColor(COLORS.textPrimary)
       Text(desc).fontSize(13).fontColor(COLORS.textSecondary)
       Button(btn).width('100%').onClick(onClick)
-    }.width('100%').padding(16).backgroundColor(COLORS.card).borderRadius(14)
+    }.width('100%').padding(16).backgroundColor(COLORS.cardGlass).borderRadius(14)
+    .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 
   build() {
-    Column() {
-      TopBar({ title: '数据管理' })
-      if (this.loading) { LoadingBox() }
-      Scroll() {
-        Column({ space: 12 }) {
-          this.ActionCard(
-            '导出账本备份',
-            '导出 xlsx（账本配置页 / 账户页 / 账单流水页），可识别、可恢复',
-            '导出备份',
-            () => this.doExportBackup()
-          )
-          this.ActionCard(
-            '导入账本备份',
-            '选择此前导出的 xlsx，恢复全部账本数据（损坏时可还原）',
-            '导入备份',
-            () => this.doImportBackup()
-          )
-          if (this.msg) {
-            Text(this.msg)
-              .fontSize(13)
-              .fontColor(COLORS.textSecondary)
-              .padding(12)
-          }
-          Blank().height(20)
-        }.padding(12)
-      }.layoutWeight(1)
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+    Stack() {
+      AppBackground()
+      Column() {
+        TopBar({ title: '数据管理' })
+        if (this.loading) { LoadingBox() }
+        Scroll() {
+          Column({ space: 12 }) {
+            this.ActionCard(
+              '导出账本备份',
+              '导出 xlsx（账本配置页 / 账户页 / 账单流水页），可识别、可恢复',
+              '导出备份',
+              () => this.doExportBackup()
+            )
+            this.ActionCard(
+              '导入账本备份',
+              '选择此前导出的 xlsx，恢复全部账本数据（损坏时可还原）',
+              '导入备份',
+              () => this.doImportBackup()
+            )
+            if (this.msg) {
+              Text(this.msg)
+                .fontSize(13)
+                .fontColor(COLORS.textSecondary)
+                .padding(12)
+            }
+            Blank().height(20)
+          }.padding(12)
+        }.layoutWeight(1)
+      }.width('100%').height('100%')
+    }.width('100%').height('100%')
   }
 }

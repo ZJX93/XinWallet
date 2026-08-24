@@ -34,8 +34,9 @@ class AuthInterceptor(
         val bookId = runBlocking { session.currentBookId() }
         val authed = original.newBuilder().apply {
             if (token.isNotEmpty()) header("Authorization", "Bearer $token")
-            // 多账本：携带当前账本 id，后端据此隔离数据；0 表示未设置（后端退化为默认账本）
-            if (bookId > 0) header("X-Book-Id", bookId.toString())
+            // 多账本：默认携带当前账本 id，后端据此隔离数据；0 表示未设置（后端退化为默认账本）。
+            // 若请求自身已带 X-Book-Id（如搜索页临时选定账本），则尊重调用方、不再覆盖。
+            if (bookId > 0 && original.header("X-Book-Id") == null) header("X-Book-Id", bookId.toString())
         }.build()
 
         val response = chain.proceed(authed)

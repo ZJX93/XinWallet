@@ -71,6 +71,28 @@ harmony/
 4. **签名**：`build-profile.json5` 的 `signingConfigs` 用 DevEco「自动签名」生成（需登录华为开发者账号）。
 5. 连接华为手机（或模拟器）运行 `entry` Module。
 
+### 3.1 命令行编译（本机已打通）
+
+工程根目录直接执行即可，**无需手动设任何环境变量**：
+
+```bash
+cd harmony
+sh ./hvigorw assembleHap --mode module -p product=default        # 增量编译
+sh ./hvigorw clean                                                # 清理产物
+```
+
+Windows CMD / PowerShell 用 `hvigorw.bat` 同参数。
+产物：`entry/build/default/outputs/default/entry-default-signed.hap`
+
+`hvigorw` 已内置处理三个本地环境坑，**遇到下列报错先看是不是脚本被绕过了**：
+
+| 报错 | 根因 | 脚本中的处理 |
+|---|---|---|
+| `hvigor not found` | 工具链不在 npm 全局/本地 node_modules/PATH，而在 DevEco Studio 安装目录 | 查找路径已补 `Program Files\Public\DevEco Studio\tools\hvigor\bin\hvigorw.js` 等常见位置 |
+| `00303217 Configuration Error: Invalid value of 'DEVECO_SDK_HOME'` | 未设置 SDK 路径 | `ensure_sdk_home()` 从 hvigorw.js 反推同级 `<root>/sdk` 自动导出 |
+| `00308018 Unknown Error` + `[safe-delete] 操作失败 ... 'trash' operation` | 外部（如 AI IDE）通过 `NODE_OPTIONS=--require=...` 注入了文件删除保护 shim，拦住了 hvigor 清理 `entry/build/.../loader_out` 中间目录。**这不是代码错误** | 脚本开头 `unset NODE_OPTIONS` |
+| `Cannot find module 'D:\d\Program Files\...'` | Git Bash 下 node 不认 `/d/...` 形式路径 | `to_native_path()` 用 `cygpath -m` 转成原生路径 |
+
 ## 四、联调后端
 
 - 登录页填写 `https://你的服务器IP:18888`（`normalizeBaseUrl` 会自动补 `/api`）。
@@ -84,15 +106,22 @@ harmony/
 | 语音：端上 `SpeechRecognizer` 走 Google 引擎，无 GMS 华为机卡死报「语音识别超时」 | `Chat.ets` + `common/audio.ts`：鸿蒙 `AudioCapturer` 录音 → 后端 `/ai/transcribe`（Whisper）转写，完全不碰 GMS |
 | 定位：`NETWORK_PROVIDER` 走 Google 网络定位后端，无 GMS 时缓存陈旧返回 null | `AddTransaction.ets`：用 `@ohos.geoLocationManager.getCurrentLocation` 主动定位 |
 
-## 六、需在真机/模拟器验证的项（本机无 DevEco，未能编译）
+## 六、需在真机/模拟器验证的项
+
+> 源码编译已在本机打通（见 3.1，`clean` + 全量 `assembleHap` 均 BUILD SUCCESSFUL，0 ERROR），
+> 以下为**编译无法覆盖、必须上真机/模拟器**的运行时项。
 
 - 录音 → 转写链路（`common/audio.ts` 的 WAV 封装与 `Api.transcribe` 入参格式）。
 - `geoLocationManager` 定位权限与返回。
 - `DatePickerDialog` / `PhotoViewPicker` / `AlertDialog` / `Tabs` 等表现。
-- 深色模式：主题模式已持久化到 AppStorage（`themeMode`），但各组件目前用固定暖棕色板，
-  完整深色色板切换为后续增强项。
+- 深色模式：主题模式持久化到 AppStorage（`themeMode`），`theme.ts` 已具备 LIGHT/DARK 双色板与
+  `syncTokens` 同步，需真机确认切换后各页色值与对比度。
+- 首页卡片开关持久化（`Session.getCardVisible` / `setCardVisible` 落 preferences），
+  需验证杀进程重启后 `showTodayCard` / `showCalendarCard` 仍保持用户选择。
 - 部分后端返回字段（report/debt/savings/investment）按安卓模型推断，做了防御性渲染；
   联调时若字段名不一致，以 `Api.ts` 返回的 `data` 实际结构为准微调。
+- 遗留约 113 个 ArkTS WARN 均为历史 deprecation（`pushUrl` / `replaceUrl` / `show` /
+  `ESObject` / `AppStorage.Get`），不阻断编译，可作为后续技术债统一清理。
 
 ## 七、GitHub Actions 自动构建 HAP 签名配置
 

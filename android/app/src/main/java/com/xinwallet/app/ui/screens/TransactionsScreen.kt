@@ -41,8 +41,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -75,7 +73,6 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.EmptyState
@@ -102,6 +99,8 @@ import com.xinwallet.app.ui.viewmodel.shiftMonth
 import com.xinwallet.app.ui.viewmodel.TransactionsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyShort
+import com.xinwallet.app.util.formatDayLabel
 import com.xinwallet.app.util.todayDate
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
@@ -164,20 +163,39 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
     acting?.let { item ->
         AlertDialog(
             onDismissRequest = { acting = null },
-            title = { Text(item.category?.name ?: "交易") },
+            title = {
+                Text(
+                    // 折叠转账的标题直接给「A → B」，比分类名「一般转账」有信息量
+                    item.transfer?.let { "${it.from?.name ?: "?"} → ${it.to?.name ?: "?"}" }
+                        ?: (item.category?.name ?: "交易")
+                )
+            },
             text = {
                 Column {
-                    Text(formatMoney(item.amount), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        formatMoney(if (item.transfer != null) kotlin.math.abs(item.amount) else item.amount),
+                        style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(item.date.take(19), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (!item.note.isNullOrBlank()) {
                         Spacer(Modifier.height(4.dp))
                         Text(item.note, style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (item.transferId != null) {
+                    if (item.transfer != null) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "转账记录不支持直接编辑，如需修改请删除后重新记账。",
+                            "编辑会同时更新转出、转入两条记录并重算双方余额。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (item.transferId != null) {
+                        // transferId 有但 transfer 为 null：双端账户名缺失（账户被删）
+                        // 或 out 腿已被删的残留 in 腿。这类记录不能走转账表单
+                        // （拿不到 from/to 无法回填），只保留删除。
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "这笔转账的账户信息不完整（可能账户已被删除），只能删除。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -185,7 +203,21 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
                 }
             },
             confirmButton = {
-                if (item.transferId == null) {
+                // 编辑分三种情况：
+                //   普通交易 → 记账页（EditTransaction）
+                //   折叠转账 → 记账页的转账 tab（EditTransfer，内部走 PUT /transfers/{id}）
+                //   信息不完整的转账残留 → 不给编辑（见上方说明）
+                // 转账原先是在列表里弹表单改的，与「改支出/改收入」体验不一致，已统一为跳记账页。
+                if (item.transfer != null) {
+                    TextButton(onClick = {
+                        acting = null
+                        navController.navigate(Screen.EditTransfer.create(item.transfer.id, state.month))
+                    }) {
+                        Icon(Icons.Filled.Edit, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("编辑")
+                    }
+                } else if (item.transferId == null) {
                     TextButton(onClick = {
                         acting = null
                         navController.navigate(Screen.EditTransaction.create(item.id, state.month))
@@ -206,14 +238,23 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
         )
     }
 
+    // 转账编辑已改为跳记账页（Screen.EditTransfer），不再在列表内弹表单，
+    // 原 TransferEditDialog 与 vm.saveTransfer 随之移除。
+
     confirmDelete?.let { item ->
+        val tf = item.transfer
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("删除这笔交易？") },
+            title = { Text(if (item.transferId != null) "删除这笔转账？" else "删除这笔交易？") },
             text = {
                 Text(
-                    if (item.transferId != null) "转账的转出、转入两条记录会一并删除，账户余额将重新计算。"
-                    else "删除后账户余额会按账本重新计算，该操作不可撤销。"
+                    when {
+                        // 有完整双端信息：把两个账户名写出来，用户才知道哪两笔余额会变
+                        tf != null -> "转账在账本里是一进一出两条记录，删除会同时移除双方，" +
+                                "并重算 ${tf.from?.name ?: "转出账户"} 和 ${tf.to?.name ?: "转入账户"} 的余额。此操作不可恢复。"
+                        item.transferId != null -> "转账的转出、转入两条记录会一并删除，账户余额将重新计算。"
+                        else -> "删除后账户余额会按账本重新计算，该操作不可撤销。"
+                    }
                 )
             },
             confirmButton = {
@@ -355,7 +396,7 @@ private fun TxTypeMonthBar(
             Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE7EDEE))
+                .background(Color(0xFFF0EDEE))
                 .padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
@@ -419,7 +460,8 @@ private fun SummaryCard(income: Double, expense: Double, balance: Double, txCoun
                 Text("结余", style = MaterialTheme.typography.titleMedium, color = Color.White)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "¥ ${formatMoney(balance)}",
+                    // formatMoney 自带 ¥ 前缀，原先又拼了一个，真机上显示成「¥ ¥21,201.34」
+                    formatMoney(balance),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -465,14 +507,16 @@ private fun DayHeader(day: String, list: List<TransactionItem>) {
         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(day, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 日期与汇总行共用 formatDayLabel/formatMoneyShort：
+        // 同一页出现 '2026-08-28' 和 '8月28日' 两种写法，用户会以为是两种东西
+        Text(formatDayLabel(day), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
         Spacer(Modifier.weight(1f))
         val parts = buildList {
-            if (income > 0) add("收 ${formatMoney(income)}")
-            if (expense > 0) add("支 ${formatMoney(expense)}")
+            if (income > 0) add("收 ${formatMoneyShort(income)}")
+            if (expense > 0) add("支 ${formatMoneyShort(expense)}")
         }
         if (parts.isNotEmpty()) {
-            Text(parts.joinToString("  "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(parts.joinToString("  "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }
@@ -495,23 +539,40 @@ private fun TransactionsCard(
                 list.forEachIndexed { idx, item ->
                     TransactionRowClickable(item) { onItemClick(item) }
                     if (idx != list.lastIndex) {
-                        HorizontalDivider(color = Color(0xFFF1F3F4), modifier = Modifier.padding(horizontal = 14.dp))
+                        HorizontalDivider(color = Color(0xFFF0EDEE), modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
                 if (gi != grouped.lastIndex) {
-                    HorizontalDivider(color = Color(0xFFF1F3F4), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = Color(0xFFF0EDEE), modifier = Modifier.padding(horizontal = 16.dp))
                 }
             }
         }
     }
 }
 
+/**
+ * 流水列表 / 日历日详情共用的单行。两处调用（本文件 540、849 行），改这里两处同步生效。
+ *
+ * 转账渲染必须与首页 `HomeScreen.TodayBillRow` 完全一致，三条规则：
+ *   ① 图标固定 🔄 —— 不用 category.icon（转账分类图标是 🏦，跟储蓄卡支出撞脸）
+ *   ② 副标题「A → B · 备注」 —— 旧代码只拼 account.name，显示成「工资卡 · 房租押金」，
+ *      看不出这是笔转账、更看不出钱去了哪（用户截图问题）
+ *   ③ 金额**不带正负号、用中性色** —— 转账是内部搬钱，既不是收入也不是支出。
+ *      旧代码把 transfer_out 当支出加了「-」和绿色，与支出混在一起无法区分。
+ *
+ * ⚠️ 主标题仍取 `category.name`（转账在库里有真实分类如「一般转账」），
+ *    **不要写死「转账」** —— 首页与鸿蒙 `TransactionRow` 都是这么做的，
+ *    写死会把分类信息挤掉，且与左侧 🔄 图标重复表意。
+ */
 @Composable
 private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) {
     val dark = LocalIsDark.current
-    val isIncome = item.type == "income" || item.type == "transfer_in"
-    val isExpense = item.type == "expense" || item.type == "transfer_out"
+    // transfer 非 null 是折叠转账；type 前缀兜底老后端不返回 transfer 的情况
+    val isTransfer = item.transfer != null || item.type.startsWith("transfer")
+    val isIncome = !isTransfer && item.type == "income"
+    val isExpense = !isTransfer && item.type == "expense"
     val color = when {
+        isTransfer -> MaterialTheme.colorScheme.onSurface
         isIncome -> if (dark) IncomeColorDark else IncomeColor
         isExpense -> if (dark) ExpenseColorDark else ExpenseColor
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -521,19 +582,42 @@ private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) 
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(40.dp)) {
-            Box(contentAlignment = Alignment.Center) { Text(item.category?.icon ?: "📌", style = MaterialTheme.typography.bodyLarge) }
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    if (isTransfer) "🔄" else (item.category?.icon ?: "📌"),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(item.category?.name ?: "交易", style = MaterialTheme.typography.bodyLarge)
-            val sub = listOfNotNull(
-                item.account?.name,
-                item.note?.takeIf { it.isNotBlank() }
-            ).joinToString(" · ").ifBlank { item.date.take(10) }
+            val sub = if (isTransfer) {
+                // 流向放前面、备注放后面：备注长度不可控，保证「A → B」始终完整可见
+                val flow = if (item.transfer != null) {
+                    "${item.transfer.from?.name ?: "?"} → ${item.transfer.to?.name ?: "?"}"
+                } else {
+                    // 兜底：type 是 transfer_* 但服务端没折叠出 transfer，按方向拼
+                    val out = item.type != "transfer_in"
+                    val from = if (out) (item.source?.name ?: item.account?.name)
+                               else (item.counterparty?.name ?: item.source?.name)
+                    val to = if (out) (item.counterparty?.name ?: item.destination?.name)
+                             else (item.destination?.name ?: item.account?.name)
+                    "${from ?: "?"} → ${to ?: "?"}"
+                }
+                if (item.note.isNullOrBlank()) flow else "$flow · ${item.note}"
+            } else {
+                listOfNotNull(
+                    item.account?.name,
+                    item.note?.takeIf { it.isNotBlank() }
+                ).joinToString(" · ").ifBlank { item.date.take(10) }
+            }
             Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
         Text(
-            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount),
+            // 转账取绝对值：折叠后的那条腿可能是 transfer_out 的负数金额
+            if (isTransfer) formatMoney(kotlin.math.abs(item.amount))
+            else (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount),
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }
@@ -571,7 +655,7 @@ private fun PeriodPickerDialog(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = null
     ) {
         Column(Modifier.padding(horizontal = 24.dp)) {
@@ -774,15 +858,30 @@ private fun CalendarView(
                         Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(selectedDay, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text("收 ${formatMoney(income)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Text("支 ${formatMoney(expense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(12.dp))
+                        // ⚠️ 日期不能挂 weight(1f)：weight 的语义是「你吃剩余空间」，
+                        // 剩余为负时就变成「你被压到装不下也得认」。右侧三项按内容取宽一个都不让，
+                        // 于是这行里唯一被牺牲的就是日期 —— 而日期恰恰一个字符都不能少
+                        // （'2026-08-28' 断成 '2026-08-2 / 8'）。改用 Spacer 顶开，
+                        // 空间由中间空白吸收，没有元素被迫压缩。
                         Text(
-                            "结余 ${if (balance >= 0) "+" else ""}${formatMoney(balance)}",
+                            formatDayLabel(selectedDay),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Spacer(Modifier.weight(1f))
+                        // 三项金额统一 formatMoneyShort：混用会让 '收 ¥1.90万' 和
+                        // '结余 +¥17,226.00' 看起来像两类不同数据
+                        Text("收 ${formatMoneyShort(income)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                        Spacer(Modifier.width(10.dp))
+                        Text("支 ${formatMoneyShort(expense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "结余 ${if (balance >= 0) "+" else ""}${formatMoneyShort(balance)}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (balance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            color = if (balance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            maxLines = 1
                         )
                     }
                 }
@@ -933,3 +1032,4 @@ private fun parseMonth(m: String): Pair<Int, Int> {
     val parts = m.split("-")
     return if (parts.size == 2) parts[0].toInt() to parts[1].toInt() else 2026 to 1
 }
+

@@ -122,6 +122,37 @@ router.get('/', async (req, res) => {
       WHERE t.user_id = ? AND t.book_id = ?`;
         const params = [req.userId, req.bookId];
 
+        // ──── 转账折叠：一笔转账只出一条「A → B」，不要转出/转入各一条 ────
+        //
+        // 数据模型是复式记账：transfers 表存主体（from/to/amount），transactions 表
+        // 存两条腿（transfer_out + transfer_in）靠 transfer_id 关联。这个设计是对的
+        // —— 每个账户的余额都要能独立从自己的流水推导出来（computeAccountBalance）。
+        // 问题只在展示层：列表把两条腿都渲染出来，用户看到同一笔转账重复两次。
+        //
+        // 折叠保留 transfer_out 腿，因为它自己就带着完整信息：
+        // 上面 LEFT JOIN transfers 已经取到 tr_from_name / tr_to_name，
+        // 下方 counterparty 字段直接能拼出「A → B」，不需要额外查询。
+        //
+        // ⚠️ 判据必须是「有 transfer_id 且存在配对的 out 腿」，不能按 type 一刀切
+        // 排除所有 transfer_in：
+        //   1. POST /transactions 允许单独创建 type='transfer_in' 而 transfer_id 为 NULL
+        //      （见本文件 create 分支），那是用户手动记的单边入账，必须照常显示
+        //   2. 历史数据里可能存在 out 腿已被删而 in 腿残留的情况，一刀切会让它彻底
+        //      从列表消失 —— 数据还在、余额还算着，但用户永远看不到、也无法删除
+        //
+        // ⚠️ 必须在 SQL 层折叠，不能拿到结果后在 JS 里 filter：
+        // 下方分页用的是 SQL 的 LIMIT/OFFSET，JS 过滤会让 limit=20 实际只显示 14 条，
+        // 且「还有没有下一页」的判断全错。
+        sql += ` AND NOT (
+        t.type = 'transfer_in' AND t.transfer_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM transactions x
+          WHERE x.transfer_id = t.transfer_id
+            AND x.type = 'transfer_out'
+            AND x.user_id = t.user_id AND x.book_id = t.book_id
+        )
+      )`;
+
         if (month && month !== 'all') {
             sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
@@ -270,6 +301,22 @@ router.get('/', async (req, res) => {
                 ? (t.tr_from_name ? { dir: '←', name: t.tr_from_name, icon: t.tr_from_icon } : null)
                 : null,
             transfer_id: t.transfer_id,
+            /**
+             * 折叠后的转账双端信息。列表里一笔转账只出一条记录（见上方 SQL 的
+             * 转账折叠条件），这条记录必须能自己表达完整的「A → B」，
+             * 否则客户端只能拿 counterparty 猜另一端是谁。
+             *
+             * 客户端据此渲染「工资卡 → 余额宝」，并且知道要把编辑/删除
+             * 转发到 /transfers/:id（transfer 字段非空即代表这是折叠记录，
+             * 改 transactions/:id 只会动一条腿，两个账户余额就对不上了）。
+             */
+            transfer: t.transfer_id && t.tr_from_name && t.tr_to_name
+                ? {
+                    id: t.transfer_id,
+                    from: { id: t.tr_from, name: t.tr_from_name, icon: t.tr_from_icon },
+                    to: { id: t.tr_to, name: t.tr_to_name, icon: t.tr_to_icon }
+                }
+                : null,
             budget_id: t.budget_id,
             budget_name: t.budget_name,
             tags: tagMap[t.id] || []
@@ -570,13 +617,30 @@ router.get('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (!Number.isInteger(id)) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('无效的交易 ID'));
+        /**
+         * JOIN transfers 与列表接口保持一致。
+         *
+         * 原先这里只 JOIN categories/accounts/budgets，返回体里既没有
+         * transfer_id 也没有 transfer 字段 —— 于是 web 端编辑转账时
+         * `if (!old.transfer_id) return showToast('无法定位转账记录')`
+         * 必然命中，转账永远保存不了（截图里连弹三次就是这个）。
+         *
+         * 单条接口必须自洽：不能要求调用方先拉一次列表、再从缓存里
+         * 反查对方账户。列表缓存可能是上个月的、可能被筛选条件过滤掉。
+         */
         const rows = await db.query(
             `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
-                a.name as acc_name, a.icon as acc_icon, b.name as budget_name
+                a.name as acc_name, a.icon as acc_icon, b.name as budget_name,
+                tr.from_account_id as tr_from, tr.to_account_id as tr_to,
+                fa.name as tr_from_name, fa.icon as tr_from_icon,
+                ta.name as tr_to_name, ta.icon as tr_to_icon
              FROM transactions t
              LEFT JOIN categories c ON t.category_id = c.id
              LEFT JOIN accounts a ON t.account_id = a.id
              LEFT JOIN budgets b ON t.budget_id = b.id
+             LEFT JOIN transfers tr ON t.transfer_id = tr.id
+             LEFT JOIN accounts fa ON tr.from_account_id = fa.id
+             LEFT JOIN accounts ta ON tr.to_account_id = ta.id
              WHERE t.id = ? AND t.user_id = ? AND t.book_id = ?`,
             [id, req.userId, req.bookId]
         );
@@ -596,6 +660,15 @@ router.get('/:id', async (req, res) => {
             note: t.note || '',
             category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
             account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon },
+            // 与列表接口同名同形，客户端一套解析逻辑通吃两个接口
+            transfer_id: t.transfer_id ?? null,
+            transfer: t.transfer_id && t.tr_from_name && t.tr_to_name
+                ? {
+                    id: t.transfer_id,
+                    from: { id: t.tr_from, name: t.tr_from_name, icon: t.tr_from_icon },
+                    to: { id: t.tr_to, name: t.tr_to_name, icon: t.tr_to_icon }
+                }
+                : null,
             budget_id: t.budget_id,
             budget_name: t.budget_name,
             tags: tagRows.map(r => ({ id: r.id, name: r.name, color: r.color, icon: r.icon }))

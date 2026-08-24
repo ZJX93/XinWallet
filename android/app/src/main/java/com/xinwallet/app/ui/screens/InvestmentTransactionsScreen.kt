@@ -14,14 +14,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,6 +70,8 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
     var error by remember { mutableStateOf<String?>(null) }
     var list by remember { mutableStateOf<List<InvestmentTransaction>>(emptyList()) }
     var showDeleteFor by remember { mutableStateOf<InvestmentTransaction?>(null) }
+    var showSheet by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
 
     fun loadList() {
         scope.launch {
@@ -85,7 +93,15 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(Unit) { loadList() }
 
-    Scaffold(topBar = { TopBar("${inv?.name ?: "理财"} · 交易记录", onBack = { navController.popBackStack() }) }) { padding ->
+    Scaffold(
+        topBar = { TopBar("${inv?.name ?: "理财"} · 交易记录", onBack = { navController.popBackStack() }) },
+        snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showSheet = true }) {
+                Icon(Icons.Filled.Add, contentDescription = "记一笔")
+            }
+        }
+    ) { padding ->
         when {
             loading -> LoadingBox()
             error != null -> ErrorState(error!!) { loadList() }
@@ -122,6 +138,16 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
                 dismissButton = { TextButton(onClick = { showDeleteFor = null }) { Text("取消") } }
             )
         }
+    }
+
+    if (showSheet) {
+        InvestmentTxnSheet(
+            invId = id,
+            op = null,
+            onDismiss = { showSheet = false },
+            onDone = { loadList(); vm.load() },
+            snackbar = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+        )
     }
 }
 

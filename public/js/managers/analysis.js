@@ -180,6 +180,7 @@ const AnalysisManager = {
     },
 
     async renderTrend() {
+        ChartManager.applyDefaults();
         const dash = await api('/stats/dashboard');
         if (!dash || !dash.months) return;
         const c = ChartManager.colors();
@@ -187,14 +188,35 @@ const AnalysisManager = {
         const ctx = document.getElementById('analysisTrendChart').getContext('2d');
         const ms = [...dash.months].reverse();
         const avg = ms.length > 0 ? ms.reduce((s, m) => s + m.expense, 0) / ms.length : 0;
+
+        // 渐变填充
+        const expGrad = ctx.createLinearGradient(0, 0, 0, 220);
+        expGrad.addColorStop(0, c.exp + '30');
+        expGrad.addColorStop(1, c.exp + '04');
+
         ChartManager.charts['analysisTrend'] = new Chart(ctx, {
             type: 'line', data: {
                 labels: ms.map(m => m.month.substring(5) + '月'),
                 datasets: [
-                    { label: '月支出', data: ms.map(m => m.expense), borderColor: c.exp, backgroundColor: c.exp + '15', fill: true, tension: 0.4, pointRadius: 5 },
-                    { label: '平均线', data: Array(ms.length).fill(avg), borderColor: c.war + '80', borderDash: [8, 4], pointRadius: 0, fill: false }
+                    { label: '月支出', data: ms.map(m => m.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                    { label: '平均线', data: Array(ms.length).fill(avg), borderColor: c.war + '80', borderDash: [8, 4], pointRadius: 0, borderWidth: 2, fill: false }
                 ]
-            }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: c.text, usePointStyle: true, boxWidth: 8 } } }, scales: { x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } } } }
+            }, options: {
+                responsive: true, maintainAspectRatio: true,
+                animation: ChartManager.reduceMotion() ? false : { duration: 1200, easing: 'easeOutQuart' },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: c.bg, titleColor: c.text, bodyColor: c.text,
+                        borderColor: c.grid, borderWidth: 1, cornerRadius: 10, padding: 12
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } },
+                    y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } }
+                }
+            }
         });
     }
 };

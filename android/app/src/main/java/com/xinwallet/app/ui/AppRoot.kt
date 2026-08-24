@@ -24,6 +24,7 @@ import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.MainScaffold
 import com.xinwallet.app.ui.screens.AppLockScreen
 import com.xinwallet.app.ui.screens.LoginScreen
+import com.xinwallet.app.ui.theme.AmbientBackground
 import com.xinwallet.app.ui.theme.XWalletTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -134,6 +135,7 @@ fun AppRoot() {
             true -> {
                 // 主界面 + 应用锁覆盖层：解锁屏盖在主界面上方，解锁后移除，保留导航状态
                 Box(Modifier.fillMaxSize()) {
+                    AmbientBackground()
                     MainScaffold(onLogout = { loggedIn = false })
                     if (needUnlock) {
                         AppLockScreen(

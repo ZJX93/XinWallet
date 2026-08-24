@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -31,9 +33,9 @@ import com.xinwallet.app.data.model.ApiResponse
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.Screen
+import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.IncomeColor
-import com.xinwallet.app.ui.theme.Teal400
 import com.xinwallet.app.util.formatMoneySigned
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -52,11 +54,12 @@ private data class SearchFilter(
     val maxAmount: Double? = null,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
-    val types: Set<String> = emptySet() // income / expense / transfer / debt(预留)
+    val types: Set<String> = emptySet(), // income / expense / transfer / debt(预留)
+    val bookId: Int? = null // 账本筛选：null = 跟随全局当前账本；具体 id = 临时只看该账本
 ) {
     val isActive: Boolean
         get() = minAmount != null || maxAmount != null ||
-                startDate != null || endDate != null || types.isNotEmpty()
+                startDate != null || endDate != null || types.isNotEmpty() || bookId != null
 }
 
 @Composable
@@ -87,6 +90,7 @@ fun SearchScreen(navController: NavHostController) {
                 minAmount = filter.minAmount,
                 maxAmount = filter.maxAmount,
                 types = filter.types.takeIf { it.isNotEmpty() }?.joinToString(","),
+                bookId = filter.bookId,
                 limit = 100
             )
             if (resp.isSuccessful) (resp.body() as? ApiResponse<List<TransactionItem>>)?.data.orEmpty()
@@ -109,14 +113,14 @@ fun SearchScreen(navController: NavHostController) {
                     TextButton(onClick = { showFilter = true }) {
                         Text(
                             "筛选",
-                            color = if (filter.isActive) Teal400 else MaterialTheme.colorScheme.onSurface,
+                            color = if (filter.isActive) Brown500 else MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(Modifier.width(4.dp))
                         Icon(
                             Icons.Outlined.FilterAlt,
                             contentDescription = null,
-                            tint = if (filter.isActive) Teal400 else MaterialTheme.colorScheme.onSurface,
+                            tint = if (filter.isActive) Brown500 else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -150,7 +154,18 @@ fun SearchScreen(navController: NavHostController) {
                 }
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(results, key = { it.id }) { tx ->
-                        SearchTxRow(tx) { navController.navigate(Screen.EditTransaction.create(tx.id)) }
+                        SearchTxRow(tx) {
+                            // 折叠转账必须走 EditTransfer（PUT /transfers/{id}）：
+                            // tx.id 只是 transfer_out 那条腿的 id，拿它调 transactions/{id}
+                            // 只会改一条腿，两个账户余额会永久对不上。
+                            // transferId 有但 transfer 为 null（账户被删的残留）无法回填双端，不给编辑。
+                            val tf = tx.transfer
+                            when {
+                                tf != null -> navController.navigate(Screen.EditTransfer.create(tf.id))
+                                tx.transferId != null -> Unit
+                                else -> navController.navigate(Screen.EditTransaction.create(tx.id))
+                            }
+                        }
                     }
                 }
             }
@@ -331,6 +346,7 @@ private fun FilterSheetContent(
     var startDate by remember { mutableStateOf(initial.startDate) }
     var endDate by remember { mutableStateOf(initial.endDate) }
     var types by remember { mutableStateOf(initial.types) }
+    var bookId by remember { mutableStateOf(initial.bookId) }
 
     Column(
         Modifier
@@ -353,6 +369,7 @@ private fun FilterSheetContent(
                 startDate = null
                 endDate = null
                 types = emptySet()
+                bookId = null
             }) {
                 Text("重置", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -402,10 +419,27 @@ private fun FilterSheetContent(
 
         Spacer(Modifier.height(16.dp))
 
-        // 账本
+        // 账本：选中具体账本时本次搜索只看该账本；默认「当前账本」= 跟随全局账本切换
         FilterSectionLabel("账本")
-        Row(Modifier.fillMaxWidth()) {
-            TypeChip(label = "所有账本", selected = true, onClick = { /* 当前账本由 X-Book-Id 控制，筛选内暂不支持切换 */ })
+        val books = AppContainer.books.collectAsState().value
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TypeChip(
+                label = "当前账本",
+                selected = bookId == null,
+                onClick = { bookId = null }
+            )
+            books.forEach { b ->
+                TypeChip(
+                    label = b.name,
+                    selected = bookId == b.id,
+                    onClick = { bookId = b.id }
+                )
+            }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -445,14 +479,15 @@ private fun FilterSheetContent(
                         maxAmount = maxAmountText.toDoubleOrNull(),
                         startDate = startDate,
                         endDate = endDate,
-                        types = types
+                        types = types,
+                        bookId = bookId
                     )
                 )
             },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(24.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Black,
+                containerColor = Brown500,
                 contentColor = Color.White
             )
         ) {
@@ -477,7 +512,7 @@ private fun FilterSectionLabel(text: String) {
             Modifier
                 .width(3.dp)
                 .height(14.dp)
-                .background(Teal400, RoundedCornerShape(2.dp))
+                .background(Brown500, RoundedCornerShape(2.dp))
         )
         Spacer(Modifier.width(8.dp))
         Text(text, style = MaterialTheme.typography.bodyLarge)
@@ -486,7 +521,7 @@ private fun FilterSectionLabel(text: String) {
 
 @Composable
 private fun TypeChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val bg = if (selected) Teal400 else MaterialTheme.colorScheme.surfaceVariant
+    val bg = if (selected) Brown500 else MaterialTheme.colorScheme.surfaceVariant
     val fg = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = Modifier

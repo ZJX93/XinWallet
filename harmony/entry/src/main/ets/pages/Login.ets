@@ -5,6 +5,7 @@ import { normalizeBaseUrl } from '../common/config';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS } from '../common/theme';
+import { AppBackground } from '../common/components/Components';
 
 @Entry
 @Component
@@ -84,74 +85,76 @@ struct Login {
   }
 
   build() {
-    Column({ space: 14 }) {
-      Image($r('app.media.logo'))
-        .width(88)
-        .height(88)
-        .borderRadius(20)
-        .margin({ top: 80, bottom: 4 })
-      Text('鑫钱包')
-        .fontSize(28)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(COLORS.textPrimary)
-      Text('个人财务管家')
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 16 })
+    Stack() {
+      AppBackground()
+      Column({ space: 14 }) {
+        Image($r('app.media.logo'))
+          .width(88)
+          .height(88)
+          .borderRadius(20)
+          .margin({ top: 80, bottom: 4 })
+        Text('鑫钱包')
+          .fontSize(28)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(COLORS.textPrimary)
+        Text('个人财务管家')
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: 16 })
 
-      TextInput({ placeholder: '服务器地址，如 https://nas.com:18888', text: this.server })
-        .onChange((v) => (this.server = v))
-        .width('82%')
-        .height(48)
-        .backgroundColor(COLORS.card)
-        .borderRadius(12)
-        .padding({ left: 14, right: 14 })
-      TextInput({ placeholder: '账号', text: this.username })
-        .onChange((v) => (this.username = v))
-        .enableAutoFill(true)
-        .width('82%')
-        .height(48)
-        .backgroundColor(COLORS.card)
-        .borderRadius(12)
-        .padding({ left: 14, right: 14 })
-      TextInput({ placeholder: '密码', text: this.password })
-        .type(InputType.Password)
-        .onChange((v) => (this.password = v))
-        .enableAutoFill(true)
-        .width('82%')
-        .height(48)
-        .backgroundColor(COLORS.card)
-        .borderRadius(12)
-        .padding({ left: 14, right: 14 })
-
-      if (this.error) {
-        Text(this.error)
-          .fontColor(Color.Red)
-          .fontSize(13)
-          .width('82%')
-      }
-
-      Button(this.loading ? '登录中...' : '登录')
-        .width('82%')
-        .height(48)
-        .backgroundColor(COLORS.brand)
-        .borderRadius(12)
-        .enabled(!this.loading)
-        .onClick(() => this.doLogin(false))
-      if (this.allowDemo) {
-        Button('体验 Demo 账号')
+        TextInput({ placeholder: '服务器地址，如 https://nas.com:18888', text: this.server })
+          .onChange((v) => (this.server = v))
           .width('82%')
           .height(48)
-          .backgroundColor(COLORS.brandBgLight)
-          .fontColor(COLORS.brand)
+          .backgroundColor(COLORS.card)
           .borderRadius(12)
-          .stateEffect(true)
-          .onClick(() => this.doLogin(true))
+          .padding({ left: 14, right: 14 })
+        TextInput({ placeholder: '账号', text: this.username })
+          .onChange((v) => (this.username = v))
+          .enableAutoFill(true)
+          .width('82%')
+          .height(48)
+          .backgroundColor(COLORS.card)
+          .borderRadius(12)
+          .padding({ left: 14, right: 14 })
+        TextInput({ placeholder: '密码', text: this.password })
+          .type(InputType.Password)
+          .onChange((v) => (this.password = v))
+          .enableAutoFill(true)
+          .width('82%')
+          .height(48)
+          .backgroundColor(COLORS.card)
+          .borderRadius(12)
+          .padding({ left: 14, right: 14 })
+
+        if (this.error) {
+          Text(this.error)
+            .fontColor(Color.Red)
+            .fontSize(13)
+            .width('82%')
+        }
+
+        Button(this.loading ? '登录中...' : '登录')
+          .width('82%')
+          .height(48)
+          .backgroundColor(COLORS.brand)
+          .borderRadius(12)
+          .enabled(!this.loading)
+          .onClick(() => this.doLogin(false))
+        if (this.allowDemo) {
+          Button('体验 Demo 账号')
+            .width('82%')
+            .height(48)
+            .backgroundColor(COLORS.brandBgLight)
+            .fontColor(COLORS.brand)
+            .borderRadius(12)
+            .stateEffect(true)
+            .onClick(() => this.doLogin(true))
+        }
       }
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(COLORS.pageBg)
-    .justifyContent(FlexAlign.Center)
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+    }.width('100%').height('100%')
   }
 }

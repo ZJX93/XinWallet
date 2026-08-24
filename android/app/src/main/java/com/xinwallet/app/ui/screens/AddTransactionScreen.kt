@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -64,8 +69,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.xinwallet.app.di.AppContainer
+import com.xinwallet.app.ui.theme.GlassBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Button
 import java.util.Calendar
 import java.util.TimeZone
 import androidx.compose.runtime.Composable
@@ -188,19 +195,37 @@ private suspend fun requestSingleLocation(lm: LocationManager): Location? {
 /* 笔记心情功能已移除：原始 UI 为 5 个 emoji+文字 chips（选择记账心情 / 该花的 / 剁手了 / 情势我 / …），
  * 但未对接任何后端字段（无 API 落地、无数据持久化），完全冗余，移除以避免误导。 */
 
+/**
+ * 记账页，一页四用：
+ *   新增（editId=0, editTransferId=0）
+ *   编辑普通交易（editId>0）→ PUT /transactions/{id}
+ *   编辑转账（editTransferId>0）→ PUT /transfers/{id}
+ *
+ * 转账编辑之所以也进这一页（而不是列表里弹表单），是为了让「改支出 / 改收入 / 改转账」
+ * 三种编辑体验一致。但**提交必须分流**：转账走 /transfers，否则只会改到两条腿里的一条，
+ * 转出账户扣 200、转入账户仍加 100，双方余额永久对不上。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, month: String? = null) {
+fun AddTransactionScreen(
+    navController: NavHostController,
+    editId: Int = 0,
+    month: String? = null,
+    editTransferId: Int = 0
+) {
     val vm: AddTransactionViewModel = viewModel(factory = viewModelFactory {
-        AddTransactionViewModel(AppContainer.transactionRepository, AppContainer.accountRepository, AppContainer.categoryRepository, AppContainer.budgetRepository)
+        AddTransactionViewModel(AppContainer.transactionRepository, AppContainer.accountRepository, AppContainer.categoryRepository, AppContainer.budgetRepository, AppContainer.tagRepository)
     })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val isEdit = editId > 0
+    val isEditTransfer = editTransferId > 0
+    val isEdit = editId > 0 || isEditTransfer
 
     // 顶层状态：支出/收入/转账（截图布局）
-    var type by rememberSaveable { mutableStateOf("expense") }
+    // 转账编辑进来时直接锁定在 transfer，不能让用户切到支出/收入
+    // （切了也没有可用的提交路径 —— transfers 表记录改不成 transactions 记录）
+    var type by rememberSaveable { mutableStateOf(if (isEditTransfer) "transfer" else "expense") }
     var amount by rememberSaveable { mutableStateOf("") }
     var note by rememberSaveable { mutableStateOf("") }
     var accountId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -216,6 +241,9 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     /** 手动选择的预算关联（关联预算接口对接）；null = 不关联 */
     var linkedBudgetId by rememberSaveable { mutableStateOf<Int?>(null) }
     var showBudgetSheet by remember { mutableStateOf(false) }
+    /** 手动选择的标签 id 集合（关联标签接口对接）；空集合 = 不关联 */
+    var selectedTagIds by rememberSaveable { mutableStateOf<Set<Int>>(emptySet()) }
+    var showTagSheet by remember { mutableStateOf(false) }
 
     // 选择类弹层 / 对话框状态
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -253,11 +281,18 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
         }
     }
 
-    LaunchedEffect(Unit) { vm.loadOptions(if (isEdit) editId else null, month) }
+    LaunchedEffect(Unit) {
+        vm.loadOptions(
+            editId = if (editId > 0) editId else null,
+            month = month,
+            transferId = if (isEditTransfer) editTransferId else null
+        )
+    }
 
     // 账户加载完成后，若用户尚未手动选择，则默认选中「默认账户」(没有则首个)，避免永远卡在"请选择账户"
+    // 转账编辑模式跳过：账户由 state.editingTransfer 回填，默认值会把回填结果覆盖掉
     LaunchedEffect(state.accounts) {
-        if (accountId == null && state.accounts.isNotEmpty()) {
+        if (!isEditTransfer && accountId == null && state.accounts.isNotEmpty()) {
             accountId = state.accounts.firstOrNull { it.isDefault }?.id ?: state.accounts.first().id
         }
     }
@@ -281,6 +316,24 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             date = tx.date.trim().let { if (it.length >= 19) it.substring(0, 19) else it.take(10) + " 00:00:00" }
             location = tx.location.orEmpty()
             notReimbursable = (tx.linkType == "none")
+            // 标签回填：使用现有标签 id 集合（空时也允许清除，避免脏状态）
+            selectedTagIds = tx.tags.map { it.id }.toSet()
+            prefilled = true
+        }
+    }
+
+    // 转账编辑回填：转账没有分类/标签/预算/位置概念，只回填双端账户 + 金额 + 备注 + 日期
+    LaunchedEffect(state.editingTransfer) {
+        val tf = state.editingTransfer
+        if (tf != null && !prefilled) {
+            type = "transfer"
+            amount = trimAmount(tf.amount)
+            note = tf.note.orEmpty()
+            accountId = tf.fromAccountId
+            toAccountId = tf.toAccountId
+            date = tf.date.trim().replace('T', ' ').let {
+                if (it.length >= 19) it.substring(0, 19) else it.take(10) + " 00:00:00"
+            }
             prefilled = true
         }
     }
@@ -293,8 +346,14 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择转出账户") }; return }
             if (toAccountId == null) { scope.launch { snackbar.showSnackbar("请选择转入账户") }; return }
             if (accountId == toAccountId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return }
-            vm.submitTransfer(accountId!!, toAccountId!!, amt, note, date)
-            if (keepOpen) { amount = ""; note = "" }
+            // 编辑态必须走 PUT /transfers/{id}（全量替换两条腿并重算双方余额），
+            // 不能退化成再 POST 一笔新转账，否则等于凭空多出一笔。
+            if (isEditTransfer) {
+                vm.submitTransferEdit(editTransferId, accountId!!, toAccountId!!, amt, note, date)
+            } else {
+                vm.submitTransfer(accountId!!, toAccountId!!, amt, note, date)
+                if (keepOpen) { amount = ""; note = "" }
+            }
             return
         }
         if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
@@ -307,9 +366,9 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
         }
         val lt = if (notReimbursable) "none" else null
         if (isEdit) {
-            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend)
+            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList())
         } else {
-            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend)
+            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList())
         }
         if (keepOpen) {
             amount = ""
@@ -324,6 +383,10 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             categoryId = null
             // 在「支出/收入」与「转账」之间切换时，重置转入账户避免跨类型残留
             toAccountId = null
+        }, allowedTypes = when {
+            isEditTransfer -> listOf("transfer")            // 转账编辑：锁死
+            editId > 0 -> listOf("expense", "income")       // 普通交易编辑：可改支出↔收入，但不能变成转账
+            else -> listOf("expense", "income", "transfer") // 新增：三选
         }) },
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background
@@ -376,11 +439,13 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
                 linkedBudget = state.budgets.find { it.id == linkedBudgetId },
                 notReimbursable = notReimbursable,
                 location = location,
+                selectedTagNames = state.tags.filter { it.id in selectedTagIds }.map { it.icon + " " + it.name },
                 isTransfer = type == "transfer",
                 onToggleNotReimbursable = { notReimbursable = !notReimbursable },
                 onPickAccount = { showAccountSheet = true },
                 onPickToAccount = { showToAccountSheet = true },
                 onPickBudget = { showBudgetSheet = true },
+                onPickTags = { showTagSheet = true },
                 onPickBook = { showBookSheet = true },
                 onPickDate = { showDatePicker = true },
                 onPickTime = { showTimePicker = true },
@@ -616,6 +681,153 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
                 }
             }
 
+            // —— 标签选择底部弹层（多选 + 搜索 + 跳转「标签管理」新建）——
+            if (showTagSheet) {
+                var tagQuery by remember { mutableStateOf("") }
+                ModalBottomSheet(
+                    onDismissRequest = { showTagSheet = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            "关联标签",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Text(
+                            "可多选，未选择则不关联标签。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        // 搜索框
+                        OutlinedTextField(
+                            value = tagQuery,
+                            onValueChange = { tagQuery = it },
+                            placeholder = { Text("搜索标签", style = MaterialTheme.typography.bodyMedium) },
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = if (tagQuery.isNotEmpty()) {
+                                {
+                                    IconButton(onClick = { tagQuery = "" }) {
+                                        Icon(Icons.Filled.Close, contentDescription = "清空", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            } else null,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        )
+                        // 已选数量 + 清空
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "已选 ${selectedTagIds.size} 个",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.weight(1f))
+                            if (selectedTagIds.isNotEmpty()) {
+                                Text(
+                                    "清空",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Brown500,
+                                    modifier = Modifier.clickable { selectedTagIds = emptySet() }.padding(4.dp)
+                                )
+                            }
+                        }
+                        // 标签 chips 网格
+                        val q = tagQuery.trim()
+                        val filteredTags = if (q.isEmpty()) state.tags
+                                          else state.tags.filter { it.name.contains(q, ignoreCase = true) }
+                        if (filteredTags.isEmpty()) {
+                            Box(
+                                Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    if (q.isEmpty()) "暂无标签，先去创建一个？" else "没有匹配 \"$q\" 的标签",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            // 简易 chip 网格：每行最多 3 个，超出换行
+                            val rows = filteredTags.chunked(3)
+                            rows.forEach { row ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    row.forEach { tg ->
+                                        val on = tg.id in selectedTagIds
+                                        Surface(
+                                            onClick = {
+                                                selectedTagIds = if (on) selectedTagIds - tg.id
+                                                                 else selectedTagIds + tg.id
+                                            },
+                                            color = if (on) Brown500.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = RoundedCornerShape(50),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Row(
+                                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Text(
+                                                    "${tg.icon} ${tg.name}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = if (on) Brown500 else MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1
+                                                )
+                                                if (on) {
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500, modifier = Modifier.size(14.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // 不足 3 个的格子用透明占位，保证等宽对齐
+                                    repeat(3 - row.size) {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+                        // 跳转新建标签
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                showTagSheet = false
+                                navController.navigate(com.xinwallet.app.ui.navigation.Screen.Tags.route)
+                            }.padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = Brown500)
+                            Spacer(Modifier.width(8.dp))
+                            Text("新建标签", style = MaterialTheme.typography.bodyLarge, color = Brown500)
+                        }
+                        // 完成按钮
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { showTagSheet = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("完成（已选 ${selectedTagIds.size}）")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
             // —— 账本选择 ——
             if (showBookSheet) {
                 ModalBottomSheet(
@@ -732,60 +944,80 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
  * 私有组件
  * ============================================================ */
 
-/** 顶栏：返回 + 支出/收入/转账 3 段 tab（标题居中）。转账模式时不显示分类卡。 */
+/**
+ * 顶栏：返回 + 支出/收入/转账 3 段 tab（标题居中）。转账模式时不显示分类卡。
+ *
+ * [allowedTypes] 限定可选的段。编辑态必须收窄，因为两类记录走的是不同接口和不同 id 空间：
+ *   编辑转账 → 只留「转账」（PUT /transfers/{id}）
+ *   编辑普通交易 → 只留「支出 / 收入」（PUT /transactions/{id}）；
+ *     若允许切到「转账」，提交会变成 POST 一笔新转账，等于凭空多出一笔记录。
+ * 只剩一段时该段不可点。
+ */
 @Composable
-private fun TopBarSegmented(current: String, onBack: () -> Unit, onChange: (String) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .statusBarsPadding()
-            .height(56.dp)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun TopBarSegmented(
+    current: String,
+    onBack: () -> Unit,
+    onChange: (String) -> Unit,
+    allowedTypes: List<String> = listOf("expense", "income", "transfer")
+) {
+    GlassBox(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        elevated = true
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-        }
-        // 支出 / 收入 / 转账 段控件
         Row(
             Modifier
-                .weight(1f)
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.Center,
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(56.dp)
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            listOf(
-                "expense" to "支出",
-                "income" to "收入",
-                "transfer" to "转账"
-            ).forEach { (key, label) ->
-                val on = current == key
-                Column(
-                    Modifier
-                        .clickable { onChange(key) }
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    if (on) {
-                        Box(
-                            Modifier
-                                .height(2.dp)
-                                .width(28.dp)
-                                .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(1.dp))
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            }
+            // 支出 / 收入 / 转账 段控件
+            Row(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val segments = listOf(
+                    "expense" to "支出",
+                    "income" to "收入",
+                    "transfer" to "转账"
+                ).filter { it.first in allowedTypes }
+                val single = segments.size <= 1
+                segments.forEach { (key, label) ->
+                    val on = current == key
+                    Column(
+                        Modifier
+                            .then(if (single) Modifier else Modifier.clickable { onChange(key) })
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium
                         )
+                        Spacer(Modifier.height(2.dp))
+                        if (on) {
+                            Box(
+                                Modifier
+                                    .height(2.dp)
+                                    .width(28.dp)
+                                    .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(1.dp))
+                            )
+                        }
                     }
                 }
             }
+            Spacer(Modifier.width(48.dp)) // 与左侧 IconButton 视觉对齐
         }
-        Spacer(Modifier.width(48.dp)) // 与左侧 IconButton 视觉对齐
     }
 }
 
@@ -959,8 +1191,9 @@ private fun CategoryCell(
 }
 
 /** 3) 上下文 chips：两行布局
- *  - 第 1 行：账本 / 账户（转出）/ 关联预算 | 转账模式下"关联预算"槽位变为"转入"
- *  - 第 2 行：今天 / 时间 / 添加地点
+ *  - 第 1 行：账本(0.7) / 账户(0.7) / 关联预算|转入(1.0) / 关联标签(1.2)
+ *    账本/账户收窄让位；标签可能为「🍜 餐饮 等3个」较长，给予最宽空间
+ *  - 第 2 行：今天 / 时间 / 添加地点（3 列等宽）
  *  这样无论有几个 chip 都不会横向溢出，免去滑动
  *  「关联预算」与 BudgetRepository 数据打通：根据当前选择预算渲染已用百分比
  */
@@ -973,11 +1206,13 @@ private fun ContextChipsRow(
     linkedBudget: com.xinwallet.app.data.model.Budget?,
     notReimbursable: Boolean,
     location: String,
+    selectedTagNames: List<String>,
     isTransfer: Boolean = false,
     onToggleNotReimbursable: () -> Unit,
     onPickAccount: () -> Unit,
     onPickToAccount: (() -> Unit)? = null,
     onPickBudget: () -> Unit,
+    onPickTags: () -> Unit,
     onPickBook: () -> Unit,
     onPickDate: () -> Unit,
     onPickTime: () -> Unit,
@@ -990,37 +1225,41 @@ private fun ContextChipsRow(
         t
     }
     // 「关联预算」chip 文案：根据 state.budgets + selectedBudgetId 决定展示
+    //   文案精简避免窄 chip 内被截断为 "..."：默认状态用「+ 预算」2 字，激活态保留百分比
     val budgetLabel = when {
         notReimbursable -> "不关联 ✓"
-        linkedBudget == null -> "+ 关联预算"
+        linkedBudget == null -> "+ 预算"
         else -> {
             // 预算进度：actual 已花费 / amount 总额；贴百分比
             val pct = if (linkedBudget.amount > 0) (linkedBudget.actual / linkedBudget.amount * 100).toInt() else 0
-            val remain = (linkedBudget.amount - linkedBudget.actual).coerceAtLeast(0.0)
-            "${linkedBudget.name} ${pct}%"
+            "${linkedBudget.name.take(3)}·${pct}%"
         }
     }
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // —— 第 1 行：账本 / 转出 / 关联预算 | 转账模式替换为「转入」 ——
+        // —— 第 1 行：账本 / 账户(收窄) / 关联预算(转入账户) / 关联标签(收窄后让位)
+        //   4 列宽度策略：账本 0.9、账户 0.9、预算|转入 1.0、标签 1.0
+        //   标签内容最长(可能 "🍜 餐饮 等3个")，与预算同宽；账本/账户略收窄但能装下 "默认账本" / "招商银行" (4 字)
+        //   chip 间 spacing = 4dp，让 4 列总宽度更宽松；外层 padding 12dp
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             QuickChip(
                 icon = Icons.Filled.MenuBook,
                 label = bookName,
                 onClick = onPickBook,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(0.9f).fillMaxHeight(),
+                maxLines = 1
             )
             QuickChip(
                 icon = Icons.Filled.AccountBox,
                 label = accountName,
                 onClick = onPickAccount,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(0.9f).fillMaxHeight(),
                 maxLines = 1
             )
             if (isTransfer && onPickToAccount != null) {
@@ -1028,7 +1267,7 @@ private fun ContextChipsRow(
                     icon = Icons.Filled.SwapHoriz,
                     label = toAccountName ?: "转入账户",
                     onClick = onPickToAccount,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     maxLines = 1
                 )
             } else {
@@ -1038,35 +1277,50 @@ private fun ContextChipsRow(
                     label = budgetLabel,
                     active = linkedBudget != null || notReimbursable,
                     onClick = onPickBudget,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     maxLines = 1
                 )
             }
+            val tagChipLabel = when {
+                selectedTagNames.isEmpty() -> "+ 标签"
+                selectedTagNames.size == 1 -> selectedTagNames[0]
+                else -> "${selectedTagNames[0].take(4)} 等${selectedTagNames.size}个"
+            }
+            QuickChip(
+                icon = Icons.Filled.LocalOffer,
+                label = tagChipLabel,
+                onClick = onPickTags,
+                active = selectedTagNames.isNotEmpty(),
+                tintIcon = Brown500,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                maxLines = 1
+            )
         }
-        // —— 第 2 行：今天 / 时间 / 添加地点 ——
+        // —— 第 2 行：今天 / 时间 / 添加地点（3 列等宽，与第 1 行 chip 同高）——
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             QuickChip(
                 icon = Icons.Filled.CalendarToday,
                 label = dateLabel,
                 onClick = onPickDate,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).fillMaxHeight()
             )
             QuickChip(
                 icon = Icons.Filled.Schedule,
                 label = timeLabel,
                 onClick = onPickTime,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).fillMaxHeight()
             )
             QuickChip(
                 icon = Icons.Filled.LocationOn,
-                label = if (location.isBlank()) "添加地点" else location,
+                label = if (location.isBlank()) "+ 地点" else location,
                 onClick = onPickLocation,
                 tintIcon = Brown500,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                maxLines = 1
             )
         }
         // —— 收起分类按钮：单独一行右对齐 ——
@@ -1169,11 +1423,11 @@ private fun QuickChip(
             .clip(RoundedCornerShape(50))
             .background(bg)
             .border(1.dp, border, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = iconColor)
-        Spacer(Modifier.width(4.dp))
+        Icon(icon, contentDescription = null, modifier = Modifier.size(13.dp), tint = iconColor)
+        Spacer(Modifier.width(3.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,

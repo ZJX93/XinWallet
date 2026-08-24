@@ -319,8 +319,10 @@
    2. ACCOUNT LIST
    -------------------------------------------------------------------------- */
 .account-list {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* 与理财持仓列表 #investList 同一栅格规格（280px 起），保证两页卡片宽度一致 */
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-4);
+  margin-top: var(--space-2);
   /* 各类型账户卡数量不同，按各自堆叠内容自适应高度，避免被最高那列拉平造成 1 个账户的子框也出现大段空白 */
   align-items: start;
 }
@@ -578,9 +580,10 @@
 .goal-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .goal-actions .btn { font-size: var(--text-caption); height: 32px; padding: 0 var(--space-3); flex: 1; justify-content: center; }
 
-/* ============ 理财持仓：按类型真实叠牌 ============ */
+/* ============ 理财持仓 / 账户：按类型真实叠牌（同一套实现） ============ */
 /* 最多露出 3 张叠牌，错距收窄，避免 14+ 产品时封面比单卡高出太多 */
-.inv-stack { margin-bottom: var(--space-4); --stack-shift: 11px; padding: 0 var(--space-2); }
+.inv-stack,
+.acc-stack { margin-bottom: var(--space-4); --stack-shift: 11px; padding: 0 var(--space-2); }
 
 /* 牌堆封面：作为牌堆第一张（.inv-stack-card:first-child）参与堆叠，外观交给 .goal-card */
 /* 旧 .inv-deck-cover 横条样式已废弃（封面现已并入叠牌序列），此处不再保留 */
@@ -596,7 +599,8 @@
 }
 .inv-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
-.inv-stack-cards {
+.inv-stack-cards,
+.acc-stack-cards {
   position: relative;
   /* 底部预留空间按全部产品数计算，使所有卡片都能在牌堆中展开 */
   padding-bottom: calc((var(--n, 1) - 1) * var(--stack-shift, 11px));
@@ -620,7 +624,8 @@
               border-color .3s var(--ease-out-quart);
 }
 .inv-stack-card { height: 240px; }
-.acc-stack-card { height: 180px; }
+/* 账户牌堆：封面与子卡等高，才能叠成整齐一叠（与理财同构） */
+.acc-stack-card { height: 200px; }
 
 /* 顶卡落在文档流里，撑开容器高度并作牌堆封面 */
 .inv-stack-card:first-child,
@@ -629,8 +634,9 @@
   transform: none;
   z-index: var(--n, 1);
 }
-/* 理财封面首张额外三段布局（账户封面由 .goal-card 基类提供 flex） */
-.inv-stack-card:first-child {
+/* 封面/子卡统一三段布局（顶部信息 / 中部金额 / 底部动作） */
+.inv-stack-card:first-child,
+.acc-stack-card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -643,11 +649,13 @@
 .inv-cover-profit-rate { font-size: var(--text-body); font-weight: var(--fw-semibold); margin-top: var(--space-1); }
 .inv-cover-bottom { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .inv-cover-stats { display: flex; justify-content: space-between; font-size: var(--text-caption); color: var(--text-secondary); }
-.inv-stack-card:first-child .inv-cover-foot {
+.inv-stack-card:first-child .inv-cover-foot,
+.acc-deck-card .inv-cover-foot {
   display: flex;
   justify-content: flex-end;
 }
-.inv-stack-card:first-child .inv-cover-viewall {
+.inv-stack-card:first-child .inv-cover-viewall,
+.acc-deck-card .inv-cover-viewall {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -674,9 +682,22 @@
   box-shadow: var(--shadow-xl);
   border-color: var(--accent-500);
 }
-.inv-stack-card .goal-actions {
+.inv-stack-card .goal-actions,
+.acc-stack-card .goal-actions {
   pointer-events: auto;
 }
+
+/* 账户卡三段布局中段（与理财 .inv-cover-mid 同一视觉规格） */
+.acc-card-top { flex-shrink: 0; }
+.acc-card-mid { margin: auto 0; text-align: center; }
+.acc-card-amount {
+  font-size: 22px;
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.acc-card-amount.is-closed { text-decoration: line-through; color: var(--text-tertiary); }
 
 /* 注：展开态已改为「查看全部」全屏网格（openInvGrid），不再就地流式展开 */
 
@@ -782,13 +803,32 @@
 .inv-grid-panel {
   width: min(1080px, 100%);
   max-height: 88dvh;
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-2xl);
-  box-shadow: var(--shadow-xl);
+  box-shadow: 0 24px 80px oklch(0% 0 0 / 0.25),
+              0 8px 24px oklch(0% 0 0 / 0.15);
   display: flex; flex-direction: column;
   overflow: hidden;
   animation: modalEnter var(--duration-300) var(--ease-out-expo);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  position: relative;
+}
+/* 顶部高光 */
+.inv-grid-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0) 36%);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.inv-grid-panel > * { position: relative; z-index: 1; }
+
+[data-theme="dark"] .inv-grid-panel {
+  background: rgba(38, 32, 28, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 .inv-grid-header { padding: var(--space-5) var(--space-6) 0; margin-bottom: var(--space-4); }
 .inv-grid {
@@ -800,41 +840,36 @@
 }
 .inv-grid-card {
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: var(--surface-card);
+  background: var(--glass-bg);
   padding: var(--space-4);
+  box-shadow: var(--shadow-card);
   transition: transform .2s var(--ease-out-quart), box-shadow .2s var(--ease-out-quart), border-color .2s var(--ease-out-quart);
   outline: none;
+  position: relative;
+  overflow: hidden;
 }
+/* 顶部高光 */
+.inv-grid-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--glass-hi);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.inv-grid-card > * { position: relative; z-index: 1; }
 .inv-grid-card:hover, .inv-grid-card:focus-visible {
   transform: translateY(-3px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--accent-500);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--interactive-default);
 }
 
-/* ============ 账户：按类型真实叠牌（牌堆跟随账户网格列宽，不横跨整行） ============ */
-.acc-stack { margin-bottom: var(--space-4); --stack-shift: 11px; padding: 0 var(--space-2); }
-
-/* 账户牌堆封面：与理财封面同构（竖版三段，作为牌堆首张压在产品卡上） */
-.acc-deck-card {
-  padding: var(--space-4);
-  cursor: pointer;
-}
-.acc-deck-card .inv-cover-profit-amount { font-size: 20px; }
-
-.acc-stack-cards {
-  position: relative;
-  /* 底部预留空间按全部账户数计算，使所有账户卡都能在牌堆中展开（与 .inv-stack-cards 一致） */
-  padding-bottom: calc((var(--n, 1) - 1) * var(--stack-shift, 11px));
-}
-
-/* 账户卡片高度差异与操作区（其余叠牌布局见上方共享 .inv-stack-card/.acc-stack-card） */
-.acc-stack-card .account-actions {
-  pointer-events: auto;
-}
-
-/* 注：展开态已改为「查看全部」全屏网格（openAccGrid），不再就地流式展开 */
+/* ============ 账户：与理财持仓完全同构的按类型叠牌 ============ */
+/* 结构 = .acc-stack > .acc-stack-cards > .goal-card.acc-stack-card * (1 封面 + N 子卡)，
+   叠牌几何、hover/popped 交互、栅格全部复用理财那套已验证实现（见本文件「理财持仓 / 账户：
+   按类型真实叠牌」区块），此处不另立样式体系，也不重复声明 .acc-stack 以免覆盖 --stack-shift。 */
 
 /* ============ 账户：全屏网格铺开 ============ */
 .acc-grid-panel {
@@ -1408,13 +1443,13 @@
   padding: 3px 7px; border-radius: 999px; font-weight: var(--fw-medium);
   border: 1px solid transparent; white-space: nowrap;
 }
-/* 重要程度 */
-.lv-warning, .pr-high { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
-.lv-info, .pr-medium { color: #b45309; background: #fffbeb; border-color: #fde68a; }
-.lv-tip, .pr-low { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+/* 重要程度（莫兰迪语义色） */
+.lv-warning, .pr-high { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); border-color: color-mix(in srgb, var(--error-500) 28%, transparent); }
+.lv-info, .pr-medium { color: var(--warning-600); background: color-mix(in srgb, var(--warning-500) 10%, transparent); border-color: color-mix(in srgb, var(--warning-500) 28%, transparent); }
+.lv-tip, .pr-low { color: var(--success-600); background: color-mix(in srgb, var(--success-500) 10%, transparent); border-color: color-mix(in srgb, var(--success-500) 28%, transparent); }
 /* 高优先级卡片左侧强调色 */
 .ai-advice-item.pr-high { border-left: 3px solid var(--expense); }
-.insight-item.lv-warning { border-left: 3px solid #f87171; }
+.insight-item.lv-warning { border-left: 3px solid var(--error-500); }
 
 /* 洞察/建议列表内容区：限制高度滚动 */
 #insightList, #aiAdviceList {
@@ -1592,9 +1627,9 @@
   font-size: var(--text-xs); padding: 2px 8px;
   border-radius: 999px; font-weight: var(--fw-medium);
 }
-.debt-active { color: #047857; background: #ecfdf5; }
-.debt-paid { color: #6b7280; background: #f9fafb; opacity: 0.7; }
-.debt-overdue { color: #b91c1c; background: #fef2f2; }
+.debt-active { color: var(--success-600); background: color-mix(in srgb, var(--success-500) 10%, transparent); }
+.debt-paid { color: var(--text-tertiary); background: var(--surface-hover); opacity: 0.7; }
+.debt-overdue { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); }
 .debt-item-info {
   display: grid; grid-template-columns: repeat(4, 1fr);
   gap: var(--space-2); margin-bottom: var(--space-1);
@@ -1690,7 +1725,7 @@
 .debt-list { display: flex; flex-direction: column; gap: 8px; }
 
 /* 必填星号 */
-.req { color: #ef4444; margin-left: 2px; }
+.req { color: var(--error-500); margin-left: 2px; }
 
 /* 旧版本残留样式名兼容（避免与新选择器冲突，保留以防其它页面引用） */
 .debt-dir-tabs, .debt-dir-tab, .debt-dir-badge, .debt-summary-item, .debt-summary-label, .debt-summary-value {
@@ -1777,7 +1812,7 @@
   margin-top: var(--space-2); font-size: var(--text-xs);
   color: var(--text-tertiary); text-align: center;
 }
-.debt-overdue-text .debt-dash-value { color: #b91c1c; }
+.debt-overdue-text .debt-dash-value { color: var(--error-500); }
 
 /* 仪表盘 AI 洞察/建议预览 */
 .dash-ai-item {
@@ -1801,7 +1836,7 @@
 }
 .goal-ops span:hover { color: var(--interactive-default); }
 .goal-ops span[data-action="repay-debt"] { color: var(--interactive-default); font-weight: var(--fw-medium); }
-.goal-pct.overdue { color: #b91c1c; font-weight: var(--fw-bold); }
+.goal-pct.overdue { color: var(--error-500); font-weight: var(--fw-bold); }
 /* 债务页面的 goal-foot 需要 flex 放操作链接 */
 .debt-goal-foot {
   display: flex; align-items: center; justify-content: space-between;
@@ -1836,7 +1871,7 @@
 }
 .book-switcher-trigger:hover {
     background: var(--surface-active, rgba(255,255,255,0.12));
-    border-color: var(--interactive-default, #6366f1);
+    border-color: var(--interactive-default, #a69093);
 }
 .book-switcher-trigger .book-icon { font-size: 15px; }
 .book-switcher-trigger .book-name {
@@ -1873,7 +1908,7 @@
     font-size: 13px;
 }
 .book-switcher-item:hover { background: var(--surface-hover, rgba(255,255,255,0.08)); }
-.book-switcher-item.active { background: rgba(99,102,241,0.18); color: #fff; }
+.book-switcher-item.active { background: color-mix(in srgb, var(--interactive-default) 20%, transparent); color: var(--interactive-default); font-weight: 600; }
 .book-switcher-item .book-dot {
     width: 22px; height: 22px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -1898,4 +1933,49 @@
     color: var(--text-primary, #e8eaf0);
     border-radius: 8px;
 }
-.book-switcher-create input:focus { outline: none; border-color: var(--interactive-default, #6366f1); }
+.book-switcher-create input:focus { outline: none; border-color: var(--interactive-default, #a69093); }
+
+/* ============ 账户管理：工具栏 + 分组列表（替代牌堆布局） ============ */
+.acc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-6, 28px);
+  padding-bottom: var(--space-3, 12px);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+.acc-toolbar .btn { margin: 0; }
+.acc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  margin-left: auto;
+  font-size: var(--text-caption, 12px);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  user-select: none;
+}
+.acc-toggle input[type="checkbox"] { margin: 0; cursor: pointer; }
+
+/* emoji 字体回退栈：避免 Windows 端按钮里的 📊💰✏️🗑️ 等渲染成空白方块 */
+.goal-actions .btn,
+.inv-cover-viewall,
+.rh-head .rh-actions .btn {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", "Android Emoji", sans-serif;
+}
+
+/* 账户资金明细弹层：操作按钮组（始终可见 —— 不再依赖「⋯」菜单） */
+.rh-head .rh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+}
+.rh-head .rh-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: var(--text-caption, 12px);
+}

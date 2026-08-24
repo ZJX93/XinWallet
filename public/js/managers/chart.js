@@ -4,6 +4,38 @@ const ChartManager = {
     charts: {},
     destroy(id) { if (this.charts[id]) { this.charts[id].destroy(); this.charts[id] = null; } },
 
+    // 全局 Chart.js 默认配置 — 让所有折线图/条形图/环图自带灵动动画 + 更好的交互
+    _defaultsApplied: false,
+    applyDefaults() {
+        if (this._defaultsApplied) return;
+        if (typeof Chart === 'undefined') return;
+        this._defaultsApplied = true;
+        const reduceMotion = this.reduceMotion();
+        Chart.defaults.font.family = this.fontFamily();
+        Chart.defaults.font.size = 11;
+        Chart.defaults.color = this._cssVar('--text-secondary', '#6a6058');
+        Chart.defaults.animation = {
+            duration: reduceMotion ? 0 : 1200,
+            easing: 'easeOutQuart'
+        };
+        Chart.defaults.animations.colors = false;
+        Chart.defaults.animations.x = { type: 'number', easing: 'easeOutQuart', duration: reduceMotion ? 0 : 1000 };
+        Chart.defaults.animations.y = { type: 'number', easing: 'easeOutQuart', duration: reduceMotion ? 0 : 1000 };
+        Chart.defaults.elements.line.tension = 0.4;
+        Chart.defaults.elements.line.borderWidth = 2.5;
+        Chart.defaults.elements.point.radius = 0;
+        Chart.defaults.elements.point.hoverRadius = 6;
+        Chart.defaults.elements.point.hoverBorderWidth = 3;
+        Chart.defaults.elements.point.hoverBorderColor = '#fff';
+        Chart.defaults.elements.bar.borderRadius = 8;
+        Chart.defaults.elements.bar.borderSkipped = false;
+        Chart.defaults.plugins.tooltip.cornerRadius = 10;
+        Chart.defaults.plugins.tooltip.padding = 12;
+        Chart.defaults.plugins.tooltip.titleFont = { weight: '600' };
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.plugins.legend.labels.padding = 12;
+    },
+
     // 读取 CSS 变量或回退硬编码值
     _cssVar(name, fallback) {
         try {
@@ -28,18 +60,31 @@ const ChartManager = {
             const v = this._cssVar(cssVar, fallback);
             return (v && !v.startsWith('oklch')) ? v : fallback;
         };
-        // 暗色模式使用低饱和、协调的图表色，避免高饱和色块在深色背景上刺眼
-        const darkCats = [
-            '#b89a7a','#c47a72','#7fae8c','#c4a56a','#6a9bc7',
-            '#9b8bc4','#c47a9c','#5ead9e','#8a9bb0','#b86b64',
-            '#6fa67e','#967bb8','#5a9dbd','#c68a5a','#7c8696'
-        ];
-        // 莫兰迪色系：低饱和、柔和的灰调（灰粉/灰蓝/灰绿/灰紫/米灰等），
-        // 各扇区协调统一且区分度足够，适配浅色/深色背景下的可读性。
+        /**
+         * 分类占比配色：莫兰迪低饱和色系。
+         *
+         * 三端同源（安卓 Charts.kt:SLICE_PALETTE / 鸿蒙 Charts.ets:SLICE_PALETTE），
+         * 由 scripts/gen-morandi-palette.js 按 HSV 换算并校验后固化 —— 改色请改脚本重跑，
+         * 不要手改 hex，三处不一致时同一笔支出在三端会是三种颜色。
+         *
+         * 约束（脚本强制校验，全部通过）：
+         *   S=16~32%  低饱和莫兰迪区间，不许混进高饱和色
+         *   相邻色相距离 ≥90°  环图按金额降序上色，数组相邻项必然在环上并排
+         *   卡片底对比 ≥1.6:1  低于此值色块会和卡片底融掉
+         *
+         * 首色贴品牌棕（26°，品牌色 #995F2C 为 27°）：占比最大的分类用品牌调。
+         * 旧板前 5 色是 S=35~50% 的中饱和暖色（#b87a3e/#c47a72…），在暖棕卡片上抢戏，
+         * 且与安卓/鸿蒙的莫兰迪板完全不同色系 —— 同一笔支出在 web 和手机上是两种颜色。
+         */
         const lightCats = [
-            '#B98E8E','#8FA9C4','#9CB39A','#A99BC4','#C9B79C',
-            '#C09A86','#8FB5B0','#C7A0AE','#A38FA6','#AEB39A',
-            '#8FA6C0','#B7AEC9','#C6B69E','#A2BFA8','#B59A8F'
+            '#B89881','#84B3AC','#B38581','#88A4B8','#BDAF84',
+            '#AA8FB8','#9AB388','#B88C9A','#9797B8','#A7C7AC'
+        ];
+        // 暗色：同色相同饱和，仅提亮一档（V+8）—— 暗底上要提亮而非加饱和，
+        // 加饱和会让低饱和体系变味，提亮才能保住莫兰迪的灰调。
+        const darkCats = [
+            '#CCAC93','#97C7C1','#C79793','#9BB8CC','#D1C297',
+            '#BEA3CC','#ADC79B','#CC9FAE','#ABABCC','#BDDBC2'
         ];
         return {
             text:   resolve('--text-primary',   dk ? '#e8e4df' : '#3a3028'),
@@ -55,6 +100,102 @@ const ChartManager = {
         };
     },
 
+    /**
+     * 环图单击 / 双击派发器。
+     *
+     * Chart.js 只有 onClick，没有 onDblClick —— 双击时它会连发两次 onClick。
+     * 所以「单击看金额、双击下钻」必须自己判定：首次点击不立刻执行，挂一个
+     * DBL_MS 的定时器；若窗口内来了第二次点击同一扇区，撤销定时器直接走下钻。
+     *
+     * 为什么按扇区索引判定而不是纯时间：在 A 上点一下、紧接着点 B，
+     * 时间上够快但语义是「两次单击」，不是双击。带上索引才能区分。
+     *
+     * @param key      每个环图独立的状态键（同页多个环图不能共用计时器）
+     * @param index    命中的扇区下标
+     * @param onSingle 单击回调（显示金额）
+     * @param onDouble 双击回调（下钻）；不传则退化为纯单击
+     */
+    _DBL_MS: 260,
+    _dispatchPieClick(key, index, onSingle, onDouble) {
+        if (!this._pieClickState) this._pieClickState = {};
+        const st = this._pieClickState;
+        const prev = st[key];
+        // 第二次点击命中同一扇区 → 双击
+        if (prev && prev.index === index) {
+            clearTimeout(prev.timer);
+            st[key] = null;
+            if (onDouble) onDouble();
+            return;
+        }
+        // 切换了扇区：前一次的单击立即兑现（不能吞掉），再开始新的等待
+        if (prev) {
+            clearTimeout(prev.timer);
+            if (prev.onSingle) prev.onSingle();
+        }
+        const timer = setTimeout(() => {
+            st[key] = null;
+            if (onSingle) onSingle();
+        }, onDouble ? this._DBL_MS : 0);
+        st[key] = { index, timer, onSingle };
+    },
+
+    /** 切换数据/重绘前清掉待决的单击，避免定时器回调打到已销毁的 chart 上 */
+    _cancelPieClick(key) {
+        const st = this._pieClickState;
+        if (st && st[key]) { clearTimeout(st[key].timer); st[key] = null; }
+    },
+
+    /**
+     * 环图中心读数：未选中显示合计，选中显示「分类名 · 占比」+ 该块金额。
+     * 三处环图（仪表盘 / 报表支出 / 报表收入）共用，避免各写一遍插件。
+     *
+     * @param id        插件 id（Chart.js 要求唯一）
+     * @param c         颜色表
+     * @param getState  返回 { title, amount } 的函数 —— 用函数而非快照值，
+     *                  因为选中态变化时只重绘不重建 chart，插件必须读到最新值。
+     */
+    _pieCenterPlugin(id, c, getState) {
+        const self = this;
+        return {
+            id,
+            afterDraw(chart) {
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return;
+                const st = getState() || {};
+                const cx = (chartArea.left + chartArea.right) / 2;
+                const cy = (chartArea.top + chartArea.bottom) / 2;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // 标题行可能是「餐饮 · 32.5%」，比「总支出」长得多。
+                // 环心可用宽 ≈ 内径 = 直径 × cutout(72%)，超了就压到色带上，
+                // 所以按可用宽等比缩字号（12px 起，最低 9px）。
+                const inner = Math.min(chartArea.right - chartArea.left, chartArea.bottom - chartArea.top) * 0.72;
+                const maxW = inner - 12;
+                const title = st.title || '';
+                let fs = 12;
+                ctx.font = fs + 'px ' + self.fontFamily();
+                while (fs > 9 && ctx.measureText(title).width > maxW) {
+                    fs -= 0.5;
+                    ctx.font = fs + 'px ' + self.fontFamily();
+                }
+                ctx.fillStyle = c.textTertiary || c.textSec || c.text;
+                ctx.fillText(title, cx, cy - 12);
+                // 金额行同理，18px 起，最低 12px
+                let as = 18;
+                const amount = st.amount || '';
+                ctx.font = '700 ' + as + 'px ' + self.fontFamily();
+                while (as > 12 && ctx.measureText(amount).width > maxW) {
+                    as -= 0.5;
+                    ctx.font = '700 ' + as + 'px ' + self.fontFamily();
+                }
+                ctx.fillStyle = c.text;
+                ctx.fillText(amount, cx, cy + 10);
+                ctx.restore();
+            }
+        };
+    },
+
     async refreshAll() {
         if (typeof window !== 'undefined' && typeof window.refreshCurrentPage === 'function') {
             await window.refreshCurrentPage();
@@ -63,7 +204,9 @@ const ChartManager = {
         await this.renderDash();
     },
 
+    // 仪表盘趋势折线图（收入/支出/储蓄率）
     async renderDash() {
+        this.applyDefaults();
         const data = await api('/stats/dashboard');
         if (!data) return;
         const c = this.colors();
@@ -73,17 +216,42 @@ const ChartManager = {
         if (!trendCanvas) { console.warn('[chart] dashTrendChart canvas not found, skipping'); return; }
         const ctx1 = trendCanvas.getContext('2d');
         const months = [...data.months].reverse();
+
+        // 渐变填充
+        const incGrad = ctx1.createLinearGradient(0, 0, 0, 220);
+        incGrad.addColorStop(0, c.inc + '30');
+        incGrad.addColorStop(1, c.inc + '04');
+        const expGrad = ctx1.createLinearGradient(0, 0, 0, 220);
+        expGrad.addColorStop(0, c.exp + '30');
+        expGrad.addColorStop(1, c.exp + '04');
+
         this.charts['dashTrend'] = new Chart(ctx1, {
             type: 'line',
             data: {
                 labels: months.map(m => m.month.substring(5) + '月'),
                 datasets: [
-                    { label: '收入', data: months.map(m => m.income), borderColor: c.inc, backgroundColor: c.inc + '20', fill: true, tension: 0.4, pointRadius: 4 },
-                    { label: '支出', data: months.map(m => m.expense), borderColor: c.exp, backgroundColor: c.exp + '20', fill: true, tension: 0.4, pointRadius: 4 },
-                    { label: '储蓄率', data: months.map(m => m.savingsRate), borderColor: c.info, backgroundColor: c.info + '20', yAxisID: 'y1', tension: 0.4, pointRadius: 3, borderDash: [5, 4] }
+                    { label: '收入', data: months.map(m => m.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                    { label: '支出', data: months.map(m => m.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                    { label: '储蓄率', data: months.map(m => m.savingsRate), borderColor: c.info, backgroundColor: c.info + '20', yAxisID: 'y1', tension: 0.4, pointRadius: 0, pointHoverRadius: 5, borderWidth: 2, borderDash: [5, 4] }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: c.text, usePointStyle: true, boxWidth: 8 } } }, scales: { x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y1: { position: 'right', ticks: { color: c.text, font: { size: 10 }, callback: v => v + '%' }, grid: { drawOnChartArea: false } } } }
+            options: {
+                responsive: true, maintainAspectRatio: true,
+                animation: this.reduceMotion() ? false : { duration: 1200, easing: 'easeOutQuart' },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: c.bg, titleColor: c.text, bodyColor: c.text,
+                        borderColor: c.grid, borderWidth: 1, cornerRadius: 10, padding: 12
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } },
+                    y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid, drawBorder: false } },
+                    y1: { position: 'right', ticks: { color: c.text, font: { size: 10 }, callback: v => v + '%' }, grid: { drawOnChartArea: false } }
+                }
+            }
         });
 
         // 最新月环比（months 已升序，最新在末尾）
@@ -109,7 +277,12 @@ const ChartManager = {
                 const backEl = document.getElementById('dashPieBack');
                 if (backEl) {
                     backEl.addEventListener('click', () => {
-                        if (this._pieStack && this._pieStack.length) { this._pieStack.pop(); this._drawDashPie(); }
+                        if (this._pieStack && this._pieStack.length) {
+                            this._cancelPieClick('dashPie');
+                            this._pieSelIdx = -1;
+                            this._pieStack.pop();
+                            this._drawDashPie();
+                        }
                     });
                     this._pieBackBound = true;
                 }
@@ -148,23 +321,65 @@ const ChartManager = {
         if (hintEl) hintEl.style.display = stack.length ? 'none' : '';
 
         const total = slices.reduce((s, e) => s + parseFloat(e.total || 0), 0);
+        // 重绘时清掉待决的单击 —— 否则定时器回调会打到已 destroy 的 chart 上
+        this._cancelPieClick('dashPie');
+        // 层级变了，旧的选中下标指向的已是另一个分类
+        if (this._pieSelIdx == null || stack.length !== (this._pieSelStackLen || 0)) {
+            this._pieSelIdx = -1;
+            this._pieSelStackLen = stack.length;
+        }
+
+        // 中心读数：未选中「总支出 ¥合计」，单击某块后「分类名 · 占比 ¥该块金额」
+        const centerTextPlugin = this._pieCenterPlugin('dashPieCenter', c, () => {
+            const i = this._pieSelIdx;
+            if (i != null && i >= 0 && i < slices.length) {
+                const e = slices[i];
+                const v = parseFloat(e.total || 0);
+                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                return {
+                    title: `${e.name} · ${pct}%`,
+                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                };
+            }
+            return { title: '总支出', amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+        });
         this.charts['dashPie'] = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: slices.map(e => e.icon + ' ' + e.name),
-                datasets: [{ data: slices.map(e => parseFloat(e.total || 0)), backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }]
+                datasets: [{
+                    data: slices.map(e => parseFloat(e.total || 0)),
+                    backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]),
+                    borderColor: 'rgba(255, 252, 245, 0.95)',  /* 暖白间隙色，与卡片背景融合 */
+                    borderWidth: 3,                            /* 扇区之间留出 3px 暖白细缝 */
+                    borderRadius: 6,                          /* 扇区两端圆角，不呆板 */
+                    spacing: 2,                                /* 扇区间距 */
+                    hoverOffset: 8,                            /* hover 时扇区向外滑出 */
+                    // 选中块外扩，让单击有明确的视觉落点（等价于 hover，但触屏没有 hover）
+                    offset: slices.map((_, i) => (i === this._pieSelIdx ? 8 : 0))
+                }]
             },
             options: {
-                responsive: true, maintainAspectRatio: true, cutout: '55%',
+                responsive: true, maintainAspectRatio: true, cutout: '72%',
                 onClick: (evt, els) => {
                     if (!els.length) return;
-                    const cat = this._pieSlices[els[0].index];
+                    const idx = els[0].index;
+                    const cat = slices[idx];
                     if (!cat) return;
                     const hasChildren = this._pieFull.some(x => x.parent_id === cat.id);
-                    if (hasChildren) { this._pieStack.push(cat.id); this._drawDashPie(); }
+                    this._dispatchPieClick(
+                        'dashPie',
+                        idx,
+                        // 单击：选中该块 → 环心显示它的金额与占比
+                        () => { this._pieSelIdx = idx; this._drawDashPie(); },
+                        // 双击：下钻到二级（无子类则退化为单击，不做无意义的层级切换）
+                        hasChildren
+                            ? () => { this._pieSelIdx = -1; this._pieStack.push(cat.id); this._drawDashPie(); }
+                            : null
+                    );
                 },
                 plugins: {
-                    legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } },
+                    legend: { display: false },  // 参考文件：环图无图例（中心数字代替）
                     tooltip: {
                         callbacks: {
                             label: cx => {
@@ -175,11 +390,13 @@ const ChartManager = {
                         }
                     }
                 }
-            }
+            },
+            plugins: [centerTextPlugin]
         });
     },
 
     async renderInvestPie(byType) {
+        this.applyDefaults();
         this.destroy('invAllocation');
         const canvas = document.getElementById('invAllocationPie');
         if (!canvas) { console.warn('[chart] invAllocationPie canvas not found, skipping'); return; }
@@ -193,35 +410,74 @@ const ChartManager = {
         const data = entries.map(([, v]) => v.total_value);
         const total = data.reduce((s, v) => s + v, 0);
         const colors = entries.map((_, i) => c.cats[i % c.cats.length]);
+        // 缓存渲染参数，供单击选中后重绘（理财配置无层级，不需要下钻栈）
+        this._invPieArgs = byType;
+        this._cancelPieClick('invAllocation');
+        if (this._invSelIdx == null) this._invSelIdx = -1;
+
+        // 中心读数：未选中「总市值 ¥合计」，单击某块后「类型名 · 占比 ¥该块市值」
+        const centerTextPlugin = this._pieCenterPlugin('invPieCenter', c, () => {
+            const i = this._invSelIdx;
+            if (i != null && i >= 0 && i < entries.length) {
+                const v = data[i];
+                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                return {
+                    title: `${entries[i][1].type_name} · ${pct}%`,
+                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                };
+            }
+            return { title: '总市值', amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+        });
 
         this.charts['invAllocation'] = new Chart(ctx, {
             type: 'doughnut',
-            data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: colors.map(cl => cl + '33'), borderWidth: 3, hoverBorderWidth: 4, hoverBorderColor: colors }] },
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    backgroundColor: colors,
+                    borderColor: 'rgba(255, 252, 245, 0.95)',  // 暖白间隙色，与卡片背景融合
+                    borderWidth: 3,                             // 扇区之间留出 3px 暖白细缝
+                    borderRadius: 6,                           // 扇区两端圆角，不呆板
+                    spacing: 2,                                 // 扇区间距
+                    hoverOffset: 8,                            // hover 时扇区向外滑出
+                    offset: entries.map((_, i) => (i === this._invSelIdx ? 8 : 0))
+                }]
+            },
             options: {
-                responsive: true, maintainAspectRatio: true, cutout: '62%',
-                animation: this.reduceMotion() ? false : { animateScale: true, animateRotate: true, duration: 800 },
+                responsive: true, maintainAspectRatio: true, cutout: '72%',
+                animation: this.reduceMotion() ? false : { animateScale: true, animateRotate: true, duration: 800, easing: 'easeOutQuart' },
+                // 理财配置按类型聚合，本身没有二级层级 —— 只做单击看金额，不传双击回调。
+                // 不传时 _dispatchPieClick 用 0ms 定时器，等价于立即执行，无延迟感。
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const idx = els[0].index;
+                    this._dispatchPieClick('invAllocation', idx, () => {
+                        // 再次点同一块 → 取消选中，回到总市值
+                        this._invSelIdx = (this._invSelIdx === idx) ? -1 : idx;
+                        this.renderInvestPie(this._invPieArgs);
+                    }, null);
+                },
                 plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 10 }, padding: 10, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyleWidth: 10, generateLabels: function(chart) { const d = chart.data; return d.labels.map((l, i) => ({ text: l + '  ' + (d.datasets[0].data[i] / total * 100).toFixed(1) + '%', fillStyle: d.datasets[0].backgroundColor[i], strokeStyle: d.datasets[0].backgroundColor[i], pointStyle: 'circle', index: i })); } }
-                    },
+                    legend: { display: false },  // 首页风格：无图例，中心数字代替
                     tooltip: {
-                        // 统一风格：固定深色背景 + 浅色文字，与其他饼图（仪表盘支出构成等）默认风格一致
-                        backgroundColor: '#1e1e3a',
-                        titleColor: '#e8e4df', bodyColor: '#e8e4df',
-                        borderColor: '#1e1e3a', borderWidth: 0,
-                        cornerRadius: 8, padding: 12,
                         callbacks: {
-                            label: ctx => ` ${ctx.label.split(' ').slice(1).join(' ')}: ¥${ctx.parsed.toLocaleString()}（${(ctx.parsed / total * 100).toFixed(1)}%）`
+                            label: cx => {
+                                const v = cx.parsed;
+                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
+                            }
                         }
                     }
                 }
-            }
+            },
+            plugins: [centerTextPlugin]
         });
     },
 
-    // 理财市值趋势折线图 — 渐变填充 + 平滑曲线
+    // 理财市值趋势折线图 — 渐变填充 + 平滑曲线 + 灵动动画
     async renderInvTrend(totalTrend) {
+        this.applyDefaults();
         this.destroy('invTrend');
         const canvas = document.getElementById('invTrendChart');
         if (!canvas) return;
@@ -266,11 +522,11 @@ const ChartManager = {
             tension: 0.4,
             fill: true,
             pointRadius: 0,
-            pointHoverRadius: 5,
+            pointHoverRadius: 6,
             pointHoverBackgroundColor: baseColor,
             pointHoverBorderColor: '#fff',
-            pointHoverBorderWidth: 2,
-            borderWidth: 2.5,
+            pointHoverBorderWidth: 3,
+            borderWidth: 3,
             spanGaps: true
         }];
 
@@ -279,13 +535,10 @@ const ChartManager = {
             data: { labels: allDates.map(d => d.slice(5)), datasets },
             options: {
                 responsive: true, maintainAspectRatio: true,
-                animation: this.reduceMotion() ? false : { duration: 1000, easing: 'easeOutQuart' },
+                animation: this.reduceMotion() ? false : { duration: 1200, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 9 }, padding: 10, boxWidth: 20, boxHeight: 3, usePointStyle: false, pointStyleWidth: 0, generateLabels: function(chart) { return chart.data.datasets.map((ds, i) => ({ text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor, lineWidth: 2, hidden: !chart.isDatasetVisible(i), index: i })); } }
-                    },
+                    legend: { display: false },
                     tooltip: {
                         backgroundColor: c.bg,
                         titleColor: c.text, bodyColor: c.text,
@@ -302,8 +555,9 @@ const ChartManager = {
         });
     },
 
-    // 理财类型对比柱状图 — 圆角 + 标签 + 渐变
+    // 理财类型对比柱状图 — 圆角 + 标签 + 渐变 + 灵动动画
     async renderInvTypeBar(byType) {
+        this.applyDefaults();
         this.destroy('invTypeBar');
         const canvas = document.getElementById('invTypeBarChart');
         if (!canvas) return;
@@ -328,13 +582,13 @@ const ChartManager = {
             data: {
                 labels,
                 datasets: [
-                    { label: '投入本金', data: costData, backgroundColor: costGrad, borderColor: c.cats[0], borderWidth: 1, borderRadius: { topLeft: 6, topRight: 6 }, borderSkipped: false },
-                    { label: '当前市值', data: valueData, backgroundColor: valGrad, borderColor: c.cats[2], borderWidth: 1, borderRadius: { topLeft: 6, topRight: 6 }, borderSkipped: false }
+                    { label: '投入本金', data: costData, backgroundColor: costGrad, borderColor: c.cats[0], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[0] },
+                    { label: '当前市值', data: valueData, backgroundColor: valGrad, borderColor: c.cats[2], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[2] }
                 ]
             },
             options: {
                 responsive: true, maintainAspectRatio: true,
-                animation: this.reduceMotion() ? false : { duration: 800, easing: 'easeOutQuart' },
+                animation: this.reduceMotion() ? false : { duration: 1000, easing: 'easeOutQuart' },
                 plugins: {
                     legend: {
                         position: 'bottom',

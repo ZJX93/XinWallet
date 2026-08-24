@@ -1,7 +1,7 @@
 /* ==========================================================================
    智财 — Design Token System
-   暖棕品牌色 · OKLCH 色彩空间 · Geist 字体
-   基于 Nexus 设计系统
+   暖棕品牌色 · OKLCH 色彩空间 · Geist 字体 · 毛玻璃（Glassmorphism）
+   基于 Nexus 设计系统 · 参考 xinwallet-web-refined.html
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -23,10 +23,10 @@
 
 /* --------------------------------------------------------------------------
    2. PRIMITIVE COLOR TOKENS (OKLCH)
-   暖棕色主调 + 冷调中性色
+   暖棕色主调（hue 60）
    -------------------------------------------------------------------------- */
 :root {
-  /* --- Neutral Scale (warm-tinted for finance feel) --- */
+  /* --- Neutral Scale (暖米灰) --- */
   --gray-0: oklch(99% 0.003 60);
   --gray-50: oklch(97% 0.005 60);
   --gray-100: oklch(93% 0.007 60);
@@ -41,7 +41,7 @@
   --gray-950: oklch(11% 0.012 60);
   --gray-1000: oklch(6% 0.01 60);
 
-  /* --- Primary Accent: Warm Brown (智财品牌色) --- */
+  /* --- Primary Accent: 暖棕品牌色 (hue 60) --- */
   --accent-50: oklch(96% 0.02 60);
   --accent-100: oklch(90% 0.05 60);
   --accent-200: oklch(82% 0.08 60);
@@ -76,46 +76,68 @@
 }
 
 /* --------------------------------------------------------------------------
-   3. SEMANTIC TOKENS — LIGHT THEME
+   3. SEMANTIC TOKENS — LIGHT THEME（默认）
    -------------------------------------------------------------------------- */
 :root {
-  --surface-page: var(--gray-0);
-  --surface-card: white;
-  --surface-elevated: white;
-  --surface-overlay: white;
-  --surface-hover: var(--gray-50);
-  --surface-active: var(--gray-100);
-  --surface-subtle: var(--gray-50);
+  --surface-page: oklch(99% 0.003 60);
+  --surface-card: oklch(99.5% 0.005 60);    /* 实体卡：暖白实色 */
+  --surface-elevated: oklch(99.5% 0.005 60);
+  --surface-overlay: oklch(99.5% 0.005 60);
+  --surface-hover: oklch(95% 0.008 60);     /* 仍为浅色反馈（hover） */
+  --surface-active: oklch(92% 0.01 60);
+  --surface-subtle: oklch(96% 0.006 60);    /* 卡内小区块：浅一档但不透明 */
 
-  --text-primary: var(--gray-900);
-  --text-secondary: var(--gray-600);
-  --text-tertiary: var(--gray-500);
-  --text-placeholder: var(--gray-500);
-  --text-on-accent: white;
+  --text-primary: oklch(22% 0.012 60);
+  --text-secondary: oklch(45% 0.012 60);
+  --text-tertiary: oklch(55% 0.012 60);
+  --text-placeholder: oklch(55% 0.012 60);
+  --text-on-accent: oklch(14% 0.014 60);
   --text-inverse: var(--gray-50);
 
-  --border-subtle: var(--gray-200);
-  --border-default: var(--gray-300);
-  --border-strong: var(--gray-400);
+  --border-subtle: oklch(87% 0.008 60 / 0.7);
+  --border-default: oklch(77% 0.01 60 / 0.85);
+  --border-strong: oklch(64% 0.012 60 / 0.95);
   --border-accent: var(--accent-300);
 
-  --interactive-default: var(--accent-500);
-  --interactive-hover: var(--accent-600);
-  --interactive-active: var(--accent-700);
-  --interactive-disabled: var(--gray-300);
-  --interactive-focus-ring: oklch(54% 0.10 60 / 0.35);
+  --interactive-default: var(--accent-400);   /* 暖橙偏亮，参考文件按钮色调 */
+  --interactive-hover: var(--accent-500);
+  --interactive-active: var(--accent-600);
+  --interactive-disabled: oklch(77% 0.01 60);
+  --interactive-focus-ring: oklch(62% 0.11 60 / 0.35);
 
-  --income: var(--error-500);
-  --income-soft: oklch(52% 0.20 20 / 0.08);
-  --expense: var(--success-500);
-  --expense-soft: oklch(58% 0.16 160 / 0.1);
+  /* 收入红 / 支出绿：A 股涨红跌绿语义（不可误改） */
+  --income: oklch(56% 0.19 20);
+  --income-soft: oklch(56% 0.19 20 / 0.1);
+  --expense: oklch(58% 0.16 160);
+  --expense-soft: oklch(58% 0.16 160 / 0.12);
   --transfer: var(--accent-500);
-  --transfer-soft: oklch(54% 0.10 60 / 0.08);
+  --transfer-soft: oklch(54% 0.10 60 / 0.1);
 
-  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
-  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.06);
-  --shadow-lg: 0 8px 30px oklch(0% 0 0 / 0.08);
-  --shadow-xl: 0 20px 60px oklch(0% 0 0 / 0.10);
+  --shadow-sm: 0 1px 2px oklch(30% 0.05 60 / 0.06);
+  --shadow-md: 0 4px 14px oklch(30% 0.05 60 / 0.08);
+  --shadow-lg: 0 10px 32px oklch(30% 0.05 60 / 0.1);
+  --shadow-xl: 0 20px 60px oklch(30% 0.05 60 / 0.14);
+  --shadow-card: 0 1px 2px oklch(30% 0.02 60 / 0.04),
+                 0 4px 14px oklch(30% 0.02 60 / 0.06),
+                 0 12px 32px oklch(30% 0.02 60 / 0.04);
+  --shadow-card-hover: 0 2px 4px oklch(30% 0.02 60 / 0.06),
+                       0 8px 22px oklch(30% 0.02 60 / 0.10),
+                       0 20px 48px oklch(30% 0.02 60 / 0.06);
+
+  /* ===== 卡片令牌（实体质感） ===== */
+  --glass-blur: 0px;                /* 实体卡不需要 backdrop-blur */
+  --glass-alpha: 1;                 /* 实色不透明 */
+  --glass-border-alpha: 0.7;
+  --glass-tint: 255 255 255;
+  --glass-bg: oklch(99.5% 0.005 60);            /* 暖白实色 */
+  --glass-border: oklch(85% 0.012 60 / 0.8);    /* 暖灰边框 */
+  --glass-hi: linear-gradient(180deg, oklch(100% 0 0 / 0.65), oklch(100% 0 0 / 0) 38%);
+
+  /* ===== 环境光色（亮色）===== */
+  --blob-1: oklch(85% 0.13 70 / 0.55);    /* 暖琥珀 */
+  --blob-2: oklch(82% 0.12 25 / 0.4);     /* 珊瑚 */
+  --blob-3: oklch(88% 0.10 160 / 0.38);   /* 薄荷 */
+  --blob-4: oklch(86% 0.11 95 / 0.38);    /* 桃 */
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -143,8 +165,8 @@
   /* 兼容旧变量 */
   --primary: var(--interactive-default);
   --primary-hover: var(--interactive-hover);
-  --primary-soft: oklch(54% 0.10 60 / 0.08);
-  --primary-contrast: white;
+  --primary-soft: oklch(64% 0.048 20 / 0.1);
+  --primary-contrast: var(--text-on-accent);
   --bg: var(--surface-page);
   --bg-subtle: var(--surface-hover);
   --surface: var(--surface-card);
@@ -153,6 +175,7 @@
   --border-strong: var(--border-default);
   --text: var(--text-primary);
   --text-muted: var(--text-tertiary);
+  --muted: var(--text-tertiary);
   --ring: 0 0 0 3px var(--interactive-focus-ring);
   --sidebar-w: 240px;
   --accent-primary: var(--interactive-default);
@@ -163,6 +186,23 @@
   --border-input: var(--border-default);
   --shadow-glow: var(--shadow-md);
   --shadow-card: var(--shadow-sm);
+
+  /* ---- 卡片（实体质感）令牌 ---- */
+  --glass-blur: 0px;                /* 实体卡不需要 backdrop-blur */
+  --glass-alpha: 1;                 /* 实色不透明 */
+  --glass-border-alpha: 0.7;
+  --glass-hi: linear-gradient(180deg, oklch(100% 0 0 / 0.65), oklch(100% 0 0 / 0) 38%);
+  --glass-tint: oklch(99.5% 0.005 60 / 1);  /* 暖白实色 */
+
+  /* ---- 实体卡阴影：柔和多层悬浮 ---- */
+  --shadow-card: 0 1px 2px oklch(30% 0.02 60 / 0.04),
+                 0 4px 14px oklch(30% 0.02 60 / 0.06),
+                 0 12px 32px oklch(30% 0.02 60 / 0.04);
+  --shadow-card-hover: 0 2px 4px oklch(30% 0.02 60 / 0.06),
+                       0 8px 22px oklch(30% 0.02 60 / 0.10),
+                       0 20px 48px oklch(30% 0.02 60 / 0.06);
+
+  /* ---- 环境柔光色块（沿用 :root 的暖琥珀/珊瑚/薄荷/桃）---- */
 }
 
 /* --------------------------------------------------------------------------
@@ -172,8 +212,8 @@
 [data-theme="dark"] {
   /* 背景层：深暖炭灰（非纯黑），保留轻微暖调与饱和度 */
   --surface-page: oklch(19% 0.012 60);
-  --surface-card: oklch(26% 0.014 60);
-  --surface-elevated: oklch(32% 0.016 60);
+  --surface-card: oklch(26% 0.014 60);     /* 暗色实体卡：暖深炭灰实色 */
+  --surface-elevated: oklch(28% 0.015 60);
   --surface-overlay: oklch(30% 0.015 60);
   --surface-hover: oklch(32% 0.014 60);
   --surface-active: oklch(38% 0.014 60);
@@ -198,9 +238,9 @@
   --interactive-hover: var(--accent-300);
   --interactive-active: var(--accent-200);
   --interactive-disabled: oklch(40% 0.008 60);
-  --interactive-focus-ring: oklch(68% 0.12 60 / 0.45);
+  --interactive-focus-ring: oklch(62% 0.11 60 / 0.45);
 
-  /* 收支：暗色下降低饱和度，避免刺眼 */
+  /* 收支：暗色下降低饱和度，避免刺眼（收红支绿语义保留） */
   --income: oklch(68% 0.16 20);
   --income-soft: oklch(56% 0.16 20 / 0.14);
   --expense: oklch(68% 0.16 160);
@@ -213,10 +253,28 @@
   --shadow-md: 0 6px 16px oklch(12% 0.02 60 / 0.32);
   --shadow-lg: 0 12px 36px oklch(10% 0.02 60 / 0.4);
   --shadow-xl: 0 24px 70px oklch(8% 0.02 60 / 0.5);
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.20),
+                 0 6px 18px oklch(0% 0 0 / 0.28),
+                 0 18px 40px oklch(0% 0 0 / 0.20);
+  --shadow-card-hover: 0 2px 4px oklch(0% 0 0 / 0.25),
+                       0 10px 28px oklch(0% 0 0 / 0.36),
+                       0 24px 56px oklch(0% 0 0 / 0.28);
+
+  /* ===== 卡片令牌（实体质感 ·暗色）===== */
+  --glass-tint: 38 32 28;
+  --glass-bg: oklch(24% 0.014 60);              /* 暖深炭灰实色 */
+  --glass-border: oklch(46% 0.014 60 / 0.7);    /* 暖灰描边 */
+  --glass-hi: linear-gradient(180deg, oklch(100% 0 0 / 0.08), oklch(100% 0 0 / 0) 38%);
+
+  /* ===== 环境光色（暗色）===== */
+  --blob-1: oklch(60% 0.16 65 / 0.55);
+  --blob-2: oklch(55% 0.16 25 / 0.45);
+  --blob-3: oklch(55% 0.13 160 / 0.40);
+  --blob-4: oklch(58% 0.14 95 / 0.40);
 
   --primary: var(--interactive-default);
   --primary-hover: var(--interactive-hover);
-  --primary-soft: oklch(62% 0.11 60 / 0.14);
+  --primary-soft: oklch(71% 0.05 20 / 0.16);
   --primary-contrast: var(--text-on-accent);
   --bg: var(--surface-page);
   --bg-subtle: var(--surface-hover);
@@ -235,6 +293,16 @@
   --border-input: var(--border-default);
   --shadow-glow: 0 0 24px color-mix(in oklab, var(--interactive-default) 18%, transparent);
   --shadow-card: var(--shadow-sm);
+
+  /* ---- 毛玻璃（暗色） ---- */
+  --glass-hi: linear-gradient(180deg, oklch(100% 0 0 / 0.1), oklch(100% 0 0 / 0) 42%);
+  --glass-tint: oklch(42% 0.02 45 / 0.28);
+
+  /* ---- 环境柔光色块（暗色，降低亮度） ---- */
+  --blob-1: oklch(52% 0.09 30 / 0.3);
+  --blob-2: oklch(52% 0.07 150 / 0.24);
+  --blob-3: oklch(52% 0.06 240 / 0.2);
+  --blob-4: oklch(55% 0.07 85 / 0.18);
 }
 
 /* --------------------------------------------------------------------------

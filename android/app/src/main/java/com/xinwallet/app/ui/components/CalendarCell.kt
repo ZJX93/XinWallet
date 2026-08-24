@@ -70,9 +70,9 @@ fun SharedCalendarCell(
     val isCurrent = cell.kind == CellKind.CURRENT
     val bgColor = when {
         isSelected -> Brown500                                      // 选中：满主题色
-        !isCurrent -> Color(0xFFEDEFF1)                            // 上下月：淡灰方块
+        !isCurrent -> Color(0xFFF0EDEE)                            // 上下月：淡灰方块
         dayData?.hasRecord == true -> Brown100.copy(alpha = 0.7f)  // 有记录：淡主题色方块
-        else -> Color(0xFFF3F4F6)                                  // 空白：淡灰方块
+        else -> Color(0xFFF0EDEE)                                  // 空白：淡灰方块
     }
     val dateColor = when {
         isSelected -> Color.White

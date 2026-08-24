@@ -60,7 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.Transaction
 import com.xinwallet.app.di.AppContainer
@@ -70,6 +73,7 @@ import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
 import com.xinwallet.app.ui.theme.LocalIsDark
+import com.xinwallet.app.ui.theme.GlassBox
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown500
@@ -83,7 +87,11 @@ import androidx.compose.ui.graphics.Brush
 
 @Composable
 fun TopBar(title: String, onBack: (() -> Unit)? = null) {
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+    GlassBox(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        elevated = true
+    ) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -171,7 +179,8 @@ fun HeroGradientCard(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "¥ ${formatMoney(amount)}",
+                    // formatMoney 已带 ¥ 前缀，不要再拼一个
+                    formatMoney(amount),
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -207,11 +216,10 @@ fun StatKpiCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
-    Card(
-        modifier = Modifier.then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+    GlassBox(
+        Modifier.then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevated = true
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -229,7 +237,8 @@ fun StatKpiCard(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "¥ ${formatMoney(amount)}",
+                // formatMoney 已带 ¥ 前缀，不要再拼一个
+                formatMoney(amount),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = Brown500
@@ -274,25 +283,84 @@ fun AccountListItem(account: Account, onClick: () -> Unit) {
 @Composable
 fun TransactionRow(item: TransactionItem) {
     val dark = LocalIsDark.current
-    val isIncome = item.type == "income" || item.type == "transfer_in"
-    val isExpense = item.type == "expense" || item.type == "transfer_out"
+    /**
+     * 折叠转账：一笔转账在列表里只出一条（服务端 SQL 折叠），这条记录要能
+     * 自己表达完整的「A → B」。
+     *
+     * 判据用 item.transfer 而不是 type == "transfer_out"：服务端要求
+     * transfer_id + 双端账户名齐全才构造 transfer，账户被删时它是 null，
+     * 此时退回普通渲染，而不是显示「? → ?」。
+     */
+    val tf = item.transfer
+    /**
+     * 判据优先用 transfer 字段（新后端下发，两端账户名齐全）。
+     * 兜底：老后端不返回 transfer，但 type 仍是 "transfer_out"/"transfer_in"，
+     * 此时也要按转账渲染（🔄 + 中性色 + 无符号），否则老后端下转账会退化成
+     * 普通支出显示成红色负号。flow 的兜底拼装在下方 sub 里。
+     */
+    val isTransfer = tf != null || item.type.startsWith("transfer")
+    val isIncome = !isTransfer && item.type == "income"
+    val isExpense = !isTransfer && item.type == "expense"
     val color = when {
+        // 转账用中性色：钱只是从一个口袋换到另一个口袋，总资产没变。
+        // 原先 transfer_out 走 isExpense 分支显示红色 -1000，看着像花掉了。
+        isTransfer -> MaterialTheme.colorScheme.onSurface
         isIncome -> if (dark) IncomeColorDark else IncomeColor
         isExpense -> if (dark) ExpenseColorDark else ExpenseColor
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(40.dp)) {
-            Box(contentAlignment = Alignment.Center) { Text(item.category?.icon ?: "📌", style = MaterialTheme.typography.bodyLarge) }
+            Box(contentAlignment = Alignment.Center) {
+                Text(if (isTransfer) "🔄" else (item.category?.icon ?: "📌"), style = MaterialTheme.typography.bodyLarge)
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.category?.name ?: "交易", style = MaterialTheme.typography.bodyLarge)
-            val sub = item.counterparty?.let { "${it.dir ?: ""}${it.name}" } ?: item.account?.name ?: item.date.take(10)
-            Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            /*
+             * 两行分工对齐 web 端表格的列语义：
+             *   第一行 = 分类列（web 的 .trans-category）
+             *   第二行 = 账户列（web 的 .trans-account，转账时正是 "A → B"）
+             *
+             * 早前版本把 "A → B" 放在第一行、第二行写死 "转账"，有两个问题：
+             *   1. 转账在库里是有真实分类的（如「一般转账 🏦」），第一行被占用后这条信息看不到；
+             *   2. 第二行写死 "转账" 是常量，与左侧 🔄 图标重复表意，白占一整行。
+             * 现在第一行让位给分类名，第二行承载 "A → B · 备注"，三条信息都能读到。
+             */
+            Text(
+                item.category?.name ?: if (isTransfer) "转账" else "交易",
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val sub = when {
+                // 转账第二行：账户流向优先，备注跟在后面。
+                // 顺序不能反 —— 备注长度不可控，若放前面会把 "A → B" 挤进省略号里；
+                // 现在截断只会吃掉备注尾部，资金流向始终完整可见。
+                isTransfer -> {
+                    val flow = if (tf != null) {
+                        // 主路径：新后端下发 transfer，两端账户名齐全，直接拼。
+                        "${tf.from?.name ?: "?"} → ${tf.to?.name ?: "?"}"
+                    } else {
+                        // 兜底：老后端不返回 transfer。按 type 方向用 source /
+                        // counterparty / destination 拼出 A → B，保证转账行始终
+                        // 显示完整流向，而不是退化成单边的 "→ 对方"。
+                        val out = item.type != "transfer_in"
+                        val from = if (out) (item.source?.name ?: item.account?.name)
+                                   else (item.counterparty?.name ?: item.source?.name)
+                        val to = if (out) (item.counterparty?.name ?: item.destination?.name)
+                                 else (item.destination?.name ?: item.account?.name)
+                        "${from ?: "?"} → ${to ?: "?"}"
+                    }
+                    if (item.note.isNullOrBlank()) flow else "$flow · ${item.note}"
+                }
+                else -> item.counterparty?.let { "${it.dir ?: ""}${it.name}" } ?: item.account?.name ?: item.date.take(10)
+            }
+            Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
-            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount),
+            // 转账不带正负号（见上方 color 注释）
+            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(if (isTransfer) kotlin.math.abs(item.amount) else item.amount),
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }
@@ -591,7 +659,25 @@ private fun utcMidnightMillis(year: Int, month: Int, day: Int): Long =
     }.timeInMillis
 
 @Composable
-fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null) {
+fun ErrorState(
+    message: String,
+    /**
+     * 可选副文案：告诉用户「接下来能做什么」。
+     *
+     * 光有一行 message（多为服务端原文或"数据加载失败"）不足以让人行动 ——
+     * 报表页按年失败的真实原因是服务端版本旧，用户看着"数据加载失败"只会
+     * 反复切周期。默认为空，不影响其他页面既有呈现。
+     *
+     * ⚠️ 位置必须在 onRetry / onLogin **之前**。全项目有 9 处调用写成尾随
+     * lambda 形式 `ErrorState(msg) { vm.refresh() }`，而尾随 lambda 只会匹配
+     * **最后一个**参数 —— 把 hint 放到末尾会让那 9 处全部报
+     * 「actual type is Function0<Unit>, but String? was expected」。
+     * 给共用组件加参数时，新参数插在函数类型参数前面。
+     */
+    hint: String? = null,
+    onRetry: (() -> Unit)? = null,
+    onLogin: (() -> Unit)? = null
+) {
     val scope = rememberCoroutineScope()
     val isAuthError = remember(message) {
         message.contains("登录") || message.contains("过期") || message.contains("401") ||
@@ -612,7 +698,22 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> U
     ) {
         Icon(Icons.Filled.ErrorOutline, "错误", tint = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(8.dp))
-        Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+        if (!hint.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                hint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
+        }
         if (effectiveOnLogin != null) {
             Spacer(Modifier.height(12.dp))
             Button(onClick = effectiveOnLogin) { Text("重新登录") }
@@ -636,26 +737,31 @@ fun BookHeader(
     val books = AppContainer.books.collectAsState().value
     val curId = AppContainer.currentBookId.collectAsState().value
     val bookName = books.find { it.id == curId }?.name?.takeIf { it.isNotBlank() } ?: "默认账本"
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+    GlassBox(
+        Modifier.fillMaxWidth().statusBarsPadding(),
+        shape = RoundedCornerShape(0.dp),
+        elevated = true
     ) {
         Row(
-            Modifier.clickable(onClick = onSwapBook),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Text(bookName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(4.dp))
-            // 账本切换箭头用暖棕主色强化锚点（与全局暖棕主题统一）
-            Text("⇄", style = MaterialTheme.typography.titleMedium, color = Brown500)
-        }
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) {
-            Icon(Icons.Filled.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                Modifier.clickable(onClick = onSwapBook),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(bookName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                // 账本切换箭头用暖棕主色强化锚点（与全局暖棕主题统一）
+                Text("⇄", style = MaterialTheme.typography.titleMedium, color = Brown500)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Filled.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -732,4 +838,52 @@ fun BookSwitcherSheet(
             }
         }
     )
+}
+
+/**
+ * 操作 chip：emoji + 文字的方块按钮，用于详情页顶部的操作区（编辑 / 删除 / 计息…）。
+ *
+ * 原先只存在于 InvestmentDetailScreen 内部（private TxnActionChip）。账户详情页也要
+ * 同一排操作入口时提取到这里 —— 详情页操作区必须两端两页长一个样，
+ * 各自复制一份必然在下次改动时走形。
+ *
+ * ⚠️ 详情页的操作入口必须是**可见 chip**，不要退回「藏在长按/⋯里」。
+ * 账户列表页踩过这个坑：功能全都实现了，用户依然反馈「没有编辑删除功能」。
+ *
+ * @param danger true = 用 error 色渲染（删除类破坏性操作），让它在一排 chip 里可区分
+ */
+@Composable
+fun ActionChip(
+    emoji: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    danger: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+        danger -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = if (enabled) modifier.clickable(onClick = onClick) else modifier
+    ) {
+        Column(
+            Modifier.padding(12.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(emoji, fontSize = 20.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }

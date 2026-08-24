@@ -80,7 +80,9 @@ val Brown50  = Color(0xFFFCEFE5)   // accent-50
 val FabBackground = Color(0xFF111827)      // gray-900
 val FabForeground = Color(0xFFFFFFFF)
 
-/* ====== 筛选条/选中态专用：清爽薄荷青（与暖棕主色解耦，用于搜索筛选 chip 与小竖条） ====== */
+/* ====== 薄荷青备选强调色（保留备用，目前未启用） ====== */
+/* 搜索筛选的选中态/分组竖条/应用按钮统一改用品牌棕 Brown500，
+   与账单页、鸿蒙端保持一致，避免青色在暖棕体系里显突兀。 */
 val Teal400 = Color(0xFF4DD0C4)            // 主填充
 val Teal600 = Color(0xFF26A69A)            // 文本/按压
 val Teal200 = Color(0xFFB2EBE6)            // 浅高亮底

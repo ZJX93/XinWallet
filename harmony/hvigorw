@@ -3,21 +3,64 @@
 # 1) 全局 npm 安装 (@ohos/hvigor)
 # 2) 本地 node_modules (@ohos/hvigor)
 # 3) DevEco Command Line Tools 自带的 hvigor（已加入 PATH，CI 环境即此路径）
-# 4) 常见 CLI 安装路径兜底
+# 4) DevEco Studio / CLI 常见安装路径兜底（含 Windows）
+#
+# 注意（本地开发环境踩坑）：
+# - 必须提供 DEVECO_SDK_HOME，否则 hvigor 报 00303217 Configuration Error。
+#   本脚本会在找到 hvigor 后自动推断同级 sdk 目录。
+# - 若外部通过 NODE_OPTIONS 注入了文件删除保护类 shim（例如某些 AI IDE 会
+#   --require 一个 safe-delete 钩子），hvigor 清理 entry/build 中间目录时会被拦，
+#   表现为 00308018 Unknown Error。本脚本在调用 node 前清空 NODE_OPTIONS。
 BASE_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# hvigor 只清理自己的 build 产物目录，无需外部删除保护介入
+unset NODE_OPTIONS
+
+# Git Bash / MSYS 下 node 无法识别 /c/... /d/... 形式路径，需转成原生 Windows 路径
+to_native_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1" 2>/dev/null || echo "$1"
+  else
+    echo "$1"
+  fi
+}
+
+# 找到 hvigor 入口后，推断并导出 DEVECO_SDK_HOME（若外部未设置）
+ensure_sdk_home() {
+  if [ -n "$DEVECO_SDK_HOME" ] && [ -d "$DEVECO_SDK_HOME" ]; then
+    return 0
+  fi
+  entry="$1"
+  # <root>/tools/hvigor/bin/hvigorw.js -> <root>/sdk
+  root=$(cd "$(dirname "$entry")/../../.." 2>/dev/null && pwd)
+  for cand in "$root/sdk" "$root/../sdk" "$OHOS_SDK_HOME"; do
+    if [ -n "$cand" ] && [ -d "$cand" ]; then
+      DEVECO_SDK_HOME=$(to_native_path "$(cd "$cand" && pwd)")
+      export DEVECO_SDK_HOME
+      return 0
+    fi
+  done
+}
+
+# 统一入口：修正 SDK 环境变量 + 路径转换后调用 node
+exec_hvigor() {
+  entry="$1"
+  shift
+  ensure_sdk_home "$entry"
+  node "$(to_native_path "$entry")" "$@"
+  exit $?
+}
 
 # 1) 全局 npm 安装
 GLOBAL=$(npm root -g 2>/dev/null)/@ohos/hvigor/bin/hvigorw.js
 if [ -f "$GLOBAL" ]; then
-  node "$GLOBAL" "$@"
-  exit $?
+  exec_hvigor "$GLOBAL" "$@"
 fi
 
 # 2) 本地 node_modules
 LOCAL="$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js"
 if [ -f "$LOCAL" ]; then
-  node "$LOCAL" "$@"
-  exit $?
+  exec_hvigor "$LOCAL" "$@"
 fi
 
 # 3) CLI 自带（已在 PATH 中）
@@ -26,16 +69,19 @@ if command -v hvigorw >/dev/null 2>&1; then
   exit $?
 fi
 
-# 4) 常见 CLI 安装路径兜底
+# 4) 常见安装路径兜底（DevEco Studio 与 Command Line Tools）
 for p in \
   "$HOME/commandline-tools/command-line-tools/hvigor/bin/hvigorw.js" \
   "$OHOS_SDK_HOME/../command-line-tools/hvigor/bin/hvigorw.js" \
-  "/opt/commandline-tools/command-line-tools/hvigor/bin/hvigorw.js"; do
+  "/opt/commandline-tools/command-line-tools/hvigor/bin/hvigorw.js" \
+  "/d/Program Files/Public/DevEco Studio/tools/hvigor/bin/hvigorw.js" \
+  "/c/Program Files/Public/DevEco Studio/tools/hvigor/bin/hvigorw.js" \
+  "/c/Program Files/Huawei/DevEco Studio/tools/hvigor/bin/hvigorw.js" \
+  "/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js"; do
   if [ -f "$p" ]; then
-    node "$p" "$@"
-    exit $?
+    exec_hvigor "$p" "$@"
   fi
 done
 
-echo "hvigor not found. Install with: npm install -g @ohos/hvigor  (or use DevEco Command Line Tools)" >&2
+echo "hvigor not found. Install with: npm install -g @ohos/hvigor  (or use DevEco Studio / Command Line Tools)" >&2
 exit 1

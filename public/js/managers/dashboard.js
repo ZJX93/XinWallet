@@ -10,9 +10,25 @@
 //                    showEmpty、DOM 元素（dashKpiBar、dashDetailModal 等）
 // ============================================================
 
+// 数字滚动动画：从 0 滚动到目标值（KPI 灵动入场）
+// 传入 el 元素、目标数值、duration(ms)、格式化函数
+function countUp(el, target, duration = 800, formatter) {
+    if (!el) return;
+    const startVal = 0;
+    const startTime = performance.now();
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+    function tick(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const v = startVal + (target - startVal) * easeOut(t);
+        el.textContent = formatter ? formatter(v) : Math.round(v).toLocaleString('zh-CN');
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = formatter ? formatter(target) : Math.round(target).toLocaleString('zh-CN');
+    }
+    requestAnimationFrame(tick);
+}
+
 const DashboardManager = {
     async init() {
-        // 懒加载：先加载 dashboard 页面片段，再绑定事件
         await PageLoader.ensureLoaded('page-dashboard');
 
         const bar = document.getElementById('dashKpiBar');
@@ -166,7 +182,7 @@ const DashboardManager = {
             // 净资产（最核心指标）
             const dashNetWorth = document.getElementById('dashNetWorth');
             if (dashNetWorth) {
-                dashNetWorth.textContent = fmt(netWorth);
+                countUp(dashNetWorth, netWorth, 900, fmt);
                 dashNetWorth.className = 'kpi-value ' + (netWorth >= 0 ? 'positive' : 'negative');
             }
             const assetDebtEl = document.getElementById('dashAssetDebt');
@@ -202,7 +218,9 @@ const DashboardManager = {
             const monthBalance = data.month.balance;
 
             const srEl = document.getElementById('dashSavingsRate');
-            if (srEl) srEl.textContent = `${savingsRate.toFixed(1)}%`;
+            if (srEl) {
+                countUp(srEl, savingsRate, 900, v => `${v.toFixed(1)}%`);
+            }
             const summaryEl = document.getElementById('dashSavingsSummary');
             if (summaryEl) {
                 if (netSavings === 0 && totalIncome === 0) {
@@ -223,7 +241,7 @@ const DashboardManager = {
             // 本月结余
             const monthBalEl = document.getElementById('dashMonthBalance');
             if (monthBalEl) {
-                monthBalEl.textContent = fmt(monthBalance);
+                countUp(monthBalEl, monthBalance, 800, fmt);
                 monthBalEl.className = 'kpi-value ' + (monthBalance >= 0 ? 'positive' : 'negative');
             }
             const monthChangeEl = document.getElementById('dashMonthChange');
@@ -237,7 +255,7 @@ const DashboardManager = {
             const weekBalance = weekIncome - weekExpense;
             const weekBalEl = document.getElementById('dashWeekBalance');
             if (weekBalEl) {
-                weekBalEl.textContent = fmt(weekBalance);
+                countUp(weekBalEl, weekBalance, 700, fmt);
                 weekBalEl.className = 'kpi-value ' + (weekBalance >= 0 ? 'positive' : 'negative');
             }
             const weekDet = document.getElementById('dashWeekDetail');
@@ -250,7 +268,7 @@ const DashboardManager = {
 
             const invProfitEl = document.getElementById('dashInvProfit');
             if (invProfitEl) {
-                invProfitEl.textContent = fmt(invProfit);
+                countUp(invProfitEl, invProfit, 900, fmt);
                 invProfitEl.className = 'kpi-value ' + (invProfit >= 0 ? 'positive' : 'negative');
             }
             const invBadge = document.getElementById('dashInvBadge');
@@ -269,7 +287,7 @@ const DashboardManager = {
             // 本年结余
             const yearBalEl = document.getElementById('dashYearBalance');
             if (yearBalEl) {
-                yearBalEl.textContent = fmt(data.year.balance);
+                countUp(yearBalEl, data.year.balance, 850, fmt);
                 yearBalEl.className = 'kpi-value ' + (data.year.balance >= 0 ? 'positive' : 'negative');
             }
             const yearDetailEl = document.getElementById('dashYearDetail');
@@ -277,10 +295,10 @@ const DashboardManager = {
 
             // 总资产
             const totalAssetsCard = document.getElementById('dashTotalAssets');
-            if (totalAssetsCard) totalAssetsCard.textContent = fmt(totalAssets);
+            if (totalAssetsCard) countUp(totalAssetsCard, totalAssets, 900, fmt);
             // 总负债
             const totalDebtCard = document.getElementById('dashTotalDebt');
-            if (totalDebtCard) totalDebtCard.textContent = fmt(totalDebt);
+            if (totalDebtCard) countUp(totalDebtCard, totalDebt, 850, fmt);
             const debtSub = document.getElementById('dashDebtSub');
             if (debtSub) debtSub.textContent = `月供 ${fmt(data.debts?.totalMonthly || 0)}`;
         });

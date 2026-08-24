@@ -3,6 +3,7 @@ package com.xinwallet.app.data.remote
 import com.xinwallet.app.data.model.*
 import com.xinwallet.app.data.model.Tag
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -59,7 +60,10 @@ interface ApiService {
         @Query("min_amount") minAmount: Double? = null,
         @Query("max_amount") maxAmount: Double? = null,
         @Query("types") types: String? = null,
-        @Query("limit") limit: Int = 50
+        @Query("limit") limit: Int = 50,
+        // 账本筛选：传具体账本 id 时临时覆盖全局 X-Book-Id（搜索页选账本用）；
+        // 传 null 时 Retrofit 不发送该 header，AuthInterceptor 自动注入当前账本。
+        @Header("X-Book-Id") bookId: Int? = null
     ): Response<ApiResponse<List<TransactionItem>>>
 
     @POST("transactions")
@@ -85,6 +89,20 @@ interface ApiService {
 
     @POST("transfers")
     suspend fun createTransfer(@Body req: CreateTransferRequest): Response<ApiResponse<IdResponse>>
+
+    /**
+     * 修改转账。**折叠后的转账记录必须走这里，不能走 updateTransaction。**
+     *
+     * 列表里一笔转账只显示一条（服务端 SQL 折叠），但那条记录的 id 只是
+     * 两条腿中的一条。拿它去 transactions/{id} 只会改单条腿 ——
+     * 金额从 100 改成 200 时，转出账户扣了 200 而转入账户还是加 100。
+     *
+     * 服务端是**全量替换**语义：先删掉该 transfer_id 的所有腿再重建两条，
+     * 并重算涉及账户余额。所以 req 必须回填完整字段，note 漏传会被清空。
+     * 复用 CreateTransferRequest —— 服务端 PUT/POST 入参字段完全一致。
+     */
+    @PUT("transfers/{id}")
+    suspend fun updateTransfer(@Path("id") id: Int, @Body req: CreateTransferRequest): Response<ApiResponse<Unit>>
 
     @DELETE("transfers/{id}")
     suspend fun deleteTransfer(@Path("id") id: Int): Response<ApiResponse<Unit>>
@@ -125,6 +143,27 @@ interface ApiService {
     suspend fun deleteInvestmentTransaction(
         @Path("investmentId") investmentId: Int,
         @Path("txnId") txnId: Int
+    ): Response<ApiResponse<Unit>>
+
+    /** 新增理财流水（买入/卖出/分红/利息/红利再投） */
+    @POST("investments/investments/{id}/transactions")
+    suspend fun addInvestmentTransaction(
+        @Path("id") id: Int,
+        @Body req: com.xinwallet.app.data.model.AddInvestmentTxnRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 加仓 / 减仓（自动更新持仓成本与数量） */
+    @POST("investments/investments/{id}/reduce")
+    suspend fun reduceInvestment(
+        @Path("id") id: Int,
+        @Body req: com.xinwallet.app.data.model.ReduceInvestmentRequest
+    ): Response<ApiResponse<Unit>>
+
+    /** 清仓（按清仓价回款、标记已清仓） */
+    @PUT("investments/investments/{id}/sell")
+    suspend fun sellInvestment(
+        @Path("id") id: Int,
+        @Body req: com.xinwallet.app.data.model.SellInvestmentRequest
     ): Response<ApiResponse<Unit>>
 
     /* 仪表盘 */
@@ -257,5 +296,27 @@ interface ApiService {
 
     @DELETE("books/{id}")
     suspend fun deleteBook(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    /* 账本备份（数据管理）—— 与鸿蒙 DataManagement.ets 共用同一套服务端能力 */
+
+    /**
+     * 导出账本备份为 xlsx（工作表：账本配置页 / 账户页 / 账单流水页 / 理财流水页）。
+     * 返回的是**二进制流**而非 ApiResponse<T>，因此：
+     *   - 返回类型用 ResponseBody（GsonConverterFactory 不介入，否则会尝试把 xlsx 当 JSON 解析而失败）
+     *   - 必须加 @Streaming，否则 Retrofit 会把整个文件先读进内存
+     * 也因此这条接口不能走 safeApiCall，需要在 Repository 里自行落盘。
+     */
+    @Streaming
+    @GET("backup/export")
+    suspend fun exportBackup(): Response<ResponseBody>
+
+    /**
+     * 导入账本备份：上传 xlsx，服务端清空当前账本后完整恢复。
+     * multipart 字段名必须是 file（后端 `upload.single('file')` 约定；写错会返回「请上传 .xlsx 备份文件」）。
+     * data.imported 为各类型恢复条数，用于成功后回显汇总。
+     */
+    @Multipart
+    @POST("backup/import")
+    suspend fun importBackup(@Part file: MultipartBody.Part): Response<ApiResponse<ImportBackupResult>>
 
 }

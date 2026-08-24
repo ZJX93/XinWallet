@@ -16,6 +16,9 @@ android {
         // 让 APK 自身携带真实版本号，供应用内「升级」功能比对；本地调试缺省为 1 / 0.1.0。
         versionCode = (project.findProperty("appVersionCode") as? String)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("appVersionName") as? String) ?: "0.1.0"
+        // 显式开启 multidex：方法数已超 65k，交由 AGP 标准分包，避免主 DEX 列表错乱
+        // （曾出现 Application 被分到次要 DEX 导致启动即 NoClassDefFoundError）。
+        multiDexEnabled = true
     }
 
     // 发布签名：优先读取 CI/本地注入的环境变量（KEYSTORE_PATH / KEY_ALIAS /
@@ -111,4 +114,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // multidex 运行时支持（MultiDexApplication / MultiDex.install）
+    implementation("androidx.multidex:multidex:2.0.1")
 }

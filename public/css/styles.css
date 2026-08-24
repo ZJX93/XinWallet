@@ -23,7 +23,9 @@ body {
   line-height: var(--leading-body);
   color: var(--text-primary);
   background: var(--surface-page);
-  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   transition: background var(--duration-300) var(--ease-out-quart),
     color var(--duration-300) var(--ease-out-quart);
 }
@@ -51,7 +53,7 @@ button { font-family: inherit; cursor: pointer; }
 :focus:not(:focus-visible) { outline: none; }
 
 ::selection {
-  background: oklch(54% 0.10 60 / 0.18);
+  background: color-mix(in srgb, var(--accent-500) 18%, transparent);
   color: var(--text-primary);
 }
 
@@ -83,12 +85,13 @@ button { font-family: inherit; cursor: pointer; }
 .app-header {
   position: sticky; top: 0; z-index: var(--z-sticky);
   height: var(--header-height);
+  flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 var(--space-6);
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--border-subtle);
-  backdrop-filter: saturate(160%) blur(12px);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  background: color-mix(in oklab, var(--surface-card) 70%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--border-subtle) 70%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
 }
 
 .app-header .logo {
@@ -181,8 +184,10 @@ button { font-family: inherit; cursor: pointer; }
 
 /* App Body */
 .app-body {
+  flex: 1;
   display: flex;
-  height: calc(100dvh - var(--header-height));
+  min-height: 0;
+  height: auto;
   overflow: hidden;
 }
 
@@ -190,6 +195,7 @@ button { font-family: inherit; cursor: pointer; }
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0;
   display: flex; flex-direction: column;
+  min-height: 0;
   background: var(--surface-card);
   border-right: 1px solid var(--border-subtle);
   padding: var(--space-4) var(--space-3);
@@ -230,6 +236,7 @@ button { font-family: inherit; cursor: pointer; }
 /* Main Content */
 .main-content {
   flex: 1; overflow-y: auto; overflow-x: hidden;
+  min-height: 0;
   padding: var(--space-6) var(--space-8) var(--space-12);
 }
 
@@ -256,14 +263,20 @@ button { font-family: inherit; cursor: pointer; }
   display: inline-flex; align-items: center; gap: var(--space-2);
   padding: var(--space-2) var(--space-5); height: 40px;
   border-radius: var(--radius-full); cursor: pointer;
-  background: var(--interactive-default); color: var(--text-on-accent);
+  background: color-mix(in oklab, var(--surface-hover) 80%, transparent);
+  color: var(--text-primary);
   font-weight: var(--fw-semibold); font-size: var(--text-body-sm);
-  border: none; box-shadow: var(--shadow-sm);
+  border: 1px solid color-mix(in oklab, var(--border-subtle) 50%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: all var(--duration-150) var(--ease-out-quart);
 }
 
 .quick-add-btn:hover {
-  background: var(--interactive-hover);
+  background: var(--interactive-default);
+  color: var(--text-on-accent);
+  border-color: transparent;
   transform: translateY(-1px); box-shadow: var(--shadow-md);
 }
 
@@ -282,8 +295,12 @@ button { font-family: inherit; cursor: pointer; }
    3. CARDS
    -------------------------------------------------------------------------- */
 .glass-card, .card {
-  background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
+  background:
+    var(--glass-hi),
+    color-mix(in oklab, var(--surface-card) 72%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  backdrop-filter: saturate(160%) blur(14px);
+  border: 1px solid color-mix(in oklab, var(--border-subtle) 70%, transparent);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   box-shadow: var(--shadow-sm);
@@ -324,8 +341,12 @@ button { font-family: inherit; cursor: pointer; }
 
 .overview-card {
   display: flex; align-items: center; gap: var(--space-3);
-  background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
+  background:
+    var(--glass-hi),
+    color-mix(in oklab, var(--surface-card) 72%, transparent);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  backdrop-filter: saturate(160%) blur(14px);
+  border: 1px solid color-mix(in oklab, var(--border-subtle) 70%, transparent);
   border-radius: var(--radius-xl);
   padding: var(--space-4) var(--space-5);
   box-shadow: var(--shadow-sm);
@@ -343,11 +364,11 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 18px; flex-shrink: 0;
 }
 
-.today-card .card-icon { background: oklch(60% 0.14 250 / 0.1); }
-.week-card .card-icon { background: oklch(60% 0.14 180 / 0.1); }
+.today-card .card-icon { background: color-mix(in srgb, var(--info-500) 14%, transparent); }
+.week-card .card-icon { background: color-mix(in srgb, var(--success-500) 14%, transparent); }
 .month-card .card-icon { background: var(--primary-soft); }
 .year-card .card-icon { background: var(--income-soft); }
-.assets-card .card-icon { background: oklch(64% 0.15 85 / 0.1); }
+.assets-card .card-icon { background: color-mix(in srgb, var(--warning-500) 14%, transparent); }
 
 .card-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .card-label { font-size: var(--text-caption); color: var(--text-tertiary); white-space: nowrap; }
@@ -580,14 +601,14 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 11px; padding: 1px 8px; border-radius: 10px;
   font-weight: 500;
 }
-.provider-cap-badge.cap-chat { background: rgba(59,130,246,0.12); color: #2563eb; }
-.provider-cap-badge.cap-tools { background: rgba(168,85,247,0.12); color: #9333ea; }
-.provider-cap-badge.cap-voice { background: rgba(34,197,94,0.12); color: #16a34a; }
+.provider-cap-badge.cap-chat { background: color-mix(in srgb, var(--info-500) 14%, transparent); color: var(--info-600); }
+.provider-cap-badge.cap-tools { background: color-mix(in srgb, var(--accent-500) 14%, transparent); color: var(--accent-600); }
+.provider-cap-badge.cap-voice { background: color-mix(in srgb, var(--success-500) 14%, transparent); color: var(--success-600); }
 
 .preset-region-tag {
   display: inline-block;
-  background: rgba(245,158,11,0.12);
-  color: #d97706;
+  background: color-mix(in srgb, var(--warning-500) 14%, transparent);
+  color: var(--warning-600);
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 10px;
@@ -664,16 +685,20 @@ button { font-family: inherit; cursor: pointer; }
 .filter-actions { display: flex; gap: var(--space-2); margin-left: auto; flex-wrap: wrap; }
 
 /* --------------------------------------------------------------------------
-   7. MODALS
+   7. MODALS — 毛玻璃弹窗
+   - 蒙层：暗色半透明 + 强 backdrop-blur 让下层页面模糊化
+   - 容器：半透明白 + 顶部高光 + 柔和悬浮阴影（毛玻璃）
    -------------------------------------------------------------------------- */
 .modal-overlay {
   position: fixed; inset: 0; z-index: var(--z-modal-backdrop);
-  background: oklch(14% 0.02 60 / 0.55); backdrop-filter: blur(4px);
+  background: oklch(14% 0.02 45 / 0.45);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
   display: none; align-items: center; justify-content: center;
   padding: var(--space-6);
 }
 [data-theme="dark"] .modal-overlay {
-  background: oklch(18% 0.015 60 / 0.72);
+  background: oklch(18% 0.015 45 / 0.55);
 }
 
 .modal-overlay.show {
@@ -681,11 +706,34 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .modal {
-  width: 100%; max-width: 520px; max-height: 85dvh; overflow-y: auto;
-  background: var(--surface-overlay); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-2xl); box-shadow: var(--shadow-xl);
+  width: 100%; max-width: 520px; max-height: 85dvh;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 24px 80px oklch(0% 0 0 / 0.25),
+              0 8px 24px oklch(0% 0 0 / 0.15);
   padding: var(--space-6);
   animation: modalEnter var(--duration-300) var(--ease-out-expo);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto !important;
+}
+/* 弹窗顶部高光 */
+.modal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0) 38%);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.modal > * { position: relative; z-index: 1; }
+
+[data-theme="dark"] .modal {
+  background: rgba(38, 32, 28, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .modal-quick { max-width: 420px; }
@@ -905,9 +953,9 @@ button { font-family: inherit; cursor: pointer; }
 .invest-item-name { font-weight: var(--fw-semibold); color: var(--text-primary); }
 .invest-item-detail { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 2px; }
 .invest-item-risk { font-size: 11px; padding: 2px 6px; border-radius: var(--radius-sm); margin-top: 4px; display: inline-block; }
-.invest-item-risk.low { background: oklch(65% 0.15 160 / 0.12); color: var(--income); }
-.invest-item-risk.medium { background: oklch(70% 0.15 85 / 0.12); color: #d97706; }
-.invest-item-risk.high, .invest-item-risk.very_high { background: oklch(55% 0.18 20 / 0.12); color: var(--expense); }
+.invest-item-risk.low { background: var(--expense-soft); color: var(--income); }
+.invest-item-risk.medium { background: color-mix(in srgb, var(--warning-500) 12%, transparent); color: var(--warning-600); }
+.invest-item-risk.high, .invest-item-risk.very_high { background: var(--income-soft); color: var(--expense); }
 .invest-item-values { text-align: right; flex-shrink: 0; }
 .invest-item-values > div { font-size: var(--text-caption); line-height: 1.5; }
 .invest-item-cost { color: var(--text-tertiary); }
@@ -926,7 +974,7 @@ button { font-family: inherit; cursor: pointer; }
 .btn-refresh-quote:hover { background: var(--surface-hover); color: var(--interactive-default); }
 .btn-edit-inv:hover { background: var(--surface-hover); color: var(--primary); }
 .btn-reduce-inv:hover { background: var(--surface-hover); color: var(--income); }
-.btn-delete-inv:hover { background: oklch(55% 0.18 20 / 0.12); color: var(--expense); }
+.btn-delete-inv:hover { background: var(--income-soft); color: var(--expense); }
 
 /* 净值日期标签 */
 .nav-date {
@@ -988,6 +1036,12 @@ button { font-family: inherit; cursor: pointer; }
 .report-controls {
   display: flex; align-items: flex-end; gap: var(--space-3);
   flex-wrap: wrap; margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  animation: fadeUp .5s cubic-bezier(.16, 1, .3, 1);
 }
 .report-controls .btn { height: 42px; align-self: flex-end; }
 .report-controls .filter-select { height: 42px; }
@@ -995,15 +1049,22 @@ button { font-family: inherit; cursor: pointer; }
 .report-content { min-height: 200px; }
 
 /* --------------------------------------------------------------------------
-   12.X ENHANCED REPORT CENTER
+   12.X ENHANCED REPORT CENTER — 灵动版
    -------------------------------------------------------------------------- */
-.report-control-group { display: flex; flex-direction: column; gap: 4px; }
-.report-control-group label { font-size: var(--text-caption); color: var(--text-tertiary); }
+.report-control-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+.report-control-group label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-weight: 600;
+}
 .report-export-group { display: flex; gap: var(--space-2); margin-left: auto; }
 
 .report-header {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: var(--space-5); flex-wrap: wrap; gap: var(--space-2);
+  animation: fadeUp .55s cubic-bezier(.16, 1, .3, 1);
 }
 .report-title { font-size: 22px; font-weight: var(--fw-bold); color: var(--text-primary); }
 .report-date { font-size: var(--text-caption); color: var(--text-tertiary); }
@@ -1012,53 +1073,229 @@ button { font-family: inherit; cursor: pointer; }
   display: grid; grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4); margin-bottom: var(--space-5);
 }
+/* === 报表 KPI / 对比 / 资产 卡：实体卡质感 === */
 .report-kpi-card, .report-compare-card, .report-assets-card {
-  background: var(--surface-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg); padding: var(--space-4);
-  box-shadow: var(--shadow-card); transition: transform var(--duration-150);
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  transition: transform .35s cubic-bezier(.34, 1.56, .64, 1),
+              box-shadow .35s cubic-bezier(.34, 1.56, .64, 1);
+  overflow: hidden;
+  animation: fadeUp .55s cubic-bezier(.16, 1, .3, 1) backwards;
 }
-.report-kpi-card:hover { transform: translateY(-2px); }
+.report-kpi-card::before, .report-compare-card::before, .report-assets-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--glass-hi);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.report-kpi-card > *, .report-compare-card > *, .report-assets-card > * {
+  position: relative; z-index: 1;
+}
+.report-kpi-card:hover, .report-compare-card:hover, .report-assets-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-card-hover);
+}
+/* 4 个 KPI 卡错峰入场 */
+.report-grid .report-kpi-card:nth-child(1) { animation-delay: .05s; }
+.report-grid .report-kpi-card:nth-child(2) { animation-delay: .12s; }
+.report-grid .report-kpi-card:nth-child(3) { animation-delay: .19s; }
+.report-grid .report-kpi-card:nth-child(4) { animation-delay: .26s; }
+.report-grid .report-compare-card { animation-delay: .33s; }
+.report-grid .report-assets-card { animation-delay: .40s; }
+
+/* 顶部色条 + 左 icon 背景 */
+.report-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .report-kpi-card.income { border-top: 3px solid var(--income); }
 .report-kpi-card.expense { border-top: 3px solid var(--expense); }
 .report-kpi-card.balance { border-top: 3px solid var(--primary); }
 .report-kpi-card.rate { border-top: 3px solid var(--warning-500); }
-.report-kpi-label { font-size: var(--text-caption); color: var(--text-tertiary); margin-bottom: 4px; }
-.report-kpi-value { font-size: 24px; font-weight: var(--fw-bold); color: var(--text-primary); }
+.report-kpi-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-weight: 600;
+}
+.report-kpi-value {
+  font-size: clamp(16px, 2vw, 22px) !important;
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
 .report-kpi-card.income .report-kpi-value { color: var(--income); }
 .report-kpi-card.expense .report-kpi-value { color: var(--expense); }
-.report-kpi-sub { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 4px; }
+.report-kpi-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
 
 .report-compare-card { grid-column: span 2; }
-.report-compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-top: var(--space-3); }
-.report-compare-row { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3); background: var(--surface-page); border-radius: var(--radius-md); }
-.report-compare-label { font-size: var(--text-caption); color: var(--text-tertiary); }
-.report-compare-value { font-size: 18px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.report-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.report-compare-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-md);
+  transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+.report-compare-row:hover { transform: translateY(-2px); }
+.report-compare-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.report-compare-value {
+  font-size: clamp(13px, 1.6vw, 18px);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: visible;
+  letter-spacing: -.02em;
+}
 .report-compare-diff { font-size: var(--text-caption); font-weight: var(--fw-semibold); }
 .report-compare-diff.up { color: var(--income); }
 .report-compare-diff.down { color: var(--expense); }
 
 .report-assets-card { grid-column: span 2; text-align: center; }
-.report-assets-value { font-size: 28px; font-weight: var(--fw-bold); color: var(--primary); margin-top: var(--space-2); }
+.report-assets-value {
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: var(--fw-bold);
+  color: var(--primary);
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: -.02em;
+}
 .report-assets-sub { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 4px; }
 
 .report-charts-row {
-  display: grid; grid-template-columns: repeat(2, 1fr);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4); margin-bottom: var(--space-5);
 }
-.report-chart-card { padding: var(--space-4); min-height: 320px; }
+.report-chart-card {
+  padding: var(--space-4);
+  min-height: 320px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  position: relative;
+  overflow: hidden;
+  transition: transform .35s cubic-bezier(.34, 1.56, .64, 1),
+              box-shadow .35s cubic-bezier(.34, 1.56, .64, 1);
+  animation: scaleIn .5s cubic-bezier(.34, 1.56, .64, 1) backwards;
+}
+.report-chart-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--glass-hi);
+  pointer-events: none;
+}
+.report-chart-card > * { position: relative; z-index: 1; }
+.report-chart-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+}
 .report-chart-card canvas { max-height: 260px; }
+.report-charts-row .report-chart-card:nth-child(1) { animation-delay: .20s; }
+.report-charts-row .report-chart-card:nth-child(2) { animation-delay: .30s; }
 
 .report-sections { display: flex; flex-direction: column; gap: var(--space-5); }
-.report-section-title { font-size: 16px; font-weight: var(--fw-semibold); color: var(--text-primary); margin-bottom: var(--space-3); }
+.report-section-title {
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
 
-/* ===== 报表中心重新布局（2026-08-07）：卡片化 + 网格分组 ===== */
-/* 所有大区块统一为卡片外壳，消除与 KPI/图表区的视觉割裂 */
+/* ===== 报表中心：统一实体卡外壳 ===== */
 .report-section {
-  background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
   padding: var(--space-4);
   box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: transform .3s ease-out, box-shadow .3s ease-out;
+  animation: fadeUp .5s cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.report-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--glass-hi);
+  pointer-events: none;
+}
+.report-section > * { position: relative; z-index: 1; }
+.report-section:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ===== 空状态 ===== */
+.empty-hint {
+  text-align: center;
+  padding: var(--space-10) var(--space-6);
+  color: var(--text-tertiary);
+  animation: fadeIn .6s ease-out;
+}
+.empty-icon {
+  font-size: 56px;
+  margin-bottom: var(--space-4);
+  opacity: .4;
+  display: inline-block;
+  animation: blobFloat 4s ease-in-out infinite;
+}
+@keyframes blobFloat {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50%      { transform: translateY(-8px) rotate(-5deg); }
+}
+
+/* ===== 报表控件下拉选择器（玻璃感）===== */
+.filter-select {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: border-color .2s, box-shadow .2s;
+}
+.filter-select:focus {
+  outline: none;
+  border-color: var(--interactive-default) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--interactive-default) 25%, transparent);
 }
 /* 顶层分组之间的垂直间距（图表区自带间距，不重复） */
 .report-grid--overview,
@@ -1151,16 +1388,16 @@ button { font-family: inherit; cursor: pointer; }
 .report-budget-amount-line { font-size: var(--text-caption); color: var(--text-tertiary); margin-bottom: 6px; }
 .report-budget-status { font-size: var(--text-caption); padding: 2px 8px; border-radius: 10px; font-weight: var(--fw-semibold); }
 .report-budget-status.safe { color: var(--income); background: color-mix(in oklab, var(--income) 12%, transparent); }
-.report-budget-status.warn { color: #b45309; background: color-mix(in oklab, #f59e0b 12%, transparent); }
+.report-budget-status.warn { color: var(--warning-600); background: color-mix(in oklab, var(--warning-500) 12%, transparent); }
 .report-budget-status.over { color: var(--expense); background: color-mix(in oklab, var(--expense) 12%, transparent); }
 .report-budget-status.na { color: var(--text-tertiary); background: var(--surface-hover); }
 .report-budget-item.over .report-budget-amount-line { color: var(--expense); }
 .report-progress-bar.safe { background: var(--income); }
-.report-progress-bar.warn { background: #f59e0b; }
+.report-progress-bar.warn { background: var(--warning-500); }
 .report-progress-bar.over { background: var(--expense); }
 .report-progress-bar.na { background: var(--text-tertiary); opacity: 0.4; }
 .report-progress-text.safe { color: var(--income); font-weight: var(--fw-semibold); }
-.report-progress-text.warn { color: #b45309; font-weight: var(--fw-semibold); }
+.report-progress-text.warn { color: var(--warning-600); font-weight: var(--fw-semibold); }
 .report-progress-text.over { color: var(--expense); font-weight: var(--fw-semibold); }
 .report-progress-text.na { color: var(--text-tertiary); }
 
@@ -1556,18 +1793,18 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--text-tertiary); transition: all var(--duration-150);
 }
 .btn-ghost-sm:hover { background: var(--surface-hover); color: var(--text-primary); }
-.btn-danger-sm:hover { background: oklch(50% 0.18 20 / 0.12); color: var(--expense); }
+.btn-danger-sm:hover { background: var(--income-soft); color: var(--expense); }
 
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm);
   font-size: var(--text-caption); font-weight: var(--fw-semibold);
 }
-.badge-income { background: oklch(65% 0.15 160 / 0.12); color: var(--income); }
-.badge-expense { background: oklch(55% 0.18 20 / 0.12); color: var(--expense); }
+.badge-income { background: var(--expense-soft); color: var(--income); }
+.badge-expense { background: var(--income-soft); color: var(--expense); }
 .badge-transfer { background: oklch(65% 0.10 240 / 0.12); color: var(--info-500); }
-.badge-risk.low { background: oklch(65% 0.15 160 / 0.12); color: var(--income); }
-.badge-risk.medium { background: oklch(70% 0.15 85 / 0.12); color: #d97706; }
-.badge-risk.high, .badge-risk.very_high { background: oklch(55% 0.18 20 / 0.12); color: var(--expense); }
+.badge-risk.low { background: var(--expense-soft); color: var(--income); }
+.badge-risk.medium { background: color-mix(in srgb, var(--warning-500) 12%, transparent); color: #d97706; }
+.badge-risk.high, .badge-risk.very_high { background: var(--income-soft); color: var(--expense); }
 
 .color-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-subtle); }
 
@@ -1640,6 +1877,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 @media (max-width: 720px) {
+  body { height: auto; min-height: 100dvh; }
   .app-body { flex-direction: column; height: auto; overflow: visible; }
 
   /* App header: 紧凑移动端 */
@@ -1660,7 +1898,7 @@ button { font-family: inherit; cursor: pointer; }
     padding: var(--space-1) 0; flex-shrink: 0; min-height: 60px;
     order: 99; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
     background: var(--surface-card);
-    box-shadow: 0 -2px 12px oklch(8% 0.02 60 / 0.35);
+    box-shadow: 0 -2px 12px oklch(8% 0.02 45 / 0.35);
     overflow-x: auto; overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }
@@ -1727,5 +1965,666 @@ button { font-family: inherit; cursor: pointer; }
   .ai-edit-acc, .ai-edit-type { min-width: 60px; }
   .ai-edit-cat { min-width: 100px; }
   .ai-edit-amt, .ai-edit-date { min-width: 90px; }
+}
+
+/* ==========================================================================
+   8. 毛玻璃皮肤（参考 xinwallet-web-refined.html）
+   亮 / 暗主题共用同一套样式，仅通过 token 切换。
+   配色：暖棕品牌 · 收入红 / 支出绿（A 股语义）
+   环境光：4 个暖色 blob（左上琥珀 · 右上珊瑚 · 左中薄荷 · 右中桃）
+   容器：半透明 + backdrop-blur + 顶部高光描边
+   不动 DOM 结构 / 类名 / JS，只覆盖 CSS。
+   ========================================================================== */
+
+/* ---- 全局过渡与字体 ---- */
+body {
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    background: var(--surface-page);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background 260ms cubic-bezier(.16, 1, .3, 1),
+                color 260ms cubic-bezier(.16, 1, .3, 1);
+}
+
+/* ---- 页面环境光：4 个暖色 blob 大范围径向渐变（参考文件 .ambient 效果）----
+   模拟 .ambient span { filter: blur(80px); opacity: .9 } 的扩散感：
+   - 加大 blob 尺寸到 50vw+
+   - 透明度从中心向外缓变（圆心饱和，边缘消失）
+   - 用 background-blend-mode: multiply 让暖色叠加在白底上更突出 */
+@media screen {
+    body {
+        background-image:
+            radial-gradient(56vw 56vw at -8vw -12vw, var(--blob-1), transparent 72%),
+            radial-gradient(48vw 48vw at calc(100% + 4vw) 6vh, var(--blob-2), transparent 70%),
+            radial-gradient(52vw 52vw at 20vw calc(100% + 18vw), var(--blob-3), transparent 72%),
+            radial-gradient(40vw 40vw at calc(100% - 12vw) calc(100% + 10vw), var(--blob-4), transparent 70%);
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        background-size: 100% 100%;
+    }
+    /* 用伪元素叠加 saturate 滤镜，让暖色更"梦幻" */
+    body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: inherit;
+        filter: saturate(2);
+    }
+}
+
+/* ---- 顶部导航 / 侧栏：玻璃化 ---- */
+.app-header {
+    background: color-mix(in oklab, var(--surface-card) 72%, transparent) !important;
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border-bottom: 1px solid color-mix(in oklab, var(--border-subtle) 55%, transparent) !important;
+}
+.sidebar {
+    background: color-mix(in oklab, var(--text-primary) 3%, transparent);
+    border-right: 1px solid var(--glass-border);
+}
+
+/* ---- 侧栏导航项 ---- */
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: .2s;
+    margin-bottom: 2px;
+    position: relative;
+}
+.nav-item:hover {
+    background: color-mix(in oklab, var(--text-primary) 6%, transparent);
+    color: var(--text-primary);
+}
+.nav-item.active {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: var(--shadow-card);
+}
+.nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 3px;
+    height: 20px;
+    border-radius: 2px;
+    background: var(--interactive-default);
+}
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-group-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 14px 12px 6px;
+}
+
+/* ---- 账本切换 / 主题切换 ---- */
+.book-switcher {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--surface-hover) 72%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border-subtle) 45%, transparent);
+}
+.book-switcher-item {
+    font-size: 13px;
+    padding: 5px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    transition: .2s;
+}
+.book-switcher-item.active {
+    background: var(--interactive-default);
+    color: oklch(14% 0.014 60);
+    font-weight: 600;
+}
+.theme-switcher {
+    display: flex;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--surface-hover) 72%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border-subtle) 45%, transparent);
+}
+.theme-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    transition: .2s;
+    opacity: .6;
+}
+.theme-btn.active {
+    background: var(--surface-card);
+    opacity: 1;
+    box-shadow: var(--shadow-card);
+}
+
+/* ---- 用户头像 ---- */
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: color-mix(in oklab, var(--surface-hover) 85%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border-subtle) 45%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--text-secondary);
+}
+
+/* ---- Logo ---- */
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-decoration: none;
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -.02em;
+}
+.logo-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface-card) url('../images/logo.png') center/22px no-repeat;
+    border: 1px solid color-mix(in oklab, var(--border-subtle) 50%, transparent);
+    box-shadow: var(--shadow-sm), inset 0 1px 0 oklch(100% 0 0 / 0.45);
+    overflow: hidden;
+}
+
+/* ---- 实体卡质感（不透明 + 暖白 + 多层柔和阴影 + 顶部高光）----
+   实体卡 vs 毛玻璃：实色不透明 + 柔和多层阴影 + 顶部细微高光 + 悬浮感。*/
+.glass-card, .card, .chart-card, .kpi-card, .overview-card,
+.report-kpi-card, .report-compare-card, .report-assets-card,
+.report-section {
+    position: relative;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    color: var(--text-primary);
+    transition: transform .25s cubic-bezier(.16, 1, .3, 1),
+                box-shadow .25s cubic-bezier(.16, 1, .3, 1);
+}
+/* 卡片顶部高光（实色上叠加一道亮白，营造"光从上来"的立体感） */
+.glass-card::before, .card::before, .chart-card::before, .kpi-card::before,
+.overview-card::before, .modal::before,
+.report-kpi-card::before, .report-compare-card::before,
+.report-assets-card::before, .report-section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--glass-hi);
+    opacity: 1;
+}
+
+/* 卡片内部元素浮在 ::before 之上 */
+.glass-card > *, .card > *, .chart-card > *, .kpi-card > *,
+.overview-card > *, .modal > *,
+.report-kpi-card > *, .report-compare-card > *,
+.report-assets-card > *, .report-section > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* ---- KPI 卡 ---- */
+.kpi-card {
+    padding: 16px 18px;
+    display: flex;
+    gap: 13px;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: .25s cubic-bezier(.16, 1, .3, 1);
+}
+.kpi-card:hover, .glass-card:hover, .card:hover, .chart-card:hover,
+.overview-card:hover, .holding:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card-hover);
+}
+.kpi-icon {
+    font-size: 20px;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in oklab, var(--interactive-default) 16%, transparent);
+}
+.kpi-label { font-size: 12px; color: var(--text-tertiary); }
+.kpi-value {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+.kpi-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.kpi-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--interactive-default) 20%, transparent);
+    color: var(--interactive-default);
+    vertical-align: middle;
+}
+
+/* ---- 卡片标题 ---- */
+.card-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+}
+.card-sub { font-size: 12px; color: var(--text-tertiary); font-weight: 400; }
+.card-desc { font-size: 13px; color: var(--text-secondary); margin: -8px 0 14px; }
+.see-all {
+    font-size: 12px;
+    color: var(--interactive-default);
+    cursor: pointer;
+    margin-left: auto;
+}
+
+/* ---- 仪表盘网格 ---- */
+.dash-kpi-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+.dash-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    grid-auto-rows: min-content;
+    gap: 14px;
+}
+.dash-grid .balance-overview-card { grid-row: span 2; }
+.chart-card canvas, .chart-card svg {
+    width: 100% !important;
+    display: block;
+}
+
+/* ---- 按钮（覆盖真实项目 .btn-primary 等）---- */
+.btn, button.btn {
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: all .2s cubic-bezier(.16, 1, .3, 1);
+    font-weight: 500;
+}
+.btn-primary, button.btn-primary {
+    background: var(--interactive-default);
+    color: oklch(14% 0.014 60);
+    box-shadow: 0 4px 14px color-mix(in oklab, var(--interactive-default) 35%, transparent);
+}
+.btn-primary:hover, button.btn-primary:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+}
+.btn-ghost, button.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+}
+.btn-ghost:hover, button.btn-ghost:hover {
+    background: color-mix(in oklab, var(--text-primary) 8%, transparent);
+}
+.btn-sm { font-size: 13px; padding: 6px 12px; }
+.btn-block { width: 100%; }
+/* ---- 标签胶囊（涨/跌）---- */
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+.pill.up { color: var(--income); background: var(--income-soft); }
+.pill.down { color: var(--expense); background: var(--expense-soft); }
+
+/* ---- 弹窗 / 蒙层 ---- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: oklch(10% 0.02 60 / .45);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+    width: 100%;
+    max-width: 520px;
+    padding: 26px;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+.modal-header h3 { font-size: 17px; font-weight: 700; }
+.modal-close {
+    border: none;
+    background: color-mix(in oklab, var(--text-primary) 8%, transparent);
+    color: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* ---- 持仓 / 目标进度 ---- */
+.holding {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 14px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    background: color-mix(in oklab, var(--text-primary) 4%, transparent);
+    border: 1px solid var(--border-subtle);
+}
+.holding .ico {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: color-mix(in oklab, var(--interactive-default) 14%, transparent);
+}
+.holding .meta { flex: 1; min-width: 0; }
+.holding .nm { font-size: 14px; font-weight: 600; }
+.holding .sub { font-size: 11px; color: var(--text-tertiary); }
+.holding .pl {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.goal { margin-bottom: 14px; }
+.goal-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 7px;
+}
+.goal-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--text-primary) 8%, transparent);
+    overflow: hidden;
+}
+.goal-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-400), var(--accent-600));
+}
+
+/* ---- 滚动条 ---- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--text-primary) 18%, transparent);
+    border-radius: 999px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- 无 backdrop-filter 兜底 ---- */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root {
+        --surface-card: oklch(100% 0 0 / 0.95);
+        --surface-elevated: oklch(100% 0 0 / 0.97);
+        --surface-overlay: oklch(100% 0 0 / 0.99);
+    }
+    [data-theme="dark"] {
+        --surface-card: oklch(26% 0.014 60 / 0.96);
+        --surface-elevated: oklch(32% 0.016 60 / 0.97);
+        --surface-overlay: oklch(30% 0.015 60 / 0.98);
+    }
+    .glass-card, .card, .chart-card, .kpi-card, .overview-card,
+    .modal, .app-header, .sidebar {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}
+
+/* ==========================================================================
+   9. 微动效（灵动）
+   - 入场动画 · 数字滚动 · 按钮波纹 · 环境光呼吸 · 卡片浮起
+   - 不改变功能 / 布局 / DOM，仅做 CSS 装饰与微 JS 钩子
+   ========================================================================== */
+
+/* ---- 入场动画 ---- */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* ---- KPI / 卡片 stagger 入场 ---- */
+.page > .dash-kpi-bar > .kpi-card,
+.page > .glass-card,
+.page > .dash-grid > * {
+    animation: fadeUp .55s cubic-bezier(.16, 1, .3, 1) backwards;
+}
+.page > .dash-kpi-bar > .kpi-card:nth-child(1) { animation-delay: .04s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(2) { animation-delay: .10s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(3) { animation-delay: .16s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(4) { animation-delay: .22s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(5) { animation-delay: .28s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(6) { animation-delay: .34s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(7) { animation-delay: .40s; }
+.page > .dash-kpi-bar > .kpi-card:nth-child(8) { animation-delay: .46s; }
+.page > .glass-card:nth-of-type(1) { animation-delay: .20s; }
+.page > .glass-card:nth-of-type(2) { animation-delay: .30s; }
+.page > .glass-card:nth-of-type(3) { animation-delay: .40s; }
+.page > .glass-card:nth-of-type(4) { animation-delay: .50s; }
+
+/* ---- 页面切换淡入 ---- */
+.page.active {
+    animation: fadeIn .35s ease-out;
+}
+
+/* ---- KPI 卡 hover 浮起（更灵动的弹性） ---- */
+.kpi-card {
+    transition: transform .35s cubic-bezier(.34, 1.56, .64, 1),
+                box-shadow .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+.kpi-card:hover {
+    transform: translateY(-5px) scale(1.015);
+}
+.kpi-card:active {
+    transform: translateY(-2px) scale(0.99);
+    transition: transform .12s ease-out;
+}
+
+/* ---- KPI icon 在卡 hover 时微微旋转+缩放 ---- */
+.kpi-card .kpi-icon {
+    transition: transform .4s cubic-bezier(.34, 1.56, .64, 1),
+                background .3s ease-out;
+}
+.kpi-card:hover .kpi-icon {
+    transform: rotate(-8deg) scale(1.1);
+}
+
+/* ---- 按钮按压反馈 + 涟漪 ---- */
+.btn, button.btn, .quick-add-btn {
+    transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+                box-shadow .25s ease-out,
+                filter .2s ease-out,
+                background .2s ease-out;
+    position: relative;
+    overflow: hidden;
+}
+.btn:active, button.btn:active, .quick-add-btn:active {
+    transform: scale(0.96);
+    transition: transform .08s ease-out;
+}
+/* 涟漪效果：点击时生成一个扩散圆 */
+.btn::after, button.btn::after, .quick-add-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 70%);
+    opacity: 0;
+    transition: opacity .35s ease-out;
+    pointer-events: none;
+}
+.btn:active::after, button.btn:active::after, .quick-add-btn:active::after {
+    opacity: 1;
+    transition: opacity .15s;
+}
+
+/* ---- 侧栏导航项切换动画 ---- */
+.nav-item {
+    transition: background .25s ease-out,
+                color .25s ease-out,
+                padding-left .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+.nav-item:hover {
+    padding-left: 16px;     /* hover 时图标向右轻推 */
+}
+.nav-item.active::before {
+    transition: height .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ---- 主题切换按钮 hover 旋转 ---- */
+.theme-btn {
+    transition: transform .35s cubic-bezier(.34, 1.56, .64, 1),
+                background .2s ease-out;
+}
+.theme-btn:hover {
+    transform: scale(1.18) rotate(-12deg);
+}
+
+/* ---- 用户头像 hover 弹一下 ---- */
+.user-avatar {
+    transition: transform .35s cubic-bezier(.34, 1.56, .64, 1);
+    cursor: pointer;
+}
+.user-avatar:hover {
+    transform: scale(1.1);
+}
+
+/* ---- 进度条 / 储蓄目标填充动画 ---- */
+.goal-fill, .progress-fill, .bar-fill {
+    transition: width 1.2s cubic-bezier(.16, 1, .3, 1);
+}
+
+/* ---- 持仓 / 储蓄目标卡片入场 ---- */
+.inv-grid-card, .holding, .goal {
+    animation: scaleIn .45s cubic-bezier(.34, 1.56, .64, 1) backwards;
+}
+.inv-grid-card:nth-child(1) { animation-delay: .05s; }
+.inv-grid-card:nth-child(2) { animation-delay: .10s; }
+.inv-grid-card:nth-child(3) { animation-delay: .15s; }
+.inv-grid-card:nth-child(4) { animation-delay: .20s; }
+.inv-grid-card:nth-child(5) { animation-delay: .25s; }
+.inv-grid-card:nth-child(6) { animation-delay: .30s; }
+.inv-grid-card:nth-child(7) { animation-delay: .35s; }
+.inv-grid-card:nth-child(8) { animation-delay: .40s; }
+.inv-grid-card:nth-child(9) { animation-delay: .45s; }
+.inv-grid-card:nth-child(10) { animation-delay: .50s; }
+.inv-grid-card:nth-child(11) { animation-delay: .55s; }
+.inv-grid-card:nth-child(12) { animation-delay: .60s; }
+.inv-grid-card:nth-child(13) { animation-delay: .65s; }
+.inv-grid-card:nth-child(14) { animation-delay: .70s; }
+
+/* ---- 环境光 blob：静态铺底，不做漂移/呼吸 ----
+   说明：背景光斑此前挂着 blobDrift1/2 两条 infinite 动画（14s / 18s），
+   全屏 fixed 层持续位移 + 缩放，观感上就是背景色来回移动，已移除。
+   静态渐变本身保留（body 的 background-image 与下方 ::after 叠加层）。 */
+@media screen {
+    body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+            radial-gradient(40vw 40vw at calc(100% + 4vw) 8vh, var(--blob-2), transparent 70%),
+            radial-gradient(36vw 36vw at calc(100% - 10vw) calc(100% + 10vw), var(--blob-4), transparent 70%);
+        background-repeat: no-repeat;
+        background-size: 100% 100%;
+        filter: saturate(2);
+    }
+}
+
+/* ---- 徽章 / pill 浮动效果 ---- */
+.kpi-badge, .pill {
+    transition: transform .25s ease-out;
+}
+.kpi-card:hover .kpi-badge,
+.holding:hover .pill {
+    transform: scale(1.08);
+}
+
+/* ---- 表格行 hover ---- */
+.trans-row, .inv-txn-row, tbody tr {
+    transition: background .2s ease-out, transform .2s ease-out;
+}
+.trans-row:hover, .inv-txn-row:hover, tbody tr:hover {
+    transform: translateX(2px);
+}
+
+/* ---- Chart.js 容器入场 ---- */
+.chart-card canvas {
+    animation: fadeIn .8s ease-out backwards;
+    animation-delay: .3s;
+}
+
+/* 注：原 glassShimmer（玻璃表面入射光缓慢移动）已移除 —— 无任何选择器引用，
+   属死代码，且语义同为"背景循环移动"，与本次去除背景动态的诉求一致。 */
+
+/* ---- 减少动画偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 

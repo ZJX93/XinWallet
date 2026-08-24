@@ -5,7 +5,7 @@ import router from '@ohos.router';
 import { Session } from '../common/store/Session';
 import { normalizeBaseUrl } from '../common/config';
 import { COLORS, applyTheme } from '../common/theme';
-import { TopBar, RowItem, LoadingBox } from '../common/components/Components';
+import { TopBar, RowItem, LoadingBox, BottomSheet, AppBackground } from '../common/components/Components';
 
 function themeLabel(mode: string): string {
   if (mode === 'light') return '浅色';
@@ -23,7 +23,7 @@ struct Settings {
   @State version: string = '1.0.0';
 
   aboutToAppear(): void {
-    this.themeMode = (AppStorage.Get('themeMode') as string) || 'system';
+    this.themeMode = (AppStorage.get('themeMode') as string) || 'system';
     Session.getBaseUrl().then(u => { this.serverDisplay = (u || '').replace('/api/', ''); });
   }
 
@@ -31,7 +31,7 @@ struct Settings {
     const order = ['light', 'dark', 'system'];
     const i = order.indexOf(this.themeMode);
     this.themeMode = order[(i + 1) % 3];
-    AppStorage.Set('themeMode', this.themeMode);
+    AppStorage.setOrCreate('themeMode', this.themeMode);
     applyTheme();
   }
 
@@ -52,23 +52,24 @@ struct Settings {
   }
 
   build() {
-    Column() {
-      TopBar({ title: '设置' })
-      Scroll() {
-        Column({ space: 8 }) {
-          RowItem({ icon: '🎨', title: '外观主题', value: themeLabel(this.themeMode), onItemClick: () => this.cycleTheme() })
-          RowItem({ icon: '🌐', title: '服务器地址', value: this.serverDisplay || '未设置', onItemClick: () => { this.newServer = this.serverDisplay; this.showServer = true; } })
-          RowItem({ icon: 'ℹ️', title: '关于我们', value: 'v' + this.version, onItemClick: () => {/* 双击检查更新：简化为展示版本 */ } })
-          Blank().height(20)
-        }.padding(12)
-      }.layoutWeight(1)
-      if (this.showServer) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showServer = false)
-          Column() { this.ServerSheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-      }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+    Stack() {
+      AppBackground()
+      Column() {
+        TopBar({ title: '设置' })
+        Scroll() {
+          Column({ space: 8 }) {
+            RowItem({ icon: '🎨', title: '外观主题', value: themeLabel(this.themeMode), onItemClick: () => this.cycleTheme() })
+            RowItem({ icon: '🌐', title: '服务器地址', value: this.serverDisplay || '未设置', onItemClick: () => { this.newServer = this.serverDisplay; this.showServer = true; } })
+            RowItem({ icon: 'ℹ️', title: '关于我们', value: 'v' + this.version, onItemClick: () => {/* 双击检查更新：简化为展示版本 */ } })
+            Blank().height(20)
+          }.padding(12)
+        }.layoutWeight(1)
+        if (this.showServer) {
+          BottomSheet({ show: this.showServer, maxHeight: '65%', onDismiss: () => { this.showServer = false; } }) {
+            this.ServerSheet()
+          }
+        }
+      }.width('100%').height('100%')
+    }.width('100%').height('100%')
   }
 }

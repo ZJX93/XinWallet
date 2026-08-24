@@ -9,7 +9,7 @@ import dataPreferences from '@ohos.data.preferences';
 import cryptoFramework from '@ohos.security.cryptoFramework';
 import util from '@ohos.util';
 import { COLORS } from '../common/theme';
-import { TopBar, LoadingBox } from '../common/components/Components';
+import { TopBar, LoadingBox, AppBackground } from '../common/components/Components';
 
 async function sha256(s: string): Promise<string> {
   const encoder = new util.TextEncoder();
@@ -120,33 +120,38 @@ struct AppLock {
   }
 
   build() {
-    Column() {
-      TopBar({ title: '应用锁', onBack: () => router.back() })
-      if (this.showSet) {
-        Column({ space: 8 }) {
-          Text(this.step === 1 ? '设置 4 位 PIN' : '再次输入确认').fontSize(16).fontWeight(FontWeight.Bold)
-          if (this.err) { Text(this.err).fontSize(13).fontColor(COLORS.danger) }
-          this.PinDots()
-          this.KeyPad()
-        }.width('100%').padding(20).alignItems(HorizontalAlign.Center)
-      } else {
-        Column({ space: 0 }) {
-          Row({ space: 12 }) {
-            Text('启用应用锁').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
-            Toggle({ type: ToggleType.Switch, isOn: this.isEnabled })
-              .onChange((v: boolean) => this.toggleEnable(v))
-          }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
-            .backgroundColor(COLORS.card)
-          if (this.hasPin) {
+    Stack() {
+      AppBackground()
+      Column() {
+        TopBar({ title: '应用锁', onBack: () => router.back() })
+        if (this.showSet) {
+          Column({ space: 8 }) {
+            Text(this.step === 1 ? '设置 4 位 PIN' : '再次输入确认').fontSize(16).fontWeight(FontWeight.Bold)
+            if (this.err) { Text(this.err).fontSize(13).fontColor(COLORS.danger) }
+            this.PinDots()
+            this.KeyPad()
+          }.width('100%').padding(20).alignItems(HorizontalAlign.Center)
+        } else {
+          Column({ space: 0 }) {
             Row({ space: 12 }) {
-              Text('修改 PIN').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
-              Text('›').fontSize(20).fontColor(COLORS.placeholder)
+              Text('启用应用锁').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
+              Toggle({ type: ToggleType.Switch, isOn: this.isEnabled })
+                .onChange((v: boolean) => this.toggleEnable(v))
             }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
-              .backgroundColor(COLORS.card).margin({ top: 8 })
-              .onClick(() => this.openSet())
-          }
-        }.width('100%').padding(12)
-      }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+              .backgroundColor(COLORS.cardGlass).borderRadius(12)
+              .border({ width: 0.5, color: COLORS.outlineVariant })
+            if (this.hasPin) {
+              Row({ space: 12 }) {
+                Text('修改 PIN').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
+                Text('›').fontSize(20).fontColor(COLORS.placeholder)
+              }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
+                .backgroundColor(COLORS.cardGlass).borderRadius(12).margin({ top: 8 })
+                .border({ width: 0.5, color: COLORS.outlineVariant })
+                .onClick(() => this.openSet())
+            }
+          }.width('100%').padding(12)
+        }
+      }.width('100%').height('100%')
+    }.width('100%').height('100%')
   }
 }

@@ -17,6 +17,14 @@ body {
   padding: var(--space-6);
   transition: background var(--duration-300) var(--ease-out-quart),
     color var(--duration-300) var(--ease-out-quart);
+  /* 莫兰迪环境柔光 */
+  background-image:
+    radial-gradient(44rem 34rem at 12% -8%, var(--blob-1), transparent 62%),
+    radial-gradient(40rem 32rem at 108% 6%, var(--blob-2), transparent 60%),
+    radial-gradient(36rem 28rem at 50% 116%, var(--blob-3), transparent 62%),
+    radial-gradient(26rem 22rem at 86% 78%, var(--blob-4), transparent 62%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 .login-page {
@@ -24,12 +32,16 @@ body {
 }
 
 .login-card {
-  background: var(--surface-card);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-2xl);
   padding: var(--space-10) var(--space-8);
   box-shadow: var(--shadow-xl);
   text-align: center;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  background-image: var(--glass-hi);
+  position: relative;
 }
 
 .login-brand {

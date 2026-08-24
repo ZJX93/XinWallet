@@ -1,12 +1,14 @@
 /**
- * 账户（对齐安卓 AccountsScreen.kt）：总资产 + 按类型分组列表 + 长按/点击 + 新增账户。
+ * 账户（对齐安卓 AccountsScreen.kt）：总资产 + 按类型分组列表 + 点击进详情 + 新增账户。
+ * 编辑/销户/删除统一在 AccountDetail 页，本页不再提供第二套入口。
  */
 import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney } from '../common/theme';
+import { toast, toastLong } from '../common/ui';
+import { COLORS, LAYOUT } from '../common/theme';
 import { Account, AccountsResponse } from '../common/models';
-import { BalanceCard, SectionTitle, EmptyState, LoadingBox, AccountListItem, TopBar, FloatingButton } from '../common/components/Components';
+import { BalanceCard, SectionTitle, EmptyState, LoadingBox, AccountListItem, TopBar, FloatingButton, Chip, BottomSheet, SheetHeader, Card, AppBackground } from '../common/components/Components';
 
 const TYPES: string[] = ['现金', '储蓄卡', '信用卡', '电子支付', '金融账户', '数字货币', '其他'];
 const ICONS: string[] = ['💵', '🏦', '💳', '📱', '📊', '🪙', '💰'];
@@ -21,7 +23,7 @@ export struct AccountsPage {
   @StorageProp('themeMode') themeMode: string = 'system';
   @State accounts: Account[] = [];
   @State total: number = 0;
-  @State loading: boolean = false;
+  @State loading: boolean = true;   // 首帧即骨架屏；load() 里 finally 复位
   @State showAdd: boolean = false;
   @State fName: string = '';
   @State fType: string = '现金';
@@ -30,11 +32,18 @@ export struct AccountsPage {
   @State fIcon: string = '💵';
   @State fAnnualRate: string = '';
   @State fInterestCycle: string = 'monthly';
+  /**
+   * 正在编辑的账户；null = 新增模式。
+   * 表单（AddSheet）新增/编辑共用 —— 字段完全相同，分成两套只会漂移。
+   */
+  @State editing: Account | null = null;
+  // 已移除 acting / confirmKind / confirmTarget：
+  // 它们只服务于列表页的「⋯」操作面板与其二次确认，功能已收敛到 AccountDetail 页。
 
   aboutToAppear(): void { this.load(); }
 
   async load(): Promise<void> {
-    this.loading = false;
+    this.loading = true;
     try {
       const r = await Api.getAccounts();
       if (r.success && r.data) {
@@ -43,6 +52,7 @@ export struct AccountsPage {
         this.total = d.totalAssets ?? this.accounts.reduce((s, a) => s + (a.balance || 0), 0);
       }
     } catch (e) { console.error('Accounts:', (e as ApiError).message); }
+    finally { this.loading = false; }
   }
 
   grouped(): GroupedItem[] {
@@ -58,39 +68,83 @@ export struct AccountsPage {
     return res;
   }
 
+  /** 打开新增表单（清空字段） */
+  openCreate(): void {
+    this.editing = null;
+    this.fName = ''; this.fType = '现金'; this.fBalance = ''; this.fLimit = '';
+    this.fIcon = '💵'; this.fAnnualRate = ''; this.fInterestCycle = 'monthly';
+    this.showAdd = true;
+  }
+
+  /** 打开编辑表单（回填字段） */
+  openEdit(a: Account): void {
+    this.editing = a;
+    this.fName = a.name || '';
+    this.fType = a.type || '现金';
+    // 编辑时这一栏是「当前余额」而不是「开户余额」，且服务端不接受直接改余额
+    // （余额由复式记账推导，见 server/routes/transactions.js 的 computeAccountBalance）。
+    // 所以回填后置灰不可编辑，避免用户以为改了能生效。
+    this.fBalance = String(a.balance ?? 0);
+    this.fLimit = String(a.credit_limit ?? 0);
+    this.fIcon = a.icon || '💵';
+    this.fAnnualRate = a.annual_rate === undefined || a.annual_rate === null ? '' : String(a.annual_rate);
+    this.fInterestCycle = a.interest_cycle || 'monthly';
+    this.showAdd = true;
+  }
+
   async save(): Promise<void> {
-    if (!this.fName) return;
+    if (!this.fName) { toast('请填写账户名称'); return; }
     try {
       const rate = this.fAnnualRate.trim() === '' ? undefined : Number(this.fAnnualRate);
-      await Api.createAccount({
-        name: this.fName,
-        type: this.fType,
-        icon: this.fIcon,
-        opening_balance: Number(this.fBalance) || 0,
-        credit_limit: Number(this.fLimit) || 0,
-        annual_rate: rate,
-        interest_cycle: this.fInterestCycle
-      });
+      const target = this.editing;
+      if (target) {
+        // 编辑：不传 opening_balance —— 余额由账本推导，直接改会与流水对不上
+        await Api.updateAccount(target.id, {
+          name: this.fName,
+          type: this.fType,
+          icon: this.fIcon,
+          credit_limit: Number(this.fLimit) || 0,
+          annual_rate: rate,
+          interest_cycle: this.fInterestCycle
+        });
+      } else {
+        await Api.createAccount({
+          name: this.fName,
+          type: this.fType,
+          icon: this.fIcon,
+          opening_balance: Number(this.fBalance) || 0,
+          credit_limit: Number(this.fLimit) || 0,
+          annual_rate: rate,
+          interest_cycle: this.fInterestCycle
+        });
+      }
       this.showAdd = false;
+      this.editing = null;
       this.fName = ''; this.fBalance = ''; this.fLimit = ''; this.fAnnualRate = '';
       this.fInterestCycle = 'monthly';
       this.load();
-    } catch (e) { /* ignore */ }
+      toast(target ? '已更新' : '已保存');
+    } catch (e) {
+      toastLong((this.editing ? '更新' : '保存') + '账户失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
+
+  /*
+   * 已移除 doClose() / doDelete()：唯一调用方是列表页的操作面板，
+   * 面板撤掉后它们就是死代码。销户/删除逻辑在 AccountDetail.ets 里有等价实现
+   * （含服务端拒绝时「请改用销户」的原文提示），不必在此保留第二份。
+   */
 
   @Builder AddSheet() {
     Column({ space: 12 }) {
-      Text('新增账户').fontSize(16).fontWeight(FontWeight.Bold)
+      Text(this.editing ? '编辑账户' : '新增账户').fontSize(16).fontWeight(FontWeight.Bold)
       TextInput({ placeholder: '账户名称', text: this.fName }).onChange((v: string) => this.fName = v)
       Row({ space: 8 }) {
         Text('类型').fontSize(14).fontColor(COLORS.textSecondary)
         Scroll() {
-          Row({ space: 8 }) {
+          Row({ space: 6 }) {
             ForEach(TYPES, (t: string) => {
-              Text(t).fontSize(13).padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                .backgroundColor(this.fType === t ? COLORS.brand : COLORS.brandBgLight)
-                .fontColor(this.fType === t ? '#FFFFFF' : COLORS.textPrimary)
-                .borderRadius(14).onClick(() => this.fType = t)
+              Chip({ label: t, active: this.fType === t, onTap: () => { this.fType = t; } })
             })
           }
         }.scrollable(ScrollDirection.Horizontal).layoutWeight(1)
@@ -98,12 +152,21 @@ export struct AccountsPage {
       Row({ space: 8 }) {
         Text('图标').fontSize(14).fontColor(COLORS.textSecondary)
         ForEach(ICONS, (ic: string) => {
-          Text(ic).fontSize(20).padding(6)
-            .backgroundColor(this.fIcon === ic ? COLORS.brandBgLight : '#00000000')
-            .borderRadius(8).onClick(() => this.fIcon = ic)
+          Chip({ label: ic, active: this.fIcon === ic, onTap: () => { this.fIcon = ic; } })
         })
       }
-      TextInput({ placeholder: '开户余额', text: this.fBalance }).onChange((v: string) => this.fBalance = v)
+      // 编辑态下这一栏是「当前余额」，且服务端不接受直接改（余额由复式记账推导）。
+      // 置灰 + 换 placeholder 说明原因，比留一个改了不生效的输入框诚实。
+      if (this.editing) {
+        Column({ space: 4 }) {
+          TextInput({ placeholder: '当前余额', text: this.fBalance })
+            .enabled(false).opacity(0.6)
+          Text('余额由流水推导，如需调整请记一笔流水')
+            .fontSize(11).fontColor(COLORS.textSecondary)
+        }.alignItems(HorizontalAlign.Start).width('100%')
+      } else {
+        TextInput({ placeholder: '开户余额', text: this.fBalance }).onChange((v: string) => this.fBalance = v)
+      }
       TextInput({ placeholder: '信用额度(信用卡)', text: this.fLimit }).onChange((v: string) => this.fLimit = v)
       TextInput({ placeholder: '年利率(%) 选填', text: this.fAnnualRate })
         .type(InputType.Number).onChange((v: string) => this.fAnnualRate = v)
@@ -121,9 +184,22 @@ export struct AccountsPage {
         }.scrollable(ScrollDirection.Horizontal).layoutWeight(1)
       }
       Button('保存').width('100%').onClick(() => this.save())
-      Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showAdd = false)
+      Button('取消').width('100%').backgroundColor(COLORS.divider)
+        .onClick(() => { this.showAdd = false; this.editing = null; })
     }
   }
+
+  /*
+   * 已移除：ActionSheet（编辑/销户/彻底删除操作面板）与 ConfirmSheet（二次确认），
+   * 以及配套的 doClose() / doDelete()。
+   *
+   * 这三个操作在 AccountDetail 页已完整实现（含同样的二次确认文案）。
+   * 列表页再放一套是同一功能的第二份实现 —— 两套表单、两套确认，
+   * 改一处必漏一处，用户也反馈「重复」。现收敛为：
+   *   列表页 = 浏览 + 选择（点击进详情）
+   *   详情页 = 管理（编辑 / 销户 / 删除）
+   * 新增账户仍留在列表页的 FAB，因为新增时还没有「某个账户」可进详情。
+   */
 
   build() {
     Column() {
@@ -140,25 +216,41 @@ export struct AccountsPage {
                 Column({ space: 6 }) {
                   SectionTitle({ text: g.type })
                   ForEach(g.list, (a: Account) => {
-                    AccountListItem({ account: a, onTap: () => router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } }) })
+                    // 只保留「点击进详情」这一条路径。
+                    //
+                    // 原先这里还有可见的「⋯」+ 长按两个入口，弹出「编辑/销户/彻底删除」
+                    // 操作面板 —— 但 AccountDetail 页顶部本来就有同样这三个操作，
+                    // 属于同一功能在两处实现（两套表单、两套二次确认，改一处漏一处）。
+                    // 用户反馈「这个功能重复」，故收敛到详情页作为唯一入口：
+                    // 列表负责浏览与选择，详情负责管理。
+                    AccountListItem({
+                      account: a,
+                      onTap: () => router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } })
+                    })
                   }, (a: Account) => a.id.toString())
                 }
               }, (g: ESObject) => g.type)
             }
-            Blank().height(20)
+            // FAB 悬浮在 88%，最后一项需避让，否则被圆钮压住无法点击
+            Blank().height(LAYOUT.fabSafe)
           }.padding(12)
         }.layoutWeight(1)
       }
       // FAB
-      FloatingButton({ onTap: () => { this.showAdd = true; } })
-      if (this.showAdd) {
-        Column() {
-          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAdd = false)
-          Column() { this.AddSheet() }.width('100%').backgroundColor(COLORS.card)
-            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      FloatingButton({ onTap: () => this.openCreate() })
+      BottomSheet({ show: this.showAdd, maxHeight: '85%', onDismiss: () => { this.showAdd = false; this.editing = null; } }) {
+        Column({ space: 12 }) {
+          SheetHeader({
+            title: this.editing ? '编辑账户' : '新增账户',
+            subtitle: this.editing ? '修改后立即生效' : '创建后会出现在账户列表中',
+            onClose: () => { this.showAdd = false; this.editing = null; }
+          })
+          this.AddSheet()
+        }
       }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+      // 「账户操作」与「确认销户/删除」两个 BottomSheet 已随操作面板一起移除，
+      // 对应能力见 AccountDetail 页。
+    }.width('100%').height('100%')
   }
 }
 
@@ -166,6 +258,9 @@ export struct AccountsPage {
 @Component
 struct Accounts {
   build() {
-    Column() { AccountsPage() }.width('100%').height('100%')
+    Stack() {
+      AppBackground()
+      Column() { AccountsPage() }.width('100%').height('100%')
+    }.width('100%').height('100%')
   }
 }

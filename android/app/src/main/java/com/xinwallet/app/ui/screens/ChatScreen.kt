@@ -110,9 +110,9 @@ import java.io.File
 /* ============================================================
  * 公共色（按截图蓝色信息气泡 / 暖棕系强调色）
  * ============================================================ */
-private val IntroBubbleBg = Color(0xFFEAF2FE)
-private val IntroBubbleBorder = Color(0xFFB7D4FB)
-private val IntroBubbleText = Color(0xFF1F3A6E)
+private val IntroBubbleBg = Color(0xFFFCEFE5)
+private val IntroBubbleBorder = Color(0xFFD39562)
+private val IntroBubbleText = Color(0xFF2E1200)
 
 /* ============================================================
  * 屏幕

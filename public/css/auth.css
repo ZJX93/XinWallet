@@ -6,11 +6,11 @@
 .auth-overlay {
   position: fixed; inset: 0; z-index: 1000;
   display: none; align-items: center; justify-content: center;
-  background: oklch(14% 0.02 60 / 0.55); backdrop-filter: blur(12px);
+  background: oklch(14% 0.02 45 / 0.55); backdrop-filter: blur(12px);
   animation: fadeIn var(--duration-300) var(--ease-out-quart);
 }
 [data-theme="dark"] .auth-overlay {
-  background: oklch(18% 0.015 60 / 0.72);
+  background: oklch(18% 0.015 45 / 0.72);
 }
 
 .auth-overlay.show { display: flex; }
@@ -23,6 +23,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-xl);
+  background-image: var(--glass-hi);
   animation: modalSlide var(--duration-500) var(--ease-out-expo);
 }
 

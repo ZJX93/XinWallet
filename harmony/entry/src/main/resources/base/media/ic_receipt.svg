@@ -1,3 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <path d="M5 2h14c.6 0 1 .4 1 1v18c0 .6-.4 1-1 1H5c-.6 0-1-.4-1-1V3c0-.6.4-1 1-1zm1 3v13h12V5H6zm2 3h8v1.5H8V8zm0 4h8v1.5H8V12z" fill="#000000"/>
+  <!--
+    账单页图标：小票（对齐安卓 Icons.Outlined.ReceiptLong）。
+
+    改为描边式（stroke）而非填充式（fill）：
+    同栏的 house / person 走的是 SymbolGlyph 系统图标，那套是线性描边风格；
+    旧版 receipt 与 pie 用 fill 实心块，两种图标在一栏里线重差一倍，
+    真机上「账单」「统计」看起来比「首页」「我的」明显更黑更重。
+
+    ReceiptLong 的识别特征（缺一个就不像小票，会退化成普通文档图标）：
+      · 底边锯齿 —— 小票撕口，这是它区别于「文件」图标的唯一标志
+      · 内部 2 条横线 —— 表示条目文字
+    线宽 1.7 与 SymbolGlyph 24sp 的笔画重量接近。
+  -->
+  <g fill="none" stroke="#000000" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 票身：顶边平直，底边锯齿（3 个齿） -->
+    <path d="M5.5 3.2h13v15.4l-2.2-1.3-2.2 1.3-2.2-1.3-2.2 1.3-2.2-1.3-1.8 1.1z"/>
+    <!-- 条目横线 -->
+    <path d="M8.8 7.6h6.4"/>
+    <path d="M8.8 11.2h6.4"/>
+  </g>
 </svg>

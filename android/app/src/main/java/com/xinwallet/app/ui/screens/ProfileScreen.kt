@@ -70,7 +70,6 @@ import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.ui.theme.Brown100
-import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.viewmodel.ProfileViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
@@ -82,7 +81,7 @@ import com.xinwallet.app.ui.viewmodel.viewModelFactory
  * 3) 退出登录
  *
  * 外观主题 / 服务器地址 / 关于我们 + 应用内升级 已迁到独立页面 SettingsScreen。
- * 账本备份（xlsx）为服务端能力，通过网页端或鸿蒙端操作，安卓端不再内置 CSV/JSON 导入导出。
+ * 账本备份（xlsx 导出/导入）由「数据管理」宫格进入 DataManagementScreen，与鸿蒙端同一套服务端接口。
  */
 @Composable
 fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
@@ -171,7 +170,9 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
-            // 2) 12 宫格快捷入口：第 1 行 4 项；第 2 行 4 项；第 3 行 3 项从左到右与上面列对齐
+            // 2) 宫格快捷入口：每行 4 格，共 11 项（第 3 行 3 项左对齐 + 1 个占位）
+            // 项目与顺序必须与鸿蒙 Profile.ets 的 GRID 数组逐项一致（见该文件注释）。
+            // 注意「记一笔」不进宫格：底栏中间已有记账浮钮，重复入口是冗余。
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = MaterialTheme.shapes.large,
@@ -192,6 +193,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         QuickAction("债务管理", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Debts.route) }
                     )
                     val row3 = listOf(
+                        QuickAction("数据管理", Icons.Filled.Storage, QuickActionKind.Nav) { navController.navigate(Screen.DataManagement.route) },
                         QuickAction("应用锁", Icons.Filled.Lock, QuickActionKind.Nav) { navController.navigate(Screen.AppLock.route) },
                         QuickAction("设置", Icons.Filled.Settings, QuickActionKind.Nav) { navController.navigate(Screen.Settings.route) }
                     )
@@ -361,11 +363,13 @@ private fun QuickGridItem(item: QuickAction, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier.size(48.dp).clip(CircleShape).background(Brown50),
+            Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
             androidx.compose.material3.Icon(
-                item.icon, contentDescription = item.label, tint = Brown500, modifier = Modifier.size(22.dp)
+                item.icon, contentDescription = item.label,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(22.dp)
             )
         }
         Spacer(Modifier.height(6.dp))

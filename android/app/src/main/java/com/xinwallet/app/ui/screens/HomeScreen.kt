@@ -78,6 +78,7 @@ import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.viewmodel.HomeViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyShort
 import com.xinwallet.app.util.todayDate
 import androidx.compose.ui.text.style.TextAlign
 import java.util.Calendar
@@ -191,7 +192,7 @@ fun HomeScreen(navController: NavHostController) {
                             selection = if (it) selection + card.id else selection - card.id
                         })
                     }
-                    HorizontalDivider(color = Color(0xFFF1F3F4))
+                    HorizontalDivider(color = Color(0xFFF0EDEE))
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -450,15 +451,17 @@ private fun TodayBillsCard(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今日账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("今日账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                 Spacer(Modifier.weight(1f))
-                Text("收入 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatMoney(todayIncome), style = MaterialTheme.typography.labelMedium, color = Brown500, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(12.dp))
-                Text("支出 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatMoney(todayExpense), style = MaterialTheme.typography.labelMedium, color = ExpenseColor, fontWeight = FontWeight.SemiBold)
+                // 与账单页同源：一行并排多项金额时用 formatMoneyShort。
+                // 这行现状不溢出，但余量很小 —— 一个 ¥123,456.00 就会挤，提前换掉成本为零
+                Text("收入 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(formatMoneyShort(todayIncome), style = MaterialTheme.typography.labelMedium, color = Brown500, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Spacer(Modifier.width(10.dp))
+                Text("支出 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(formatMoneyShort(todayExpense), style = MaterialTheme.typography.labelMedium, color = ExpenseColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
-            HorizontalDivider(color = Color(0xFFF1F3F4))
+            HorizontalDivider(color = Color(0xFFF0EDEE))
             if (bills.isEmpty()) {
                 Box(
                     Modifier.fillMaxWidth().padding(32.dp),
@@ -473,7 +476,7 @@ private fun TodayBillsCard(
             } else {
                 bills.forEach { t ->
                     TodayBillRow(t)
-                    HorizontalDivider(color = Color(0xFFF1F3F4), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = Color(0xFFF0EDEE), modifier = Modifier.padding(horizontal = 16.dp))
                 }
             }
         }
@@ -483,6 +486,12 @@ private fun TodayBillsCard(
 /** 单条今日账单：圆形 icon + 分类/备注 + 右侧金额（支出绿/收入棕） */
 @Composable
 private fun TodayBillRow(t: TransactionItem) {
+    /**
+     * 与账户详情页的 TransactionRow 保持同一套转账语义：折叠转账在列表里只出
+     * 一条，要能自己表达完整的「A → B」。之前这条主页组件没做 transfer 识别，
+     * 导致转账在主页显示为「一般转账 🏦 + 备注 + 红色负号」，与鸿蒙端不一致。
+     */
+    val isTransfer = t.transfer != null || t.type.startsWith("transfer")
     Row(
         Modifier
             .fillMaxWidth()
@@ -496,7 +505,10 @@ private fun TodayBillRow(t: TransactionItem) {
                 .background(Brown100),
             contentAlignment = Alignment.Center
         ) {
-            Text(t.category?.icon?.takeIf { it.isNotBlank() } ?: "💰", fontSize = 18.sp)
+            Text(
+                if (isTransfer) "🔄" else (t.category?.icon?.takeIf { it.isNotBlank() } ?: "💰"),
+                fontSize = 18.sp
+            )
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -505,7 +517,23 @@ private fun TodayBillRow(t: TransactionItem) {
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
-            val sub = t.note.takeIf { !it.isNullOrBlank() } ?: t.account?.name
+            val sub = if (isTransfer) {
+                // 第二行承载「A → B · 备注」，备注长度不可控，放后面保证流向始终完整可见。
+                val flow = if (t.transfer != null) {
+                    "${t.transfer.from?.name ?: "?"} → ${t.transfer.to?.name ?: "?"}"
+                } else {
+                    // 兜底：老后端不返回 transfer，但 type 仍是 transfer_*，按方向拼 A → B。
+                    val out = t.type != "transfer_in"
+                    val from = if (out) (t.source?.name ?: t.account?.name)
+                               else (t.counterparty?.name ?: t.source?.name)
+                    val to = if (out) (t.counterparty?.name ?: t.destination?.name)
+                             else (t.destination?.name ?: t.account?.name)
+                    "${from ?: "?"} → ${to ?: "?"}"
+                }
+                if (t.note.isNullOrBlank()) flow else "$flow · ${t.note}"
+            } else {
+                t.note.takeIf { !it.isNullOrBlank() } ?: t.account?.name
+            }
             if (!sub.isNullOrBlank()) {
                 Text(
                     sub,
@@ -515,14 +543,16 @@ private fun TodayBillRow(t: TransactionItem) {
                 )
             }
         }
-        val signed = when (t.type) {
-            "income", "transfer_in" -> formatMoney(t.amount)
-            "expense", "transfer_out" -> "-" + formatMoney(t.amount)
+        val signed = when {
+            isTransfer -> formatMoney(t.amount)
+            t.type == "income" || t.type == "transfer_in" -> formatMoney(t.amount)
+            t.type == "expense" || t.type == "transfer_out" -> "-" + formatMoney(t.amount)
             else -> formatMoney(t.amount)
         }
-        val color = when (t.type) {
-            "income", "transfer_in" -> Brown500
-            "expense", "transfer_out" -> ExpenseColor
+        val color = when {
+            isTransfer -> MaterialTheme.colorScheme.onSurface
+            t.type == "income" || t.type == "transfer_in" -> Brown500
+            t.type == "expense" || t.type == "transfer_out" -> ExpenseColor
             else -> MaterialTheme.colorScheme.onSurface
         }
         Text(signed, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.SemiBold)
@@ -612,7 +642,7 @@ private fun CalendarCard(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = Color(0xFFF1F3F4))
+            HorizontalDivider(color = Color(0xFFF0EDEE))
             Spacer(Modifier.height(8.dp))
             Row(
                 Modifier.fillMaxWidth(),

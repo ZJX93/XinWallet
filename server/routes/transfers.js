@@ -82,18 +82,33 @@ router.post('/', async (req, res) => {
                 [req.userId, req.bookId, from_account_id, to_account_id, amountNum, note || '', transferDate]
             );
 
+            // 转入账户名必须在插 out 腿之前拿到 —— out 腿备注写的是「转账至<对方>」，
+            // 需要的是转入账户名。原先这行在 out 腿之后，只能拿自己的名字凑。
+            // 同时补上 user_id / book_id 过滤：原先只按 id 查，跨账本的账户 id 也能命中。
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [to_account_id, req.userId, req.bookId]);
+            if (!toAcc[0]) throw new Error('转入账户不存在');
+
             // 余额由账本推导（复式记账 single source of truth）
+            //
+            // 备注拼接规则（曾经写反过，不要再改回去）：
+            //   out 腿挂在「转出账户」名下 → 描述钱去哪了 → 转账至 + toAcc（对方）
+            //   in  腿挂在「转入账户」名下 → 描述钱从哪来 → 来自   + fromAcc（对方）
+            // 原先两处填的都是账户自己的名字，于是「工资卡 → 余额宝」的转出腿
+            // 显示成「转账至工资卡」，方向完全颠倒。
+            //
+            // 用户填了 note 就以用户的为准：主表 transfers.note 一直存的是用户原文，
+            // 但两条腿原先无条件覆盖成系统文案，导致用户备注在流水列表里根本看不到。
+            const userNote = (note || '').trim();
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                [req.userId, req.bookId, from_account_id, transferCatId, amountNum, `转账至${fromAcc[0].name}`, transferDate, insertResult.insertId, from_account_id]
+                [req.userId, req.bookId, from_account_id, transferCatId, amountNum, userNote || `转账至${toAcc[0].name}`, transferDate, insertResult.insertId, from_account_id]
             );
 
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                [req.userId, req.bookId, to_account_id, transferCatId, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, insertResult.insertId, to_account_id]
+                [req.userId, req.bookId, to_account_id, transferCatId, amountNum, userNote || `来自${fromAcc[0].name}`, transferDate, insertResult.insertId, to_account_id]
             );
 
             const fromBal = await computeAccountBalance(conn, req.userId, from_account_id);
@@ -141,18 +156,28 @@ router.put('/:id', async (req, res) => {
 
             await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
 
-            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [from_account_id]);
+            // 两个账户名都要在插腿之前拿到，且必须带 user_id / book_id 过滤 ——
+            // 原先只按 id 查，能读到别人账本的账户名。
+            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [from_account_id, req.userId, req.bookId]);
+            if (!fromAcc[0]) throw new Error('转出账户不存在');
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [to_account_id, req.userId, req.bookId]);
+            if (!toAcc[0]) throw new Error('转入账户不存在');
+
+            // 备注规则与 POST 完全一致（见该处注释）：
+            //   out 腿 → 转账至 + toAcc（对方），in 腿 → 来自 + fromAcc（对方）
+            //   用户填了 note 就用用户的，别拿系统文案盖掉
+            // 原先两处都填账户自己的名字，方向是反的。
+            const userNote = (note || '').trim();
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                [req.userId, req.bookId, from_account_id, transferCatId, amountNum, `转账至${fromAcc[0]?.name || '对方'}`, transferDate, id, from_account_id]
+                [req.userId, req.bookId, from_account_id, transferCatId, amountNum, userNote || `转账至${toAcc[0].name}`, transferDate, id, from_account_id]
             );
 
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                [req.userId, req.bookId, to_account_id, transferCatId, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, id, to_account_id]
+                [req.userId, req.bookId, to_account_id, transferCatId, amountNum, userNote || `来自${fromAcc[0].name}`, transferDate, id, to_account_id]
             );
 
             const newBalances = {};

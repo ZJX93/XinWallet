@@ -144,7 +144,12 @@ class TransactionsViewModel(
      */
     fun delete(item: TransactionItem) {
         viewModelScope.launch {
-            when (val r = repo.deleteTransaction(item.id)) {
+            // 折叠转账走 /transfers/{id}：语义直白（用户删的是「一笔转账」）。
+            // 注：deleteTransaction 也安全 —— 服务端已按 transfer_id 级联删两条腿
+            // 和 transfers 主记录（transactions.js:491-501）。区别只在语义。
+            val tid = item.transfer?.id
+            val r = if (tid != null) repo.deleteTransfer(tid) else repo.deleteTransaction(item.id)
+            when (r) {
                 is ApiResult.Success -> {
                     _state.value = _state.value.copy(toast = "已删除")
                     refresh()
@@ -153,6 +158,7 @@ class TransactionsViewModel(
             }
         }
     }
+
 
     fun consumeToast() {
         _state.value = _state.value.copy(toast = null)

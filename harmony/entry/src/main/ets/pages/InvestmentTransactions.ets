@@ -4,8 +4,8 @@
 import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney } from '../common/theme';
-import { LoadingBox, TopBar } from '../common/components/Components';
+import { COLORS, fmtMoney, withAlpha } from '../common/theme';
+import { LoadingBox, TopBar, AppBackground, ConfirmDialog } from '../common/components/Components';
 
 interface Tx {
   id: number; type: string; type_label?: string; amount?: number; price?: number;
@@ -78,7 +78,7 @@ struct InvestmentTransactions {
       Column({ space: 4 }) {
         Row({ space: 8 }) {
           Text(tx.type_label || tx.type).fontSize(13).fontColor(this.incomeColor(tx.type)).fontWeight(FontWeight.Medium)
-            .backgroundColor(this.incomeColor(tx.type) + '22').borderRadius(4).padding({ left: 8, right: 8, top: 2, bottom: 2 })
+            .backgroundColor(withAlpha(this.incomeColor(tx.type), 0.13)).borderRadius(4).padding({ left: 8, right: 8, top: 2, bottom: 2 })
           Text((tx.date || '').slice(0, 10)).fontSize(11).fontColor(COLORS.textSecondary)
         }
         Text(`单价 ${fmtMoney(tx.price || 0)} · 数量 ${tx.quantity ?? 0} · 手续费 ${fmtMoney(tx.fee || 0)}`)
@@ -91,55 +91,51 @@ struct InvestmentTransactions {
         Text(`${this.isIncome(tx.type) ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.incomeColor(tx.type))
         Button('删')
-          .fontSize(11).fontColor('#fff').backgroundColor('#ef4444')
+          .fontSize(11).fontColor('#fff').backgroundColor(COLORS.danger)
           .width(36).height(24).padding(0)
           .onClick(() => {
             this.pendingDeleteTxn = tx;
             this.showDeleteConfirm = true;
           })
       }.alignItems(HorizontalAlign.End)
-    }.width('100%').padding(12).backgroundColor(COLORS.card).borderRadius(12)
+    }.width('100%').padding(12).backgroundColor(COLORS.cardGlass).borderRadius(12)
+      .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 
   build() {
-    Column() {
+    Stack() {
+      AppBackground()
       Column() {
-        TopBar({ title: `${this.name} · 交易记录`, onBack: () => router.back() })
-        if (this.loading) { LoadingBox() }
-        else if (this.list.length === 0) {
-          Column() { Text('暂无交易记录').fontSize(14).fontColor(COLORS.textSecondary) }
-            .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
-        }
-        else {
-          Scroll() {
-            Column({ space: 10 }) {
-              ForEach(this.list, (tx: Tx) => {
-                this.TxRow(tx)
-              }, (tx: Tx) => tx.id.toString())
-              Blank().height(20)
-            }.padding(12)
-          }.layoutWeight(1)
-        }
-      }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-      if (this.showDeleteConfirm) {
         Column() {
-          Column({ space: 16 }) {
-            Text('确认删除').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
-            Text('确定删除该笔交易记录？').fontSize(14).fontColor(COLORS.textSecondary)
-            Row({ space: 12 }) {
-              Button('取消')
-                .fontSize(13).fontColor(COLORS.textSecondary).backgroundColor(COLORS.pageBg)
-                .onClick(() => { this.showDeleteConfirm = false; this.pendingDeleteTxn = null; })
-              Button('删除')
-                .fontSize(13).fontColor('#fff').backgroundColor('#ef4444')
-                .onClick(() => { this.doDelete(); })
-            }.width('100%').justifyContent(FlexAlign.End)
-          }.width('80%').padding(20).backgroundColor(COLORS.card).borderRadius(12)
-        }.width('100%').height('100%').backgroundColor('#00000066')
-        .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-        .position({ x: 0, y: 0 }).zIndex(100)
-      }
+          TopBar({ title: `${this.name} · 交易记录`, onBack: () => router.back() })
+          if (this.loading) { LoadingBox() }
+          else if (this.list.length === 0) {
+            Column() { Text('暂无交易记录').fontSize(14).fontColor(COLORS.textSecondary) }
+              .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
+          }
+          else {
+            Scroll() {
+              Column({ space: 10 }) {
+                ForEach(this.list, (tx: Tx) => {
+                  this.TxRow(tx)
+                }, (tx: Tx) => tx.id.toString())
+                Blank().height(20)
+              }.padding(12)
+            }.layoutWeight(1)
+          }
+        }.width('100%').height('100%')
+
+        // 原先这里是一份内联的确认弹窗实现（与 ConfirmDialog 完全重复，
+        // 且按钮用 danger 填充白字仅 3.84:1、遮罩 40% 聚焦不足）。已收口到公共组件。
+        ConfirmDialog({
+          show: this.showDeleteConfirm,
+          title: '确认删除',
+          message: '删除该笔交易记录后无法恢复',
+          confirmText: '删除',
+          onCancel: () => { this.showDeleteConfirm = false; this.pendingDeleteTxn = null; },
+          onConfirm: () => { this.doDelete(); }
+        })
+      }.width('100%').height('100%')
     }.width('100%').height('100%')
   }
 }

@@ -18,6 +18,8 @@
 const AccountManager = {
     init() {
         document.getElementById('addAccountBtn').addEventListener('click', () => this.openModal());
+        const showClosed = document.getElementById('showClosedAcc');
+        if (showClosed) showClosed.addEventListener('change', () => this.refresh());
         document.getElementById('accModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('accCancelBtn').addEventListener('click', () => this.closeModal());
         document.getElementById('accForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
@@ -58,83 +60,169 @@ const AccountManager = {
     async refresh() {
         const container = document.getElementById('accountList');
         showSkeleton(container, 4, 'list');
-        const data = await api('/accounts');
+        // 始终请求全部账户（含已销户），由 showClosedAcc 复选框控制是否显示
+        const data = await api('/accounts?all=1');
         if (!data) return;
         cache.accounts = data.accounts;
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
         const typeLabels = { cash: '现金', bank_card: '储蓄卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
         this.typeLabels = typeLabels;
-        if (!data.accounts || data.accounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
 
-        // 按类型分组（按语义顺序排），同类型叠成一叠牌，点击封面展开/收起
+        const showClosed = !!(document.getElementById('showClosedAcc') && document.getElementById('showClosedAcc').checked);
+        const activeAccounts = (data.accounts || []).filter(a => !a.closed);
+        if (activeAccounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
+
+        // 按类型分组（按语义顺序排），每组一张大封面卡 + 下方牌堆叠放子卡。
+        // 视觉：5 个组（现金/储蓄卡/信用卡/电子支付/金融账户）横排，封面卡突出展示组信息，
+        // 子卡向下叠放仅露顶部一条边（这就是用户喜欢的「牌堆叠卡」精致感）。
+        // 操作按钮修复：每张子卡自带 4 个按钮，hover 任一张自动浮到最上层可见。
         const typeOrder = ['cash', 'bank_card', 'credit_card', 'electronic_payment', 'financial_account', 'digital', 'other'];
         const groups = {};
-        data.accounts.forEach(a => {
+        activeAccounts.forEach(a => {
             const key = a.type || 'other';
             (groups[key] = groups[key] || []).push(a);
         });
         const groupList = Object.entries(groups)
             .sort((a, b) => typeOrder.indexOf(a[0]) - typeOrder.indexOf(b[0]));
 
-        const buildCard = (a, idx, n) => `
-            <div class="account-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
-                <div class="account-icon">${escapeHtml(a.icon)}</div>
-                <div class="account-content">
-                    <div class="account-row">
-                        <div class="account-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
+        /**
+         * 子账户牌：结构与理财持仓卡（investment.js buildCard）完全同构 —— 同样是
+         * .goal-card.acc-stack-card + goal-head / goal-amounts / goal-actions 三段，
+         * 复用同一套已验证的叠牌 CSS，不另造样式体系。
+         *
+         * meta 显示规则：若 name 已包含 type 标签文字（「现金/储蓄卡/信用卡」常出现于账户名），
+         * 省略重复类型段，否则显示类型 + 年利率，便于一眼分辨账户性质。
+         */
+        const buildRow = (a, idx, n) => {
+            const tlabel = typeLabels[a.type] || a.type || '';
+            const nameHasType = tlabel && a.name && a.name.includes(tlabel);
+            const rate = Number(a.annual_rate) || 0;
+            const limit = Number(a.credit_limit) || 0;
+            return `
+            <div class="goal-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
+                <div class="acc-card-top">
+                    <div class="goal-head">
+                        <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
+                        <div class="goal-title" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
+                        ${nameHasType ? '' : `<span class="goal-status type">${escapeHtml(tlabel)}</span>`}
                     </div>
-                    <div class="account-row">
-                        <div class="account-type">${typeLabels[a.type] || a.type}</div>
-                        <div class="account-balance">${fmt(a.balance)}</div>
-                    </div>
-                    <div class="account-row account-actions-row">
-                        <div class="account-actions">
-                            <button class="btn btn-ghost btn-sm" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
-                            <button class="btn btn-ghost btn-sm" data-action="interest-acc" data-id="${a.id}" title="记利息">💰</button>
-                            <button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
-                            <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="删除">🗑️</button>
-                        </div>
+                    <div class="goal-amounts inv-cover-meta">
+                        <span>${rate > 0 ? `年利率 <strong>${rate.toFixed(2)}%</strong>` : '年利率 <strong>—</strong>'}</span>
+                        <span>${limit > 0 ? `额度 <strong>${fmt(limit)}</strong>` : ''}</span>
                     </div>
                 </div>
+                <div class="acc-card-mid">
+                    <div class="inv-cover-profit-label">当前余额</div>
+                    <div class="acc-card-amount">${fmt(a.balance)}</div>
+                </div>
+                <div class="goal-actions">
+                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
+                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}" title="记一笔利息">💰</button>
+                    <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
+                    <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="销户/删除">🗑️</button>
+                </div>
             </div>`;
+        };
 
-        container.innerHTML = groupList.map(([type, accounts]) => {
+        const groupsHtml = groupList.map(([type, accounts]) => {
             const label = typeLabels[type] || type;
             const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
             const icon = accounts[0].icon || '🏦';
-            // 封面卡作为牌堆第一张（--i:0，:first-child 在文档流内撑高度），与产品卡一起堆叠偏移，形态同理财封面
+            const n = accounts.length;
+            const posCount = accounts.filter(a => (Number(a.balance) || 0) >= 0).length;
+            const negCount = n - posCount;
+            // 封面卡 = 牌堆第一张（--i:0，在文档流内撑高度），与理财封面卡同构
             const coverCard = `
-                <div class="goal-card acc-stack-card acc-deck-card" data-type="${escapeHtml(type)}" style="--i:0; --n:${accounts.length + 1}">
-                    <div class="inv-cover-top">
+                <div class="goal-card acc-stack-card acc-deck-card" data-type="${escapeHtml(type)}" style="--i:0; --n:${n + 1}">
+                    <div class="acc-card-top">
                         <div class="goal-head">
                             <div class="goal-icon">${escapeHtml(icon)}</div>
                             <div class="goal-title">${escapeHtml(label)}</div>
-                            <span class="inv-cover-count">${accounts.length} 个账户</span>
+                            <span class="inv-cover-count">${n} 个账户</span>
                         </div>
+                        <div class="goal-amounts inv-cover-meta"><span>账户数 <strong>${n}</strong></span><span>类型 <strong>${escapeHtml(label)}</strong></span></div>
                     </div>
-                    <div class="inv-cover-mid">
-                        <div class="inv-cover-profit">
-                            <div class="inv-cover-profit-label">账户总资产</div>
-                            <div class="inv-cover-profit-amount">${fmt(total)}</div>
-                        </div>
+                    <div class="acc-card-mid">
+                        <div class="inv-cover-profit-label">账户总资产</div>
+                        <div class="inv-cover-profit-amount">${fmt(total)}</div>
                     </div>
                     <div class="inv-cover-bottom">
+                        <div class="inv-cover-stats"><span>正余额 <strong class="goal-pct profit-positive">${posCount}</strong> 个</span>${negCount > 0 ? `<span>负余额 <strong class="goal-pct profit-negative">${negCount}</strong> 个</span>` : ''}</div>
                         <div class="inv-cover-foot"><span class="inv-cover-viewall">查看全部 →</span></div>
                     </div>
                 </div>`;
-            const cards = accounts.map((a, idx) => buildCard(a, idx + 1, accounts.length + 1)).join('');
+            const cards = accounts.map((a, idx) => buildRow(a, idx + 1, n + 1)).join('');
             return `
             <div class="acc-stack">
-                <div class="acc-stack-cards" style="--n:${accounts.length + 1}">${coverCard}${cards}</div>
+                <div class="acc-stack-cards" style="--n:${n + 1}">${coverCard}${cards}</div>
             </div>`;
         }).join('');
 
-        // 事件委托：封面卡（牌堆第一张）→ 全屏网格铺开（仅当前类别）
-        container.querySelectorAll('.acc-deck-card').forEach(card => {
-            card.addEventListener('click', () => this.openAccGrid(card.dataset.type));
-        });
+        // 已销户账户：默认隐藏，开启「显示已销户」才展示为一个独立牌堆
+        const closedAccounts = (data.accounts || []).filter(a => a.closed);
+        const closedHtml = (showClosed && closedAccounts.length > 0) ? (() => {
+            const cn = closedAccounts.length;
+            const cover = `
+                <div class="goal-card acc-stack-card acc-deck-card" data-type="__closed__" style="--i:0; --n:${cn + 1}; opacity:.75">
+                    <div class="acc-card-top">
+                        <div class="goal-head">
+                            <div class="goal-icon">🗄️</div>
+                            <div class="goal-title">已销户</div>
+                            <span class="inv-cover-count">${cn} 个账户</span>
+                        </div>
+                    </div>
+                    <div class="acc-card-mid">
+                        <div class="inv-cover-profit-label">历史余额合计</div>
+                        <div class="inv-cover-profit-amount">${fmt(closedAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0))}</div>
+                    </div>
+                    <div class="inv-cover-bottom"><div class="inv-cover-stats"></div></div>
+                </div>`;
+            const cards = closedAccounts.map((a, idx) => `
+                <div class="goal-card acc-stack-card" data-id="${a.id}" style="--i:${idx + 1}; --n:${cn + 1}; opacity:.75">
+                    <div class="acc-card-top">
+                        <div class="goal-head">
+                            <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
+                            <div class="goal-title" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
+                            <span class="goal-status type">已销户</span>
+                        </div>
+                    </div>
+                    <div class="acc-card-mid">
+                        <div class="inv-cover-profit-label">历史余额</div>
+                        <div class="acc-card-amount is-closed">${fmt(a.balance)}</div>
+                    </div>
+                    <div class="goal-actions">
+                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
+                        <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
+                        <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="彻底删除">🗑️</button>
+                    </div>
+                </div>`).join('');
+            return `<div class="acc-stack"><div class="acc-stack-cards" style="--n:${cn + 1}">${cover}${cards}</div></div>`;
+        })() : '';
 
-        // 事件委托：点击单张账户卡 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
+        container.innerHTML = groupsHtml + closedHtml;
+
+        // 事件委托：明细、编辑、销户、计息（按钮一律 stopPropagation，不触发卡片弹出）
+        container.querySelectorAll('[data-action="acc-detail"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.openDetail(parseInt(btn.dataset.id)); });
+        });
+        container.querySelectorAll('[data-action="edit-acc"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.openModal(parseInt(btn.dataset.id)); });
+        });
+        container.querySelectorAll('[data-action="delete-acc"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.openDeleteModal(parseInt(btn.dataset.id)); });
+        });
+        container.querySelectorAll('[data-action="interest-acc"]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.openInterestModal(parseInt(btn.dataset.id)); });
+        });
+        // 封面卡（牌堆第一张）：点击打开该类型全屏网格，不参与子卡弹出逻辑
+        container.querySelectorAll('.acc-deck-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('[data-action]')) return;
+                const t = card.dataset.type;
+                if (t && t !== '__closed__') this.openAccGrid(t);
+            });
+        });
+        // 子卡：点击弹出（置顶 + 上浮，露出操作按钮）；再点收起 —— 与理财持仓一致
         container.querySelectorAll('.acc-stack-card:not(.acc-deck-card)').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-action]')) return;
@@ -142,20 +230,6 @@ const AccountManager = {
                 container.querySelectorAll('.acc-stack-card.popped').forEach(c => c.classList.remove('popped'));
                 if (!wasPopped) card.classList.add('popped');
             });
-        });
-
-        // 事件委托：明细、编辑和删除按钮
-        container.querySelectorAll('[data-action="acc-detail"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openDetail(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('[data-action="edit-acc"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openModal(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('[data-action="delete-acc"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openDeleteModal(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('[data-action="interest-acc"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openInterestModal(parseInt(btn.dataset.id)));
         });
     },
     toggleCreditLimit() {
@@ -307,44 +381,70 @@ const AccountManager = {
         const subBits = [`共 ${list.length} 笔资金变动`];
         if (acc.last_interest_date) subBits.push(`上次计息 <strong>${escapeHtml(acc.last_interest_date)}</strong>`);
         if (Number(acc.annual_rate) > 0) subBits.push(`年利率 <strong>${(Number(acc.annual_rate) || 0).toFixed(4)}%</strong>`);
+        // 操作按钮组（始终可见）：记利息、编辑、销户/删除 ——
+        // 不再依赖列表页的"⋯"按钮（用户反馈过「功能重复」/「点不动」）。
+        // 已销户账户隐藏所有破坏性操作，只留关闭。
+        const actions = isClosed ? `
+            <button class="btn btn-ghost btn-sm" data-detail-action="close" data-id="${id}">关闭</button>
+        ` : `
+            <button class="btn btn-ghost btn-sm" data-detail-action="interest" data-id="${id}">💰 记利息</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="edit" data-id="${id}">✏️ 编辑</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="close-acct" data-id="${id}">🗑️ 销户</button>
+        `;
         const head = `<div class="rh-head">
             <div class="rh-debt">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name || '账户')} · 资金明细</div>
             <div class="rh-sub">${subBits.join(' · ')}</div>
-            ${isClosed ? '' : `<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="detailInterestBtn" data-id="${id}">💰 记利息</button></div>`}
+            <div class="rh-actions">${actions}</div>
         </div>`;
         if (!list.length) {
             body.innerHTML = head + '<div class="empty-state">📭 该账户暂无资金变动记录</div>';
-            return;
+        } else {
+            const typeMeta = {
+                expense: { dir: '−', cls: 'negative', label: '支出' },
+                income: { dir: '+', cls: 'positive', label: '收入' },
+                transfer_out: { dir: '−', cls: 'negative', label: '转出' },
+                transfer_in: { dir: '+', cls: 'positive', label: '转入' },
+                repayment: { dir: '−', cls: 'negative', label: '还款' }
+            };
+            const rows = list.map(t => {
+                const m = typeMeta[t.type] || { dir: '', cls: '', label: t.type };
+                const sub = t.kind === 'repayment'
+                    ? (t.debt ? `还 ${escapeHtml(t.debt.name || '债务')}` : '还款')
+                    : (t.category ? `${escapeHtml(t.category.icon || '')} ${escapeHtml(t.category.name || '')}` : '')
+                        + (t.counterparty ? ` ${t.counterparty.dir} ${escapeHtml(t.counterparty.name || '')}` : '');
+                return `
+                <div class="rh-item">
+                    <div class="rh-row1">
+                        <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
+                        <span class="rh-date">${t.date || ''}</span>
+                    </div>
+                    <div class="rh-row2">
+                        <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
+                    </div>
+                    ${t.note ? `<div class="rh-note">📝 ${escapeHtml(t.note)}</div>` : ''}
+                </div>`;
+            }).join('');
+            body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
         }
-        const typeMeta = {
-            expense: { dir: '−', cls: 'negative', label: '支出' },
-            income: { dir: '+', cls: 'positive', label: '收入' },
-            transfer_out: { dir: '−', cls: 'negative', label: '转出' },
-            transfer_in: { dir: '+', cls: 'positive', label: '转入' },
-            repayment: { dir: '−', cls: 'negative', label: '还款' }
-        };
-        const rows = list.map(t => {
-            const m = typeMeta[t.type] || { dir: '', cls: '', label: t.type };
-            const sub = t.kind === 'repayment'
-                ? (t.debt ? `还 ${escapeHtml(t.debt.name || '债务')}` : '还款')
-                : (t.category ? `${escapeHtml(t.category.icon || '')} ${escapeHtml(t.category.name || '')}` : '')
-                    + (t.counterparty ? ` ${t.counterparty.dir} ${escapeHtml(t.counterparty.name || '')}` : '');
-            return `
-            <div class="rh-item">
-                <div class="rh-row1">
-                    <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
-                    <span class="rh-date">${t.date || ''}</span>
-                </div>
-                <div class="rh-row2">
-                    <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
-                </div>
-                ${t.note ? `<div class="rh-note">📝 ${escapeHtml(t.note)}</div>` : ''}
-            </div>`;
-        }).join('');
-        body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
-        // 详情页「记利息」按钮：点击复用计息弹窗（点叉或按 ESC 仍由账户模态统一关闭）
-        const ib = document.getElementById('detailInterestBtn');
-        if (ib) ib.addEventListener('click', () => { const aid = parseInt(ib.dataset.id); if (!isNaN(aid)) this.openInterestModal(aid); });
+        // 操作按钮事件委托：编辑、销户、关闭、计息
+        body.querySelectorAll('[data-detail-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const aid = parseInt(btn.dataset.id);
+                if (isNaN(aid)) return;
+                switch (btn.dataset.detailAction) {
+                    case 'interest': this.openInterestModal(aid); break;
+                    case 'edit':
+                        this.closeDetail();
+                        this.openModal(aid);
+                        break;
+                    case 'close-acct':
+                        this.closeDetail();
+                        this.openDeleteModal(aid);
+                        break;
+                    case 'close': this.closeDetail(); break;
+                }
+            });
+        });
     },
     closeDetail() { document.getElementById('accountDetailModal').classList.remove('show'); },
 

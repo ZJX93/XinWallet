@@ -5,7 +5,7 @@ import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
-import { BalanceCard, LoadingBox, TopBar } from '../common/components/Components';
+import { BalanceCard, LoadingBox, TopBar, AppBackground } from '../common/components/Components';
 
 interface Inv {
   id: number; name: string; code?: string; type?: string; accountId?: number;
@@ -18,7 +18,7 @@ export struct InvestmentDetailPage {
   @StorageProp('themeMode') themeMode: string = 'system';
   @Prop itemId: number = 0;
   @State inv: Inv | null = null;
-  @State loading: boolean = false;
+  @State loading: boolean = true;   // 首帧即骨架屏；load() 里 finally 复位
 
   aboutToAppear(): void { this.load(); }
 
@@ -53,21 +53,26 @@ export struct InvestmentDetailPage {
               Column({ space: 4 }) {
                 Text('收益').fontSize(13).fontColor(COLORS.textSecondary)
                 Text(fmtMoney(this.inv!.profit || 0)).fontSize(18).fontWeight(FontWeight.Bold)
-                  .fontColor((this.inv!.profit || 0) >= 0 ? COLORS.expense : COLORS.income)
-              }.layoutWeight(1).padding(14).backgroundColor(COLORS.card).borderRadius(12)
+                  // 红涨绿跌：投资盈利用 income(红)、亏损用 expense(绿)。
+                  // 原写法正负色反了（盈利显示绿色）——与项目其余部分及中国习惯矛盾
+                  .fontColor((this.inv!.profit || 0) >= 0 ? COLORS.income : COLORS.expense)
+              }.layoutWeight(1).padding(14).backgroundColor(COLORS.cardGlass).borderRadius(12)
+                .border({ width: 0.5, color: COLORS.outlineVariant })
               Column({ space: 4 }) {
                 Text('收益率').fontSize(13).fontColor(COLORS.textSecondary)
                 Text(`${((this.inv!.profitRate || 0) * 100).toFixed(2)}%`).fontSize(18).fontWeight(FontWeight.Bold)
-                  .fontColor((this.inv!.profit || 0) >= 0 ? COLORS.expense : COLORS.income)
-              }.layoutWeight(1).padding(14).backgroundColor(COLORS.card).borderRadius(12)
+                  .fontColor((this.inv!.profit || 0) >= 0 ? COLORS.income : COLORS.expense)
+              }.layoutWeight(1).padding(14).backgroundColor(COLORS.cardGlass).borderRadius(12)
+                .border({ width: 0.5, color: COLORS.outlineVariant })
             }
             Column({ space: 0 }) {
               // 交易记录入口：跳转独立页展示买入/卖出/分红等流水
               Row() {
                 Text('📋 交易记录').fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
                 Text('›').fontSize(18).fontColor(COLORS.textSecondary)
-              }.width('100%').padding({ top: 14, bottom: 14 })
-                .backgroundColor(COLORS.card).borderRadius(12)
+              }.width('100%').padding({ top: 14, bottom: 14, left: 12, right: 12 })
+                .backgroundColor(COLORS.cardGlass).borderRadius(12)
+                .border({ width: 0.5, color: COLORS.outlineVariant })
                 .onClick(() => router.pushUrl({ url: 'pages/InvestmentTransactions', params: { id: this.inv!.id } }))
 
               SectionTitleLocal({ text: '持仓信息' })
@@ -77,12 +82,13 @@ export struct InvestmentDetailPage {
               this.InfoRow('买入价', fmtMoney(this.inv!.buyPrice || 0))
               this.InfoRow('现价', fmtMoney(this.inv!.currentPrice || 0))
               this.InfoRow('持有数量', String(this.inv!.quantity || 0))
-            }.padding(12).backgroundColor(COLORS.card).borderRadius(12)
+            }.padding(12).backgroundColor(COLORS.cardGlass).borderRadius(12)
+              .border({ width: 0.5, color: COLORS.outlineVariant })
             Blank().height(20)
           }.padding(12)
         }.layoutWeight(1)
       }
-    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+    }.width('100%').height('100%')
   }
 }
 
@@ -104,5 +110,10 @@ struct InvestmentDetail {
     const p: ESObject = (router.getParams() as ESObject) || {};
     if (p.id) this.itemId = p.id;
   }
-  build() { Column() { InvestmentDetailPage({ itemId: this.itemId }) }.width('100%').height('100%') }
+  build() {
+    Stack() {
+      AppBackground()
+      Column() { InvestmentDetailPage({ itemId: this.itemId }) }.width('100%').height('100%')
+    }.width('100%').height('100%')
+  }
 }

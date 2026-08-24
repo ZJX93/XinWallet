@@ -43,5 +43,10 @@ class TransactionRepository(private val apiProvider: () -> ApiService) {
 
     suspend fun getTransfers(month: String? = null) = safeApiCall { apiProvider().getTransfers(month) }
     suspend fun createTransfer(req: CreateTransferRequest) = safeApiCall { apiProvider().createTransfer(req) }
+    /**
+     * 修改转账。折叠转账的编辑**只能**走这里 ——
+     * updateTransaction 只改单条腿，两个账户余额会对不上。详见 ApiService.updateTransfer。
+     */
+    suspend fun updateTransfer(id: Int, req: CreateTransferRequest) = safeUnitCall { apiProvider().updateTransfer(id, req) }
     suspend fun deleteTransfer(id: Int) = safeUnitCall { apiProvider().deleteTransfer(id) }
 }

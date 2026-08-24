@@ -136,7 +136,28 @@ data class TransactionItem(
     val destination: TxRef? = null,
     val counterparty: TxCounterparty? = null,
     @SerializedName("transfer_id") val transferId: Int? = null,
+    /**
+     * 折叠后的转账双端信息。
+     *
+     * 一笔转账在库里是两条腿（transfer_out + transfer_in），列表已在服务端
+     * SQL 层折叠成一条（见 server/routes/transactions.js）。这个字段让那一条
+     * 记录能自己表达完整的「A → B」。
+     *
+     * **非 null 即代表这是折叠转账，编辑/删除必须走 /transfers/{id}** ——
+     * 用 item.id 去调 transactions/{id} 只会动一条腿，转出账户扣了 200 而
+     * 转入账户还是加 100，两个账户余额从此对不上。
+     *
+     * 服务端要求 transfer_id + 双端账户名三者齐全才构造它，账户被删导致
+     * JOIN 不到名字时为 null —— 此时退回普通渲染，不显示「? → ?」。
+     */
+    val transfer: TxTransfer? = null,
     val tags: List<TxTag> = emptyList()
+)
+
+data class TxTransfer(
+    val id: Int = 0,
+    val from: TxRef? = null,
+    val to: TxRef? = null
 )
 
 data class TxRef(val id: Int = 0, val name: String = "", val icon: String? = null)
@@ -173,7 +194,9 @@ data class CreateTransactionRequest(
     /** 关联预算（可选）：传入后端会写 transactions.budget_id，参与预算统计 */
     @SerializedName("budget_id") val budgetId: Int? = null,
     /** AI/OCR 场景传入的商家或个人对象；服务端会自动按「类目名-merchant」格式拼接备注 */
-    val merchant: String? = null
+    val merchant: String? = null,
+    /** 关联标签 id 列表（可选）：后端写入 transaction_tags；null/空数组 = 不关联 */
+    val tags: List<Int>? = null
 )
 
 /** 编辑交易：字段与新增一致，后端会按账本重算受影响账户余额 */
@@ -187,7 +210,9 @@ data class UpdateTransactionRequest(
     val location: String? = null,
     @SerializedName("link_type") val linkType: String? = null,
     @SerializedName("link_id") val linkId: Int? = null,
-    @SerializedName("budget_id") val budgetId: Int? = null
+    @SerializedName("budget_id") val budgetId: Int? = null,
+    /** 关联标签 id 列表（可选）：后端会在事务内先清空再写入 transaction_tags */
+    val tags: List<Int>? = null
 )
 
 /** GET /transactions/summary?month=YYYY-MM */
@@ -289,6 +314,35 @@ data class InvestmentTransaction(
     @SerializedName("fee") val fee: Double = 0.0,
     val date: String = "",
     val note: String? = null
+)
+
+/** 新增理财流水（买入/卖出/分红/利息/红利再投）。后端 POST /investments/:id/transactions */
+data class AddInvestmentTxnRequest(
+    val type: String,
+    val amount: Double,
+    val price: Double = 0.0,
+    val quantity: Double = 0.0,
+    val date: String,
+    val note: String? = null,
+    val fee: Double = 0.0
+)
+
+/** 加仓/减仓。后端 POST /investments/:id/reduce（action=buy/sell，自动更新持仓成本与数量） */
+data class ReduceInvestmentRequest(
+    val action: String,
+    val price: Double,
+    val quantity: Double,
+    val fee: Double = 0.0,
+    val date: String? = null,
+    val note: String? = null
+)
+
+/** 清仓。后端 PUT /investments/:id/sell（按清仓价回款、标记已清仓、资金入账关联账户） */
+data class SellInvestmentRequest(
+    @SerializedName("sell_price") val sellPrice: Double,
+    val date: String? = null,
+    val note: String? = null,
+    val fee: Double = 0.0
 )
 
 data class InvestmentTransactionsResponse(
@@ -854,4 +908,40 @@ data class CalendarSummary(
     @SerializedName("monthEnd") val monthEnd: String = "",
     @SerializedName("monthSummary") val monthSummary: IncomeExpense = IncomeExpense(),
     @SerializedName("monthDays") val monthDays: List<CalendarDay> = emptyList()
+)
+
+/* ----------------------------- 账本备份（数据管理） ----------------------------- */
+
+/**
+ * 导入备份后各类型的恢复条数。
+ * 字段与 server/routes/backup.js 里的 `imported` 对象一一对应，
+ * 后端新增类型时这里补字段即可（缺字段只会显示不全，不会解析失败）。
+ */
+data class ImportedCounts(
+    val tags: Int = 0,
+    val accounts: Int = 0,
+    val categories: Int = 0,
+    val budgets: Int = 0,
+    val debts: Int = 0,
+    @SerializedName("savings_goals") val savingsGoals: Int = 0,
+    val investments: Int = 0,
+    val transactions: Int = 0,
+    val transfers: Int = 0
+) {
+    /** 「账户:12  交易:340」这样的人类可读摘要，0 项不显示 */
+    fun summary(): String = listOf(
+        "账户" to accounts,
+        "分类" to categories,
+        "标签" to tags,
+        "预算" to budgets,
+        "债务" to debts,
+        "储蓄目标" to savingsGoals,
+        "理财" to investments,
+        "交易" to transactions,
+        "转账" to transfers
+    ).filter { it.second > 0 }.joinToString("  ") { "${it.first}:${it.second}" }
+}
+
+data class ImportBackupResult(
+    val imported: ImportedCounts = ImportedCounts()
 )

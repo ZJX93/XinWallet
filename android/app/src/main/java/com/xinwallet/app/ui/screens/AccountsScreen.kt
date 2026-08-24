@@ -1,7 +1,6 @@
 package com.xinwallet.app.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +48,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.CreateAccountRequest
-import com.xinwallet.app.data.model.UpdateAccountRequest
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.BalanceCard
 import com.xinwallet.app.ui.components.DropdownField
@@ -81,11 +79,10 @@ fun AccountsScreen(navController: NavHostController) {
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
-    var editing by remember { mutableStateOf<Account?>(null) }
+    // 只保留「新增」表单所需状态。
+    // editing / longPressed / confirmClose / confirmDelete 已随列表页管理入口一起移除
+    // （编辑、销户、删除统一在 AccountDetailScreen）。
     var showForm by remember { mutableStateOf(false) }
-    var longPressed by remember { mutableStateOf<Account?>(null) }
-    var confirmClose by remember { mutableStateOf<Account?>(null) }
-    var confirmDelete by remember { mutableStateOf<Account?>(null) }
 
     LaunchedEffect(Unit) { vm.load() }
     // 回到前台（从后台返回）：重新拉取账户数据
@@ -95,72 +92,37 @@ fun AccountsScreen(navController: NavHostController) {
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
     LaunchedEffect(state.formDone) {
-        if (state.formDone) { showForm = false; editing = null; vm.consumeFormDone() }
+        if (state.formDone) { showForm = false; vm.consumeFormDone() }
     }
 
     if (showForm) {
+        // account = null 固定为新增模式（编辑入口已移到详情页）
         AccountFormDialog(
-            account = editing,
+            account = null,
             submitting = state.submitting,
-            onDismiss = { showForm = false; editing = null },
+            onDismiss = { showForm = false },
             onSubmit = { name, type, icon, opening, credit, annualRate, interestCycle ->
-                val target = editing
-                if (target == null) vm.create(CreateAccountRequest(name, type, icon, opening, credit, annualRate, interestCycle))
-                else vm.update(target.id, UpdateAccountRequest(name, type, icon, opening, credit, annualRate, interestCycle))
+                vm.create(CreateAccountRequest(name, type, icon, opening, credit, annualRate, interestCycle))
             }
         )
     }
 
-    longPressed?.let { acc ->
-        AlertDialog(
-            onDismissRequest = { longPressed = null },
-            title = { Text(acc.name) },
-            text = { Text("当前余额 ${formatMoney(acc.balance)}\n选择要执行的操作") },
-            confirmButton = {
-                TextButton(onClick = { editing = acc; showForm = true; longPressed = null }) { Text("编辑") }
-            },
-            dismissButton = {
-                Row {
-                    if (acc.status == "active") {
-                        TextButton(onClick = { confirmClose = acc; longPressed = null }) { Text("销户") }
-                    }
-                    TextButton(onClick = { confirmDelete = acc; longPressed = null }) {
-                        Text("删除", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-        )
-    }
-
-    confirmClose?.let { acc ->
-        AlertDialog(
-            onDismissRequest = { confirmClose = null },
-            title = { Text("销户「${acc.name}」？") },
-            text = { Text("销户后该账户不再计入总资产，历史流水会完整保留。") },
-            confirmButton = { TextButton(onClick = { vm.close(acc.id); confirmClose = null }) { Text("确认销户") } },
-            dismissButton = { TextButton(onClick = { confirmClose = null }) { Text("取消") } }
-        )
-    }
-
-    confirmDelete?.let { acc ->
-        AlertDialog(
-            onDismissRequest = { confirmDelete = null },
-            title = { Text("彻底删除「${acc.name}」？") },
-            text = { Text("删除后不可恢复。若账户下已有流水或理财持仓，后端会拒绝删除，此时请改用「销户」。") },
-            confirmButton = {
-                TextButton(onClick = { vm.delete(acc.id); confirmDelete = null }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("取消") } }
-        )
-    }
+    /*
+     * 已移除：longPressed 操作弹窗（编辑/销户/删除）及其 confirmClose / confirmDelete 二次确认。
+     *
+     * AccountDetailScreen 顶部已有等价的三个 ActionChip（编辑/销户/删除）和同样文案的
+     * 二次确认，这里是同一功能的第二份实现。用户反馈「这个功能重复」，故收敛为：
+     *   列表页 = 浏览 + 选择（点击进详情）
+     *   详情页 = 管理
+     * 新增仍留在列表页 FAB —— 新增时还没有账户可进详情。
+     * AccountFormDialog 保留：新增用它，且 AccountDetailScreen 也复用同一个 Composable。
+     */
 
     Scaffold(
         topBar = { TopBar("账户") },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { editing = null; showForm = true }) {
+            FloatingActionButton(onClick = { showForm = true }) {
                 Icon(Icons.Filled.Add, "新增账户")
             }
         }
@@ -193,8 +155,7 @@ fun AccountsScreen(navController: NavHostController) {
                         items(list, key = { it.id }) { acc ->
                             AccountRowWithActions(
                                 account = acc,
-                                onClick = { navController.navigate(Screen.AccountDetail.create(acc.id)) },
-                                onLongClick = { longPressed = acc }
+                                onClick = { navController.navigate(Screen.AccountDetail.create(acc.id)) }
                             )
                         }
                     }
@@ -206,13 +167,26 @@ fun AccountsScreen(navController: NavHostController) {
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/**
+ * 账户行：整行点击进详情，不再提供行内管理入口。
+ *
+ * 历史沿革（别再来回改）：
+ *  1. 最初只有长按 + 「· 长按管理」灰字提示 → 用户反馈「没有编辑删除功能」（发现不了）
+ *  2. 于是加了可见的「⋯」按钮呼出编辑/销户/删除 → 用户反馈「这个功能重复」
+ *     （因为 AccountDetailScreen 顶部已有同样的三个 ActionChip）
+ *  3. 现在：列表页只负责浏览与进入，管理动作唯一入口是详情页。
+ *
+ * 结论：功能不是「越多入口越好」，同一动作只该有一个归属明确的位置。
+ */
 @Composable
-private fun AccountRowWithActions(account: Account, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun AccountRowWithActions(
+    account: Account,
+    onClick: () -> Unit
+) {
     Row(
         Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -228,7 +202,7 @@ private fun AccountRowWithActions(account: Account, onClick: () -> Unit, onLongC
                     Text("已销户", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
             }
-            Text("${accountTypeLabel(account.type)} · 长按管理", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(accountTypeLabel(account.type), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(formatMoney(account.balance), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
@@ -243,9 +217,15 @@ private fun AccountRowWithActions(account: Account, onClick: () -> Unit, onLongC
  * 账户新增 / 编辑表单。
  * 注意：编辑时改的是「期初余额」而不是实时余额 —— 实时余额由账本流水推导，
  * 这与 Web 端 v0.3.0 之后的账户模型保持一致。
+ *
+ * 可见性为 internal 而非 private：AccountDetailScreen 也要复用这个表单
+ * （详情页的「编辑」入口）。Kotlin 的 private 是**文件级**作用域，同包不同文件
+ * 也访问不到，所以必须放宽到 internal（模块内可见）。
+ * 不要为了图省事在详情页复制一份 —— 字段校验规则（信用卡额度、利率、计息周期）
+ * 只应有一处实现。
  */
 @Composable
-private fun AccountFormDialog(
+internal fun AccountFormDialog(
     account: Account?,
     submitting: Boolean,
     onDismiss: () -> Unit,

@@ -77,6 +77,38 @@ class SessionStore {
     await prefs.flush();
   }
 
+  /** 读取首页功能卡片开关（key 如 'card_today' / 'card_calendar'），缺省 true */
+  async getCardVisible(key: string, def: boolean = true): Promise<boolean> {
+    const prefs = await this.getPrefs();
+    return prefs ? ((await prefs.get('home_' + key, def)) as boolean) : def;
+  }
+
+  /** 写入首页功能卡片开关 */
+  async setCardVisible(key: string, visible: boolean): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('home_' + key, visible);
+    await prefs.flush();
+  }
+
+  /** 读取首页卡片排列顺序（逗号分隔的 key 串，空串表示用注册表默认序） */
+  async getCardOrder(): Promise<string> {
+    const prefs = await this.getPrefs();
+    return prefs ? ((await prefs.get('home_card_order', '')) as string) : '';
+  }
+
+  /** 写入首页卡片排列顺序 */
+  async setCardOrder(order: string): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('home_card_order', order);
+    await prefs.flush();
+  }
+
   /** 暴露 AbilityContext（供文件下载/上传等需要 context 的 API 使用） */
   getContext(): common.Context | null {
     return this.context;

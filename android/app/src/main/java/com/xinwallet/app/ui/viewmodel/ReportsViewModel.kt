@@ -56,13 +56,51 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
         loadReport()
     }
 
+    /**
+     * 周期切换的**唯一**入口：mode 与 period 一次赋值、一次请求（对齐鸿蒙 applyPeriod）。
+     *
+     * ⚠️ 不要退回 `setPeriodMode(mode); setPeriod(period)` 那种两段式写法。
+     * 两个 setter 各自带去重 guard 且各自 loadReport()，串起来会打出「中间态请求」：
+     *
+     *   年 → 月（2026 切到 2026-03）
+     *     setPeriodMode("month") 把 "2026" 补成当前月 "2026-08" 并发一次请求
+     *     setPeriod("2026-03")   才发用户真正要的那次
+     *     → 白耗一次往返；两次响应乱序回来还会把 8 月的数据渲染出来
+     *
+     *   月 → 自定义
+     *     setPeriodMode("custom") 的 custom 分支保持 period 原值 "2026-08"
+     *     → 先拿「custom + 2026-08」打一次，服务端按区间解析月份串必然出错
+     *
+     *   自定义 → 月
+     *     setPeriodMode("month") 见 period 长度不是 4，原样保留区间串
+     *     → 先拿「monthly + 2026-01-01~2026-06-30」打一次
+     *
+     * 只有「月 → 年」这一条路径碰巧对（setPeriodMode 内部截出的 "2026" 与
+     * 随后 setPeriod("2026") 相同、被 guard 拦掉），所以问题在最常用的
+     * 操作上不显形，容易被当成没有问题。
+     *
+     * 见 scripts/verify-period-atomic-apply.js 与 docs/harmony-style-guide.md 第 54 节。
+     */
+    fun applyPeriod(period: String, mode: String) {
+        val s = _state.value
+        // 同一维度同一周期重复点：不发请求（等价于两个 setter 的 guard，但只判一次）
+        if (period == s.period && mode == s.periodMode) return
+        _state.value = s.copy(periodMode = mode, period = period)
+        loadReport()
+    }
+
     fun setPeriod(period: String) {
         if (period == _state.value.period) return
         _state.value = _state.value.copy(period = period)
         loadReport()
     }
 
-    /** 切换时间维度：按月 / 按年 / 自定义。切换后自动将 period 截取为对应精度并刷新 */
+    /**
+     * 只切维度、由 ViewModel 推算新 period（顶部维度切换按钮用）。
+     *
+     * UI 上如果同时知道目标 period 和目标 mode（周期弹层、左右箭头），
+     * 一律走 applyPeriod，不要调这个再补一次 setPeriod。
+     */
     fun setPeriodMode(mode: String) {
         if (mode == _state.value.periodMode) return
         val s = _state.value
@@ -87,9 +125,19 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
 
     private fun loadReport() {
         val s = _state.value
-        // 根据时间维度选择报表粒度：后端 /reports 接口支持 monthly/yearly/custom
+        // 报表粒度。
+        //
+        // ⚠️ 按年发 "annual" 而不是 "yearly"。二者在**新**服务端等价
+        // （PERIOD_TYPE_ALIAS 把 yearly 映射成 annual），但 "annual" 是
+        // 旧服务端唯一认识的写法 —— 旧版 parseReportPeriod 只有
+        // monthly / quarterly / annual 三个分支，收到 "yearly" 直接
+        // throw("不支持的报表类型") → HTTP 400。
+        //
+        // 客户端发新旧都认的值，按年就不依赖服务端部署顺序。
+        // 反过来（发 yearly + 服务端加别名）要求两端同时升级，
+        // 用户装了新 APK 而服务端还是旧的，按年功能就是坏的。
         val granularity = when (s.periodMode) {
-            "year" -> "yearly"
+            "year" -> "annual"
             "custom" -> "custom"
             else -> "monthly"
         }
@@ -100,7 +148,28 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
                     _state.value = _state.value.copy(loading = false, report = r.data)
                     if (_state.value.dataType != "balance") loadTopTransactions(_state.value.dataType)
                 }
-                is ApiResult.Error -> _state.value = _state.value.copy(loading = false, error = r.message)
+                is ApiResult.Error -> {
+                    // ⚠️ 失败必须把 report 清成 null，不能留着上一次的响应。
+                    // periodMode / period 是本地状态，切换立即生效：顶部导航已显示
+                    // 「2026年」、KPI 已按年算月均，而 report 还是上个月那份
+                    // —— 一个页面同时显示两个周期的数据，看着像图表没更新，
+                    // 实际是请求失败了。静默保留旧数据在这里比报错有害得多。
+                    //
+                    // 「服务端太旧不认识 custom」要说清楚，否则用户以为是自己选错了区间。
+                    // 但不能一律按 periodMode == "custom" 就说「需要升级服务端」——
+                    // 那样部署完新服务端之后，真正的网络错误、401、区间格式错误
+                    // 全都会被这句话盖掉，用户会一直去查服务端版本。
+                    // 判据用服务端实际回复：旧版 parseReportPeriod 落到最后一行
+                    // throw new Error('不支持的报表类型')。
+                    val serverTooOld = r.message.contains("不支持的报表类型")
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        report = null,
+                        error = if (s.periodMode == "custom" && serverTooOld)
+                            "自定义区间需要升级服务端"
+                        else r.message
+                    )
+                }
             }
         }
     }
