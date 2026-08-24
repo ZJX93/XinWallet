@@ -246,6 +246,24 @@ button { font-family: inherit; cursor: pointer; }
   flex-wrap: wrap;
 }
 
+/* ⛔ 交易管理页的顶部吸顶已于 2026-08-24 按用户要求**取消**。
+   原实现：header.top-bar.top-bar-sticky + .filter-bar + .trans-thead 三层 sticky，
+   为避免实色把 body 的 4 层彩色 blob 切成"白板断层"，三层都必须用
+   半透明 + backdrop-filter 玻璃态。但 blur 本身就是抹平背景，与「制造对比」冲突
+   （详见 components.css 1.5 节）。改用翻页后页面变矮，吸顶已无必要。
+   ⇒ .top-bar-sticky 现在只保留 padding/分隔线，不再 sticky、不再有玻璃态背景。
+   app.js 仍会在交易页切这个 class（保留钩子），但它不再改变定位行为。 */
+header.top-bar.top-bar-sticky {
+  padding: 12px 0 14px;
+  margin: 0 0 var(--space-2);
+  /* 分隔线保持极淡：实色 1px 线会显出"面板边框"，反而强化白板感 */
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--border-subtle) 55%, transparent);
+}
+
+/* （原 @supports not (backdrop-filter) 兜底块已删除：顶部吸顶取消后，
+   top-bar / filter-bar 都不再使用 backdrop-filter，也不再需要实色兜底。
+   留着反而会在旧浏览器上给它们加一块实色底 → 又变回"白板"。） */
+
 .page-title {
   font-size: var(--text-display-lg); font-weight: var(--fw-bold);
   letter-spacing: var(--tracking-tighter);
@@ -1998,7 +2016,32 @@ body {
             radial-gradient(56vw 56vw at -8vw -12vw, var(--blob-1), transparent 72%),
             radial-gradient(48vw 48vw at calc(100% + 4vw) 6vh, var(--blob-2), transparent 70%),
             radial-gradient(52vw 52vw at 20vw calc(100% + 18vw), var(--blob-3), transparent 72%),
-            radial-gradient(40vw 40vw at calc(100% - 12vw) calc(100% + 10vw), var(--blob-4), transparent 70%);
+            radial-gradient(40vw 40vw at calc(100% - 12vw) calc(100% + 10vw), var(--blob-4), transparent 70%),
+            /* ⛔ 中部补光（勿删）：上面 4 个 blob 圆心全在视口四角**外侧**
+               （-8vw/-12vw、100%+4vw、100%+18vw、100%+10vw），视口正中是设计上的空洞。
+               dashboard 有多张卡片各自带玻璃高光撑住节奏，空洞被盖住看不出来；
+               交易管理页原本是**一张撑满内容区高度的大表格**，玻璃态透出的正是这片空洞。
+               只加环境光、不碰卡片本身：色号沿用同一套 --blob token，
+               用 color-mix 稀释到约一半强度（blob-1 的 .55 alpha → 约 .30），
+               并放在列表最末（= 最底层），角部主光的层次与观感完全不变。
+
+               ⚠️ 订正（2026-08-24 实测）：本注释原写「实测中间列 x=629 / x=300 从 y=196 起
+               warm(R-B) 恒为 5，即纯白一路到底」—— 该论断**不成立**，是采样点落在
+               INPUT / SELECT.filter-select 这些实色控件上的误判，不是背景本身死白。
+               并且「白板感」的真因不在这里：交易页真正的病灶是**太平**（缺对比起伏），
+               不是**不够暖**。量化对照：dashboard 全页 warm avg=20.8 / 左右梯度差 37.7；
+               交易页 avg=14.0 / 梯度差 14.9 —— 均值只差 6.8，梯度差差 2.5 倍。
+               ⇒ 补光只抬均值、不制造对比，靠它救不回来。真正生效的是把大表格拆成
+               多张日期分组卡片、组间留 16px 缝露出 blob（见 components.css .trans-table）。
+               本层保留是因为它对整体环境光仍有正贡献，但**别再往这里加光**。 */
+            radial-gradient(50vw 46vw at 64vw 46vh,
+                color-mix(in oklab, var(--blob-1) 52%, transparent), transparent 72%),
+            /* ⛔ 左侧这层只能用暖色 token（blob-1 琥珀 70° / blob-2 珊瑚 25° / blob-4 桃 95°）。
+               曾误用 --blob-3（薄荷 160°）→ 实测 x=300 列 warm(R-B) 掉到 1 / -1 / 0
+               （如 (244,253,245)），整个左半区偏冷绿，与暖棕品牌基调冲突；
+               且 body::before / body::after 都套了 filter: saturate(2)，偏色会被放大一倍。 */
+            radial-gradient(44vw 42vw at 6vw 58vh,
+                color-mix(in oklab, var(--blob-4) 70%, transparent), transparent 70%);
         background-repeat: no-repeat;
         background-attachment: fixed;
         background-size: 100% 100%;

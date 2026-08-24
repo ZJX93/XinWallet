@@ -8,7 +8,11 @@
    1. TRANSACTION LIST ITEMS
    -------------------------------------------------------------------------- */
 .trans-list {
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 0;
+  /* 取消 gap：交易管理页的搜索行 + 表格体需要两块紧贴（搜索行 sticky 贴顶，
+     表格体紧跟在搜索行下），用 gap 隔开会形成 10px 视觉缝，
+     而搜索行有 padding 已经够用。其它用 trans-list 的页面（如账户明细弹层）
+     自带块级元素 margin，不依赖这里的 gap。 */
 }
 
 .trans-item {
@@ -76,50 +80,222 @@
 /* --------------------------------------------------------------------------
    1.5 TRANSACTION TABLE (交易管理页表格布局)
    -------------------------------------------------------------------------- */
+/* ⛔⛔ 顶部固定已于 2026-08-24 按用户要求**整体取消**（原三层 sticky 链已废除）⛔⛔
+   历史背景：曾做 top-bar / .filter-bar / .trans-thead 三层 sticky，top 值由
+   app.js 的 syncStickyOffsets() 实测注入（--sticky-top-1 / --sticky-top-2）。
+   为了让吸顶层不把身后 4 层彩色 blob 切成"白板断层"，三层都被迫用
+   「半透明 + backdrop-filter: blur(18px)」玻璃态 —— 但 blur 的语义就是抹平背景，
+   与「制造明暗对比」的目标天然冲突，这是「白板不协调」连续 6 轮返工的根源之一。
+   改用翻页（每页 20 条）后页面高度从 4217px 压到千级，吸顶已无必要。
+   ⇒ 现在筛选行/表头随内容自然滚动，背景全部透明，blob 完整透出。
+   ⛔ 如需恢复吸顶，必须连同「玻璃态 vs 白板」的矛盾一起重新设计，别只把
+      position: sticky 加回来。 */
+.filter-bar {
+  /* ⛔ 不吸顶了 ⇒ 不需要任何底色。加实色会挡住 body blob（用户反馈的"白板"），
+     加 backdrop-filter 会把 blob 糊平 —— 两条都走过，都失败。保持透明。 */
+  background: none;
+  padding: 8px 0 6px;
+  /* ⛔ 不要加负 margin：曾用 margin:0 0 -4px 消除与 .trans-list 的间距，
+     结果两层重叠、筛选行被搜索行压住一条边。间距已由 .trans-list { gap: 0 } 解决。 */
+  margin: 0;
+}
+
+/* ⛔⛔ 交易页「白板不协调」的最终定论（连续 6 轮返工，别再走老路）⛔⛔
+
+   走过的两条错路：
+   ① 改 sticky 层的透明度/色相 —— 无效。backdrop 采到的是祖先白卡片。
+   ② 给 .trans-table 套 72% 玻璃态、再往 body 里加暖光提亮 —— 仍然无效。
+      量化实测（Pillow 取 6 列 × 全高度，warm = R − B）：
+        dashboard : 全页 avg=20.8  左右梯度差=37.7  各列 min 低至 -131  cold(≤1) 最高 17/142
+        交易页    : 全页 avg=14.0  左右梯度差=14.9  各列 min 仅 2~8      cold(≤1) 全 0/142
+      两页 avg 只差 6.8，梯度差却差 2.5 倍。
+      ⇒ 病灶是「太平」不是「不够暖」。dashboard 好看是因为有明暗对比和色彩起伏，
+        不是因为整体更暖。往 body 里加暖光只提均值、不制造对比，所以观感毫无变化。
+
+   ⇒ 真正的结构性差异：dashboard 是**多张矮卡片、卡片之间留缝露出 body blob**；
+     交易页是**一张 3522px 高的卡片撑满整个内容区**，视口内不管滚到哪里都被同一片
+     72% 白底覆盖，blob 的起伏被彻底压平。透明度调到多少都救不回来。
+
+   ⇒ 定案（照搬理财/dashboard 卡片模式，勿自创）：
+     .trans-table  退化为**完全透明的布局外壳**，不再是卡片；
+     .trans-thead  和每个 .trans-date-group **各自成为一张独立卡片**；
+     .trans-tbody  组间留 gap，让 body 的彩色 blob 从缝里透出来
+     —— 这样滚动时明暗随 blob 起伏，和 dashboard 同一套节奏。
+   验收标准也随之改变：不看「全列 warm ≥ N」，看**左右梯度差是否接近 dashboard 量级（>25）**。 */
 .trans-table {
   width: 100%;
   display: flex; flex-direction: column;
-  border-radius: var(--radius-lg);
-  background: var(--surface-card);
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
+  /* 卡片之间的缝 = 露出 body blob 的通道，是本次修复的核心，勿归零。
+     ⛔ 必须与 dashboard 的 .dash-grid / .dash-kpi-bar 同为 var(--space-4)（16px）。
+     实测教训：先用 10px 时，单列扫描「偏暗行」只从 216 涨到 223（+7 行），
+     缝太窄→blob 透出面积不足→观感与改前几乎无差别，用户直接反馈「没有变化」。 */
+  gap: var(--space-4);
+  /* ⛔ 这里绝对不要再加 background / backdrop-filter / border。
+     它一旦有底色，就又变回那张压平全页的白板。它现在只负责排列。 */
+  background: none;
+  border: none;
+  /* 仅横向裁切（min-width: fit-content 防止列撑开），纵向保持 visible。
+     （历史原因：表头曾用 position: sticky，被祖先 overflow:hidden 截掉导致无法贴顶。
+      现已取消吸顶，但纵向仍无需裁切，保持 visible 以免误裁阴影。） */
+  overflow-x: clip; overflow-y: visible;
   min-width: fit-content;
 }
 
 .trans-thead {
   display: grid;
-  grid-template-columns: 120px 100px 150px 150px 170px 140px 220px 80px;
+  /* 8 列：time/type/cat/amount/account/tags/desc/actions
+     账户列从 170 → 280px：转账行要装下「A → B」两个账户名（如 瀚海储蓄卡(4662) → 平安储蓄卡(8008)），
+     旧宽度直接被省略号截掉。其它列同步略压，描述列 220 → 180、标签列 140 → 130，
+     保持总宽与原版接近（1140 vs 原 1130），不破坏布局。 */
+  grid-template-columns: 100px 90px 140px 140px 280px 130px 180px 80px;
   align-items: center; gap: var(--space-5);
   padding: 10px 20px;
+  /* 表头是**一张独立卡片**（.trans-table 已退化为透明外壳），配方与 .trans-date-group
+     一致 = 照搬 .goal-card / .kpi-card 的实色范式。
+     ⛔ 不要改回半透明 + backdrop-filter：① blur 会把背后 blob 糊平（与制造对比的目标相反）；
+        ② 表头下方有交易行不断流过，半透明会让行文字透上来压住表头文字，不可读。
+     实色是同时满足「可读」与「不抹平背景」的唯一解。 */
   background: var(--surface-hover);
-  border-bottom: 1px solid var(--border-subtle);
+  background-image: var(--glass-hi);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   font-size: var(--text-caption); font-weight: var(--fw-semibold);
   color: var(--text-tertiary);
+  /* ⛔ 顶部固定已取消（见上方 .filter-bar 长注释），原 position: sticky +
+     top: var(--sticky-top-2) 已移除。表头现随内容自然滚出视口。 */
+  box-shadow: var(--shadow-sm);
 }
 
-.trans-tbody { display: flex; flex-direction: column; }
+/* tbody 只排列，不带底色。组间的 gap 是 blob 透出的通道，与 dashboard 同为 16px。 */
+.trans-tbody { display: flex; flex-direction: column; gap: var(--space-4); }
 
-.trans-date-group { border-bottom: 1px solid var(--border-subtle); }
-.trans-date-group:last-child { border-bottom: none; }
+/* ===== 翻页条 =====
+   ⛔ 配方照搬 .goal-card / .kpi-card 的实色范式（同 .trans-date-group）：
+      实色 --surface-card + --glass-hi 高光 + --border-subtle 描边，**无 backdrop-filter**。
+      理由见下方 .trans-date-group 的长注释 —— blur 会把背后的 blob 糊平。
+   ⛔ 不要给它 position: sticky。翻页条吸底会挡住最后一行的操作按钮，
+      而且交易页顶部已有三层 sticky（top-bar / filter-bar / trans-thead），
+      再加一层吸底会把可视区压得更窄。让它随内容滚到底即可。 */
+.trans-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  background-image: var(--glass-hi);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.pager-info {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.pager-ctrl { display: flex; align-items: center; gap: var(--space-1); }
+/* 44px 最小点击目标（无障碍要求），视觉高度 34px 由 padding 撑出可点区域 */
+.pager-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+.pager-btn:hover:not(:disabled):not(.active) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+.pager-btn:active:not(:disabled) { transform: scale(0.96); }
+.pager-btn:focus-visible {
+  outline: 2px solid var(--interactive-default);
+  outline-offset: 1px;
+}
+/* 当前页：实色品牌底 + 白字，是整条里唯一的强调色，面积极小 */
+.pager-btn.active {
+  background: var(--interactive-default);
+  color: var(--text-on-accent);
+  border-color: transparent;
+  cursor: default;
+}
+.pager-btn:disabled { opacity: .35; cursor: not-allowed; }
+.pager-gap {
+  min-width: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-caption);
+  user-select: none;
+}
+.pager-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+.pager-size select { height: 30px; padding: 0 var(--space-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pager-btn { transition: none; }
+  .pager-btn:active:not(:disabled) { transform: none; }
+}
+
+/* 每个按天分组 = 一张独立卡片。
+   ⛔⛔ 配方必须**逐字照搬 .goal-card / .kpi-card**（用户原话：「参照理财卡片的模式，不要乱发挥」）：
+        background: var(--surface-card);   ← 实色，不是 color-mix 半透明
+        border: 1px solid var(--border-subtle);
+        border-radius / overflow: hidden
+        无 backdrop-filter
+   曾自创「72% 半透明 + backdrop-filter: saturate(160%) blur(14px)」→ 实测**起伏活跃度反而下降**
+   （改前 4.89 → 10px 缝 4.87 → 16px 缝 4.80，全都不如改前）。原因很直白：
+   `backdrop-filter: blur()` 的字面作用就是**把背后的一切模糊掉 = 主动抹平 blob 起伏**，
+   与「制造对比」的目标完全相反 —— 半透明让 blob 隐约透进卡片内部、blur 又把它糊成一片均匀灰，
+   于是缝隙里的清晰起伏与卡片内的模糊底色互相抵消，整页反而更「平」。
+   ⇒ 正解：卡片本身用**实色**（干净、有明确边界），起伏**全部交给组间 16px 缝隙**去露 blob。
+      对比来自「实卡片 ↔ 通透缝隙」的硬切换，而不是让卡片自己半透明。
+   ⛔ 不要把这里改成 background: none 再把底色移回 .trans-table —— 那就退回白板了。 */
+.trans-date-group {
+  background: var(--surface-card);
+  background-image: var(--glass-hi);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.trans-date-group:last-child { border-bottom: 1px solid color-mix(in oklab, var(--border-subtle) 70%, transparent); }
 
 .trans-date-header {
   padding: 8px 16px;
   font-size: var(--text-caption); font-weight: var(--fw-medium);
-  color: var(--text-secondary); background: var(--surface-hover);
+  color: var(--text-secondary);
+  /* 分组卡片已改回实色（照搬 .goal-card），日期头恢复实色 var(--surface-hover)
+     作为组内分隔条 —— 卡片不再通透，不存在"灰条压在 blob 上"的问题。 */
+  background: var(--surface-hover);
   border-bottom: 1px solid var(--border-subtle);
   display: flex; align-items: center; gap: var(--space-2);
 }
 
 .trans-row {
   display: grid;
-  grid-template-columns: 120px 100px 150px 150px 170px 140px 220px 80px;
+  /* 与 .trans-thead 列宽逐字符一致，否则 thead 与 tbody 列会错位。 */
+  grid-template-columns: 100px 90px 140px 140px 280px 130px 180px 80px;
   align-items: center; gap: var(--space-5);
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid color-mix(in oklab, var(--border-subtle) 60%, transparent);
   font-size: var(--text-body-sm); color: var(--text-primary);
   transition: background var(--duration-150);
 }
-.trans-row:last-child { border-bottom: none; }
+/* 每个分组卡片内最后一行不留分隔线（卡片自身的边框就是收口） */
+.trans-date-group .trans-row:last-child { border-bottom: none; }
 .trans-row:hover { background: var(--surface-hover); }
 
 .trans-category { display: flex; align-items: center; gap: 6px; }
@@ -1484,8 +1660,30 @@
   .trans-table { display: block; min-width: auto; }
   .trans-tbody { display: flex; flex-direction: column; gap: 6px; }
 
-  /* 按天分组：保留日期头，调小间距 */
-  .trans-date-group { border-bottom: none; }
+  /* 翻页条：窄屏放不下「信息 + 页码 + 每页数」三栏并排，改为居中折行。
+     条数信息与每页选择器占满整行、页码单独一行居中，避免页码被挤成两三个换行。 */
+  .trans-pager {
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+  .trans-pager .pager-info { order: 2; width: 100%; text-align: center; }
+  .trans-pager .pager-ctrl { order: 1; width: 100%; justify-content: center; }
+  .trans-pager .pager-size { order: 3; width: 100%; justify-content: center; }
+
+  /* 按天分组：移动端每个 .trans-row 已是独立卡片，分组不能再套一层卡片壳
+     （桌面端 .trans-date-group 带玻璃态底色 + 边框 + 圆角，这里必须全部撤掉，
+     否则卡片套卡片、边框叠边框）。 */
+  .trans-date-group {
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .trans-date-group:last-child { border-bottom: none; }
   .trans-date-header {
     padding: 6px 4px;
     font-size: var(--text-body-sm);
@@ -1493,8 +1691,8 @@
     color: var(--text-secondary);
     background: transparent;
     border-bottom: none;
-    position: sticky; top: 0; z-index: 5;
-    backdrop-filter: blur(8px);
+    /* ⛔ 顶部固定已整体取消，日期头也不再吸顶（原 position:sticky + blur(8px)）。
+       保持与桌面端一致：全页只有自然滚动，无任何 sticky 层。 */
   }
 
   /* 每行转卡片 */

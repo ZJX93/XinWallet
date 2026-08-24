@@ -371,9 +371,23 @@ async function showPage(page) {
     // 快速记账按钮仅在仪表盘页面显示
     const quickBtn = document.getElementById('quickAddBtn');
     if (quickBtn) quickBtn.style.display = page === 'dashboard' ? '' : 'none';
+    // 交易管理页的 class 钩子（保留：CSS 里 .top-bar-sticky 仍承载该页专属的
+    // padding 与分隔线）。⛔ 顶部三层 sticky 吸顶已于 2026-08-24 按用户要求取消，
+    // 该 class 不再改变定位行为，--sticky-top-1/2 也不再需要注入。
+    const topBar = document.querySelector('header.top-bar');
+    if (topBar) topBar.classList.toggle('top-bar-sticky', page === 'transactions');
     // 刷新当前页数据
     refreshPage(page);
 }
+
+/* ── 原 syncStickyOffsets() 已删除 ────────────────────────────────────
+   它的职责是实测 top-bar / filter-bar 高度并注入 --sticky-top-1 / --sticky-top-2，
+   供三层 sticky 的 top 值消费。顶部固定取消后这两个变量无人消费，
+   继续 rAF 双帧测量纯属浪费。
+   ⛔ 如需恢复吸顶，连同 components.css / styles.css 里的注释一起恢复，
+      并重新面对「玻璃态 blur 会抹平 body blob」这个矛盾。 */
+
+// （原 resize 监听用于重算 sticky 偏移量，吸顶取消后已无必要，一并删除。）
 
 // 导航：写入历史记录 + 渲染
 function switchPage(page) {

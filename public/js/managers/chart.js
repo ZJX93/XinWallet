@@ -380,15 +380,9 @@ const ChartManager = {
                 },
                 plugins: {
                     legend: { display: false },  // 参考文件：环图无图例（中心数字代替）
-                    tooltip: {
-                        callbacks: {
-                            label: cx => {
-                                const v = cx.parsed;
-                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
-                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
-                            }
-                        }
-                    }
+                    // 环图一律不显示悬浮标注：中心读数已经承担「分类名 · 占比 + 金额」的展示，
+                    // 再叠一个 tooltip 是重复信息，而且会遮住环体下半部分（用户 2026-08-24 反馈）。
+                    tooltip: { enabled: false }
                 }
             },
             plugins: [centerTextPlugin]
@@ -460,15 +454,8 @@ const ChartManager = {
                 },
                 plugins: {
                     legend: { display: false },  // 首页风格：无图例，中心数字代替
-                    tooltip: {
-                        callbacks: {
-                            label: cx => {
-                                const v = cx.parsed;
-                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
-                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
-                            }
-                        }
-                    }
+                    // 同 dashPie：中心读数已含类型名 · 占比 + 金额，tooltip 属重复信息且遮挡环体。
+                    tooltip: { enabled: false }
                 }
             },
             plugins: [centerTextPlugin]

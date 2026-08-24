@@ -25,10 +25,29 @@
 const TransactionManager = {
     _saving: false,
     _filterTimer: null,
+    // ===== 翻页状态 =====
+    // ⛔ 为什么用「前端切片」而不是服务端 LIMIT/OFFSET：
+    //   ① 备注筛选（transNoteFilter）是**前端**做的（见 refresh 里的 noteFilter），
+    //      服务端不认这个条件。若走 SQL 分页，服务端以为返回了 20 条，
+    //      前端过滤掉 6 条后只剩 14 条，且「共几页」完全算错。
+    //      这正是 server/routes/transactions.js:143 那段注释警告的坑。
+    //   ② 服务端 GET /transactions 返回**裸数组**、不带 total，
+    //      要做服务端分页得先改接口契约（加 COUNT 查询 + 包一层 {items,total}），
+    //      会波及 dashboard / report / analysis 等所有调用方。
+    //   ③ 现有 limit=200 一次拉全，翻页时**不再打接口**，纯内存切片 → 翻页零延迟。
+    // ⇒ 超过 200 条的账本需要服务端分页时，必须连同 ①② 一起改，别只改这里。
+    _page: 1,
+    // 默认 20 条（用户 2026-08-24 指定）。翻页条右侧可切 20/50/100。
+    // ⛔ 别改回 50：44 条数据在每页 50 时只有一页 = 等于没分页，
+    //    页面会重新变成 4000px 高的长白板，正是要治的病。
+    _pageSize: 20,
+    _pageRows: [],
     init() {
         this.populateFilters();
-        const refreshNow = () => this.refresh({ syncUrl: true });
-        const refreshDebounced = () => this.debouncedRefresh();
+        // 筛选条件变化 → 必须回到第 1 页，否则会停在一个已不存在的页码上（显示空白）
+        const refreshNow = () => { this._page = 1; this.refresh({ syncUrl: true }); };
+        const refreshDebounced = () => { this._page = 1; this.debouncedRefresh(); };
+
         document.getElementById('transSearch').addEventListener('input', refreshDebounced);
         document.getElementById('transCatFilter').addEventListener('change', refreshNow);
         document.getElementById('transTypeFilter').addEventListener('change', refreshNow);
@@ -541,12 +560,39 @@ const TransactionManager = {
         if (filtered.length === 0) {
             const emptyMsg = noteFilter ? '没有匹配备注的交易' : '暂无交易记录';
             showEmpty(tbodyEl, emptyMsg, '📭');
+            this.renderPager(0, 1);
             return;
         }
 
+        // 取数与渲染分离：refresh() 负责拉数据，renderPage() 负责切片+渲染。
+        // 翻页只调 renderPage()，不再打接口。
+        this._pageRows = filtered;
+        this.renderPage();
+    },
+
+    /**
+     * 渲染当前页（切片 + 分组 + 生成 DOM + 绑事件 + 渲染翻页条）。
+     * 数据源是 this._pageRows（由 refresh() 填充），本方法**不发网络请求**。
+     */
+    renderPage() {
+        const tbodyEl = document.getElementById('transTbody');
+        if (!tbodyEl) return;
+        const filtered = this._pageRows || [];
+
+        // ===== 翻页：按「行」切片，不按「日期组」切片 =====
+        // 按组切片会让每页条数忽多忽少（某天 1 笔、某天 30 笔），页高剧烈跳动。
+        // 按行切片则每页恒定 _pageSize 条，一个日期组跨页时两页各显示自己那部分，
+        // 两边都带完整的日期头 —— 用户不会看到「无头的孤立行」。
+        const totalPages = Math.max(1, Math.ceil(filtered.length / this._pageSize));
+        if (this._page > totalPages) this._page = totalPages;
+        if (this._page < 1) this._page = 1;
+        const start = (this._page - 1) * this._pageSize;
+        const pageItems = filtered.slice(start, start + this._pageSize);
+
         // 按日期分组（使用日期字符串避免时区偏移）
+        // ⚠️ 必须在切片**之后**分组，否则跨页组会被算进不属于本页的行
         const groups = {};
-        filtered.forEach(t => {
+        pageItems.forEach(t => {
             const { y, m, d } = parseDateParts(t.date);
             const key = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             if (!groups[key]) groups[key] = { date: t.date, items: [] };
@@ -619,6 +665,7 @@ const TransactionManager = {
         }).join('');
 
         tbodyEl.innerHTML = tbody;
+        this.renderPager(filtered.length, totalPages);
 
         // 事件委托：编辑和删除按钮
         tbodyEl.querySelectorAll('[data-action="edit-trans"]').forEach(btn => {
@@ -627,6 +674,77 @@ const TransactionManager = {
         tbodyEl.querySelectorAll('[data-action="delete-trans"]').forEach(btn => {
             btn.addEventListener('click', () => this.delete(parseInt(btn.dataset.id)));
         });
+    },
+
+    /**
+     * 渲染翻页条。
+     * ⛔ 只渲染 UI 与绑定事件，**不重新请求接口** —— 数据已在 this._pageRows 内存里，
+     *    翻页只是换个切片重渲染，因此 goToPage 走的是 renderPage() 而非 refresh()。
+     * 页码策略：首页 / 末页恒显，当前页两侧各留 1 页，其余折叠为 …
+     * （27 组 200 条时是 4 页，但账本长起来后不能让页码把整行撑爆）
+     */
+    renderPager(totalRows, totalPages) {
+        const pagerEl = document.getElementById('transPager');
+        if (!pagerEl) return;
+        // 只有一页时整条隐藏，避免底部多出一块无意义的空卡片
+        if (totalPages <= 1) {
+            pagerEl.innerHTML = '';
+            pagerEl.style.display = 'none';
+            return;
+        }
+        pagerEl.style.display = '';
+
+        const cur = this._page;
+        const nums = [];
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || Math.abs(i - cur) <= 1) nums.push(i);
+            else if (nums[nums.length - 1] !== '...') nums.push('...');
+        }
+
+        const from = (cur - 1) * this._pageSize + 1;
+        const to = Math.min(cur * this._pageSize, totalRows);
+
+        pagerEl.innerHTML = `
+            <div class="pager-info">第 ${from}-${to} 条 / 共 ${totalRows} 条</div>
+            <div class="pager-ctrl">
+                <button class="pager-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''} aria-label="上一页">‹</button>
+                ${nums.map(n => n === '...'
+                    ? `<span class="pager-gap" aria-hidden="true">···</span>`
+                    : `<button class="pager-btn ${n === cur ? 'active' : ''}" data-page="${n}" ${n === cur ? 'aria-current="page"' : ''}>${n}</button>`
+                ).join('')}
+                <button class="pager-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''} aria-label="下一页">›</button>
+            </div>
+            <div class="pager-size">
+                <label for="transPageSize">每页</label>
+                <select id="transPageSize" class="filter-select">
+                    ${[20, 50, 100].map(n => `<option value="${n}" ${n === this._pageSize ? 'selected' : ''}>${n}</option>`).join('')}
+                </select>
+            </div>
+        `;
+
+        pagerEl.querySelectorAll('.pager-btn[data-page]').forEach(btn => {
+            if (btn.disabled) return;
+            btn.addEventListener('click', () => this.goToPage(parseInt(btn.dataset.page)));
+        });
+        const sizeSel = document.getElementById('transPageSize');
+        if (sizeSel) sizeSel.addEventListener('change', () => {
+            this._pageSize = parseInt(sizeSel.value);
+            this._page = 1;
+            this.renderPage();
+        });
+    },
+
+    /** 跳到指定页并把视口回到列表顶部 */
+    goToPage(page) {
+        const totalPages = Math.max(1, Math.ceil(this._pageRows.length / this._pageSize));
+        if (page < 1 || page > totalPages || page === this._page) return;
+        this._page = page;
+        this.renderPage();
+        // 翻页后必须回到列表顶部：否则停在上一页的滚动位置，
+        // 新一页的前几条被吸顶的筛选行挡住，看起来像「翻页没反应」。
+        // 真实滚动容器是 .main-content（不是 document.scrollingElement）。
+        const scroller = document.querySelector('.main-content');
+        if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
     }
 };
 

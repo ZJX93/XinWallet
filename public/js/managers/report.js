@@ -862,15 +862,9 @@ const ReportManager = {
                 },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: cx => {
-                                const v = cx.parsed;
-                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
-                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
-                            }
-                        }
-                    }
+                    // 报表收支环同样禁用 tooltip：中心读数已展示「分类名 · 占比 + 金额」，
+                    // 悬浮框重复且会挡住下半环（与 chart.js 两个环图保持一致）。
+                    tooltip: { enabled: false }
                 }
             },
             plugins: [centerTextPlugin]
