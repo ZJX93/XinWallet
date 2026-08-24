@@ -82,6 +82,40 @@ API 名与结构字段极易记错，写之前先 grep
 - ⛔ `login.html` 原本给 `login.css` / `login.js` **都没带 `?v=` 版本号**，本次首次加上。
   改这两个文件后必须 bump，否则浏览器一直吃缓存、表现为「代码改了没生效」。
 
+## ⛔ Web 端已知限制：只在安全上下文生效（2026-08-24 裁定「不修」）
+
+**这是浏览器安全模型的规定，不是代码缺陷。** `crypto.subtle` 仅在**安全上下文**下存在：
+
+| 访问方式 | `isSecureContext` | `crypto.subtle` | 记住密码 |
+|---|---|---|---|
+| `https://域名` | true | 有 | ✅ 可用 |
+| `http://localhost:18888` | true（浏览器白名单） | 有 | ✅ 可用 |
+| `http://127.0.0.1:18888` | true（同上） | 有 | ✅ 可用 |
+| **`http://192.168.x.x:18888`** | **false** | **undefined** | ❌ **静默失效** |
+
+局域网 IP（手机/平板访问电脑后端）下 `credAvailable()` 返 `false` ⇒ `credGetKey()` 返 `null`
+⇒ `credSave()` 直接 return。**勾了也白勾，且当前无任何提示。**
+
+### 排障要点：认准这个表征，别去查登出逻辑
+
+> **用户名保住了，但勾选框是空的**
+
+因为用户名走的是普通 `localStorage`（`zhicai_last_user`，与加密无关），而
+`zhicai_remember_pwd` 标志**从未被写入过**（`credSave` 提前 return 了）。
+
+⛔ 这个表征极易误判成「登出时被清掉了」。已排除：`auth.js` 的 `clearSession()` 只删
+`xin_token` / `xin_refresh` / `xin_user` / `xin_book`，**不碰任何 `zhicai_pwd_*` 键**；
+`127.0.0.1` 下实测完整走过「勾选 → 登录 → 点登出 → 回登录页」，勾选框仍打勾、密码已回填。
+
+### 若将来要修，两条路
+
+1. **给本地后端上 HTTPS**（自签证书 + 手机装根证书）—— 一劳永逸，`crypto.subtle` 直接可用。
+2. **降级加密路径**（纯 JS AES 或 XOR+盐）—— ⚠️ 强度远低于 WebCrypto，且密钥必须落在
+   JS 可读处（IndexedDB 存不了不可导出 CryptoKey），XSS 即可解密。**若走这条，必须在
+   UI 上明确告知用户"当前连接非加密，密码保护强度较低"**，不能静默降级。
+
+**当前决定：不修。** 用 HTTPS 或 localhost 访问即正常工作。
+
 ## 验证记录（2026-08-24）
 
 | 项 | 结果 |
