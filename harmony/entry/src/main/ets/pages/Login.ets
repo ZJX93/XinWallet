@@ -1,5 +1,6 @@
 import router from '@ohos.router';
 import { Session } from '../common/store/Session';
+import { CredentialStore } from '../common/store/Credential';
 import { setBaseUrl } from '../common/http/Http';
 import { normalizeBaseUrl } from '../common/config';
 import * as Api from '../common/api/Api';
@@ -17,6 +18,8 @@ struct Login {
   @State loading: boolean = false;
   @State error: string = '';
   @State allowDemo: boolean = true;
+  /** 「记住密码」勾选态，初值由 aboutToAppear 从 CredentialStore 回填 */
+  @State rememberPwd: boolean = false;
 
   async aboutToAppear(): Promise<void> {
     const _r = await Promise.all([Session.getBaseUrl(), Session.isLoggedIn()]);
@@ -29,7 +32,19 @@ struct Login {
     if (loggedIn) {
       router.replaceUrl({ url: 'pages/Main' });
     }
-    // 记住用户名：预填上次成功登录的用户名（密码由系统密码管理器自动填充）
+    // 记住密码：勾选过则回填用户名+密码（密码由 HUKS 解密）
+    this.rememberPwd = await CredentialStore.isRemember();
+    if (this.rememberPwd) {
+      const savedUser = await CredentialStore.getUsername();
+      const savedPwd = await CredentialStore.getPassword();
+      if (savedUser) {
+        this.username = savedUser;
+      }
+      if (savedPwd) {
+        this.password = savedPwd;
+      }
+    }
+    // 未勾选记住密码时，退回只预填上次成功登录的用户名（密码交给系统密码管理器）
     if (!this.username) {
       this.username = await Session.getLastUsername();
     }
@@ -72,6 +87,13 @@ struct Login {
         await Session.saveTokens(resp.data.token, resp.data.refreshToken);
         if (!demo) {
           await Session.saveLastUsername(this.username); // 记住用户名，供下次预填
+          // ⛔ 凭据只在**登录成功后**保存 —— 密码错时保存会导致下次自动填错密码。
+          //    未勾选则清，覆盖"上次勾了这次取消"的场景。
+          if (this.rememberPwd) {
+            await CredentialStore.save(this.username, this.password);
+          } else {
+            await CredentialStore.clear();
+          }
         }
         router.replaceUrl({ url: 'pages/Main' });
       } else {
@@ -126,6 +148,34 @@ struct Login {
           .backgroundColor(COLORS.card)
           .borderRadius(12)
           .padding({ left: 14, right: 14 })
+
+        // 「记住密码」：与输入框同为 82% 宽、左对齐。整行可点（Row.onClick）比只点小方块好按。
+        // ⛔ 取消勾选立刻 clear()，不能等下次登录 —— 用户点掉就该真删密文。
+        Row() {
+          Checkbox({ name: 'rememberPwd', group: 'loginOpts' })
+            .select(this.rememberPwd)
+            .selectedColor(COLORS.brand)
+            .width(20)
+            .height(20)
+            .onChange((v: boolean) => {
+              this.rememberPwd = v;
+              if (!v) {
+                CredentialStore.clear();
+              }
+            })
+          Text('记住密码')
+            .fontSize(14)
+            .fontColor(COLORS.textPrimary)
+            .margin({ left: 6 })
+        }
+        .width('82%')
+        .justifyContent(FlexAlign.Start)
+        .onClick(() => {
+          this.rememberPwd = !this.rememberPwd;
+          if (!this.rememberPwd) {
+            CredentialStore.clear();
+          }
+        })
 
         if (this.error) {
           Text(this.error)

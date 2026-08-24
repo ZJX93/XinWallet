@@ -6,6 +6,7 @@ import hilog from '@ohos.hilog';
 import type window from '@ohos.window';
 import dataPreferences from '@ohos.data.preferences';
 import { Session } from '../common/store/Session';
+import { CredentialStore } from '../common/store/Credential';
 import { setBaseUrl } from '../common/http/Http';
 import { applyTheme } from '../common/theme';
 
@@ -13,6 +14,8 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'EntryAbility', '%{public}s', 'Ability onCreate');
     Session.init(this.context);
+    // 「记住密码」凭据库（HUKS 加密）也必须在此 init，否则 Login 页拿不到 context
+    CredentialStore.init(this.context);
     // 底部 tab 索引初值：Main 用 @StorageLink 绑定，首页卡片「查看全部」靠改它切 tab，
     // 必须在此建键，否则首启时 StorageLink 拿不到值。
     AppStorage.setOrCreate('mainTabIndex', 0);

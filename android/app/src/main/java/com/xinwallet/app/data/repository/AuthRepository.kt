@@ -57,6 +57,12 @@ class AuthRepository(
     }
 
     suspend fun hasSession(): Boolean = session.accessToken().isNotEmpty()
+    /**
+     * 登出只清会话（token / username / bookId）。
+     * ⛔ **刻意不清「记住密码」凭据** —— 记住密码的意义就是登出后下次还能自动填。
+     *    与 LAST_USERNAME「logout 不清」的既有约定一致。
+     *    要清凭据只有两条路：用户在登录页取消勾选，或调用 CredentialStore.clear()。
+     */
     suspend fun logout() = session.clearSession()
     suspend fun username(): String = session.username()
 

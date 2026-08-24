@@ -44,6 +44,9 @@ object AppContainer {
 
     lateinit var sessionManager: SessionManager
         private set
+    /** 「记住密码」加密凭据存储（EncryptedSharedPreferences / Android KeyStore） */
+    lateinit var credentialStore: com.xinwallet.app.data.local.CredentialStore
+        private set
     lateinit var api: ApiService
         private set
 
@@ -106,6 +109,9 @@ object AppContainer {
     private lateinit var gson: com.google.gson.Gson
 
     fun init(context: Context, session: SessionManager) {        sessionManager = session
+        // 用 applicationContext：CredentialStore 生命周期与进程一致，
+        // 传 Activity context 会泄漏（EncryptedSharedPreferences 由 lazy 长期持有）
+        credentialStore = com.xinwallet.app.data.local.CredentialStore(context.applicationContext)
 
         gson = GsonBuilder()
             .setLenient()

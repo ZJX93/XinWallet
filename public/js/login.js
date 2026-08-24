@@ -6,11 +6,161 @@ const TOKEN_KEY = 'xin_token';
 const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
 const USER_KEY = 'zhicai_user';
 
+/* ============================================
+   「记住密码」加密存储（WebCrypto AES-GCM）
+
+   ⛔⛔ 安全设计要点，改之前必读 ⛔⛔
+   1. **密码密文存 localStorage，密钥存 IndexedDB 且 extractable:false**。
+      CryptoKey 以不可导出方式持久化，JS 代码（包括 XSS 注入的脚本）
+      拿不到密钥字节，只能调 API 做加解密。这是浏览器端能做到的最强边界。
+      ⛔ 绝不允许把密钥也塞 localStorage —— 那等于把锁和钥匙放同一个抽屉。
+   2. **GCM 的 iv 每次加密都要新生成**，同密钥下 iv 重复会严重削弱 GCM。
+      iv 不是秘密，跟密文一起存明文即可。
+   3. WebCrypto 的 encrypt 已把 authTag 拼在密文尾部，**不需要像 HUKS 那样手工切**。
+   4. 全部 API 都是异步的，且在非 HTTPS（且非 localhost）下 crypto.subtle 为
+      undefined —— 所有函数必须容错降级为"不记住"，不能抛异常挡住登录。
+   ============================================ */
+const CRED_DB = 'xin_cred';
+const CRED_STORE = 'keys';
+const CRED_KEY_ID = 'pwd_key_v1';
+const CRED_CIPHER_KEY = 'zhicai_pwd_cipher';   // base64 密文
+const CRED_IV_KEY = 'zhicai_pwd_iv';           // base64 iv
+const CRED_USER_KEY = 'zhicai_pwd_user';       // 配套用户名（明文，用户名不是秘密）
+const CRED_REMEMBER_KEY = 'zhicai_remember_pwd';
+
+function credAvailable() {
+    return typeof indexedDB !== 'undefined' && window.crypto && window.crypto.subtle;
+}
+
+function credOpenDb() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(CRED_DB, 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(CRED_STORE)) db.createObjectStore(CRED_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+function credIdbGet(db, key) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(CRED_STORE, 'readonly');
+        const r = tx.objectStore(CRED_STORE).get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+    });
+}
+
+function credIdbPut(db, key, val) {
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(CRED_STORE, 'readwrite');
+        const r = tx.objectStore(CRED_STORE).put(val, key);
+        r.onsuccess = () => resolve();
+        r.onerror = () => reject(r.error);
+    });
+}
+
+function credIdbDel(db, key) {
+    return new Promise((resolve) => {
+        const tx = db.transaction(CRED_STORE, 'readwrite');
+        const r = tx.objectStore(CRED_STORE).delete(key);
+        r.onsuccess = () => resolve();
+        r.onerror = () => resolve();   // 删不掉也不该阻断流程
+    });
+}
+
+/** 取（或首次生成）不可导出的 AES-GCM 密钥 */
+async function credGetKey(createIfMissing) {
+    if (!credAvailable()) return null;
+    try {
+        const db = await credOpenDb();
+        let key = await credIdbGet(db, CRED_KEY_ID);
+        if (!key && createIfMissing) {
+            // ⛔ extractable = false：生成后连我们自己的代码都导不出密钥字节
+            key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+            await credIdbPut(db, CRED_KEY_ID, key);
+        }
+        return key || null;
+    } catch (e) {
+        console.warn('[cred] 密钥获取失败，记住密码功能降级:', e);
+        return null;
+    }
+}
+
+function credB64Encode(bytes) {
+    let s = '';
+    const arr = new Uint8Array(bytes);
+    for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+    return btoa(s);
+}
+
+function credB64Decode(str) {
+    const bin = atob(str);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+}
+
+/** 保存密码（加密）。⛔ 只能在登录成功后调用，否则会存下错误密码 */
+async function credSave(password, username) {
+    if (!password) return;
+    const key = await credGetKey(true);
+    if (!key) return;
+    try {
+        const iv = crypto.getRandomValues(new Uint8Array(12));   // GCM 标准 12 字节
+        const data = new TextEncoder().encode(password);
+        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+        localStorage.setItem(CRED_CIPHER_KEY, credB64Encode(cipher));
+        localStorage.setItem(CRED_IV_KEY, credB64Encode(iv));
+        localStorage.setItem(CRED_REMEMBER_KEY, '1');
+        // 用户名跟着凭据一起存（明文即可，用户名不是秘密）。
+        // 与安卓/鸿蒙对齐：凭据自带用户名，不依赖 zhicai_last_user 是否被清过。
+        if (username) localStorage.setItem(CRED_USER_KEY, username);
+    } catch (e) {
+        console.warn('[cred] 加密失败，未保存密码:', e);
+    }
+}
+
+/** 读回密码（解密）；失败一律返回空串让用户手动输 */
+async function credLoad() {
+    if (localStorage.getItem(CRED_REMEMBER_KEY) !== '1') return '';
+    const cipherB64 = localStorage.getItem(CRED_CIPHER_KEY);
+    const ivB64 = localStorage.getItem(CRED_IV_KEY);
+    if (!cipherB64 || !ivB64) return '';
+    const key = await credGetKey(false);
+    if (!key) return '';
+    try {
+        const plain = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: credB64Decode(ivB64) }, key, credB64Decode(cipherB64)
+        );
+        return new TextDecoder().decode(plain);
+    } catch (e) {
+        // 常见于清过 IndexedDB 但 localStorage 还在，或换了浏览器配置
+        console.warn('[cred] 解密失败（密钥可能已失效）:', e);
+        return '';
+    }
+}
+
+/** 取消勾选时清除。⛔ 密文和密钥都要删，只删一边等于没删干净 */
+async function credClear() {
+    localStorage.removeItem(CRED_CIPHER_KEY);
+    localStorage.removeItem(CRED_IV_KEY);
+    localStorage.removeItem(CRED_USER_KEY);
+    localStorage.removeItem(CRED_REMEMBER_KEY);
+    if (!credAvailable()) return;
+    try {
+        const db = await credOpenDb();
+        await credIdbDel(db, CRED_KEY_ID);
+    } catch (_) { /* 密钥删不掉也无妨：密文已删，解不出任何东西 */ }
+}
+
 function setSession(token, refreshToken, user) {
     localStorage.setItem(TOKEN_KEY, token);
     if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
-    // 记住用户名（不存密码）：下次进入登录页预填，配合 autocomplete 让浏览器密码管理器自动填充密码
+    // 记住用户名（与「记住密码」独立）：下次进入登录页预填
     if (user && user.username) localStorage.setItem('zhicai_last_user', user.username);
 }
 
@@ -40,14 +190,30 @@ if (localStorage.getItem(TOKEN_KEY)) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 记住用户名：未登录时预填上次用户名（密码仍由浏览器密码管理器自动填充）
+    const rememberBox = document.getElementById('authRemember');
+
+    // 记住用户名 / 记住密码：未登录时回填
     if (!localStorage.getItem(TOKEN_KEY)) {
-        const lastUser = localStorage.getItem('zhicai_last_user');
-        if (lastUser) {
-            const u = document.getElementById('authUser');
-            if (u) u.value = lastUser;
+        const u = document.getElementById('authUser');
+        // 优先用凭据里配套的用户名，退回 zhicai_last_user
+        const credUser = localStorage.getItem(CRED_USER_KEY);
+        const lastUser = credUser || localStorage.getItem('zhicai_last_user');
+        if (lastUser && u) u.value = lastUser;
+        // 勾选过记住密码则解密回填（异步，不阻塞页面渲染）
+        if (localStorage.getItem(CRED_REMEMBER_KEY) === '1') {
+            if (rememberBox) rememberBox.checked = true;
+            credLoad().then((pwd) => {
+                if (!pwd) return;
+                const p = document.getElementById('authPass');
+                if (p) p.value = pwd;
+            });
         }
     }
+
+    // ⛔ 取消勾选立刻清除，不能等下次登录 —— 用户点掉就该真删密文+密钥
+    if (rememberBox) rememberBox.addEventListener('change', () => {
+        if (!rememberBox.checked) credClear();
+    });
 
     const tabs = document.querySelectorAll('.auth-tab');
     const nickGroup = document.getElementById('authNickGroup');
@@ -99,6 +265,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             console.log('[login] setSession token='+data.token+' user='+data.user?.username);
             setSession(data.token, data.refreshToken, data.user);
+            // 记住密码：⛔ 必须在成功之后才保存，否则会把错密码存下来。
+            //    未勾选则清（覆盖"上次勾了这次取消"）。await 保证跳转前写盘完成。
+            if (rememberBox && rememberBox.checked) await credSave(password, username);
+            else await credClear();
             console.log('[login] 跳转到 /');
             location.href = '/';
         } catch (err) {
@@ -114,6 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await loginApi('/auth/demo', 'POST');
             setSession(data.token, data.refreshToken, data.user);
+            // ⛔ 演示账号刻意不保存凭据：demo 的密码不是用户自己的，
+            //    存了会在下次真实登录时填入一个不属于该用户的密码。
             location.href = '/';
         } catch (err) {
             setHint(err.message || '演示账号登录失败', true);

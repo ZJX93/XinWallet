@@ -105,6 +105,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.navigation:navigation-compose:2.8.2")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // 「记住密码」用：EncryptedSharedPreferences（密钥由 Android KeyStore 托管，
+    // 支持硬件级 TEE/StrongBox）。⛔ 不要降级成普通 SharedPreferences 存密码 ——
+    // 那等于明文落盘，root/备份即可读。1.1.0-alpha06 是当前唯一支持 API 24 且
+    // 不强依赖 Tink 新版的稳定档位，升级前先在 minSdk=24 真机验证。
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")

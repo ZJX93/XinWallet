@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AuthRepository
+import com.xinwallet.app.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -19,7 +20,12 @@ class LoginViewModel(private val repo: AuthRepository) : ViewModel() {
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
 
-    fun login(username: String, password: String) {
+    /**
+     * 登录。remember=true 时在**成功后**加密保存用户名+密码。
+     * ⛔ 保存必须放在 Success 分支里 —— 放在方法开头会把错误密码也存进去，
+     *    下次自动填入一个错的，用户完全不知道为什么登不上。
+     */
+    fun login(username: String, password: String, remember: Boolean = false) {
         if (username.isBlank() || password.isBlank()) {
             _state.value = LoginUiState(error = "请输入用户名和密码")
             return
@@ -27,7 +33,12 @@ class LoginViewModel(private val repo: AuthRepository) : ViewModel() {
         viewModelScope.launch {
             _state.value = LoginUiState(loading = true)
             when (val r = repo.login(username, password)) {
-                is ApiResult.Success -> _state.value = LoginUiState(success = true)
+                is ApiResult.Success -> {
+                    // 勾选则存，未勾选则清（用户可能上次勾了这次取消，必须真删）
+                    if (remember) AppContainer.credentialStore.save(username, password)
+                    else AppContainer.credentialStore.clear()
+                    _state.value = LoginUiState(success = true)
+                }
                 is ApiResult.Error -> _state.value = LoginUiState(error = r.message)
             }
         }

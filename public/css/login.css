@@ -117,6 +117,22 @@ body {
   box-shadow: 0 0 0 3px var(--interactive-focus-ring);
 }
 
+/* 「记住密码」勾选行：整行是 <label>，点文字也能切换（for=authRemember）。
+   ⛔ 别给它套 .form-group —— 那条规则是 flex-column + gap，会把勾选框和文字拆成上下两行。 */
+.remember-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-body-sm); color: var(--text-secondary);
+  cursor: pointer; user-select: none;
+  /* 负 margin 抵掉 .auth-form 的 gap，让它贴近密码框、视觉上归属于密码字段 */
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.remember-row input[type="checkbox"] {
+  width: 16px; height: 16px; margin: 0;
+  accent-color: var(--interactive-default);
+  cursor: pointer;
+}
+
 .auth-hint {
   font-size: var(--text-body-sm); min-height: 18px;
   color: var(--text-tertiary); text-align: center;

@@ -1,5 +1,6 @@
 package com.xinwallet.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -48,6 +50,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     val state by vm.state.collectAsState()
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    // 「记住密码」勾选态。初值由 CredentialStore 在 LaunchedEffect 里回填
+    var rememberPwd by remember { mutableStateOf(false) }
     var serverUrl by remember { mutableStateOf("") }
     var showServer by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -58,7 +62,16 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         serverUrl = if (isPlaceholderUrl(saved)) "" else saved
         showServer = serverUrl.isBlank()
         vm.loadConfig()
-        // 记住用户名：预填上次成功登录的用户名（密码由系统 Autofill 默认行为处理）
+        // 记住密码：勾选过则回填用户名+密码（密码来自 EncryptedSharedPreferences）
+        val cs = AppContainer.credentialStore
+        rememberPwd = cs.isRemember()
+        if (rememberPwd) {
+            val u = cs.savedUsername()
+            val p = cs.savedPassword()
+            if (u.isNotBlank()) username = u
+            if (p.isNotBlank()) password = p
+        }
+        // 未勾选记住密码时，退回只预填上次成功登录的用户名（密码交给系统 Autofill）
         if (username.isBlank()) username = AppContainer.sessionManager.lastUsername()
     }
     LaunchedEffect(state.success) {
@@ -119,7 +132,27 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(4.dp))
+            // 「记住密码」：整行可点（Row.clickable），比只点小方块好按。
+            // ⛔ 取消勾选时立刻 clear()，不能等到下次登录 —— 用户点掉就该真删，
+            //    否则密码还躺在磁盘上，与"我关了"的预期不符。
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    rememberPwd = !rememberPwd
+                    if (!rememberPwd) AppContainer.credentialStore.clear()
+                },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = rememberPwd,
+                    onCheckedChange = {
+                        rememberPwd = it
+                        if (!it) AppContainer.credentialStore.clear()
+                    }
+                )
+                Text("记住密码", style = MaterialTheme.typography.bodyMedium)
+            }
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = {
                     val url = AppContainer.normalizeBaseUrl(serverUrl)
@@ -130,7 +163,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     }
                     AppContainer.setBaseUrl(url)
                     serverUrl = url
-                    vm.login(username, password)
+                    vm.login(username, password, rememberPwd)
                 },
                 enabled = !state.loading,
                 modifier = Modifier.fillMaxWidth()
