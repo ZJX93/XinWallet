@@ -404,6 +404,5 @@ private fun PickerField(
     }
 }
 
-/** 金额显示：整数不带小数，避免「35.0」这种别扭形态 */
-private fun trimAmount(v: Double): String =
-    if (v % 1.0 == 0.0) v.toLong().toString() else String.format("%.2f", v)
+// 金额显示统一复用 AddTransactionScreen.kt 的 internal trimAmount()：
+// 同 package 内不得重名（顶层函数 private 也拦不住冲突），且 AiScanScreen 走的就是它。
