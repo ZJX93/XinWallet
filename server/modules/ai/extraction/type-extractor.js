@@ -18,15 +18,27 @@ const TRANSFER_PATTERNS = [
     // A 转出/转入 到 B —— 金额缺失的纯方向表达
     /[转划](?:入|出)\s*[到去进]/,
 ];
-const INCOME_WORDS = [
-    '收入', '收到', '进账', '入账', '到账', '工资', '薪水', '奖金', '报销', '退款',
-    '赚了', '分红', '利息', '红包收', '返现', '中奖', '卖出所得',
-];
-const EXPENSE_WORDS = [
+/* ⛔ 收支方向词表【从 category-matcher.js 的 KEYWORD_TO_CATEGORY 派生】。
+   历史事故：这里曾手写一份独立词表，与类目词表不同步，导致
+   「基金收益1200元」被判 expense、类目还连锁退化成「其他支出」
+   （matchCategory 第一层 `if (entry.type !== type) continue` 会整段跳过该方向的类目）。
+   ⇒ 一个词漏了同时打坏 type 和 category 两个字段。
+   现在只需维护 KEYWORD_TO_CATEGORY 一处，本文件自动跟随。
+   下面两个 EXTRA 数组只放【纯方向动词】——它们不指向任何具体类目，故类目词表里没有。 */
+const { keywordsOfType } = require('./category-matcher');
+
+// 纯方向动词/名词：只表达收支方向，不携带类目语义
+const INCOME_EXTRA = ['收入', '收到', '进账', '入账', '到账', '赚了', '挣了', '营收'];
+const EXPENSE_EXTRA = [
     '花了', '花掉', '花费', '支出', '付了', '付款', '支付', '消费', '买了', '购买',
-    '充值', '缴费', '交了', '打车', '吃饭', '午饭', '晚饭', '早饭', '早餐', '午餐', '晚餐',
-    '买菜', '加油', '房租', '水电', '话费', '会员', '订阅', '打赏', '请客',
+    '充值', '缴费', '交了', '打赏', '开销', '破费',
 ];
+
+// 派生词按长度降序：优先命中更具体的长词（「理财收益」先于「收益」），
+// 避免短词抢先命中导致 raw 证据过泛，影响可解释性。
+const byLenDesc = (a, b) => b.length - a.length;
+const INCOME_WORDS = [...new Set([...INCOME_EXTRA, ...keywordsOfType('income')])].sort(byLenDesc);
+const EXPENSE_WORDS = [...new Set([...EXPENSE_EXTRA, ...keywordsOfType('expense')])].sort(byLenDesc);
 
 /**
  * 抽取交易类型。

@@ -18,6 +18,26 @@ function looksLikeTxn(seg) {
 }
 
 /**
+ * 判断片段是否「自带完整交易语义」：同时含【数字】和【实义中文】。
+ * 比 looksLikeTxn 严格得多，专用于空格拆分 —— 空格是弱分隔符，
+ * 判据松一点就会把「买了 3个苹果 15元」错拆成两笔（凭空造交易，比漏拆恶劣）。
+ *
+ * 「实义中文」= 剔除数字/标点/金额单位后仍剩中文字符：
+ *   「午饭25」→ 剩「午饭」✅   「25元」→ 剩空 ❌（纯金额，不是独立一笔）
+ *   「3」→ 无中文 ❌          「个苹果」→ 无数字 ❌
+ * 于是「午饭25 晚饭30」拆 2 笔，而「午饭 25元 晚饭 30元」不在此处拆，
+ * 交由后面的 amount_anchor（带单位金额）处理，各司其职。
+ */
+function hasStandaloneTxnSemantics(seg) {
+    if (!/\d/.test(seg)) return false;
+    const core = seg
+        .replace(/[\d.,:：¥￥\s]/g, '')
+        .replace(/(?:元|块钱|块|角|毛|分|人民币|rmb|cny)/gi, '')
+        .trim();
+    return /[\u4e00-\u9fa5a-zA-Z]/.test(core);
+}
+
+/**
  * 拆分多笔交易。
  * @param {string} text
  * @returns {{segments:string[], source:string, multi:boolean}}
@@ -43,7 +63,19 @@ function splitTransactions(text) {
         return { segments: conjTxns, source: 'conjunction', multi: true };
     }
 
-    // 3) 金额锚点二次切分：单段内出现多个「带单位金额」→ 按金额位置切。
+    // 3) 空格软分隔：语音转文字普遍不带标点（「午饭25 晚饭30」），
+    //    而语音是记账主力入口，故必须支持。用最严判据 hasStandaloneTxnSemantics，
+    //    要求每段自身「数字+实义中文」俱全，宁可漏拆不可错拆。
+    if (/\s/.test(trimmed)) {
+        const spaced = trimmed.split(/\s+/).map(s => s.trim()).filter(Boolean);
+        const spacedTxns = spaced.filter(hasStandaloneTxnSemantics);
+        // 必须【全部】非空白段都够格，否则说明空格只是句内停顿（如「今天 买了 3个苹果 15元」）
+        if (spacedTxns.length > 1 && spacedTxns.length === spaced.length) {
+            return { segments: spacedTxns, source: 'space_separator', multi: true };
+        }
+    }
+
+    // 4) 金额锚点二次切分：单段内出现多个「带单位金额」→ 按金额位置切。
     //    只认带单位的金额（元/块/¥），裸数字不参与，避免「买3个15元」被切成两笔。
     const anchors = [...trimmed.matchAll(/(?:[¥￥]\s*\d+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?\s*(?:元|块钱|块))/g)];
     if (anchors.length > 1) {
@@ -60,8 +92,8 @@ function splitTransactions(text) {
         }
     }
 
-    // 4) 单笔
+    // 5) 单笔
     return { segments: [trimmed], source: 'single', multi: false };
 }
 
-module.exports = { splitTransactions, looksLikeTxn };
+module.exports = { splitTransactions, looksLikeTxn, hasStandaloneTxnSemantics };

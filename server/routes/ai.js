@@ -9,6 +9,9 @@ const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens, polishChatReply } = require('./_helpers');
 const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
+// 类目匹配统一走 AI v0.2 模块（单一真相）：OCR 与自然语言解析共用同一份词表，
+// 避免「同一句话走 OCR 和走文本归到不同类目」。
+const { matchCategory } = require('../modules/ai/extraction/category-matcher');
 
 // 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
 // 让前端能给出明确引导（前往「AI 配置」页重新保存），避免用户误以为配置丢失。
@@ -401,127 +404,32 @@ router.post('/ocr-config', async (req, res) => {
 });
 
 // 兜底：从 OCR 文字中用正则提取交易项（当 AI 不返回 JSON 时使用）
-function fallbackExtractItems(ocrText, defaultDate) {
+function fallbackExtractItems(ocrText, defaultDate, categories = []) {
 
-    // === 智能分类引擎：结合商户名+时间推断二级分类 ===
-    function inferCategory(name, note, timeStr) {
-        const text = ((name || '') + ' ' + (note || '')).toLowerCase();
+    /* ============================================
+       类目推断：统一走 AI v0.2 的 category-matcher（单一真相）
+       ------------------------------------------------
+       ⛔ 此处原有一份 118 行的独立类目词表（level1 13 组 + level2 47 组），
+          与 modules/ai/extraction/category-matcher.js 平行维护，实测
+          【同词不同类目 40 处】（加油：爱车 vs 交通出行；宽带：通讯 vs 居家生活…）
+          ⇒ 同一句话走 OCR 和走文本会归到不同类目，用户体感就是「AI 时好时坏」。
+          且两份词表都照着【过时的类目表】写（真表叫「交通出行/居家生活」，
+          没有「交通/居住」），大量条目静默退化成「其他支出」。
 
-        // 从支付时间推断餐别（中餐类时按时间段修正）
-        let mealBias = null;
-        if (timeStr) {
-            const hourMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
-            if (hourMatch) {
-                const h = parseInt(hourMatch[1]);
-                if (h >= 5 && h < 10) mealBias = '早餐';
-                else if (h >= 10 && h < 14) mealBias = '午餐';
-                else if (h >= 14 && h < 21) mealBias = '晚餐';
-                else mealBias = '晚餐'; // 深夜归晚餐
-            }
-        }
+       2026-08-25 合并：词库已并入 category-matcher.js（商户名词库是 legacy 的
+       独有资产，全部保留），此处改为直接调用它。
+       ⚠️ 本函数的【5 套 OCR 版式解析策略】（微信账单负数行、向上找商户名、
+          行间找日期等）是 legacy 独有能力，v0.2 的自然语言解析不覆盖，全部保留。
 
-        // 一级分类（兜底）
-        const level1 = [
-            { kw: ['药','医','体检','医院','诊所','挂号','牙','眼','疫苗','保健','药房','药局','处方','感冒','咳嗽'], cat: '医疗' },
-            { kw: ['车','油','打车','滴滴','地铁','公交','停车','高速','etc','加油站','充电','骑行','共享单车'], cat: '交通' },
-            { kw: ['酒店','机票','火车票','民宿','旅行','行李','托运','景点','门票'], cat: '旅行' },
-            { kw: ['房','租','水电','物业','燃气','暖气','网费'], cat: '住房' },
-            { kw: ['电影','游戏','健身','运动','k歌','ktv','演出','展览','游泳'], cat: '娱乐' },
-            { kw: ['课','书','学','培训','教育','考试','报名','文具'], cat: '教育' },
-            { kw: ['话费','流量','宽带','手机','充值','通信','快递'], cat: '通讯' },
-            { kw: ['购','买','京东','淘宝','天猫','拼多多','超市','便利店','商场','百货','日用品','家居','数码'], cat: '购物' },
-            { kw: ['礼','红包','人情','结婚','生日','聚会','请客'], cat: '人情' },
-            { kw: ['衣','鞋','包','化妆','美容','护肤','美发'], cat: '美容' },
-            { kw: ['猫粮','狗粮','猫砂','宠物'], cat: '宠物' },
-            { kw: ['保险','保费','理赔','社保'], cat: '保险' },
-            { kw: ['加油','中石化','中石油'], cat: '爱车' },
-        ];
-
-        // 二级分类（精确匹配）
-        const level2 = [
-            // 餐饮二级
-            { kw: ['早餐','早','包子','豆浆','油条','粥','肠粉','煎饼'], cat: '早餐' },
-            { kw: ['盒饭','盖饭','便当','食堂','米线','麻辣烫','冒菜','披萨'], cat: '午餐' },
-            { kw: ['饼','面','粉','饭','卷','汤','饺子','馄饨','炒饭','拌面','粥'], cat: '午餐' },
-            { kw: ['晚餐','晚','夜宵','宵夜','烧烤','串','火锅','烤鱼','小龙虾','大排档','炸鸡','汉堡','炒菜','炒'], cat: '晚餐' },
-            { kw: ['肯德基','麦当劳','汉堡王','必胜客','华莱士','德克士','星巴克','瑞幸','海底捞','呷哺','九田家','西贝','外婆家','绿茶餐厅','探鱼','蛙来哒','太二','喜茶','奈雪','一点点','coco','蜜雪冰城','古茗','霸王茶姬','乐乐茶'], cat: '外卖' },
-            { kw: ['水果','糖','巧克力','冰淇淋','薯片','坚果','瓜子','饮料','矿泉水','咖啡','奶茶','茶','可乐','雪碧'], cat: '零食' },
-            { kw: ['聚餐','聚会','请客','饭局','订餐','酒席'], cat: '聚餐' },
-            { kw: ['外卖','美团','饿了么','配送'], cat: '外卖' },
-            { kw: ['菜','肉','蛋','鱼','虾','鸡','鸭','牛','羊','小吃','馆','餐厅','饭店'], cat: '晚餐' },
-            { kw: ['奶茶店','饮品','甜品','蛋糕','面包','烘焙'], cat: '零食' },
-            // 交通二级
-            { kw: ['地铁','公交','一卡通','交通卡'], cat: '公交地铁' },
-            { kw: ['打车','滴滴','曹操','T3','首汽','花小猪','出租车','的士'], cat: '打车' },
-            { kw: ['火车','高铁','机票','飞机','12306','携程','飞猪','航旅'], cat: '火车飞机' },
-            { kw: ['共享单车','哈啰','美团单车','骑行','单车'], cat: '公交地铁' },
-            { kw: ['加油站','中石化','中石油','汽油','柴油'], cat: '加油' },
-            { kw: ['充电','充电桩','特来电','星星充电'], cat: '充电' },
-            { kw: ['停车','停车场','泊车','车位'], cat: '停车费' },
-            { kw: ['过路费','高速','ETC','通行费'], cat: '过路费' },
-            // 购物二级
-            { kw: ['超市','百货','日用品','纸巾','洗衣','垃圾袋','清洁'], cat: '日用百货' },
-            { kw: ['服装','衣服','鞋','包','裤','衣','袜','帽','围巾'], cat: '服装鞋包' },
-            { kw: ['数码','手机','电脑','耳机','平板','充电宝','鼠标','键盘'], cat: '数码产品' },
-            { kw: ['家居','家具','床','桌','椅','柜','沙发','灯','窗帘'], cat: '家居家具' },
-            // 住房二级
-            { kw: ['房租','租金','房东','中介','租房'], cat: '房租' },
-            { kw: ['电费','水费','燃气','煤气','天然气'], cat: '水电燃气' },
-            { kw: ['物业','物管','管理费'], cat: '物业费' },
-            { kw: ['维修','修理','疏通','漏水'], cat: '维修' },
-            // 医疗二级
-            { kw: ['门诊','挂号','诊所','医生','看病','检查','化验'], cat: '门诊' },
-            { kw: ['药','药品','药房','药店','处方'], cat: '药品' },
-            // 教育二级
-            { kw: ['培训','课程','网课','补习','辅导班','学而思','新东方'], cat: '培训课程' },
-            { kw: ['书','书籍','教材','书店','当当','kindle'], cat: '书籍' },
-            { kw: ['考试','报名','雅思','托福','考研','考公'], cat: '考试报名' },
-            // 通讯二级
-            { kw: ['话费','手机费','sim卡','中国移动','中国联通','中国电信','移动','联通','电信'], cat: '话费' },
-            { kw: ['宽带','网费','光纤','wifi'], cat: '宽带' },
-            { kw: ['快递','顺丰','圆通','中通','申通','韵达','邮政','EMS'], cat: '快递' },
-            // 娱乐二级
-            { kw: ['电影','影院','猫眼','淘票票','imax'], cat: '电影演出' },
-            { kw: ['游戏','steam','switch','ps','xbox','手游','充值','皮肤'], cat: '游戏' },
-            { kw: ['健身','跑步','瑜伽','游泳','球','器械','私教','运动'], cat: '运动健身' },
-            { kw: ['旅游','景点','门票','度假'], cat: '旅游度假' },
-            { kw: ['ktv','唱歌','酒吧','蹦迪','livehouse'], cat: 'KTV酒吧' },
-            // 人情二级
-            { kw: ['父母','爸','妈','爹','娘','老人','长辈'], cat: '孝敬父母' },
-            { kw: ['红包','送礼','礼物','份子钱','彩礼'], cat: '送礼红包' },
-            // 宠物二级
-            { kw: ['猫粮','狗粮','罐头','冻干','宠物食品'], cat: '主粮零食' },
-            // 美容二级
-            { kw: ['护肤','面膜','精华','乳液','防晒','洗面奶','水乳'], cat: '护肤' },
-            { kw: ['美发','理发','烫发','染发','洗剪吹','造型'], cat: '美发' },
-            // 收入二级
-            { kw: ['基本工资','底薪','月薪','工资条'], cat: '基本工资' },
-            { kw: ['奖金','年终奖','绩效','提成','分红'], cat: '奖金' },
-            { kw: ['补贴','报销','差旅','餐饮补贴','交通补贴','房补'], cat: '补贴报销' },
-            { kw: ['理财收益','利息','基金','股票','余额宝'], cat: '理财收益' },
-            { kw: ['房租收入','收租'], cat: '房租收入' },
-        ];
-
-        // 先尝试匹配二级分类
-        for (const rule of level2) {
-            for (const kw of rule.kw) {
-                if (text.includes(kw)) {
-                    // 餐饮类（早/午/晚餐）用支付时间修正
-                    if (mealBias && ['早餐','午餐','晚餐','外卖'].includes(rule.cat)) {
-                        return mealBias;
-                    }
-                    return rule.cat;
-                }
-            }
-        }
-        // 再匹配一级
-        for (const rule of level1) {
-            for (const kw of rule.kw) {
-                if (text.includes(kw)) return rule.cat;
-            }
-        }
-        return '其他';
+       legacy 的「按支付时间推断早/午/晚餐」逻辑刻意不再移植：
+       真实类目表已把三餐合并为单一叶子「早午晚餐」，时间推断没有落点。
+       ============================================ */
+    function inferCategory(name, note, type) {
+        const text = `${name || ''} ${note || ''}`;
+        const r = matchCategory(text, type, categories);
+        return { name: r.value, id: r.category_id, confidence: r.confidence, source: r.source };
     }
+
 
     function inferNote(ocrText, name, amount) {
         // 从 OCR 文字提取有意义的交易描述，排除支付渠道/账户信息
@@ -540,11 +448,9 @@ function fallbackExtractItems(ocrText, defaultDate) {
         if (m2) return `${m2[1]} ${m2[2].padStart(2,'0')}:${m2[3].padStart(2,'0')}:${m2[4].padStart(2,'0')}`;
         return null;
     })();
-    const ocrTime = (() => {
-        const m = ocrText.match(/支付时间.*?(\d{1,2}):(\d{2})/)
-               || ocrText.match(/(\d{1,2}):(\d{2}):\d{2}/);
-        return m ? `${m[1]}:${m[2]}` : null;
-    })();
+    // 注：原有 ocrTime（仅提取 HH:mm）已随「按支付时间推断早/午/晚餐」逻辑一并移除 ——
+    // 真实类目表把三餐合并为单一叶子「早午晚餐」，餐别推断没有落点了。
+    // 精确到秒的时间仍由上面的 ocrDateTime 保留，用于 date 字段。
 
     const items = [];
     const seen = new Set();
@@ -587,14 +493,19 @@ function fallbackExtractItems(ocrText, defaultDate) {
         const key = `${name}|${amount.toFixed(2)}`;
         if (seen.has(key)) return;
         seen.add(key);
-        const category = inferCategory(name, note || '', ocrTime);
+        // OCR 截图几乎全是支出（收款截图极少），故先按 expense 匹配类目。
+        // 类目 id 由 category-matcher 从【真实 categories 表】回查，绝不臆造。
+        const cat = inferCategory(name, note || '', 'expense');
         items.push({
             name: name.slice(0, 50),
             amount,
-            type: category === '收入' ? 'income' : 'expense',
+            type: 'expense',
             date,
             note: note || inferNote(ocrText, name),
-            category
+            category: cat.name,
+            category_id: cat.id,
+            category_confidence: cat.confidence,
+            category_source: cat.source,
         });
     }
 
@@ -785,6 +696,20 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
         }
         const today = new Date().toISOString().slice(0, 10);
 
+        // 真实类目表：既喂给 LLM prompt，也传给正则兜底的 category-matcher。
+        // ⛔ 别把类目清单硬编码进 prompt —— 原先写死的「早餐|午餐|零食|打车|房租…」
+        //    早已与真实类目表脱节（真表叫「早午晚餐/打车拼车/房租月供」），
+        //    LLM 返回的类目名前端匹配不上，白白退化成「其他」。
+        const ocrCats = await db.query(
+            `SELECT id, name, type, parent_id FROM categories
+             WHERE (user_id IS NULL OR user_id = ?) AND type IN ('expense','income')
+             ORDER BY type, id`,
+            [req.userId]
+        );
+        // 只把叶子类目（有 parent_id 的更具体）给 LLM 选，避免它返回过粗的一级名
+        const leafNames = ocrCats.filter(c => c.parent_id).map(c => c.name);
+        const catChoices = (leafNames.length ? leafNames : ocrCats.map(c => c.name)).join('|');
+
         // 策略：若配置了 AI 服务商，优先用大模型分析 OCR 文字，识别质量更高；
         //       大模型无结果/失败，或未配置 AI 时，回退到本地正则兜底。
         if (provider) {
@@ -799,10 +724,9 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
 5. date 格式为 YYYY-MM-DD HH:mm:ss；如果账单中只有日期没有时间，时间填 00:00:00。
 6. 跳过合计、优惠、退款、找零、应付、实付等汇总行；只保留实际消费/收入的条目。
 7. category 必须从下面列表中选择最合适的，尽量细分；如果确实无法判断，返回“其他”。
-8. 餐别按时间推断：05-10早餐，10-14午餐，14-21晚餐。
-9. 每条的 note 由你**自己生成完整**「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（可以是类目名/消费品/事件，如"早餐""买菜""雪糕"），对象 Y 是识别出的商家或个人（如"老乡鸡""张三""邻几"）。例：「早餐-老乡鸡」「买菜-张三」「雪糕-邻几」。无法确定对象时只写场景（如「晚餐」）。merchant 字段单独存原始对象名（不带场景前缀），与 note 各自独立。
+8. 每条的 note 由你**自己生成完整**「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（可以是类目名/消费品/事件，如"早餐""买菜""雪糕"），对象 Y 是识别出的商家或个人（如"老乡鸡""张三""邻几"）。例：「早餐-老乡鸡」「买菜-张三」「雪糕-邻几」。无法确定对象时只写场景（如「晚餐」）。merchant 字段单独存原始对象名（不带场景前缀），与 note 各自独立。
 
-可选分类：早餐|午餐|晚餐|零食|聚餐|外卖|饮料|生鲜|公交地铁|打车|火车飞机|加油|充电|停车费|过路费|日用百货|服装鞋包|数码产品|家居家具|房租|水电燃气|物业费|维修|电影演出|游戏|运动健身|旅游度假|KTV酒吧|门诊|药品|体检|培训课程|书籍|考试报名|话费|宽带|快递|孝敬父母|送礼红包|护肤|美发|主粮零食|社保|商业保险|维保费|车险|其他
+可选分类：${catChoices}
 
 OCR文字：
 ${ocrText}`;
@@ -823,7 +747,7 @@ ${ocrText}`;
             }
         }
 
-        const fallbackItems = fallbackExtractItems(ocrText, today);
+        const fallbackItems = fallbackExtractItems(ocrText, today, ocrCats);
         if (fallbackItems.length > 0) {
             console.log(`[OCR REGEX] user=${req.userId} extracted ${fallbackItems.length} items via regex fallback`);
             return res.json(success({ text: ocrText, items: fallbackItems, reason: '' }));
@@ -885,27 +809,31 @@ router.post('/chat', async (req, res) => {
             }
         }
 
-        const system = `你是「小鑫」，「鑫钱包」App 的 AI 记账助手，帮助用户通过自然语言完成记账、查账、改账。
+        const system = `你是「小鑫」，「鑫钱包」App 的 AI 记账助手，帮助用户查账、改账、答疑。
 规则：
 1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
 2. 信息不全（金额或收支方向）时用一句中文追问，不要臆造。
-3. 可用工具（共 8 个）：
-   - create_transaction（收入/支出）、create_transfer（账户间转账）
+3. ⛔ **你没有「新建交易」的能力**。本对话里不存在 create_transaction / create_transfer 工具。
+   用户说「记一笔 / 帮我记账 / 花了多少」这类**新建**需求时，回复引导他用「智能记账」入口
+   （输入框旁的记账按钮），那里会先展示识别结果、由用户确认后才落账。
+   **绝不可**说「已记一笔 / 已入账 / 记好了」——你根本写不进账本，那是欺骗用户。
+   （产品原则：AI 识别结果必须经用户确认才写账本，杜绝静默记错。）
+4. 可用工具（共 6 个，均不新建交易）：
    - list_accounts（查账户）、list_categories（查类目）：**实时从数据库拿**，永远是最新的；遇到「用户说的账户/类目名我不确定」「以前看到的列表可能过期」「预投喂为空」时，第一选择是先调它们查到再决策
-   - list_transactions（查交易，用于定位修改/删除目标；或建账时按商家名复用历史同类交易的 id）
-   - update_transaction / delete_transaction（修改/删除）
+   - list_transactions（查交易，用于定位修改/删除目标）
+   - update_transaction / delete_transaction（修改/删除**已存在**的交易）
    - query_stats（查账问答：余额、月度、排行等）
-4. 用户说"把 XX 改成 YY""这笔记错了""删了这笔"时，先调 list_transactions 拿到 transaction_id，再调 update / delete。
-5. **不知道账户/类目 id 时不要瞎猜、不要做软匹配**，先调 list_accounts / list_categories 拿到全量再选。
+5. 用户说"把 XX 改成 YY""这笔记错了""删了这笔"时，先调 list_transactions 拿到 transaction_id，再调 update / delete。
+6. **不知道账户/类目 id 时不要瞎猜、不要做软匹配**，先调 list_accounts / list_categories 拿到全量再选。
    - 若工具返回的列表里没有用户提到的名字，**立刻在回复里如实告诉用户**「没找到账户『XX』，现有账户：…；要用 YY 吗？」并请用户确认——不要自作主张用名字相近的项顶替。
-6. list_accounts / list_categories 的 query 参数是**模糊匹配**（任意子串），可以用「微信」「零钱通」「早餐」等做关键词。
-7. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
-8. update_transaction 只能修改普通收入/支出（type=income/expense），不能修改转账；删除无此限制。
-9. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
-10. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，**必须**如实告诉用户失败原因并请其补充或更正，**不得**说"已记/已保存/已完成/已删除"。
-    **只有**某个写工具（create_transaction / create_transfer / update_transaction / delete_transaction）真实返回了 {"ok": true, "transaction_id": <数字>}，你才可以在回复里说"已记/已更新/已删除/已完成"。若你只调了 list_accounts / list_categories / list_transactions / query_stats 等**只读**工具、或根本没调任何写工具，就**绝不可**在回复里声称"已记一笔 / 已创建交易 / 记好了 / 已入账 / 已记账成功"——那会误导用户以为已经落账，而账本上其实什么都没有。拿不准是否真的写成功时，宁可说"请到「添加」确认是否记成功"也别说"已记"。
-11. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
-12. 对话风格：像真人在微信/小爱里陪用户记账一样自然。**禁止**在回复中暴露后端工具名（create_transaction / list_accounts 等）、函数调用 JSON 块、调试占位符、思考过程。回复尽量 1-2 句、简洁有温度；如有多个工具并行执行**只总结结果**，不写"我已经为您调用了 xxx 工具"之类机械化开场白。
+7. list_accounts / list_categories 的 query 参数是**模糊匹配**（任意子串），可以用「微信」「零钱通」「早餐」等做关键词。
+8. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
+9. update_transaction 只能修改普通收入/支出（type=income/expense），不能修改转账；删除无此限制。
+10. 操作成功后用一句话向用户确认（如"已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
+11. 工具调用返回 {"ok": false, ...} 时表示修改/删除失败，**必须**如实告诉用户失败原因并请其补充或更正，**不得**说"已保存/已完成/已删除"。
+    **只有** update_transaction / delete_transaction 真实返回了 {"ok": true, ...}，你才可以说"已更新/已删除"。
+    若你只调了 list_* / query_stats 等**只读**工具、或根本没调任何写工具，就**绝不可**声称账本已变更。
+12. 对话风格：像真人在微信/小爱里陪用户记账一样自然。**禁止**在回复中暴露后端工具名（list_accounts / query_stats 等）、函数调用 JSON 块、调试占位符、思考过程。回复尽量 1-2 句、简洁有温度；如有多个工具并行执行**只总结结果**，不写"我已经为您调用了 xxx 工具"之类机械化开场白。
 补充：
 - 下方「可用类目」「可用账户」两节是**预投喂**的快速参考（凭 system prompt 即可见），足以应对多数简单场景。但当用户提的账户名与预投喂列表不完全一致、或预投喂为空、或你对此前的列表没把握时，**必须**调 list_accounts / list_categories 实时确认——凭印象编一个 id 会导致记账失败。
 - 用户那张截图中「我的工具集里没有列出账户和分类的接口」这句话是**错的**，从 v0.0.44 起本系统确实提供了 list_accounts / list_categories 工具，AI 可以调用它们直接拿到 id。
@@ -917,39 +845,24 @@ ${catRef}
 可用账户：
 ${accRef}`;
 
+        /**
+         * ⛔ create_transaction / create_transfer 两个【直写账本】工具已于 2026-08-25 移除。
+         * ------------------------------------------------
+         * 移除原因：它们让模型输出绕过用户确认直接 INSERT INTO transactions，
+         * 违反 v0.2 核心原则「AI 输出永不直接写账本」。三端已全部切换到新链路
+         * （web 完全不用 /chat 记账，android/harmony 仅在 422 时回退到 /chat），
+         * 原注释里写的移除条件「三端均切换后再删」已满足。
+         *
+         * ⚠️ 曾造成真实 bug：转出腿备注写成 `转账至${fromAcc.name}`（转出账户自己），
+         *    而 transfers.js 早已把同样的错修成 toAcc.name —— 重复实现导致修复没同步。
+         *
+         * 记账链路（唯一）：
+         *   POST /api/ai/transactions/parse     → 确定性抽取，产出不可变预测快照（不写账本）
+         *   POST /api/ai/predictions/:id/commit → 用户确认后事务内原子落账（FOR UPDATE + 幂等键）
+         *
+         * /chat 现在只保留【只读咨询】+ update/delete（改删须用户给出明确交易 id，非凭空创建）。
+         */
         const tools = [
-            {
-                name: 'create_transaction',
-                description: '创建一笔收入或支出交易。category_id 与 account_id 必须从上面账户/类目列表中选取。',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        type: { type: 'string', enum: ['income', 'expense'] },
-                        amount: { type: 'number', description: '正数金额' },
-                        category_id: { type: 'integer' },
-                        account_id: { type: 'integer' },
-                        date: { type: 'string', description: 'YYYY-MM-DD HH:mm:ss，可省略' },
-                        note: { type: 'string', description: '备注/商户名' },
-                        merchant: { type: 'string', description: '对象：商家名称或个人姓名（如「大味王」「张三」），留空表示无明确对象' }
-                    },
-                    required: ['type', 'amount', 'category_id', 'account_id']
-                }
-            },
-            {
-                name: 'create_transfer',
-                description: '在两个账户间转账（如储蓄卡转余额宝）。from_account_id/to_account_id 从账户列表选取。',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        from_account_id: { type: 'integer' },
-                        to_account_id: { type: 'integer' },
-                        amount: { type: 'number' },
-                        date: { type: 'string' },
-                        note: { type: 'string' }
-                    },
-                    required: ['from_account_id', 'to_account_id', 'amount']
-                }
-            },
             {
                 name: 'list_accounts',
                 description: '查当前账本下所有可用账户（可按名称模糊过滤）。返回 [{id, name, type, balance, icon}, ...]。**当你无法确定 account_id 或 from_account_id/to_account_id 时必须先调本工具**——绝不要凭「预投喂列表」硬猜，也不要做软匹配；调本工具后若仍找不到完全匹配的名字，**立刻在回复里告诉用户并请其确认**。',
@@ -1030,81 +943,19 @@ ${accRef}`;
         ];
 
         /**
-         * ⚠️ LEGACY（AI v0.2 起标记弃用，本次不改动行为）
-         * ------------------------------------------------
-         * 下面的 create_transaction / create_transfer 工具会让模型输出【直接写入账本】，
-         * 这违反 v0.2 核心原则「AI 输出永不直接写账本，必经 prediction 快照 + 用户确认」。
-         *
-         * 替代链路（已上线，见本文件末尾）：
-         *   POST /api/ai/transactions/parse        → 产出不可变预测快照（不写账本）
-         *   POST /api/ai/predictions/:id/commit    → 用户确认后事务内原子落账（幂等）
-         *
-         * 移除条件：web / android / harmony 三端均切换到新链路后，再删除这两个工具
-         *          及其 executeTool 分支。在此之前保留，避免破坏现有客户端。
+         * 工具执行器。
+         * ⛔ 已移除 create_transaction / create_transfer（见上方 tools 定义处的说明）：
+         *    新建交易一律走 /ai/transactions/parse → /ai/predictions/:id/commit。
+         *    模型若仍尝试调用这两个名字，会落到末尾的 unknown_tool 分支返回错误，
+         *    这是【期望行为】—— 宁可让模型报错，也不能绕过用户确认写账本。
          */
         async function executeTool(name, args) {
-            if (name === 'create_transaction') {
-                const type = args.type;
-                if (type !== 'income' && type !== 'expense') return { ok: false, error: '收支类型不合法' };
-                const amount = toAmount(args.amount);
-                if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
-                const accountId = parseInt(args.account_id), categoryId = parseInt(args.category_id);
-                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accountId, req.userId, req.bookId]);
-                if (!acc) return { ok: false, error: '账户不存在' };
-                const cat = await db.queryOne('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)', [categoryId, req.userId]);
-                if (!cat) return { ok: false, error: '分类不存在' };
-                const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
-                const txId = await db.transaction(async (conn) => {
-                    // 备注：尊重 AI 给的 note（AI 在 prompt 中被要求按「场景-对象」格式生成）
-                    const note = await resolveNote(conn, req.userId, categoryId, args.note, args.merchant);
-                    const ins = await conn.query(
-                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [req.userId, req.bookId, accountId, categoryId, type, amount, note, date,
-                        (type === 'expense' ? accountId : null), (type === 'income' ? accountId : null)]
-                    );
-                    const newBal = await computeAccountBalance(conn, req.userId, accountId);
-                    await enforceBalanceLimit(conn, req.userId, accountId, newBal);
-                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBal, accountId]);
-                    await syncCreditCardDebt(conn, req.userId, accountId);
-                    return ins.insertId;
-                });
-                return { ok: true, transaction_id: txId, type, amount, category_id: categoryId, account_id: accountId };
-            }
-            if (name === 'create_transfer') {
-                const fromId = parseInt(args.from_account_id), toId = parseInt(args.to_account_id);
-                const amount = toNumber(args.amount);
-                if (!fromId || !toId) return { ok: false, error: '请选择转出和转入账户' };
-                if (fromId === toId) return { ok: false, error: '转出和转入账户不能相同' };
-                if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
-                const fromAcc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [fromId, req.userId, req.bookId]);
-                if (!fromAcc) return { ok: false, error: '转出账户不存在' };
-                const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
-                const txId = await db.transaction(async (conn) => {
-                    const ins = await conn.query(
-                        `INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
-                        [req.userId, req.bookId, fromId, toId, amount, args.note || '', date]
-                    );
-                    await conn.query(
-                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                        [req.userId, req.bookId, fromId, transferCat.id, amount, `转账至${fromAcc.name}`, date, ins.insertId, fromId]
-                    );
-                    const toAcc = await db.queryOne('SELECT name FROM accounts WHERE id = ?', [toId]);
-                    await conn.query(
-                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                        [req.userId, req.bookId, toId, transferCat.id, amount, `来自${toAcc ? toAcc.name : '转账'}`, date, ins.insertId, toId]
-                    );
-                    const fromBal = await computeAccountBalance(conn, req.userId, fromId);
-                    const toBal = await computeAccountBalance(conn, req.userId, toId);
-                    await enforceBalanceLimit(conn, req.userId, fromId, fromBal);
-                    await enforceBalanceLimit(conn, req.userId, toId, toBal);
-                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, fromId]);
-                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, toId]);
-                    return ins.insertId;
-                });
-                return { ok: true, transaction_id: txId, type: 'transfer', amount, from_account_id: fromId, to_account_id: toId };
+            if (name === 'create_transaction' || name === 'create_transfer') {
+                return {
+                    ok: false,
+                    error: '新建交易请走「智能记账」确认流程，对话中不支持直接记账。',
+                    hint: 'use_parse_commit_flow',
+                };
             }
             if (name === 'query_stats') {
                 const metric = args.metric;
