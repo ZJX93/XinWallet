@@ -179,6 +179,8 @@ fun ChatScreen(navController: NavHostController) {
     var accounts by remember { mutableStateOf<List<com.xinwallet.app.data.model.Account>>(emptyList()) }
     var selectedAccountId by remember { mutableStateOf<Int?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
+    // v0.2 确认卡片需要分类列表做类目下拉
+    var categories by remember { mutableStateOf<List<com.xinwallet.app.data.model.Category>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         val resp = AppContainer.accountRepository.getAccounts()
@@ -186,7 +188,12 @@ fun ChatScreen(navController: NavHostController) {
             accounts = resp.data.accounts
             selectedAccountId = accounts.firstOrNull { it.isDefault }?.id ?: accounts.firstOrNull()?.id
         }
+        val catResp = AppContainer.categoryRepository.getCategories()
+        if (catResp is ApiResult.Success) categories = catResp.data
     }
+
+    // 把选中账户同步给 ViewModel，作为 parse 的 context.account_id
+    LaunchedEffect(selectedAccountId) { vm.defaultAccountId = selectedAccountId }
 
     fun launchCamera() {
         try {
@@ -204,9 +211,11 @@ fun ChatScreen(navController: NavHostController) {
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
 
     val listState = rememberLazyListState()
-    LaunchedEffect(state.messages.size, state.thinking) {
+    // 确认卡片是 messages 之后的额外 item，出现时也要滚到底，否则用户看不到落账按钮
+    LaunchedEffect(state.messages.size, state.thinking, state.aiConfirm?.predictionId) {
         if (state.messages.isNotEmpty() || state.thinking) {
-            val target = if (state.thinking) state.messages.size else state.messages.size - 1
+            val extra = (if (state.thinking) 1 else 0) + (if (state.aiConfirm != null) 1 else 0)
+            val target = state.messages.size + extra - 1
             if (target >= 0) listState.animateScrollToItem(target)
         }
     }
@@ -413,6 +422,25 @@ fun ChatScreen(navController: NavHostController) {
                     }
                     if (state.thinking) {
                         item { ThinkingBubble() }
+                    }
+                    // AI v0.2 确认卡片：落账唯一入口，未确认前账本不会被改动
+                    state.aiConfirm?.let { confirm ->
+                        item {
+                            AiConfirmCard(
+                                confirm = confirm,
+                                accounts = accounts,
+                                categories = categories,
+                                onSetType = { seq, t -> vm.setCandidateType(seq, t) },
+                                onSetAmount = { seq, a -> vm.setCandidateAmount(seq, a) },
+                                onSetCategory = { seq, id, name -> vm.setCandidateCategory(seq, id, name) },
+                                onSetAccount = { seq, id -> vm.setCandidateAccount(seq, id) },
+                                onSetTransferAccounts = { seq, f, t -> vm.setCandidateTransferAccounts(seq, f, t) },
+                                onSetNote = { seq, n -> vm.setCandidateNote(seq, n) },
+                                onRemove = { seq -> vm.removeCandidate(seq) },
+                                onCommit = { vm.commitPrediction() },
+                                onDiscard = { vm.discardPrediction() }
+                            )
+                        }
                     }
                 }
             }

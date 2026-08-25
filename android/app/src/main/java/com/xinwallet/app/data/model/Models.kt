@@ -476,6 +476,139 @@ data class TranscribeRequest(
 
 data class TranscribeResponse(val text: String = "")
 
+/* ------------------- AI v0.2 预测闭环（parse → 确认 → commit） -------------------
+ * 核心原则：AI 输出【永不直接写账本】。
+ * parse 产出不可变预测快照，用户确认/修正后 commit 才原子落账。
+ *
+ * 与上方 legacy ChatRequest/ChatResponse 的关系：
+ *   legacy /ai/chat 由后端 function calling 直接建账；本组模型走确认闭环，二者并存。
+ */
+
+/**
+ * POST /ai/transactions/parse 请求体。
+ * source 表示【输入通道】，必须是 parse / chat / ocr / voice 之一（受服务端 CHECK 约束）；
+ * 客户端平台放 context.platform，不要塞进 source。
+ */
+data class AiParseRequest(
+    val text: String,
+    val context: AiParseContext? = null,
+    val source: String = "parse"
+)
+
+data class AiParseContext(
+    @SerializedName("account_id") val accountId: Int? = null,
+    /** yyyy-MM-dd，让服务端以客户端本地「今天」为基准而非服务器时区 */
+    val date: String? = null,
+    val platform: String = "android"
+)
+
+/** POST /ai/transactions/parse 响应体 */
+data class AiParseResponse(
+    @SerializedName("prediction_id") val predictionId: Int = 0,
+    val transactions: List<AiCandidateTxn> = emptyList(),
+    /** ready | needs_confirmation */
+    val verdict: String = "needs_confirmation",
+    @SerializedName("overall_confidence") val overallConfidence: Double? = null,
+    val reasons: List<String> = emptyList(),
+    /** 前端据此决定是否必须弹确认框；禁止拿 overallConfidence 自行比阈值 */
+    @SerializedName("needs_confirmation") val needsConfirmation: Boolean = true
+)
+
+/**
+ * 候选交易。amount 保证 > 0；categoryId / accountId / merchant 可能为 null。
+ * date 是 10 字符纯日期（yyyy-MM-dd），不带时间部分。
+ */
+data class AiCandidateTxn(
+    val seq: Int = 0,
+    /** income | expense | transfer */
+    val type: String = "expense",
+    val amount: Double = 0.0,
+    val currency: String = "CNY",
+    val merchant: String? = null,
+    @SerializedName("category_id") val categoryId: Int? = null,
+    @SerializedName("category_name") val categoryName: String? = null,
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("from_account_id") val fromAccountId: Int? = null,
+    @SerializedName("to_account_id") val toAccountId: Int? = null,
+    val date: String? = null,
+    val note: String? = null,
+    @SerializedName("raw_segment") val rawSegment: String? = null,
+    /** 字段级置信度：amount/type/category/date/currency/merchant */
+    val confidence: Map<String, Double> = emptyMap(),
+    /** 抽取来源，用于向用户解释「为什么这么判」；缺失时值为 "missing" */
+    val evidence: Map<String, String> = emptyMap()
+)
+
+/** GET /ai/predictions/{id} 响应体 */
+data class AiPredictionSnapshot(
+    @SerializedName("prediction_id") val predictionId: Int = 0,
+    /** pending | committed | discarded */
+    val status: String = "pending",
+    val verdict: String = "needs_confirmation",
+    val source: String = "parse",
+    val transactions: List<AiCandidateTxn> = emptyList(),
+    val validation: AiValidation? = null,
+    @SerializedName("committed_at") val committedAt: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+)
+
+/** 字段级裁决结果。前端只做展示，判定权在服务端。 */
+data class AiValidation(
+    val verdict: String = "needs_confirmation",
+    val overall: Double? = null,
+    val reasons: List<String> = emptyList(),
+    @SerializedName("per_txn") val perTxn: List<AiTxnValidation> = emptyList(),
+    val thresholds: Map<String, Double> = emptyMap()
+)
+
+data class AiTxnValidation(
+    val seq: Int = 0,
+    val verdict: String = "needs_confirmation",
+    val overall: Double? = null,
+    val reasons: List<String> = emptyList(),
+    @SerializedName("per_field") val perField: Map<String, AiFieldVerdict> = emptyMap()
+)
+
+data class AiFieldVerdict(
+    val score: Double = 0.0,
+    val threshold: Double = 0.0,
+    val ok: Boolean = false
+)
+
+/**
+ * POST /ai/predictions/{id}/commit 请求体。
+ * action=confirmed 时不传 transactions，服务端直接采用不可变快照；
+ * action=corrected 时必须传修正后的完整数组。
+ * idempotencyKey 固定后重试不会重复落账。
+ */
+data class AiCommitRequest(
+    val action: String = "confirmed",
+    val transactions: List<AiCandidateTxn>? = null,
+    @SerializedName("idempotency_key") val idempotencyKey: String? = null
+)
+
+data class AiCommitResponse(
+    val message: String = "",
+    @SerializedName("prediction_id") val predictionId: Int = 0,
+    val transactions: List<AiCommittedTxn> = emptyList()
+)
+
+/** 落账结果。transfer 的 id 是 transfer_id，不是 transaction_id。 */
+data class AiCommittedTxn(
+    val id: Int = 0,
+    val seq: Int = 0,
+    val type: String = "",
+    val amount: Double = 0.0,
+    @SerializedName("category_id") val categoryId: Int? = null,
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("from_account_id") val fromAccountId: Int? = null,
+    @SerializedName("to_account_id") val toAccountId: Int? = null
+)
+
+data class AiDiscardRequest(val reason: String = "")
+
+data class AiSimpleMessage(val message: String = "")
+
 /* ----------------------------- 预算 ----------------------------- */
 
 data class Budget(

@@ -1,4 +1,40 @@
             <section class="page" id="page-ai-recognition">
+                <!-- ===== AI v0.2 智能记账：一句话 → 预测快照 → 确认 → 原子落账 ===== -->
+                <div class="glass-card ai-smart-card">
+                    <h3 class="card-title">✨ 一句话记账</h3>
+                    <p class="card-desc">用自然语言描述，AI 解析后需你确认才会入账，不会直接改动账本</p>
+                    <textarea id="aiSmartText" class="ai-smart-input" rows="2"
+                              placeholder="例如：今天星巴克咖啡 35.5，午饭 28&#10;支持多笔，一行或用逗号分隔（Ctrl + Enter 解析）"></textarea>
+                    <div class="ai-smart-examples" id="aiSmartExamples">
+                        <span class="ai-smart-chip" data-example="星巴克咖啡35.5">星巴克咖啡35.5</span>
+                        <span class="ai-smart-chip" data-example="昨天打车28，午饭三十二块">昨天打车28，午饭三十二块</span>
+                        <span class="ai-smart-chip" data-example="工资到账15000元">工资到账15000元</span>
+                    </div>
+                    <div class="ai-smart-actions">
+                        <button class="btn btn-primary btn-ai" id="aiSmartParseBtn">🪄 解析</button>
+                        <span class="ai-smart-tip">解析结果需确认后才落账</span>
+                    </div>
+
+                    <!-- 解析中 -->
+                    <div id="aiSmartLoading" class="ai-smart-loading" style="display:none">
+                        <div class="skeleton-wrap" data-skeleton="text">
+                            <div class="skeleton-line shimmer" style="width:70%"></div>
+                            <div class="skeleton-line shimmer" style="width:52%"></div>
+                        </div>
+                        <p class="ai-smart-loading-text">正在解析并评估置信度...</p>
+                    </div>
+
+                    <!-- 确认区 -->
+                    <div id="aiSmartConfirm" class="ai-smart-confirm" style="display:none">
+                        <div id="aiSmartVerdict" class="ai-smart-verdict"></div>
+                        <div id="aiSmartList" class="ai-smart-list"></div>
+                        <div class="ai-smart-confirm-actions">
+                            <button class="btn btn-primary" id="aiSmartCommitBtn">✅ 确认并记账</button>
+                            <button class="btn btn-ghost" id="aiSmartDiscardBtn">弃置</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- OCR 上传 + 账单导入（双栏） -->
                 <div class="ai-scan-top">
                     <div class="glass-card">

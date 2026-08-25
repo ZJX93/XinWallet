@@ -417,7 +417,10 @@ async function refreshPage(page) {
     if (page === 'debts' && M.DebtManager) await M.DebtManager.refresh();
     if (page === 'data-center' && M.DataManager) await M.DataManager.refresh();
     if (page === 'tags' && M.TagManager) await M.TagManager.refresh();
-    if (page === 'ai-recognition' && M.AIRecognition) await M.AIRecognition.refresh();
+    if (page === 'ai-recognition') {
+        if (M.AIRecognition) await M.AIRecognition.refresh();
+        if (M.AISmartEntry) M.AISmartEntry.refresh();
+    }
     if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } }
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
     if (page === 'analysis' && M.AnalysisManager) await M.AnalysisManager.refresh();
@@ -540,6 +543,7 @@ async function boot() {
     safeInit('DataManager', () => DataManager.init());
     safeInit('SavingsGoalManager', () => SavingsGoalManager.init());
     safeInit('AIRecognition', () => AIRecognition.init());
+    safeInit('AISmartEntry', () => AISmartEntry.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());

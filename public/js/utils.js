@@ -54,12 +54,16 @@ async function api(path, method = 'GET', body = null, opts = {}) {
             if (!silent && typeof showToast === 'function') showToast(data.message || '登录已过期', 'error');
             const err = new Error(data.message || '未授权');
             err.payload = data;
+            err.status = res.status;
             throw err;
         }
         if (!data.success) {
             if (!silent && typeof showToast === 'function') showToast(data.message || '请求失败', 'error');
             const err = new Error(data.message || `HTTP ${res.status}`);
             err.payload = data;
+            // 暴露 HTTP 状态码：调用方据此判定 409（状态冲突）/ 422（校验失败）等分支，
+            // 避免退化成脆弱的错误文案字符串匹配
+            err.status = res.status;
             throw err;
         }
         return data.data;

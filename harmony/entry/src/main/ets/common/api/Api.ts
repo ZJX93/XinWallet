@@ -10,7 +10,9 @@ import {
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
   Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse,
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
-  TranscribeRequest, TranscribeResponse, IdResponse
+  TranscribeRequest, TranscribeResponse, IdResponse,
+  AiParseRequest, AiParseResponse, AiPredictionSnapshot,
+  AiCommitRequest, AiCommitResponse, AiDiscardRequest, AiSimpleMessage
 } from '../models';
 
 /* 鉴权 */
@@ -160,6 +162,28 @@ export async function chat(req: ChatRequest): Promise<ApiResponse<ChatResponse>>
 }
 export async function transcribe(req: TranscribeRequest): Promise<ApiResponse<TranscribeResponse>> {
   return post<TranscribeResponse>('ai/transcribe', req);
+}
+
+/* AI v0.2 预测闭环：parse → 用户确认 → commit（AI 输出永不直接写账本） */
+
+/** 自然语言 → 候选交易 + 字段级裁决 + 不可变预测快照；【不落账】 */
+export async function aiParseTransactions(req: AiParseRequest): Promise<ApiResponse<AiParseResponse>> {
+  return post<AiParseResponse>('ai/transactions/parse', req);
+}
+
+/** 读取预测快照（含 validation 字段级裁决明细，用于确认界面高亮） */
+export async function aiGetPrediction(id: number): Promise<ApiResponse<AiPredictionSnapshot>> {
+  return get<AiPredictionSnapshot>(`ai/predictions/${id}`);
+}
+
+/** 原子提交：事务内落账 + 状态更新 + 反馈事件；支持幂等重放 */
+export async function aiCommitPrediction(id: number, req: AiCommitRequest): Promise<ApiResponse<AiCommitResponse>> {
+  return post<AiCommitResponse>(`ai/predictions/${id}/commit`, req);
+}
+
+/** 弃置预测：仅记录事件，不形成负向学习 */
+export async function aiDiscardPrediction(id: number, req: AiDiscardRequest): Promise<ApiResponse<AiSimpleMessage>> {
+  return post<AiSimpleMessage>(`ai/predictions/${id}/discard`, req);
 }
 
 /* 预算 */

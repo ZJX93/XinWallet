@@ -11,6 +11,8 @@ import android.speech.SpeechRecognizer
 import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.xinwallet.app.data.model.AiCandidateTxn
+import com.xinwallet.app.data.model.AiTxnValidation
 import com.xinwallet.app.data.model.ChatMessage
 import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.remote.ApiResult
@@ -24,6 +26,52 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * AI v0.2 预测确认态。
+ * 存在（非 null）时界面必须展示确认卡片；用户确认或弃置后才清空。
+ * AI 输出【永不直接写账本】，落账只发生在 commitPrediction 之后。
+ */
+data class AiConfirmState(
+    val predictionId: Int,
+    /** parse 返回的原始快照，只读基准，用于 dirty 判定 */
+    val original: List<AiCandidateTxn>,
+    /** 可编辑副本 */
+    val items: List<AiCandidateTxn>,
+    val verdict: String,
+    val reasons: List<String> = emptyList(),
+    val overall: Double? = null,
+    /** 字段级裁决明细，仅 needs_confirmation 时拉取；判定权在服务端 */
+    val perTxn: List<AiTxnValidation> = emptyList(),
+    /** 进入确认态时固定，重试复用以保证不重复落账 */
+    val idempotencyKey: String,
+    val committing: Boolean = false
+) {
+    /** 是否被用户改动过 → 决定 action = corrected / confirmed */
+    val isDirty: Boolean
+        get() {
+            if (items.size != original.size) return true
+            return items.indices.any { i ->
+                val a = items[i]
+                val b = original.getOrNull(i) ?: return@any true
+                a.seq != b.seq ||
+                    a.type != b.type ||
+                    kotlin.math.abs(a.amount - b.amount) > 1e-9 ||
+                    a.categoryId != b.categoryId ||
+                    a.accountId != b.accountId ||
+                    a.fromAccountId != b.fromAccountId ||
+                    a.toAccountId != b.toAccountId ||
+                    a.date != b.date ||
+                    (a.note ?: "") != (b.note ?: "")
+            }
+        }
+
+    fun fieldVerdict(seq: Int, field: String) =
+        perTxn.firstOrNull { it.seq == seq }?.perField?.get(field)
+}
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -34,7 +82,9 @@ data class ChatUiState(
     val recordingStart: Long? = null,
     val transcribing: Boolean = false,
     val error: String? = null,
-    val toast: String? = null
+    val toast: String? = null,
+    /** 非 null 时展示 v0.2 确认卡片 */
+    val aiConfirm: AiConfirmState? = null
 )
 
 class ChatViewModel(
@@ -51,7 +101,13 @@ class ChatViewModel(
     fun onInputChange(text: String) { _state.value = _state.value.copy(input = text) }
     fun clearError() { _state.value = _state.value.copy(error = null) }
     fun clearToast() { _state.value = _state.value.copy(toast = null) }
-    fun clearMessages() { _state.value = _state.value.copy(messages = emptyList(), input = "") }
+    fun clearMessages() {
+        // 清空会话时同步弃置未确认的预测，避免遗留 pending 快照
+        _state.value.aiConfirm?.let { c ->
+            viewModelScope.launch { aiRepo.discardPrediction(c.predictionId, "chat_cleared") }
+        }
+        _state.value = _state.value.copy(messages = emptyList(), input = "", aiConfirm = null)
+    }
 
     fun deleteTransaction(txnId: Int) {
         viewModelScope.launch {
@@ -77,16 +133,211 @@ class ChatViewModel(
         _state.value = _state.value.copy(messages = next.dropLast(1), sending = false, thinking = false, error = message)
     }
 
-    fun sendText(text: String? = null) {
+    /**
+     * 文本发送。优先走 AI v0.2 确定性记账通道（parse → 确认 → commit）：
+     *   - parse 成功 ⇒ 进入确认态，绝不直接落账
+     *   - parse 返回 422（识别不出交易，例如「这个月花了多少」）⇒ 回退 legacy /ai/chat 保留咨询能力
+     * @param preferParse 传 false 可强制走对话通道（用于「换成对话」入口）
+     */
+    fun sendText(text: String? = null, preferParse: Boolean = true) {
         val content = (text ?: _state.value.input).trim()
         if (content.isBlank()) return
+        // 已有待确认预测时，先让用户处理完，避免多个快照并行造成状态混乱
+        if (_state.value.aiConfirm != null) {
+            _state.value = _state.value.copy(error = "请先确认或弃置上一条识别结果")
+            return
+        }
         val next = appendUser(ChatMessage(role = "user", content = content))
+
         viewModelScope.launch {
+            if (preferParse) {
+                val parsed = aiRepo.parseTransactions(
+                    text = content,
+                    accountId = defaultAccountId,
+                    date = todayLocal(),
+                    source = "chat"          // 输入通道是对话；平台信息在 context.platform
+                )
+                if (parsed is ApiResult.Success) {
+                    val d = parsed.data
+                    // 需要确认时补拉字段级裁决明细，用于高亮低置信字段
+                    val perTxn = if (d.needsConfirmation) {
+                        when (val snap = aiRepo.getPrediction(d.predictionId)) {
+                            is ApiResult.Success -> snap.data.validation?.perTxn ?: emptyList()
+                            is ApiResult.Error -> emptyList()
+                        }
+                    } else emptyList()
+
+                    val summary = buildString {
+                        append("我识别到 ${d.transactions.size} 笔记录")
+                        if (d.needsConfirmation) append("，其中有字段置信度偏低，请核对后确认")
+                        else append("，请确认后入账")
+                    }
+                    _state.value = _state.value.copy(
+                        messages = _state.value.messages + ChatMessage(role = "assistant", content = summary),
+                        sending = false, thinking = false,
+                        aiConfirm = AiConfirmState(
+                            predictionId = d.predictionId,
+                            original = d.transactions,
+                            items = d.transactions,
+                            verdict = d.verdict,
+                            reasons = d.reasons,
+                            overall = d.overallConfidence,
+                            perTxn = perTxn,
+                            idempotencyKey = aiRepo.newIdempotencyKey(d.predictionId)
+                        )
+                    )
+                    return@launch
+                }
+
+                // parse 失败：仅在「识别不出交易」时回退对话；其他错误（网络/鉴权）直接暴露
+                val err = parsed as ApiResult.Error
+                val notATransaction = err.code == 422 || err.message.contains("未能从文本中识别")
+                if (!notATransaction) {
+                    fail(next, err.message)
+                    return@launch
+                }
+            }
+
+            // legacy 对话通道：查询/咨询类意图
             when (val r = aiRepo.chat(ChatRequest(messages = next))) {
                 is ApiResult.Success -> finalize(
                     ChatMessage(role = "assistant", content = r.data.reply, transactions = r.data.transactions)
                 )
                 is ApiResult.Error -> fail(next, r.message)
+            }
+        }
+    }
+
+    /* ---------------- AI v0.2 确认态操作 ---------------- */
+
+    /** 默认账户：由界面在加载账户后注入，作为 parse 的 context.account_id */
+    var defaultAccountId: Int? = null
+
+    private fun todayLocal(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    private fun updateConfirm(block: (AiConfirmState) -> AiConfirmState) {
+        val c = _state.value.aiConfirm ?: return
+        _state.value = _state.value.copy(aiConfirm = block(c))
+    }
+
+    /** 修改某笔候选交易；人工修正的字段置信度置为 1.0 并标记 user_corrected */
+    fun editCandidate(seq: Int, transform: (AiCandidateTxn) -> AiCandidateTxn, correctedField: String? = null) {
+        updateConfirm { c ->
+            c.copy(items = c.items.map { item ->
+                if (item.seq != seq) item else {
+                    val edited = transform(item)
+                    if (correctedField == null) edited
+                    else edited.copy(
+                        confidence = edited.confidence + (correctedField to 1.0),
+                        evidence = edited.evidence + (correctedField to "user_corrected")
+                    )
+                }
+            })
+        }
+    }
+
+    fun setCandidateAmount(seq: Int, amount: Double) =
+        editCandidate(seq, { it.copy(amount = amount) }, "amount")
+
+    fun setCandidateCategory(seq: Int, categoryId: Int?, categoryName: String?) =
+        editCandidate(seq, { it.copy(categoryId = categoryId, categoryName = categoryName) }, "category")
+
+    fun setCandidateAccount(seq: Int, accountId: Int?) =
+        editCandidate(seq, { it.copy(accountId = accountId) })
+
+    fun setCandidateDate(seq: Int, date: String) =
+        editCandidate(seq, { it.copy(date = date) }, "date")
+
+    fun setCandidateNote(seq: Int, note: String) =
+        editCandidate(seq, { it.copy(note = note) })
+
+    /** 切换类型：类目候选集随之改变，旧类目必然失效需清空 */
+    fun setCandidateType(seq: Int, type: String) =
+        editCandidate(seq, { it.copy(type = type, categoryId = null, categoryName = null) }, "type")
+
+    fun setCandidateTransferAccounts(seq: Int, fromId: Int?, toId: Int?) =
+        editCandidate(seq, { it.copy(fromAccountId = fromId, toAccountId = toId) })
+
+    fun removeCandidate(seq: Int) {
+        val c = _state.value.aiConfirm ?: return
+        val rest = c.items.filter { it.seq != seq }
+        if (rest.isEmpty()) {
+            discardPrediction("用户移除了全部候选")
+        } else {
+            _state.value = _state.value.copy(aiConfirm = c.copy(items = rest))
+        }
+    }
+
+    /** 确认并落账。落账是唯一写账本的入口。 */
+    fun commitPrediction() {
+        val c = _state.value.aiConfirm ?: return
+        if (c.committing) return
+
+        // 前置自检：比服务端 422 更具体地定位问题
+        c.items.forEach { it ->
+            val tag = "第 ${it.seq} 笔"
+            if (it.amount <= 0) {
+                _state.value = _state.value.copy(error = "${tag}金额无效"); return
+            }
+            if (it.type == "transfer") {
+                if (it.fromAccountId == null || it.toAccountId == null) {
+                    _state.value = _state.value.copy(error = "${tag}请选择转出与转入账户"); return
+                }
+                if (it.fromAccountId == it.toAccountId) {
+                    _state.value = _state.value.copy(error = "${tag}转出与转入账户不能相同"); return
+                }
+            } else if (it.accountId == null) {
+                _state.value = _state.value.copy(error = "${tag}请选择账户"); return
+            }
+        }
+
+        updateConfirm { it.copy(committing = true) }
+        viewModelScope.launch {
+            val r = aiRepo.commitPrediction(
+                id = c.predictionId,
+                corrected = if (c.isDirty) c.items else null,
+                idempotencyKey = c.idempotencyKey
+            )
+            when (r) {
+                is ApiResult.Success -> {
+                    val n = r.data.transactions.size
+                    _state.value = _state.value.copy(
+                        aiConfirm = null,
+                        toast = "${r.data.message} · $n 笔已记账",
+                        messages = _state.value.messages + ChatMessage(
+                            role = "assistant",
+                            content = "已记账 $n 笔。",
+                            transactions = emptyList()
+                        )
+                    )
+                }
+                is ApiResult.Error -> {
+                    // 409：快照已被提交或弃置（状态机单向不可逆），本地状态过期，
+                    // 清空避免反复点击。以 HTTP 状态码判定而非错误文案，后端改文案不会失效。
+                    if (r.code == 409) {
+                        _state.value = _state.value.copy(
+                            aiConfirm = null,
+                            error = "${r.message}，已重置识别结果"
+                        )
+                    } else {
+                        updateConfirm { it.copy(committing = false) }
+                        _state.value = _state.value.copy(error = r.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /** 弃置预测：仅记录事件，不形成负向学习 */
+    fun discardPrediction(reason: String = "user_discarded") {
+        val c = _state.value.aiConfirm ?: return
+        _state.value = _state.value.copy(aiConfirm = null)
+        viewModelScope.launch {
+            when (val r = aiRepo.discardPrediction(c.predictionId, reason)) {
+                is ApiResult.Success -> _state.value = _state.value.copy(toast = "已弃置本次识别")
+                // 弃置失败不阻塞用户继续使用，仅提示
+                is ApiResult.Error -> _state.value = _state.value.copy(toast = "弃置未成功：${r.message}")
             }
         }
     }

@@ -195,6 +195,30 @@ interface ApiService {
     @POST("ai/transcribe")
     suspend fun transcribe(@Body req: TranscribeRequest): Response<ApiResponse<TranscribeResponse>>
 
+    /* AI v0.2 预测闭环：parse → 用户确认 → commit（AI 输出永不直接写账本） */
+
+    /** 自然语言 → 候选交易 + 字段级置信度裁决 + 不可变预测快照；不落账 */
+    @POST("ai/transactions/parse")
+    suspend fun parseTransactions(@Body req: AiParseRequest): Response<ApiResponse<AiParseResponse>>
+
+    /** 读取预测快照（含 validation 字段级裁决明细，用于确认界面高亮） */
+    @GET("ai/predictions/{id}")
+    suspend fun getPrediction(@Path("id") id: Int): Response<ApiResponse<AiPredictionSnapshot>>
+
+    /** 原子提交：事务内落账 + 状态更新 + 反馈事件；支持幂等重放 */
+    @POST("ai/predictions/{id}/commit")
+    suspend fun commitPrediction(
+        @Path("id") id: Int,
+        @Body req: AiCommitRequest
+    ): Response<ApiResponse<AiCommitResponse>>
+
+    /** 弃置预测：仅记录事件，不形成负向学习 */
+    @POST("ai/predictions/{id}/discard")
+    suspend fun discardPrediction(
+        @Path("id") id: Int,
+        @Body req: AiDiscardRequest
+    ): Response<ApiResponse<AiSimpleMessage>>
+
     /* 预算 */
     @GET("budgets")
     suspend fun getBudgets(): Response<ApiResponse<List<Budget>>>

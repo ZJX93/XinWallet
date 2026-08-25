@@ -341,6 +341,157 @@ export interface TranscribeResponse {
   text: string;
 }
 
+/* ------------------- AI v0.2 预测闭环（parse → 确认 → commit） -------------------
+ * 核心原则：AI 输出【永不直接写账本】。
+ * parse 只产出不可变预测快照，用户确认/修正后 commit 才原子落账。
+ * 与上方 legacy ChatRequest/ChatResponse（后端 function calling 直写）并存。
+ */
+
+/** source 是【输入通道】，必须是 parse/chat/ocr/voice（受服务端 CHECK 约束）；平台放 context.platform */
+export interface AiParseRequest {
+  text: string;
+  context?: AiParseContext;
+  source?: string;
+}
+
+export interface AiParseContext {
+  account_id?: number;
+  /** yyyy-MM-dd，让服务端以客户端本地「今天」为基准 */
+  date?: string;
+  platform?: string;
+}
+
+/** 字段级置信度 / 证据链：键为 amount/type/category/date/currency/merchant */
+export interface AiConfidenceMap {
+  amount?: number;
+  type?: number;
+  category?: number;
+  date?: number;
+  currency?: number;
+  merchant?: number;
+}
+
+export interface AiEvidenceMap {
+  amount?: string;
+  type?: string;
+  category?: string;
+  date?: string;
+  currency?: string;
+  merchant?: string;
+}
+
+/**
+ * 候选交易。amount 保证 > 0；category_id / account_id / merchant 可能为空。
+ * date 是 10 字符纯日期（yyyy-MM-dd），不带时间部分。
+ */
+export interface AiCandidateTxn {
+  seq: number;
+  /** income | expense | transfer */
+  type: string;
+  amount: number;
+  currency?: string;
+  merchant?: string;
+  category_id?: number;
+  category_name?: string;
+  account_id?: number;
+  from_account_id?: number;
+  to_account_id?: number;
+  date?: string;
+  note?: string;
+  raw_segment?: string;
+  confidence?: AiConfidenceMap;
+  evidence?: AiEvidenceMap;
+}
+
+export interface AiParseResponse {
+  prediction_id: number;
+  transactions: AiCandidateTxn[];
+  /** ready | needs_confirmation */
+  verdict: string;
+  overall_confidence?: number;
+  reasons?: string[];
+  /** 据此决定是否必须弹确认；禁止拿 overall_confidence 自行比阈值 */
+  needs_confirmation: boolean;
+}
+
+export interface AiFieldVerdict {
+  score: number;
+  threshold: number;
+  ok: boolean;
+}
+
+export interface AiPerFieldMap {
+  amount?: AiFieldVerdict;
+  type?: AiFieldVerdict;
+  category?: AiFieldVerdict;
+  date?: AiFieldVerdict;
+  merchant?: AiFieldVerdict;
+}
+
+export interface AiTxnValidation {
+  seq: number;
+  verdict: string;
+  overall?: number;
+  reasons?: string[];
+  per_field?: AiPerFieldMap;
+}
+
+/** 字段级裁决结果；判定权在服务端，客户端只做展示 */
+export interface AiValidation {
+  verdict: string;
+  overall?: number;
+  reasons?: string[];
+  per_txn?: AiTxnValidation[];
+}
+
+export interface AiPredictionSnapshot {
+  prediction_id: number;
+  /** pending | committed | discarded */
+  status: string;
+  verdict: string;
+  source?: string;
+  transactions?: AiCandidateTxn[];
+  validation?: AiValidation;
+  committed_at?: string;
+  created_at?: string;
+}
+
+/**
+ * action=confirmed 时不传 transactions，服务端直接采用不可变快照；
+ * action=corrected 时必须传修正后的完整数组。
+ */
+export interface AiCommitRequest {
+  action: string;
+  transactions?: AiCandidateTxn[];
+  idempotency_key?: string;
+}
+
+/** 落账结果。transfer 的 id 是 transfer_id，不是 transaction_id。 */
+export interface AiCommittedTxn {
+  id: number;
+  seq: number;
+  type: string;
+  amount: number;
+  category_id?: number;
+  account_id?: number;
+  from_account_id?: number;
+  to_account_id?: number;
+}
+
+export interface AiCommitResponse {
+  message: string;
+  prediction_id: number;
+  transactions: AiCommittedTxn[];
+}
+
+export interface AiDiscardRequest {
+  reason?: string;
+}
+
+export interface AiSimpleMessage {
+  message: string;
+}
+
 /* ----------------------------- 通用列表包装 ----------------------------- */
 
 export interface ListResponse<T> {
