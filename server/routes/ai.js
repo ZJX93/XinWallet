@@ -8,7 +8,7 @@ const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens, polishChatReply } = require('./_helpers');
 const { resolveNote } = require('./utils');
-const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
+const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
 
 // 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
 // 让前端能给出明确引导（前往「AI 配置」页重新保存），避免用户误以为配置丢失。

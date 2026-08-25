@@ -7,7 +7,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { success, fail, handleServerError, ErrorCodes, failBadRequest, failNotFound, failValidation } = require('./_helpers');
+const { success, handleServerError, ErrorCodes, failBadRequest, failNotFound, failValidation } = require('./_helpers');
 
 const router = express.Router();
 

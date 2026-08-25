@@ -130,7 +130,6 @@ router.get('/', async (req, res) => {
         const paidMap = {};
         repayTotals.forEach(r => { paidMap[r.debt_id] = parseFloat(r.paid); });
         const ym = new Date().toISOString().slice(0, 7);
-        const now = new Date();
         const list = debts.map(d => {
             const auto = autoCalcMethods().includes(d.method);
             const monthly = auto

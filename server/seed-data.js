@@ -39,7 +39,6 @@ async function seedUserData(userId, conn) {
     const y = now.getFullYear();
     const m = now.getMonth(); // 0-based
     const currentMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
-    const prevMonth = m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, '0')}`;
     const lastMonth = m === 0 ? 11 : m - 1;
     const lmY = m === 0 ? y - 1 : y;
     const twoMonthsAgo = (() => {

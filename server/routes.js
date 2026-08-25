@@ -7,7 +7,6 @@
 const express = require('express');
 const { authMiddleware } = require('./auth');
 const { validate, rules } = require('./validate');
-const quoteCache = require('./services/quote-cache');
 const { apiLimiter, writeLimiter, aiLimiter } = require('./rate-limit-user');
 
 const router = express.Router();

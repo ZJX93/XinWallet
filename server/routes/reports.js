@@ -47,10 +47,6 @@ function setCachedReport(key, data) {
 // 辅助函数
 // ==========================================
 
-function fmtDateISO(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function lastDayOfMonth(y, m) {
     return new Date(y, m, 0).getDate();
 }
@@ -374,7 +370,7 @@ async function buildReport(userId, bookId, type, period) {
     const dailyTrend = [];
     const cur = new Date(start), last = new Date(end);
     while (cur <= last) {
-        const iso = fmtDateISO(cur);
+        const iso = fmtDateOnly(cur);
         const v = trendMap.get(iso) || { income: 0, expense: 0 };
         dailyTrend.push({ date: iso, ...v });
         cur.setDate(cur.getDate() + 1);
@@ -430,7 +426,6 @@ async function buildReport(userId, bookId, type, period) {
             note: r.note || ''
         });
     });
-    const todayStr = new Date().toISOString().slice(0, 10);
     let overdueCount = 0;
     const debtList = debtAll.map(d => {
         const reps = repByDebt[d.id] || [];

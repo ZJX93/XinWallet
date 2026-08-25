@@ -3,7 +3,6 @@ const router = express.Router();
 
 const db = require('../db');
 const { success, fail, handleServerError } = require('./_helpers');
-const { ensureCategory } = require('./utils');
 
 // 获取分类列表
 router.get('/', async (req, res) => {

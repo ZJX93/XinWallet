@@ -21,12 +21,10 @@
      远超个人记账量级，安全。超出时 toCents 会显式抛错而非静默失真。
 
    用法：
-     const { sumAmounts, toCents, fromCents, roundAmount } = require('../services/money');
+     const { sumAmounts, toCents, roundAmount } = require('../services/money');
      const total = sumAmounts(accounts, a => a.balance);   // 精确求和
      const t2    = sumAmounts([1.1, 2.2, 3.3]);            // 直接对数组求和
    ============================================ */
-
-const MAX_SAFE_CENTS = Number.MAX_SAFE_INTEGER;
 
 /**
  * 金额（元）→ 整数分
@@ -99,19 +97,6 @@ function subtractAmounts(base, ...values) {
 }
 
 /**
- * 金额 × 数量（如 单价 × 份额）
- * 先在分域相乘再四舍五入，避免 19.99 * 3 这类乘法误差
- * @param {number|string} amount 金额（元）
- * @param {number|string} factor 倍数（非金额，可为小数份额）
- * @returns {number}
- */
-function multiplyAmount(amount, factor) {
-    const f = typeof factor === 'number' ? factor : parseFloat(factor);
-    if (!Number.isFinite(f)) return 0;
-    return fromCents(Math.round(toCents(amount) * f));
-}
-
-/**
  * 金额规范化：消除已有浮点误差，statement 到 2 位小数
  * 用于输出前的最后一道兜底
  */
@@ -135,13 +120,12 @@ function percentOf(part, whole, digits = 2) {
     return Math.round((p / w) * 100 * factor) / factor;
 }
 
+// toCents 被 portfolio.js 使用；fromCents 仅为内部辅助，不对外暴露。
 module.exports = {
     toCents,
-    fromCents,
     sumAmounts,
     addAmounts,
     subtractAmounts,
-    multiplyAmount,
     roundAmount,
     percentOf,
 };

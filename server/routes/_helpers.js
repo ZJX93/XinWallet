@@ -206,7 +206,7 @@ function polishChatReply(text, hasTransactions) {
     s = s.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
     s = s.replace(/([。！!？\?])\1+/g, '$1');
 
-    // 5) 当本次真的落账 + reply 没有「已记」类提示时，追加一句自然口语
+    // 6) 当本次真的落账 + reply 没有「已记」类提示时，追加一句自然口语
     //    注意：如果之前的安全网已改写 reply（"很抱歉，这笔其实没有记录成功…"），这里不会再追加"已记好"
     const alreadyConfirmed = /已记|已写|已存|记下了|记好了|记了一笔|搞定|落账/.test(s);
     if (hasTransactions && !alreadyConfirmed) {

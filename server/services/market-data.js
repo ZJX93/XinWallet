@@ -454,15 +454,11 @@ async function fetchPriceForInvestment(inv) {
   return { price: q.price, navDate: q.navDate, name: q.name };
 }
 
+// 仅导出被 routes 使用的公共 API；httpGet/normalizeCode/fetchFundQuote/
+// fetchFundName/fetchStockQuote/fetchCryptoQuote 等仅为内部调用，不对外暴露。
 module.exports = {
-  httpGet,
-  detectCodeType,
-  normalizeCode,
+  detectCodeType,          // 被 test/market-data.test.js 覆盖
   getQuoteStrategy,
-  fetchFundQuote,
-  fetchFundName,
-  fetchStockQuote,
-  fetchCryptoQuote,
   fetchQuoteByCategory,
   fetchPriceForInvestment
 };

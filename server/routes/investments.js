@@ -5,9 +5,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { toNumber } = require('../validate');
-const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, ensureWeeklySnapshots, computeAccountBalance } = require('./_helpers');
-const quoteCache = require('../services/quote-cache');
+const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance } = require('./_helpers');
 const {
   getQuoteStrategy,
   fetchQuoteByCategory,

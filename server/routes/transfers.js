@@ -4,7 +4,7 @@ const db = require('../db');
 const { toNumber } = require('../validate');
 const {
     success, handleServerError, computeAccountBalance, enforceBalanceLimit,
-    ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict, fail
+    ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict
 } = require('./_helpers');
 const { ensureCategory } = require('./utils');
 

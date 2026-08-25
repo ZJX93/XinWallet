@@ -507,8 +507,8 @@ async function initDatabase() {
       console.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
-    // 注：本项目视为全新项目，schema 文件已包含完整表结构、列、索引、约束与种子数据，
-    // 不再保留针对旧部署的「幂等迁移」步骤（ALTER TABLE ADD COLUMN / 数据回填等）。
+    // 注：为保证「已部署库」升级兼容，上面仍运行幂等自愈步骤
+    // （分类种子自愈 / 多账本回填 / 补齐新增列），对健康全新库均为 no-op，不会改动任何数据。
 
     console.log('✅ 数据库表结构已初始化');
     return true;
@@ -518,4 +518,4 @@ async function initDatabase() {
   }
 }
 
-module.exports = { pool, query, queryOne, transaction, initDatabase, prepare, IS_PG, DB_DIALECT, healBooks, ensureDefaultBookId };
+module.exports = { pool, query, queryOne, transaction, initDatabase, IS_PG, healBooks, ensureDefaultBookId };

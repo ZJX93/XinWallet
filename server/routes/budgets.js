@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { toNumber, toAmount } = require('../validate');
+const { toAmount } = require('../validate');
 const { success, fail, handleServerError, fmtDateOnly, fmtDateTime } = require('./_helpers');
 
 // 计算周期时间范围辅助函数

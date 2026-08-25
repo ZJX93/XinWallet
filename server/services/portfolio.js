@@ -41,23 +41,6 @@ function annualizedRate(totalCost, currentValue, buyDate) {
 }
 
 /**
- * 持仓收益率
- */
-function profitRate(totalCost, currentValue) {
-  const cost = parseFloat(totalCost);
-  const value = parseFloat(currentValue);
-  return cost > 0 ? ((value - cost) / cost * 100) : 0;
-}
-
-/**
- * 持仓盈亏金额
- * 金额精度（M3）：整数分精确减法，避免 12345.67 - 12000.01 这类浮点残差
- */
-function profit(totalCost, currentValue) {
-  return subtractAmounts(currentValue, totalCost);
-}
-
-/**
  * 组合进阶指标
  * @param {Array} investments - 持仓记录数组（含 total_cost, current_value, buy_date, expected_rate）
  * @returns {{ totalCost: number, totalValue: number, totalProfit: number, annualizedRate: number, concentration: number, expectedRateAvg: number }}
@@ -116,30 +99,7 @@ function calcPortfolioMetrics(investments) {
   };
 }
 
-/**
- * 格式化持仓记录为前端友好的 JSON
- */
-function formatHolding(raw) {
-  return {
-    ...raw,
-    buy_price:     parseFloat(raw.buy_price),
-    current_price: parseFloat(raw.current_price),
-    quantity:      parseFloat(raw.quantity),
-    total_cost:    parseFloat(raw.total_cost),
-    current_value: parseFloat(raw.current_value),
-    fee:           parseFloat(raw.fee || 0),
-    profit:        profit(raw.total_cost, raw.current_value),
-    profit_rate:   profitRate(raw.total_cost, raw.current_value),
-    expected_rate: parseFloat(raw.expected_rate),
-    actual_rate:   parseFloat(raw.actual_rate),
-    annualizedRate: (() => { const ar = annualizedRate(raw.total_cost, raw.current_value, raw.buy_date); return ar == null ? null : Math.round(ar * 100) / 100; })()
-  };
-}
-
 module.exports = {
   annualizedRate,
-  profitRate,
-  profit,
-  calcPortfolioMetrics,
-  formatHolding
+  calcPortfolioMetrics
 };

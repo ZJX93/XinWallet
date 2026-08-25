@@ -115,7 +115,6 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
                 const ym = `${y}-${String(m).padStart(2, '0')}`;
                 const lastDay = new Date(y, m, 0).getDate();
                 const dd = Math.min(dueDay, lastDay);
-                const dueStr = `${ym}-${String(dd).padStart(2, '0')}`;
 
                 if (credit + 0.005 >= monthly) {
                     credit -= monthly;

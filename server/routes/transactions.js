@@ -5,12 +5,12 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { toNumber, toAmount, TRANSACTION_TYPES } = require('../validate');
+const { toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
-    success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
+    success, handleServerError, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
-const { ensureCategory, syncCreditCardDebt, resolveNote } = require('./utils');
+const { syncCreditCardDebt, resolveNote } = require('./utils');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
