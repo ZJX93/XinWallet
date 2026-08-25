@@ -618,3 +618,67 @@ CREATE INDEX IF NOT EXISTS idx_investments_user_book     ON investments (user_id
 CREATE INDEX IF NOT EXISTS idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
+
+-- ============================================
+-- AI 智能记账 v0.2 · 预测闭环（Phase 1）—— PG 版 schema.sql 的 MySQL 镜像
+-- 核心原则：AI 输出【永不直接写账本】，必经 prediction 快照 → 用户确认 → 原子 commit。
+-- status  = 生命周期（pending/committed/discarded）
+-- verdict = 校验裁决（ready/needs_confirmation/invalid）—— 二者语义不同，勿合并。
+-- 方言差异（相对 schema.sql）：
+--   SERIAL→INT AUTO_INCREMENT；JSONB→JSON；'{}'::jsonb 默认值→去掉（MySQL 8 的 JSON
+--   列不支持字面量默认值，由应用层显式写 '{}'）；部分唯一索引→普通 UNIQUE KEY
+--   （MySQL 允许多 NULL，效果等价）；触发器→列级 ON UPDATE CURRENT_TIMESTAMP。
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_predictions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  prediction_version INT NOT NULL DEFAULT 1,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','committed','discarded')),
+  verdict VARCHAR(20) NOT NULL DEFAULT 'needs_confirmation'
+    CHECK (verdict IN ('ready','needs_confirmation','invalid')),
+  source VARCHAR(16) NOT NULL DEFAULT 'parse'
+    CHECK (source IN ('parse','chat','ocr','voice')),
+  request JSON NOT NULL,
+  candidate_txns JSON NOT NULL,
+  validation JSON NOT NULL,
+  decision_trace JSON NOT NULL,
+  final_txns JSON DEFAULT NULL,
+  final_diff JSON DEFAULT NULL,
+  idempotency_key VARCHAR(64) DEFAULT NULL,
+  committed_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_ai_pred_idem (idempotency_key),
+  KEY idx_ai_pred_user (user_id),
+  KEY idx_ai_pred_status (status),
+  KEY idx_ai_pred_user_created (user_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS ai_prediction_transactions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  prediction_id INT NOT NULL,
+  transaction_id INT NOT NULL,
+  seq INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_ptxn_pred (prediction_id),
+  KEY idx_ai_ptxn_txn (transaction_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_feedback_events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  account_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  event_type VARCHAR(32) NOT NULL
+    CHECK (event_type IN ('explicit_confirmation','explicit_correction','discard',
+                          'manual_rule_creation','contradiction','rule_disabled')),
+  evidence_score INT NOT NULL DEFAULT 0,
+  payload JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_fb_user (user_id),
+  KEY idx_ai_fb_pred (prediction_id),
+  KEY idx_ai_fb_type (event_type, created_at)
+);

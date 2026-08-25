@@ -1029,6 +1029,19 @@ ${accRef}`;
             }
         ];
 
+        /**
+         * ⚠️ LEGACY（AI v0.2 起标记弃用，本次不改动行为）
+         * ------------------------------------------------
+         * 下面的 create_transaction / create_transfer 工具会让模型输出【直接写入账本】，
+         * 这违反 v0.2 核心原则「AI 输出永不直接写账本，必经 prediction 快照 + 用户确认」。
+         *
+         * 替代链路（已上线，见本文件末尾）：
+         *   POST /api/ai/transactions/parse        → 产出不可变预测快照（不写账本）
+         *   POST /api/ai/predictions/:id/commit    → 用户确认后事务内原子落账（幂等）
+         *
+         * 移除条件：web / android / harmony 三端均切换到新链路后，再删除这两个工具
+         *          及其 executeTool 分支。在此之前保留，避免破坏现有客户端。
+         */
         async function executeTool(name, args) {
             if (name === 'create_transaction') {
                 const type = args.type;
@@ -1371,6 +1384,160 @@ router.post('/transcribe', async (req, res) => {
     } catch (err) {
         if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));
         handleServerError(res, err, '语音转写');
+    }
+});
+
+/* ============================================
+   AI v0.2 · 预测闭环（Phase 1）
+   ------------------------------------------------
+   核心原则：AI 输出【永不直接写账本】。
+   链路：parse（产出不可变预测快照）→ 用户确认/修正 → commit（事务内原子落账）
+        或 discard（弃置，不形成负面学习）。
+
+   与上方 legacy 直写路径（/chat 的 create_transaction 工具调用，约 L1044）的关系：
+   本次【不改动】legacy 行为，二者并存；待 web/android/harmony 三端切到本链路后再移除 legacy。
+   ============================================ */
+
+const aiModule = require('../modules/ai');
+
+// source 表示【输入通道】而非客户端平台，取值必须与 schema 的 ai_predictions_source_check 一致。
+// 客户端平台（web/android/harmony）请放在 context.platform，避免通道枚举被平台维度污染。
+const AI_PREDICTION_SOURCES = ['parse', 'chat', 'ocr', 'voice'];
+
+// ---- POST /api/ai/transactions/parse ----
+// 自然语言 → 候选交易 + 字段级置信度裁决 + 不可变预测快照
+router.post('/transactions/parse', async (req, res) => {
+    try {
+        const text = (req.body && req.body.text) || '';
+        if (!text || typeof text !== 'string' || !text.trim()) {
+            return res.status(400).json(fail('请提供要解析的文本'));
+        }
+        if (text.length > 2000) {
+            return res.status(400).json(fail('文本过长（最多 2000 字）'));
+        }
+
+        // 在入口拦下非法 source：否则会在 INSERT 时撞 CHECK 约束，用户只能看到 500
+        const source = (req.body && req.body.source) || 'parse';
+        if (!AI_PREDICTION_SOURCES.includes(source)) {
+            return res.status(400).json(fail(`source 必须是 ${AI_PREDICTION_SOURCES.join(' / ')} 之一`));
+        }
+
+        const context = (req.body && req.body.context) || {};
+        const { transactions, validation, decision_trace } = await aiModule.parseTransactions(db, {
+            userId: req.userId,
+            bookId: req.bookId,
+            text,
+            context,
+        });
+
+        if (!transactions.length) {
+            return res.status(422).json(fail('未能从文本中识别出交易信息'));
+        }
+
+        const predictionId = await aiModule.createPrediction({
+            userId: req.userId,
+            bookId: req.bookId,
+            source,
+            text,
+            context,
+            transactions,
+            validation,
+            decisionTrace: decision_trace,
+        });
+
+        res.json(success({
+            prediction_id: predictionId,
+            transactions,
+            verdict: validation.verdict,
+            overall_confidence: validation.overall,
+            reasons: validation.reasons,
+            // 前端据此决定是否弹确认框
+            needs_confirmation: validation.verdict !== 'ready',
+        }));
+    } catch (err) {
+        handleServerError(res, err, 'AI 解析交易');
+    }
+});
+
+// ---- GET /api/ai/predictions/:id ----
+// 读取预测快照；decision_trace（证据链）仅属主可见
+router.get('/predictions/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的预测 ID'));
+
+        const pred = await aiModule.getPrediction(id, req.userId);
+        if (!pred) return res.status(404).json(fail('预测不存在'));
+
+        res.json(success({
+            prediction_id: pred.id,
+            status: pred.status,
+            verdict: pred.verdict,
+            source: pred.source,
+            prediction_version: pred.prediction_version,
+            request: pred.request,
+            transactions: pred.candidate_txns,
+            validation: pred.validation,
+            decision_trace: pred.decision_trace,   // 已通过 user_id 过滤，属主可见
+            final_txns: pred.final_txns,
+            final_diff: pred.final_diff,
+            committed_at: pred.committed_at,
+            created_at: pred.created_at,
+        }));
+    } catch (err) {
+        handleServerError(res, err, '查询 AI 预测');
+    }
+});
+
+// ---- POST /api/ai/predictions/:id/commit ----
+// 原子提交：事务内落账 + 关联 + 状态更新 + 反馈事件；支持幂等重放
+router.post('/predictions/:id/commit', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的预测 ID'));
+
+        const action = (req.body && req.body.action) || 'confirmed';
+        if (action !== 'confirmed' && action !== 'corrected') {
+            return res.status(400).json(fail("action 必须是 'confirmed' 或 'corrected'"));
+        }
+        const correctedTxns = req.body && req.body.transactions;
+        if (action === 'corrected' && !Array.isArray(correctedTxns)) {
+            return res.status(400).json(fail("action='corrected' 时必须提供 transactions 数组"));
+        }
+
+        const idempotencyKey = (req.body && req.body.idempotency_key) || null;
+        if (idempotencyKey && (typeof idempotencyKey !== 'string' || idempotencyKey.length > 64)) {
+            return res.status(400).json(fail('idempotency_key 必须是 64 字符以内的字符串'));
+        }
+
+        const result = await aiModule.commitPrediction(
+            id, req.userId, req.bookId, action, correctedTxns, idempotencyKey
+        );
+
+        // prediction-store 返回 { status, body }，统一包装成项目响应格式
+        if (result.status === 200) {
+            return res.json(success(result.body));
+        }
+        return res.status(result.status).json(fail(result.body.error, result.body.details));
+    } catch (err) {
+        handleServerError(res, err, '提交 AI 预测');
+    }
+});
+
+// ---- POST /api/ai/predictions/:id/discard ----
+// 弃置预测：仅记录事件，不默认形成负向学习
+router.post('/predictions/:id/discard', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的预测 ID'));
+
+        const reason = (req.body && req.body.reason) || '';
+        const result = await aiModule.discardPrediction(id, req.userId, req.bookId, reason);
+
+        if (result.status === 200) return res.json(success(result.body));
+        return res.status(result.status).json(fail(result.body.error));
+    } catch (err) {
+        handleServerError(res, err, '弃置 AI 预测');
     }
 });
 

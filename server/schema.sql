@@ -644,3 +644,73 @@ CREATE INDEX IF NOT EXISTS idx_investments_user_book     ON investments (user_id
 CREATE INDEX IF NOT EXISTS idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
+
+-- ============================================
+-- AI 智能记账 v0.2 · 预测闭环（Phase 1）
+-- 核心原则：AI 输出【永不直接写账本】，必经 prediction 快照 → 用户确认 → 原子 commit。
+-- status  = 生命周期（pending/committed/discarded）
+-- verdict = 校验裁决（ready/needs_confirmation/invalid）
+--   ↑ 二者语义不同，切勿合并成一列：否则「已提交，但当初是 needs_confirmation」无法表达。
+-- 约定对齐现有表：SERIAL 主键、INT 引用列、不加 FOREIGN KEY（仅建索引）。
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_predictions (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  prediction_version INT NOT NULL DEFAULT 1,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','committed','discarded')),
+  verdict VARCHAR(20) NOT NULL DEFAULT 'needs_confirmation'
+    CHECK (verdict IN ('ready','needs_confirmation','invalid')),
+  source VARCHAR(16) NOT NULL DEFAULT 'parse'
+    CHECK (source IN ('parse','chat','ocr','voice')),
+  request JSONB NOT NULL,                              -- { text, context:{ book_id?, account_id?, date?, timezone? } }
+  candidate_txns JSONB NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
+  validation JSONB NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
+  decision_trace JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 证据链（仅属主可见）
+  final_txns JSONB DEFAULT NULL,                       -- commit 后的最终交易集
+  final_diff JSONB DEFAULT NULL,                       -- candidate vs final 差异（供 Phase 3 学习）
+  idempotency_key VARCHAR(64) DEFAULT NULL,            -- commit 幂等键
+  committed_at TIMESTAMP DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_pred_user         ON ai_predictions (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_pred_status       ON ai_predictions (status);
+CREATE INDEX IF NOT EXISTS idx_ai_pred_user_created ON ai_predictions (user_id, created_at DESC);
+-- 部分唯一索引：NULL 不参与冲突判定，未提交的预测彼此互不影响；
+-- 非空重复键触发 23505，commit 据此做并发幂等兜底（见 modules/ai/prediction/prediction-store.js）。
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_pred_idem
+  ON ai_predictions (idempotency_key) WHERE idempotency_key IS NOT NULL;
+DROP TRIGGER IF EXISTS trg_ai_pred_updated ON ai_predictions;
+CREATE TRIGGER trg_ai_pred_updated BEFORE UPDATE ON ai_predictions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 预测 → 台账交易 关联（审计与解释链路）
+CREATE TABLE IF NOT EXISTS ai_prediction_transactions (
+  id SERIAL PRIMARY KEY,
+  prediction_id INT NOT NULL,
+  transaction_id INT NOT NULL,
+  seq INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_ptxn_pred ON ai_prediction_transactions (prediction_id);
+CREATE INDEX IF NOT EXISTS idx_ai_ptxn_txn  ON ai_prediction_transactions (transaction_id);
+
+-- 证据事件（学习信号来源；Phase 1 只写 confirmation/correction/discard）
+CREATE TABLE IF NOT EXISTS ai_feedback_events (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  account_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  event_type VARCHAR(32) NOT NULL
+    CHECK (event_type IN ('explicit_confirmation','explicit_correction','discard',
+                          'manual_rule_creation','contradiction','rule_disabled')),
+  evidence_score INT NOT NULL DEFAULT 0,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_fb_user ON ai_feedback_events (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_fb_pred ON ai_feedback_events (prediction_id);
+CREATE INDEX IF NOT EXISTS idx_ai_fb_type ON ai_feedback_events (event_type, created_at DESC);
