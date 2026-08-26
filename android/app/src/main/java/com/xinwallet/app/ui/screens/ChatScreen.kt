@@ -138,7 +138,7 @@ fun ChatScreen(navController: NavHostController) {
         scope.launch {
             val prepared = withContext(Dispatchers.IO) { prepareImage(context, uri) }
             if (prepared == null) snackbar.showSnackbar("图片读取失败，请换一张试试")
-            else vm.sendImage(Base64.encodeToString(prepared.bytes, Base64.NO_WRAP), "image/jpeg")
+            else vm.sendImage(prepared.bytes, "image/jpeg")
         }
     }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { consume(it) }

@@ -406,7 +406,19 @@ data class UpdateInvestmentRequest(
 data class OcrResponse(
     val text: String = "",
     val items: List<OcrItem> = emptyList(),
-    val reason: String? = null
+    val reason: String? = null,
+    /* ---- v0.2 预测闭环字段（/ai/ocr 识别出交易时返回）----
+     * ⚠️ 「识别不出交易」分支只返回 text/items/reason，不含下列字段。
+     *   Gson 反序列化绕过构造器（不走 Kotlin 默认值），缺失的引用类型字段
+     *   实际为 null —— 调用方必须 orEmpty()/判空，不能信这里的默认值。
+     *   predictionId 用 primitive Int：缺失时为 0，可作为「无预测」判据。 */
+    @SerializedName("prediction_id") val predictionId: Int = 0,
+    val transactions: List<AiCandidateTxn>? = null,
+    val verdict: String? = null,
+    @SerializedName("overall_confidence") val overallConfidence: Double? = null,
+    val reasons: List<String>? = null,
+    @SerializedName("needs_confirmation") val needsConfirmation: Boolean = true,
+    @SerializedName("transcribe_source") val transcribeSource: String? = null
 )
 
 /**

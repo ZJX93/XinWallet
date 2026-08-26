@@ -24,12 +24,16 @@ class AiRepository(private val apiProvider: () -> ApiService) {
     /**
      * 上传账单图片做 OCR + 交易项提取。
      * 后端 multer 限制 5MB 且只接受图片格式，字段名固定为 image。
+     * @param accountId 必传（走 v0.2 闭环时）：抽取器不推断账户，快照缺它 commit 阶段 422
      */
-    suspend fun ocr(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg") =
+    suspend fun ocr(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg", accountId: Int? = null) =
         safeApiCall {
             val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
             val part = MultipartBody.Part.createFormData("image", fileName, body)
-            apiProvider().ocr(part)
+            val textPlain = "text/plain".toMediaTypeOrNull()
+            val accPart = accountId?.toString()?.toRequestBody(textPlain)
+            val platPart = "android".toRequestBody(textPlain)
+            apiProvider().ocr(part, accPart, platPart)
         }
 
     suspend fun getOcrConfig() = safeApiCall { apiProvider().getOcrConfig() }

@@ -150,9 +150,14 @@ export async function getStatsCalendar(year: number, month: number): Promise<Api
 }
 
 /* AI */
-export async function ocr(imageBase64: string): Promise<ApiResponse<OcrResponse>> {
+export async function ocr(imageBase64: string, accountId?: number): Promise<ApiResponse<OcrResponse>> {
   // 后端约定 multipart 字段名 image；这里用 JSON 包裹 base64（与安卓 base64 方案对齐）
-  return post<OcrResponse>('ai/ocr', { image: imageBase64 });
+  // account_id 必传（走 v0.2 闭环时）：抽取器不推断账户，快照缺它 commit 阶段 422
+  return post<OcrResponse>('ai/ocr', {
+    image: imageBase64,
+    account_id: accountId,
+    platform: 'harmony'
+  });
 }
 export async function getOcrConfig(): Promise<ApiResponse<OcrConfig>> {
   return get<OcrConfig>('ai/ocr-config');

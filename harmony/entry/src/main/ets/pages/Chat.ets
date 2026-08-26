@@ -7,7 +7,7 @@
  * AI 输出【永不直接写账本】；识别不出交易时（422）才回退 legacy /ai/chat 保留咨询能力。
  */
 import router from '@ohos.router';
-import { ChatMessage } from '../common/models';
+import { ChatMessage, OcrResponse } from '../common/models';
 import common from '@ohos.app.ability.common';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import picker from '@ohos.file.picker';
@@ -227,19 +227,79 @@ struct Chat {
     const img = this.pendingImage;
     this.pendingImage = '';
 
-    // 纯文本优先走 v0.2 确定性记账通道；带图片仍走 legacy 多模态对话
-    if (text && !img) {
-      const handled = await this.tryParseAsTransaction(text);
-      if (handled) return;
+    // 带图片 → v0.2 图片记账通道（/ai/ocr）。
+    // ⛔ 绝不走 legacy /ai/chat：那里没有记账工具，system prompt 会让 AI 回复
+    //   「我没法直接帮你落账，请走旁边的智能记账按钮」（用户实测踩坑 2026-08-26）。
+    if (img) {
+      await this.tryParseImage(img);
+      return;
     }
 
+    // 纯文本优先走 v0.2 确定性记账通道；识别不出（422）才回退 legacy chat 保留咨询能力
+    const handled = await this.tryParseAsTransaction(text);
+    if (handled) return;
+
     try {
-      const r = await Api.chat({ message: text, history, imageBase64: img || undefined });
+      const r = await Api.chat({ message: text, history });
       if (r.success && r.data) {
         this.messages.push({ role: 'assistant', content: r.data.reply || '', txs: r.data.transactions || [] });
       }
     } catch (e) {
       this.messages.push({ role: 'assistant', content: '出错了：' + (e as ApiError).message });
+    }
+  }
+
+  /**
+   * 图片 → v0.2 图片记账通道（/ai/ocr：转录 → 票据预处理 → parse → 预测快照）。
+   * 识别出交易 ⇒ 弹与文字通道同款的确认卡片；识别不出 ⇒ 文字回执。
+   * 与文字通道共用同一套确认态字段（predictionId/candidates/...）与 commit/discard 逻辑。
+   */
+  async tryParseImage(b64: string): Promise<void> {
+    try {
+      // 失败会走 catch（Http 层 !success 即 throw ApiError），这里 r.data 必为有效响应
+      const r = await Api.ocr(b64, this.defaultAccountId || undefined);
+      const d = r.data as OcrResponse;
+      const txns: AiCandidateTxn[] = d.transactions ? d.transactions : [];
+      const pid: number = d.prediction_id ? d.prediction_id : 0;
+
+      if (pid > 0 && txns.length > 0) {
+        // 需要确认时补拉字段级裁决明细，用于高亮低置信字段
+        let pt: AiTxnValidation[] = [];
+        if (d.needs_confirmation) {
+          try {
+            const snap = await Api.aiGetPrediction(pid);
+            if (snap.success && snap.data && snap.data.validation && snap.data.validation.per_txn) {
+              pt = snap.data.validation.per_txn as AiTxnValidation[];
+            }
+          } catch (e) { /* 拉不到就不高亮，不阻塞主流程 */ }
+        }
+
+        this.predictionId = pid;
+        this.originalCandidates = cloneTxns(txns);
+        this.candidates = cloneTxns(txns);
+        this.aiVerdict = d.verdict ? d.verdict : 'needs_confirmation';
+        this.aiReasons = d.reasons ? d.reasons : [];
+        this.aiOverall = d.overall_confidence === undefined ? -1 : d.overall_confidence;
+        this.perTxn = pt;
+        this.committing = false;
+        this.idemKey = `harmony-${pid}-${Date.now()}${Math.floor(Math.random() * 100000)}`.slice(0, 64);
+
+        const tip = d.needs_confirmation ? '，其中有字段置信度偏低，请核对后确认' : '，请确认后入账';
+        this.messages.push({
+          role: 'assistant',
+          content: `我从图片里识别到 ${txns.length} 笔记录${tip}`
+        });
+      } else {
+        this.messages.push({
+          role: 'assistant',
+          content: (d.reason && d.reason.length > 0)
+            ? d.reason
+            : '这张图里没认出交易，可以换个角度拍，或直接用文字告诉我（如「午饭 28 元」）'
+        });
+      }
+    } catch (e) {
+      const err = e as ApiError;
+      this.messages.push({ role: 'assistant', content: '出错了：' + err.message });
     }
   }
 

@@ -3,6 +3,7 @@ package com.xinwallet.app.data.remote
 import com.xinwallet.app.data.model.*
 import com.xinwallet.app.data.model.Tag
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
@@ -178,10 +179,18 @@ interface ApiService {
     ): Response<ApiResponse<CalendarSummary>>
 
     /* AI 智能记账 */
-    /** 上传账单图片做 OCR + 交易项提取，multipart 字段名必须是 image（后端 multer 约定） */
+    /**
+     * 上传账单图片做 OCR + 交易项提取，multipart 字段名必须是 image（后端 multer 约定）。
+     * account_id 必传（v0.2 抽取器不推断账户，快照缺它 commit 阶段 422）；
+     * platform 是埋点字段（后端 context.platform，缺省 'unknown'）。
+     */
     @Multipart
     @POST("ai/ocr")
-    suspend fun ocr(@Part image: MultipartBody.Part): Response<ApiResponse<OcrResponse>>
+    suspend fun ocr(
+        @Part image: MultipartBody.Part,
+        @Part("account_id") accountId: RequestBody? = null,
+        @Part("platform") platform: RequestBody? = null
+    ): Response<ApiResponse<OcrResponse>>
 
     /** 查询腾讯云 OCR 密钥配置状态，用于提前提示用户去 Web 端配置 */
     @GET("ai/ocr-config")

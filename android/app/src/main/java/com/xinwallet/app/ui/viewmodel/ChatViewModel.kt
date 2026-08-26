@@ -342,13 +342,62 @@ class ChatViewModel(
         }
     }
 
-    fun sendImage(imageBase64: String, mime: String) {
-        val next = appendUser(ChatMessage(role = "user", content = "", imageBase64 = imageBase64, mime = mime))
+    /**
+     * 图片发送：走 v0.2 图片记账通道（/ai/ocr：转录 → 票据预处理 → parse → 预测快照），
+     * 识别出交易 ⇒ 弹与文字通道同款的确认卡片；识别不出 ⇒ 文字回执。
+     * ⛔ 绝不走 legacy /ai/chat：那里没有记账工具，system prompt 会让 AI 回复
+     *   「我没法直接帮你落账，请走旁边的智能记账按钮」（用户实测踩坑 2026-08-26）。
+     */
+    fun sendImage(bytes: ByteArray, mime: String) {
+        // 与文字通道同规则：已有待确认预测时先处理完，避免多个快照并行
+        if (_state.value.aiConfirm != null) {
+            _state.value = _state.value.copy(error = "请先确认或弃置上一条识别结果")
+            return
+        }
+        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        val next = appendUser(ChatMessage(role = "user", content = "", imageBase64 = b64, mime = mime))
         viewModelScope.launch {
-            when (val r = aiRepo.chat(ChatRequest(messages = next))) {
-                is ApiResult.Success -> finalize(
-                    ChatMessage(role = "assistant", content = r.data.reply, transactions = r.data.transactions)
-                )
+            when (val r = aiRepo.ocr(bytes, "chat.jpg", mime, defaultAccountId)) {
+                is ApiResult.Success -> {
+                    val d = r.data
+                    // 「识别不出交易」分支不返回 v0.2 字段（Gson 绕过默认值 → null），必须判空
+                    val txns = d.transactions.orEmpty()
+                    if (d.predictionId > 0 && txns.isNotEmpty()) {
+                        val perTxn = if (d.needsConfirmation) {
+                            when (val snap = aiRepo.getPrediction(d.predictionId)) {
+                                is ApiResult.Success -> snap.data.validation?.perTxn ?: emptyList()
+                                is ApiResult.Error -> emptyList()
+                            }
+                        } else emptyList()
+                        val summary = buildString {
+                            append("我从图片里识别到 ${txns.size} 笔记录")
+                            if (d.needsConfirmation) append("，其中有字段置信度偏低，请核对后确认")
+                            else append("，请确认后入账")
+                        }
+                        _state.value = _state.value.copy(
+                            messages = _state.value.messages + ChatMessage(role = "assistant", content = summary),
+                            sending = false, thinking = false,
+                            aiConfirm = AiConfirmState(
+                                predictionId = d.predictionId,
+                                original = txns,
+                                items = txns,
+                                verdict = d.verdict ?: "needs_confirmation",
+                                reasons = d.reasons.orEmpty(),
+                                overall = d.overallConfidence,
+                                perTxn = perTxn,
+                                idempotencyKey = aiRepo.newIdempotencyKey(d.predictionId)
+                            )
+                        )
+                    } else {
+                        finalize(
+                            ChatMessage(
+                                role = "assistant",
+                                content = d.reason?.takeIf { it.isNotBlank() }
+                                    ?: "这张图里没认出交易，可以换个角度拍，或直接用文字告诉我（如「午饭 28 元」）"
+                            )
+                        )
+                    }
+                }
                 is ApiResult.Error -> fail(next, r.message)
             }
         }
