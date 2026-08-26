@@ -62,8 +62,12 @@ const PageLoader = {
         if (rawHtml) {
             // 剥离外层的 <section> 标签：page fragment 本身是完整的 <section class="page" ...>，
             // 但 index.html 中已经有一个包装 section（通过 data-lazy 属性指定）。
-            // 这里仅保留 inner 内容，避免嵌套双 section / 双 id
-            const inner = rawHtml.replace(/^\s*<section[^>]*>/i, '').replace(/<\/section>\s*$/i, '');
+            // 容忍前置 HTML 注释（ai-*.html 顶部带说明性注释）—— 否则 section 正则失配，
+            // 会把整个外层 section 注入到现有 section 里造成嵌套双 section / 双 id，主体空白。
+            const inner = rawHtml
+                .replace(/^\s*(?:<!--[\s\S]*?-->\s*)*/i, '')
+                .replace(/^\s*<section[^>]*>/i, '')
+                .replace(/<\/section>\s*$/i, '');
             this.cache.set(src, inner);
             el.innerHTML = inner;
             el.dataset.loaded = 'true';
