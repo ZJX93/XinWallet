@@ -26,25 +26,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountTree
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Wallet
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -179,6 +172,12 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             // 2) 宫格快捷入口：每行 4 格，共 11 项（第 3 行 3 项左对齐 + 1 个占位）
             // 项目与顺序必须与鸿蒙 Profile.ets 的 GRID 数组逐项一致（见该文件注释）。
             // 注意「记一笔」不进宫格：底栏中间已有记账浮钮，重复入口是冗余。
+            //
+            // 2026-08-26 调整：原 row1 含 7 个 AI 平铺入口（截图记账 / AI 洞察 / AI 建议 /
+            // AI 服务商 / AI 规则 / 学习统计 / 模型评测），全部收敛进新建的 AiToolsScreen
+            // 聚合页（点「AI 工具」宫格 → AiToolsScreen）。原 row1 第 1 位改成 AI 工具
+            // 聚合入口；后续 3 位挪到 row1 后段（分类/标签/账户）。其他 6 项非 AI 功能
+            // （理财/储蓄/预算/债务/数据管理/应用锁/设置）保持原状。
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = MaterialTheme.shapes.large,
@@ -187,13 +186,11 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val row1 = listOf(
-                        QuickAction("截图记账", Icons.Filled.CameraAlt, QuickActionKind.Nav) { navController.navigate(Screen.AiScan.route) },
-                        QuickAction("AI 洞察", Icons.Filled.Insights, QuickActionKind.Nav) { navController.navigate(Screen.AiInsight.route) },
-                        QuickAction("AI 服务商", Icons.Filled.Cloud, QuickActionKind.Nav) { navController.navigate(Screen.ProviderList.route) },
-                        QuickAction("AI 规则", Icons.Filled.AccountTree, QuickActionKind.Nav) { navController.navigate(Screen.RuleList.route) },
-                        QuickAction("AI 建议", Icons.Filled.Lightbulb, QuickActionKind.Nav) { navController.navigate(Screen.AiAdvice.route) },
-                        QuickAction("学习统计", Icons.Filled.School, QuickActionKind.Nav) { navController.navigate(Screen.LearningStats.route) },
-                        QuickAction("模型评测", Icons.Filled.Assessment, QuickActionKind.Nav) { navController.navigate(Screen.Evaluation.route) },
+                        // 第一格 AI 工具聚合入口（2026-08-26 新增）—— 收纳截图记账 / AI 洞察 /
+                        // AI 建议 / AI 服务商 / AI 规则 / 学习统计 / 模型评测 共 7 项，
+                        // 点击 → AiToolsScreen。
+                        // 原 row1 的 7 个 AI 平铺入口已全部迁移到聚合页，避免重复入口冗余。
+                        QuickAction("AI 工具", Icons.Filled.AutoAwesome, QuickActionKind.Nav) { navController.navigate(Screen.AiTools.route) },
                         QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
                         QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
                         QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) }

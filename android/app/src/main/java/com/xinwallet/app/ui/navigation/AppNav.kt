@@ -83,6 +83,7 @@ import com.xinwallet.app.ui.screens.RuleEvidenceScreen
 import com.xinwallet.app.ui.screens.ProviderListScreen
 import com.xinwallet.app.ui.screens.ProviderEditScreen
 import com.xinwallet.app.ui.screens.AiAdviceScreen
+import com.xinwallet.app.ui.screens.AiToolsScreen
 import com.xinwallet.app.ui.screens.LearningStatsScreen
 import com.xinwallet.app.ui.screens.EvaluationScreen
 import com.xinwallet.app.ui.screens.AppLockScreen
@@ -155,6 +156,8 @@ sealed class Screen(val route: String) {
     }
     /** AI 财务建议（POST /ai/advice） */
     object AiAdvice : Screen("ai-advice")
+    /** AI 工具聚合页（收纳 7 个 AI 子模块入口，与 ProfileScreen 宫格配套） */
+    object AiTools : Screen("ai-tools")
     /** AI 学习统计（GET /ai/learning/stats） */
     object LearningStats : Screen("learning-stats")
     /** AI 模型评测（POST /ai/evaluation/run + GET /ai/evaluation/runs） */
@@ -240,6 +243,8 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("account") -> Screen.Profile.route
     route.startsWith("reports") -> Screen.Reports.route
     route.startsWith("edit") -> Screen.Transactions.route
+    route == Screen.AiTools.route -> Screen.Profile.route  // AI 工具聚合页从「我的」宫格进
+    route == Screen.AiTools.route -> Screen.Profile.route  // AI 工具聚合页从「我的」宫格进
     route.startsWith("ai") -> Screen.Transactions.route
     route.startsWith("add") -> Screen.AddTransaction.route  // 记账独立 tab
     route.startsWith("chat") -> Screen.Profile.route       // 对话下沉到「我的」
@@ -546,6 +551,7 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             RuleEvidenceScreen(navController, entry.arguments?.getInt("id") ?: 0, entry.arguments?.getString("title") ?: "规则证据")
         }
         composable(Screen.AiAdvice.route) { AiAdviceScreen(navController) }
+        composable(Screen.AiTools.route) { AiToolsScreen(navController) }
         composable(Screen.LearningStats.route) { LearningStatsScreen(navController) }
         composable(Screen.Evaluation.route) { EvaluationScreen(navController) }
         composable(Screen.Investments.route) { InvestmentsScreen(navController) }
