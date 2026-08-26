@@ -36,8 +36,6 @@ class AiRepository(private val apiProvider: () -> ApiService) {
             apiProvider().ocr(part, accPart, platPart)
         }
 
-    suspend fun getOcrConfig() = safeApiCall { apiProvider().getOcrConfig() }
-
     /** AI 对话记账：把完整对话历史发给后端，后端用 function calling 建账/查账 */
     suspend fun chat(req: ChatRequest) = safeApiCall { apiProvider().chat(req) }
 
@@ -165,17 +163,4 @@ class AiRepository(private val apiProvider: () -> ApiService) {
 
     suspend fun listEvaluationRuns(limit: Int = 10) =
         safeApiCall { apiProvider().aiEvaluationRuns(limit = limit) }
-
-    /* ---------------- OCR 重转录 ----------------
-     * 与 ocr() 几乎相同，但服务端强制走 tencent_ocr 引擎（用户说「识别有误」时的兜底路径）。
-     * force 可空（默认 tencent_ocr）；传 "model" 可强制大模型多模态（CI 调试用）。 */
-    suspend fun ocrRetranscribe(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg", force: String? = null) =
-        safeApiCall {
-            val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
-            val part = MultipartBody.Part.createFormData("image", fileName, body)
-            val forcePart = force?.let {
-                okhttp3.RequestBody.create("text/plain".toMediaTypeOrNull(), it)
-            }
-            apiProvider().aiOcrRetranscribe(part, forcePart)
-        }
 }

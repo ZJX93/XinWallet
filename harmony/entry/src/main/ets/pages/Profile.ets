@@ -19,14 +19,14 @@ interface Iface1 {
 /**
  * 宫格项 —— 必须与安卓 ProfileScreen.kt 的 row1/row2/row3 逐项一致（项目、顺序、文案）。
  * 图标语义对照（安卓用 Material Icons，鸿蒙用同名 SVG 资源，图形须表达同一含义）：
- *   截图记账 CameraAlt=相机 / 分类管理 Sell=价签 / 标签管理 LocalOffer=标签
+ *   分类管理 Sell=价签 / 标签管理 LocalOffer=标签
  *   资产账户 Wallet=钱包 / 理财管理 ShowChart=走势折线 / 储蓄目标 Savings=存钱罐
  *   预算管理 Receipt=票据 / 债务管理 SwapHoriz=双向箭头 / 数据管理 Storage=存储层
  *   应用锁 Lock=挂锁 / 设置 Settings=齿轮
  * 「记一笔」不放宫格：底栏中间已有记账浮钮（Main.ets），重复入口是冗余。
+ * 「截图记账」已删（与 AI 对话记账发图路径重复）：用户改走 Chat 页发图。
  */
 const GRID: Iface1[] = [
-  { iconRes: 'ic_camera', label: '截图记账', url: 'pages/AiScan' },
   { iconRes: 'ic_cloud', label: 'AI 服务商', url: 'pages/ProviderList' },
   { iconRes: 'ic_advice', label: 'AI 建议', url: 'pages/Advice' },
   { iconRes: 'ic_rule', label: 'AI 规则', url: 'pages/RuleList' },

@@ -16,7 +16,7 @@ export struct TopBar {
    * 返回回调。**不传即默认 router.back()** —— 不要改回「可选且无默认」。
    *
    * 原先声明成 `onBack?: () => void` 且点击处写 `this.onBack && this.onBack()`，
-   * 于是 11 个页面（Accounts / AiScan / Budgets / Category / DataManagement /
+   * 于是 10 个页面（Accounts / Budgets / Category / DataManagement /
    * Debts / Planning / SavingsGoals / Search / Settings / Tags）都写成
    * `TopBar({ title: 'xxx' })` 漏传回调 —— 返回箭头照常渲染，点了毫无反应。
    *

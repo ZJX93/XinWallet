@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.School
@@ -47,15 +46,16 @@ import com.xinwallet.app.ui.theme.Brown500
 /**
  * AI 工具聚合页 — 收纳「我的」页宫格里所有 AI 子模块，集中跳转入口。
  *
- * 6 个子项（v0.2.1 起：AI 洞察已合并进 AI 建议，洞察/建议在 AiAdviceScreen 内分段展示）：
- *   ① 截图记账   — 上传截图/选图自动识别（Web 端对应"AI 识别"），页面 AiScanScreen
- *                   ⭐ 用户明确"AI 工具里的截图记账不能删除"：除了用本页进入，底栏 FAB → AI 记账对话
- *                   也可以发送图片（不与本页重复）。
- *   ② AI 建议    — 个性化财务改善建议 + 消费洞察（AiAdviceScreen，insight 已合并）
- *   ③ AI 服务商  — 配置 / 切换 AI 模型与服务商（ProviderListScreen）
- *   ④ AI 规则    — 查看 / 管理类目识别规则与样本（RuleListScreen）
- *   ⑤ 学习统计   — 规则样本量、准确率与置信度分布（LearningStatsScreen）
- *   ⑥ AI 评测    — 跑离线评测，对比模型准确率（EvaluationScreen）
+ * 5 个子项（v0.2.2 起：截图记账与 AI 对话记账的「发图片」路径重复，整页删除；
+ *                  AI 洞察已合并进 AI 建议）：
+ *   ① AI 建议    — 个性化财务改善建议 + 消费洞察（AiAdviceScreen，insight 已合并）
+ *   ② AI 服务商  — 配置 / 切换 AI 模型与服务商（ProviderListScreen）
+ *   ③ AI 规则    — 查看 / 管理类目识别规则与样本（RuleListScreen）
+ *   ④ 学习统计   — 规则样本量、准确率与置信度分布（LearningStatsScreen）
+ *   ⑤ AI 评测    — 跑离线评测，对比模型准确率（EvaluationScreen）
+ *
+ * 截图记账走的图片通道（/ai/ocr）保留，仍由底栏 FAB → AI 记账对话 → 发图片触达，
+ * v0.2.1 已让 Chat 通道命中 v0.2 OCR → AiConfirmCard 弹确认卡片 → 用户点确认落账。
  *
  * 设计：参照 SettingsScreen 的 TopBar + Card + SettingsRow 模式，
  * 与「我的」页 row1 第 1 位「AI 工具」宫格相配套，点击跳转对应 AI 子页。
@@ -86,13 +86,6 @@ fun AiToolsScreen(navController: NavHostController) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column {
-                    AiToolsRow(
-                        icon = Icons.Filled.CameraAlt,
-                        title = "截图记账",
-                        subtitle = "上传截图或照片，AI 自动识别金额、商家、类目",
-                        onClick = { navController.navigate(Screen.AiScan.route) }
-                    )
-                    RowDivider()
                     AiToolsRow(
                         icon = Icons.Filled.Lightbulb,
                         title = "AI 建议",
@@ -181,7 +174,7 @@ private fun AiToolsRow(
     }
 }
 
-/** 行间分隔线 — 1dp 浅色，避免 Card 内连续 7 行挤在一起 */
+/** 行间分隔线 — 1dp 浅色，避免 Card 内连续 6 行挤在一起 */
 @Composable
 private fun RowDivider() {
     Box(

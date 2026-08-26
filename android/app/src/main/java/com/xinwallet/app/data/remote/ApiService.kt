@@ -192,10 +192,6 @@ interface ApiService {
         @Part("platform") platform: RequestBody? = null
     ): Response<ApiResponse<OcrResponse>>
 
-    /** 查询腾讯云 OCR 密钥配置状态，用于提前提示用户去 Web 端配置 */
-    @GET("ai/ocr-config")
-    suspend fun getOcrConfig(): Response<ApiResponse<OcrConfig>>
-
     /** AI 对话记账：文字 / 截图多模态，后端用 function calling 真正建账 */
     @POST("ai/chat")
     suspend fun chat(@Body req: ChatRequest): Response<ApiResponse<ChatResponse>>
@@ -422,15 +418,7 @@ interface ApiService {
     @GET("ai/evaluation/runs")
     suspend fun aiEvaluationRuns(@Query("limit") limit: Int = 10): Response<ApiResponse<AiEvaluationRunsResponse>>
 
-    /* ---------- OCR 重转录（POST /ai/ocr/retranscribe）----------
-     * 与 /ai/ocr 字段一致（multipart 'image'），但服务端强制走 tencent_ocr；
-     * 调用方传 multipart 同时可选传 'force'（model/tencent_ocr），默认 tencent_ocr。
-     * 复用现有 OcrResponse 数据类（响应结构与 /ocr 一致）。 */
-    @Multipart
-    @POST("ai/ocr/retranscribe")
-    suspend fun aiOcrRetranscribe(
-        @Part image: MultipartBody.Part,
-        @Part("force") force: okhttp3.RequestBody? = null,
-    ): Response<ApiResponse<OcrResponse>>
-
+    /* OCR 重转录（POST /ai/ocr/retranscribe）已在 v0.2.2 删除：
+     * 截图记账整页删除后无调用方（AiScanViewModel.kt 已删）；用户改走「AI 对话记账 → 发图」路径。
+     * 与之配对的 GET /ai/ocr-config 也已删除（getOcrConfig 方法、OcrConfig 模型类一并清理）。 */
 }

@@ -437,20 +437,6 @@ data class OcrItem(
     val merchant: String? = null
 )
 
-/** GET /ai/ocr-config：判断是否已配置腾讯云 OCR 密钥 */
-data class OcrConfig(
-    val provider: String? = null,
-    @SerializedName("secret_id") val secretId: String? = null,
-    val region: String? = null,
-    val credentialsValid: Boolean? = null,
-    val credentialsError: String? = null
-) {
-    /** secret_id 为空表示尚未配置 */
-    val configured: Boolean get() = !secretId.isNullOrBlank()
-}
-
-/* ----------------------------- AI 对话记账 ----------------------------- */
-
 /** 对话中的一条消息；user 消息可附带截图（多模态），assistant 消息可携带已建交易 */
 data class ChatMessage(
     val role: String,

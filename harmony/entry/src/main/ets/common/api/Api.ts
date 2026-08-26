@@ -405,6 +405,8 @@ export interface AiAdviceItem {
 
 export interface AiAdviceResponse {
   advice: AiAdviceItem[];
+  /* v0.2.1 起 /ai/advice 一并返回洞察（原 /ai/insight 合并进来）；老服务端可能缺省 */
+  insights?: AiInsightItem[];
   generated_at?: string;
 }
 

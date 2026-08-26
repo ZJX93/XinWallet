@@ -146,19 +146,24 @@ struct Advice {
     return 'ℹ️';
   }
 
+  /** build() 里不允许写 const（只允许 UI 语法），判空收进方法；
+   *  用普通方法而非 getter —— getter 访问 @State 在 ArkUI 不触发刷新 */
+  private hasContent(): boolean {
+    return this.advice.length > 0 || this.insights.length > 0;
+  }
+
   build() {
     Stack() {
       AppBackground()
       Column() {
         TopBar({ title: '💡 AI 智能分析', onBack: () => router.back() })
-        const hasContent = this.advice.length > 0 || this.insights.length > 0;
-        if (this.loading && !hasContent) {
+        if (this.loading && !this.hasContent()) {
           LoadingBox()
-        } else if (this.needsProvider && !hasContent) {
+        } else if (this.needsProvider && !this.hasContent()) {
           this.ProviderMissingView()
-        } else if (this.errorMsg && !hasContent) {
+        } else if (this.errorMsg && !this.hasContent()) {
           this.ErrorView()
-        } else if (!hasContent) {
+        } else if (!this.hasContent()) {
           EmptyState({ icon: '💡', text: '本月还没有内容，记几笔账后 AI 会基于你的财务数据给出建议' })
         } else {
           this.ListView()
