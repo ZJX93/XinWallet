@@ -9,9 +9,11 @@ const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens, polishChatReply } = require('./_helpers');
 const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
-// 类目匹配统一走 AI v0.2 模块（单一真相）：OCR 与自然语言解析共用同一份词表，
-// 避免「同一句话走 OCR 和走文本归到不同类目」。
-const { matchCategory } = require('../modules/ai/extraction/category-matcher');
+// AI v0.2 模块桶：图片通道（/ocr）与预测闭环（/transactions/parse）都要用。
+// ⚠️ 必须在顶部 require —— 图片通道位于文件中段，const 的 TDZ 会让「写在下面」直接 ReferenceError。
+// ⛔ 路由层【只能】依赖这个桶文件。原先直接 require 的 extraction/category-matcher
+//    已随 legacy 解析器一并移除（它是那 253 行的唯一使用者）。
+const aiModule = require('../modules/ai');
 
 // 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
 // 让前端能给出明确引导（前往「AI 配置」页重新保存），避免用户误以为配置丢失。
@@ -30,19 +32,8 @@ const { syncCreditCardDebt } = require('./utils');
 const { toAmount, toNumber } = require('../validate');
 const multer = require('multer');
 
-/**
- * 腾讯云 OCR SDK 惰性加载：该 SDK 依赖 node-fetch（体积大、且仅在 /ocr 路由用到）。
- * 顶层 require 会在服务启动时即加载整条依赖链，容易导致 node-fetch 缺失/损坏时
- * 整个服务无法启动。改为首次调用 OCR 时才加载，避免拖垮其它完全无关的接口。
- */
-let _OcrClient = null;
-function getOcrClient() {
-    if (!_OcrClient) {
-        const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
-        _OcrClient = tencentOcr.v20181119.Client;
-    }
-    return _OcrClient;
-}
+/*  ⛔ 原腾讯云 OCR SDK 惰性加载器已迁到 `modules/ai/vision/image-transcriber.js`。
+    路由层不再直接碰 SDK —— 转录（图片→文字）整体属于 vision 层的职责。   */
 
 // 仅 OCR 路由需要图片上传：memoryStorage 不落盘、5MB 上限、仅接受图片类型。
 // 在此局部定义并仅挂到 /ocr 路由（见下方 router.post('/ocr', ...)），不再于全局
@@ -403,365 +394,237 @@ router.post('/ocr-config', async (req, res) => {
     } catch (err) { handleServerError(res, err); }
 });
 
-// 兜底：从 OCR 文字中用正则提取交易项（当 AI 不返回 JSON 时使用）
-function fallbackExtractItems(ocrText, defaultDate, categories = []) {
+/*  ⛔ 原 `fallbackExtractItems`（253 行 legacy OCR 正则解析器）已于 2026-08-25 删除。
+    能力去处：`modules/ai/vision/receipt-preprocessor.js`
+      · 5 套版式策略全部迁走，并【新补】策略 1b（竖排标签版式，legacy 全漏）
+      · 类目词表此前已并入 `extraction/category-matcher.js`
+    ⛔ 别在这里重新写第二套抽取逻辑 —— legacy 之所以要删，就是因为它让
+       图片通道和文字通道各有一个大脑，规则学到的习惯在图片上完全不生效。   */
 
-    /* ============================================
-       类目推断：统一走 AI v0.2 的 category-matcher（单一真相）
-       ------------------------------------------------
-       ⛔ 此处原有一份 118 行的独立类目词表（level1 13 组 + level2 47 组），
-          与 modules/ai/extraction/category-matcher.js 平行维护，实测
-          【同词不同类目 40 处】（加油：爱车 vs 交通出行；宽带：通讯 vs 居家生活…）
-          ⇒ 同一句话走 OCR 和走文本会归到不同类目，用户体感就是「AI 时好时坏」。
-          且两份词表都照着【过时的类目表】写（真表叫「交通出行/居家生活」，
-          没有「交通/居住」），大量条目静默退化成「其他支出」。
+// ==========================================
+// 图片记账（v0.2 图片通道）
+// ------------------------------------------------
+// 链路：图片 → 【转录层】→ 文字 → v0.2 主链路 → 不可变预测 → 用户确认 → 原子落账
+//
+// 转录层两条通道（modules/ai/vision/image-transcriber.js）：
+//   ① 大模型多模态直读（主路）
+//   ② 腾讯云 OCR 纯文字转录（兜底）
+//
+// ⛔⛔ 腾讯云 OCR 在本方案里【只提供识别能力，不参与任何学习】。
+//     它的产物就是一段纯文字，与用户手打的文字在下游完全同权 ——
+//     同一个抽取器、同一套记忆检索、同一个决策引擎、同一套规则。
+//     兜底触发条件三种：
+//       A. 当前模型不具备图片理解能力（vision_support='no' 或模型名预判不支持）
+//       B. 大模型读图失败/超时/回复「我看不到图片」
+//       C. 用户主动说「识别有误」→ POST /ocr/retranscribe（force=tencent_ocr）
+//
+// ⛔ 为什么废掉原来那套「OCR 文字 → 自己拼 prompt → 344 行正则兜底」：
+//    它让图片通道和文字通道各有一套抽取逻辑与置信度，
+//    结果规则学到的习惯在图片通道完全不生效（「越用越聪明」在图片上失效）。
+//    现在两条通道共用一个大脑，学习成果自动对图片生效。
+// ==========================================
 
-       2026-08-25 合并：词库已并入 category-matcher.js（商户名词库是 legacy 的
-       独有资产，全部保留），此处改为直接调用它。
-       ⚠️ 本函数的【5 套 OCR 版式解析策略】（微信账单负数行、向上找商户名、
-          行间找日期等）是 legacy 独有能力，v0.2 的自然语言解析不覆盖，全部保留。
-
-       legacy 的「按支付时间推断早/午/晚餐」逻辑刻意不再移植：
-       真实类目表已把三餐合并为单一叶子「早午晚餐」，时间推断没有落点。
-       ============================================ */
-    function inferCategory(name, note, type) {
-        const text = `${name || ''} ${note || ''}`;
-        const r = matchCategory(text, type, categories);
-        return { name: r.value, id: r.category_id, confidence: r.confidence, source: r.source };
-    }
-
-
-    function inferNote(ocrText, name, amount) {
-        // 从 OCR 文字提取有意义的交易描述，排除支付渠道/账户信息
-        // 提取"商品"行的内容作为备注
-        const productMatch = ocrText.match(/商品\s*(.+)/);
-        if (productMatch) return productMatch[1].trim();
-        // 否则用交易名本身
-        return name || '消费';
-    }
-
-    // 从 OCR 提取完整支付时间（用于餐别推断和精确时间）
-    const ocrDateTime = (() => {
-        const m1 = ocrText.match(/支付时间\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日\s*(\d{1,2}):(\d{2}):(\d{2})/);
-        if (m1) return `${m1[1]}-${m1[2].padStart(2,'0')}-${m1[3].padStart(2,'0')} ${m1[4].padStart(2,'0')}:${m1[5].padStart(2,'0')}:${m1[6].padStart(2,'0')}`;
-        const m2 = ocrText.match(/支付时间\s*(\d{4}-\d{2}-\d{2})\s*(\d{1,2}):(\d{2}):(\d{2})/);
-        if (m2) return `${m2[1]} ${m2[2].padStart(2,'0')}:${m2[3].padStart(2,'0')}:${m2[4].padStart(2,'0')}`;
-        return null;
-    })();
-    // 注：原有 ocrTime（仅提取 HH:mm）已随「按支付时间推断早/午/晚餐」逻辑一并移除 ——
-    // 真实类目表把三餐合并为单一叶子「早午晚餐」，餐别推断没有落点了。
-    // 精确到秒的时间仍由上面的 ocrDateTime 保留，用于 date 字段。
-
-    const items = [];
-    const seen = new Set();
-    const lines = ocrText.split('\n').map(l => l.trim()).filter(Boolean);
-    const skipKeywords = /合计|总计|小计|总金额|优惠|退款|实付|找零|应付|应收|余额|折扣|满减|立减/i;
-    const noiseKeywords = /支付金额|支付|消费|收款|订单|交易|当前状态|付款方式|账单详情/i;
-
-    let contextDate = defaultDate;
-    const globalDateMatch = ocrText.match(/(\d{4}[-\/]\d{2}[-\/]\d{2})|(\d{4}年\d{1,2}月\d{1,2}日)/);
-    if (globalDateMatch) {
-        contextDate = globalDateMatch[1]
-            ? globalDateMatch[1].replace(/\//g, '-')
-            : globalDateMatch[2].replace(/(\d{4})年(\d{1,2})月(\d{1,2})日/, (a, y, m, d) => `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
-    }
-    if (ocrDateTime) contextDate = ocrDateTime;
-
-    // 解析单行中的完整日期时间，保留时间部分
-    function parseDateFromLine(line) {
-        if (!line) return contextDate;
-        // 优先匹配完整时间：2026年7月17日 17:23:49 或 2026-07-17 17:23:49
-        const ftm1 = line.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日\s+(\d{1,2}):(\d{2}):(\d{2})/);
-        if (ftm1) return `${ftm1[1]}-${ftm1[2].padStart(2,'0')}-${ftm1[3].padStart(2,'0')} ${ftm1[4].padStart(2,'0')}:${ftm1[5].padStart(2,'0')}:${ftm1[6].padStart(2,'0')}`;
-        const ftm2 = line.match(/(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})/);
-        if (ftm2) return `${ftm2[1]} ${ftm2[2].padStart(2,'0')}:${ftm2[3].padStart(2,'0')}:${ftm2[4].padStart(2,'0')}`;
-        // 只有日期时尝试从附近补充时间
-        const m1 = line.match(/(\d{4}[-\/]\d{2}[-\/]\d{2})/);
-        if (m1) return m1[1].replace(/\//g, '-');
-        const m2 = line.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-        if (m2) {
-            const date = `${m2[1]}-${m2[2].padStart(2, '0')}-${m2[3].padStart(2, '0')}`;
-            // 尝试从同一行后面提取时间
-            const tm = line.match(/(\d{1,2}):(\d{2}):(\d{2})/);
-            if (tm) return `${date} ${tm[1].padStart(2,'0')}:${tm[2].padStart(2,'0')}:${tm[3].padStart(2,'0')}`;
-            return date;
-        }
-        return contextDate;
-    }
-
-    function addItem(name, amount, date, note) {
-        const key = `${name}|${amount.toFixed(2)}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        // OCR 截图几乎全是支出（收款截图极少），故先按 expense 匹配类目。
-        // 类目 id 由 category-matcher 从【真实 categories 表】回查，绝不臆造。
-        const cat = inferCategory(name, note || '', 'expense');
-        items.push({
-            name: name.slice(0, 50),
-            amount,
-            type: 'expense',
-            date,
-            note: note || inferNote(ocrText, name),
-            category: cat.name,
-            category_id: cat.id,
-            category_confidence: cat.confidence,
-            category_source: cat.source,
-        });
-    }
-
-    function isNoiseLine(line) {
-        return !line || line.length > 60 || skipKeywords.test(line) || noiseKeywords.test(line)
-            || /^\d{4}[-\/]\d{2}[-\/]\d{2}/.test(line) || /^\d{4}年\d{1,2}月/.test(line)
-            || /^\d{2}:\d{2}/.test(line) || /^\d{10,}$/.test(line)
-            || /^(?:交易单号|商户单号|收单机构|支付方式|商家小程序|账单服务)/.test(line);
-    }
-
-    function findMerchantName(startIdx, maxLookBack = 5) {
-        for (let k = 1; k <= maxLookBack && startIdx - k >= 0; k++) {
-            const candidate = lines[startIdx - k].trim();
-            if (isNoiseLine(candidate)) continue;
-            const productMatch = candidate.match(/^商品\s*(.+)/);
-            if (productMatch) return productMatch[1].trim();
-            return candidate;
-        }
-        return null;
-    }
-
-    // 策略1: 微信支付格式 — "商户名" 行后跟 "支付金额 ¥xx.xx"
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const payMatch = line.match(/支付金额\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/);
-        if (!payMatch || i === 0) continue;
-        const amount = parseFloat(payMatch[1]);
-        if (!amount || amount <= 0 || amount > 999999) continue;
-
-        let merchantName = lines[i - 1];
-        // 如果前一行的上一行是日期，则商户名是更前一行
-        if (i > 1 && /^\d{4}[-\/]\d{2}[-\/]\d{2}/.test(merchantName)) {
-            merchantName = lines[i - 2] || merchantName;
-        }
-        if (skipKeywords.test(merchantName) || noiseKeywords.test(merchantName)) continue;
-        if (merchantName.length < 1 || merchantName.length > 60) continue;
-
-        // 查找附近的日期（保留时间）
-        let date = contextDate;
-        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-            const dtm = lines[j].match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s+(\d{1,2}):(\d{2}):(\d{2}))?/);
-            if (dtm) {
-                date = `${dtm[1]}-${dtm[2].padStart(2,'0')}-${dtm[3].padStart(2,'0')}` +
-                       (dtm[4] ? ` ${dtm[4].padStart(2,'0')}:${dtm[5].padStart(2,'0')}:${dtm[6].padStart(2,'0')}` : '');
-                break;
-            }
-            const dm = lines[j].match(/(\d{4}[-\/]\d{2}[-\/]\d{2})(?:\s+(\d{1,2}):(\d{2}):(\d{2}))?/);
-            if (dm) {
-                date = dm[1].replace(/\//g, '-') +
-                       (dm[2] ? ` ${dm[2].padStart(2,'0')}:${dm[3].padStart(2,'0')}:${dm[4].padStart(2,'0')}` : '');
-                break;
-            }
-        }
-        addItem(merchantName, amount, date);
-    }
-
-    // 策略2: 支付宝格式 — 商户名在上一行，"消费 ¥xx.xx" 在当前行
-    for (let i = 1; i < lines.length; i++) {
-        const m = lines[i].match(/^(?:消费|收款|支出|收入)\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/);
-        if (!m) continue;
-        const amount = parseFloat(m[1]);
-        if (!amount || amount <= 0 || amount > 999999) continue;
-
-        let name = lines[i - 1];
-        if (/^\d{4}[-\/]\d{2}[-\/]\d{2}/.test(name)) name = lines[i - 2] || name;
-        if (skipKeywords.test(name) || noiseKeywords.test(name)) continue;
-        if (name.length < 1 || name.length > 60) continue;
-
-        let date = contextDate;
-        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-            const dm = lines[j].match(/(\d{4}[-\/]\d{2}[-\/]\d{2})/);
-            if (dm) { date = dm[1].replace(/\//g, '-'); break; }
-        }
-        addItem(name, amount, date);
-    }
-
-    // 策略3: 通用格式 — "商户名 ¥xx.xx"（排除含消费/支出/收入关键词的行，留给策略4）
-    const genericRe = /^(.{1,50}?)\s+[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元)?\s*$/;
-    for (const line of lines) {
-        if (skipKeywords.test(line) || noiseKeywords.test(line)) continue;
-        if (line.length > 100) continue;
-        if (/(?:消费|收款|支出|收入)/.test(line)) continue;
-        const m = line.match(genericRe);
-        if (!m) continue;
-        let name = m[1].trim();
-        const amount = parseFloat(m[2]);
-        if (!amount || amount <= 0 || amount > 999999) continue;
-        name = name.replace(/^\d{4}[-\/]\d{2}[-\/]\d{2}\s*/, '');
-        if (name.length < 2 || name.length > 60) continue;
-        if (/^\d{2}:\d{2}/.test(name)) continue;
-        // 过滤状态栏噪声：纯数字、单字母、无明显语义的短串
-        if (/^\d+$/.test(name)) continue;
-        if (/^[a-zA-Z]$/.test(name)) continue;
-        if (/^\d+[a-zA-Z]$/.test(name) || /^[a-zA-Z]\d+$/.test(name)) continue;
-        addItem(name, amount, contextDate);
-    }
-
-    // 策略4: 同行格式 — "商户名 消费/支出 ¥xx.xx"
-    const inlineTypeRe = /^(.{1,40}?)\s+(?:消费|收款|支出|收入)\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/;
-    for (const line of lines) {
-        if (skipKeywords.test(line) || noiseKeywords.test(line)) continue;
-        if (line.length > 100) continue;
-        const m = line.match(inlineTypeRe);
-        if (!m) continue;
-        let name = m[1].trim();
-        const amount = parseFloat(m[2]);
-        if (!amount || amount <= 0 || amount > 999999) continue;
-        if (name.length < 2 || name.length > 60) continue;
-        if (/^\d{4}[-\/]\d{2}[-\/]\d{2}/.test(name)) continue;
-        // 过滤状态栏噪声
-        if (/^\d+$/.test(name) || /^[a-zA-Z]$/.test(name) || /^\d+[a-zA-Z]$/.test(name) || /^[a-zA-Z]\d+$/.test(name)) continue;
-        addItem(name, amount, contextDate);
-    }
-
-    // 策略5: 微信账单详情格式 — 金额是独立的负数行如 "-4.00"，向上找商户名/商品名
-    const negativeAmountRe = /^-\s*(\d{1,10}(?:\.\d{1,2})?)\s*$/;
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        const m = line.match(negativeAmountRe);
-        if (!m) continue;
-        const amount = parseFloat(m[1]);
-        if (!amount || amount <= 0 || amount > 999999) continue;
-
-        // 优先使用 "商品" 行提取名称
-        let name = null;
-        for (let k = 1; k <= 8 && i - k >= 0; k++) {
-            const prev = lines[i - k].trim();
-            const productMatch = prev.match(/^商品\s*(.+)/);
-            if (productMatch) { name = productMatch[1].trim(); break; }
-        }
-        if (!name) name = findMerchantName(i, 8);
-        if (!name) continue;
-
-        // 从附近提取日期
-        let date = contextDate;
-        for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-            const d = parseDateFromLine(lines[j]);
-            if (d !== contextDate) { date = d; break; }
-        }
-        if (date === contextDate) {
-            for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
-                const d = parseDateFromLine(lines[j]);
-                if (d !== contextDate) { date = d; break; }
-            }
-        }
-        addItem(name, amount, date);
-    }
-
-    return items;
+/** 把 v0.2 候选交易映射回老客户端的 items 形状（安卓 OcrItem / 鸿蒙 OcrResponse.items） */
+function toLegacyOcrItems(transactions) {
+    return (transactions || []).map(t => ({
+        name: t.merchant || t.category_name || t.raw_segment || '未命名',
+        amount: t.amount,
+        type: t.type,
+        // 老客户端期望 'YYYY-MM-DD HH:mm:ss'，v0.2 只给日期 → 补 00:00:00
+        date: t.date ? `${t.date} 00:00:00` : null,
+        note: t.note || '',
+        // 老客户端按【类目名】匹配本地 id，不是 id
+        category: t.category_name || '其他',
+        merchant: t.merchant || null,
+    }));
 }
 
-// OCR 识别
+/**
+ * 图片记账的共用实现：转录 → 解析 → 落预测快照。
+ * @param {'model'|'tencent_ocr'} [force] 强制指定转录器
+ */
+async function handleImageAccounting(req, res, imageBase64, mime, force) {
+    if (!imageBase64) return res.status(400).json(fail('图片内容为空'));
+
+    // provider 取不到不算错：转录层会直接走腾讯 OCR 兜底
+    const provider = await getActiveProvider(req.userId);
+    if (provider && provider._decryptFailed) {
+        return res.status(400).json(fail('检测到 AI 服务商配置，但密钥解密失败（很可能是重部署后加密密钥 ENCRYPTION_KEY 变更）。请前往「AI 配置」页重新保存该服务商的 API Key。'));
+    }
+
+    // ── 第一步：转录（图片 → 文字）────────────────────────────────
+    const tr = await aiModule.transcribeImage({
+        db, userId: req.userId, imageBase64, mime,
+        provider: provider && !provider._decryptFailed ? provider : null,
+        force,
+    });
+    console.log(`[图片记账] user=${req.userId} force=${force || '-'} ok=${tr.ok} source=${tr.source || '-'} textLen=${(tr.text || '').length} attempts=${JSON.stringify(tr.attempts)}`);
+
+    if (!tr.ok) {
+        // ⚠️ fail(msg, code) 的第二参数是【错误码】不是附加数据（_helpers.js:16）。
+        //    附加信息只能挂在返回对象上，不能塞进 fail()。
+        return res.status(400).json({
+            ...fail(tr.error),
+            needs_ocr_config: !!tr.needs_ocr_config,
+            transcribe_attempts: tr.attempts,
+        });
+    }
+
+    // ── 第二步：票据版式预处理（仅当文本确实是账单版式）──────────
+    /*  ⛔⛔ 这一步不能省。实测（2026-08-25）把账单 OCR 原文直接喂给 v0.2 抽取器：
+          · 交易单号 4200002891202608201234567890 → 抽出一笔 4.2e27 元
+          · 支付时间 08:12:33 的「08」→ 抽出一笔 8 元
+          · 商户名一个都抽不到，全落「其他支出」
+        根因是抽取器为【自然语言】设计（假设文中数字就是金额），
+        而账单版式满是单号/时间戳，且商户名与金额分处不同行。
+        ⇒ 先把版式整理成「老乡鸡 18元」这类干净语句，抽取器的输入假设才成立。
+        ⚠️ looksLikeReceipt 判定为 false（用户手打的文字）时【原样放行】，
+           绝不能让预处理误伤文字通道。 */
+    let parseText = tr.text;
+    let receiptInfo = null;
+    let merchantHints = [];
+    let receiptDate = null;
+    if (aiModule.looksLikeReceipt(tr.text)) {
+        const pre = aiModule.preprocessReceipt(tr.text, { defaultDate: new Date().toISOString().slice(0, 10) });
+        if (pre.ok) {
+            parseText = pre.text;
+            receiptInfo = { strategy: pre.strategy, item_count: pre.items.length };
+            // 预处理已从「商户全称」标签行确定了商家名 → 直接给抽取器，别让它再猜
+            // ⚠️ 复用同一次预处理结果，绝不重复调用（两次结果漂移就查不清了）
+            merchantHints = pre.items.map(i => i.name);
+            /*  票据日期要当作参考日传下去。
+                ⛔ 否则记的是【上传当天】而不是【消费当天】：用户周一补记上周五的
+                   小票，日期会全部错成周一，而且完全不报错 —— 只能靠人肉核对发现。 */
+            receiptDate = pre.items.map(i => i.date).filter(Boolean).sort()[0] || null;
+            console.log(`[图片记账] user=${req.userId} 票据预处理命中 strategy=${pre.strategy} → ${pre.items.length} 行 日期=${receiptDate || '-'}`);
+        } else {
+            // 判定像票据但一条策略都没命中 → 退回原文，交给主链路尽力而为
+            console.log(`[图片记账] user=${req.userId} 判定为票据但无策略命中，退回原文解析`);
+        }
+    }
+
+    // ── 第三步：文字 → v0.2 主链路（与手打文字完全同路）──────────
+    /*  ⚠️ account_id 必须由客户端在上传时一并给出。
+        v0.2 的抽取器【不推断账户】（票据上通常也没有「我的哪张卡」这种信息），
+        而 commit 阶段缺 account_id 会直接 422「第N笔未指定账户」。
+        ⇒ 前端的图片上传界面必须带账户选择器，默认取上次使用的账户。 */
+    const imageContext = {
+        channel: 'image',
+        transcribe_source: tr.source,
+        receipt: receiptInfo,
+        merchant_hints: merchantHints,
+        account_id: toNumber(req.body && req.body.account_id) || null,
+        platform: (req.body && req.body.platform) || 'unknown',
+    };
+    if (receiptDate) imageContext.date = receiptDate;
+
+    const parsed = await aiModule.parseTransactions(db, {
+        userId: req.userId,
+        bookId: req.bookId,
+        text: parseText,
+        context: imageContext,
+    });
+    const { transactions, validation, decision_trace } = parsed;
+
+    // 转录成功但抽不出交易：把转录文字回给前端，用户可以手工改文字再解析
+    if (!transactions.length) {
+        return res.json(success({
+            text: tr.text,
+            items: [],
+            transcribe_source: tr.source,
+            transcribe_attempts: tr.attempts,
+            reason: tr.source === 'tencent_ocr'
+                ? '腾讯云 OCR 已读出文字，但未能从中识别出交易项。可直接编辑下方文字后重新解析。'
+                : 'AI 已读出文字，但未能识别出交易项。可点「换腾讯云 OCR 重试」，或编辑下方文字后重新解析。',
+        }));
+    }
+
+    // ── 第四步：落不可变预测快照（source='ocr'，与文字通道共用同一张表）──
+    const predictionId = await aiModule.createPrediction({
+        userId: req.userId,
+        bookId: req.bookId,
+        source: 'ocr',
+        text: tr.text,
+        // ⚠️ 快照存【完整】context（含 receipt / merchant_hints / account_id），
+        //    否则事后复盘时看不出「当时是按哪套版式策略解的」。
+        context: imageContext,
+        transactions,
+        validation,
+        decisionTrace: decision_trace,
+        memorySnapshot: parsed.memory_snapshot,
+        modelRequest: parsed.model_request,
+        modelResponse: parsed.model_response,
+        route: parsed.route,
+    });
+
+    res.json(success({
+        // ---- v0.2 新字段 ----
+        prediction_id: predictionId,
+        transactions,
+        verdict: validation.verdict,
+        overall_confidence: validation.overall,
+        reasons: validation.reasons,
+        needs_confirmation: validation.verdict !== 'ready',
+        route: parsed.route,
+        complexity: decision_trace.complexity ? decision_trace.complexity.level : 'simple',
+        memory_applied: decision_trace.memory ? decision_trace.memory.applied : [],
+        // 谁读的图：前端据此显示来源标签，并决定是否给出「换腾讯 OCR 重试」入口
+        transcribe_source: tr.source,
+        transcribe_attempts: tr.attempts,
+
+        // ---- 老字段（三端现有客户端仍在读，务必保留）----
+        text: tr.text,
+        items: toLegacyOcrItems(transactions),
+        reason: '',
+    }));
+}
+
+// OCR / 图片识别（multipart 上传，安卓在用）
 router.post('/ocr', upload.single('image'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json(fail('请上传图片'));
-        const imageBase64 = req.file.buffer.toString('base64');
-        if (!imageBase64) return res.status(400).json(fail('图片内容为空'));
+        // 兼容鸿蒙：它走 JSON body 传 base64（Api.ts: post('ai/ocr', { image })）
+        const imageBase64 = req.file
+            ? req.file.buffer.toString('base64')
+            : (req.body && req.body.image ? String(req.body.image).replace(/^data:[^,]+,/, '') : '');
+        if (!imageBase64) return res.status(400).json(fail('请上传图片'));
 
-        const cfg = await db.queryOne('SELECT * FROM ai_ocr_config WHERE user_id = ?', [req.userId]);
-        if (!cfg || !cfg.secret_id || !cfg.secret_key) {
-            return res.status(400).json(fail('请先前往「AI配置」页面设置腾讯云 OCR 密钥'));
-        }
-
-        const secretId = decrypt(cfg.secret_id);
-        const secretKey = decrypt(cfg.secret_key);
-        // 任一解密失败 → 静默回退已被去除，须让用户重新保存凭证
-        if (!secretId || !secretKey) {
-            return res.status(400).json(fail('OCR 密钥解密失败，请前往「AI配置」页面重新保存腾讯云 OCR 密钥'));
-        }
-
-        const client = new (getOcrClient())({
-            credential: { secretId, secretKey },
-            region: cfg.region || 'ap-guangzhou'
-        });
-        const ocrResult = await client.GeneralAccurateOCR({ ImageBase64: imageBase64 });
-        const textDetections = ocrResult.TextDetections || [];
-        const ocrText = textDetections.map(d => d.DetectedText || '').filter(Boolean).join('\n');
-
-        console.log(`[OCR] user=${req.userId} textLen=${ocrText.length} preview=${ocrText.slice(0, 200).replace(/\n/g, ' ')}`);
-
-        if (!ocrText) {
-            return res.json(success({ text: '', items: [], reason: 'OCR 未识别到文字，请尝试上传更清晰的账单截图' }));
-        }
-
-        const provider = await getActiveProvider(req.userId);
-        if (provider && provider._decryptFailed) {
-            return res.status(400).json(fail('检测到 AI 服务商配置，但密钥解密失败（很可能是重部署后加密密钥 ENCRYPTION_KEY 变更）。请前往「AI 配置」页重新保存该服务商的 API Key。'));
-        }
-        const today = new Date().toISOString().slice(0, 10);
-
-        // 真实类目表：既喂给 LLM prompt，也传给正则兜底的 category-matcher。
-        // ⛔ 别把类目清单硬编码进 prompt —— 原先写死的「早餐|午餐|零食|打车|房租…」
-        //    早已与真实类目表脱节（真表叫「早午晚餐/打车拼车/房租月供」），
-        //    LLM 返回的类目名前端匹配不上，白白退化成「其他」。
-        const ocrCats = await db.query(
-            `SELECT id, name, type, parent_id FROM categories
-             WHERE (user_id IS NULL OR user_id = ?) AND type IN ('expense','income')
-             ORDER BY type, id`,
-            [req.userId]
-        );
-        // 只把叶子类目（有 parent_id 的更具体）给 LLM 选，避免它返回过粗的一级名
-        const leafNames = ocrCats.filter(c => c.parent_id).map(c => c.name);
-        const catChoices = (leafNames.length ? leafNames : ocrCats.map(c => c.name)).join('|');
-
-        // 策略：若配置了 AI 服务商，优先用大模型分析 OCR 文字，识别质量更高；
-        //       大模型无结果/失败，或未配置 AI 时，回退到本地正则兜底。
-        if (provider) {
-            try {
-                const prompt = `你是一位账单识别助手。请根据以下 OCR 识别的账单文字，提取出交易记录。
-
-要求：
-1. 只返回纯 JSON，不要任何解释。
-2. 格式：{"items":[{"name":"完整商户名或商品名","amount":100.00,"type":"expense","date":"2026-08-10 13:51:00","note":"补充描述（可选）","category":"分类名","merchant":"对象（商家或个人姓名，可选，如「大味王」「张三」）"}]}
-3. name 字段：取最完整的商户/商品名称，不要截断；如果 OCR 中有“商品”行，优先用商品行内容，否则用商户名。
-4. amount 必须为正数。
-5. date 格式为 YYYY-MM-DD HH:mm:ss；如果账单中只有日期没有时间，时间填 00:00:00。
-6. 跳过合计、优惠、退款、找零、应付、实付等汇总行；只保留实际消费/收入的条目。
-7. category 必须从下面列表中选择最合适的，尽量细分；如果确实无法判断，返回“其他”。
-8. 每条的 note 由你**自己生成完整**「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（可以是类目名/消费品/事件，如"早餐""买菜""雪糕"），对象 Y 是识别出的商家或个人（如"老乡鸡""张三""邻几"）。例：「早餐-老乡鸡」「买菜-张三」「雪糕-邻几」。无法确定对象时只写场景（如「晚餐」）。merchant 字段单独存原始对象名（不带场景前缀），与 note 各自独立。
-
-可选分类：${catChoices}
-
-OCR文字：
-${ocrText}`;
-
-                const content = await callProvider(provider, [
-                    { role: 'user', content: prompt }
-                ]);
-                console.log(`[OCR AI] user=${req.userId} rawReply=${(content || '').slice(0, 500)}`);
-                const json = extractJson(content);
-                const items = (json && Array.isArray(json.items)) ? json.items : [];
-                if (items.length > 0) {
-                    return res.json(success({ text: ocrText, items, reason: '' }));
-                }
-                console.log(`[OCR AI] user=${req.userId} no items from LLM, falling back to regex`);
-            } catch (err) {
-                console.error(`[OCR AI ERROR] user=${req.userId}`, err && err.message ? err.message : err);
-                // LLM 调用失败，继续走正则兜底
-            }
-        }
-
-        const fallbackItems = fallbackExtractItems(ocrText, today, ocrCats);
-        if (fallbackItems.length > 0) {
-            console.log(`[OCR REGEX] user=${req.userId} extracted ${fallbackItems.length} items via regex fallback`);
-            return res.json(success({ text: ocrText, items: fallbackItems, reason: '' }));
-        }
-
-        const reason = provider
-            ? 'AI 未能从识别结果中解析出交易项，建议检查 AI 服务商是否可用，或手动输入'
-            : '未配置 AI 服务商且未能从 OCR 文字中自动提取交易项，请先配置 AI 服务商或手动输入';
-        res.json(success({ text: ocrText, items: [], reason }));
+        const mime = req.file ? req.file.mimetype : (req.body && req.body.mime) || 'image/jpeg';
+        // force 允许直接指定（便于前端一次到位地选转录器）
+        const force = normalizeForce(req.body && req.body.force);
+        await handleImageAccounting(req, res, imageBase64, mime, force);
     } catch (err) {
-        console.error('[OCR ERROR]', err && err.stack ? err.stack : err);
-        handleServerError(res, err, 'OCR 识别');
+        console.error('[图片记账 ERROR]', err && err.stack ? err.stack : err);
+        handleServerError(res, err, '图片识别');
     }
 });
+
+// ---- POST /api/ai/ocr/retranscribe ----
+// 用户说「识别有误」时调用：强制用腾讯云 OCR 重新转录同一张图。
+// ⛔ 为什么是独立接口而不是给 /ocr 加参数就完事：
+//    语义不同。/ocr 是「帮我认这张图」，本接口是「上一次认错了，换个引擎再认」——
+//    独立出来前端才能给出明确的按钮文案，日志也能分开统计两者的成功率
+//    （§12 要求可比较，混在一个端点里就永远算不出「兜底救回率」）。
+router.post('/ocr/retranscribe', upload.single('image'), async (req, res) => {
+    try {
+        const imageBase64 = req.file
+            ? req.file.buffer.toString('base64')
+            : (req.body && req.body.image ? String(req.body.image).replace(/^data:[^,]+,/, '') : '');
+        if (!imageBase64) return res.status(400).json(fail('请重新上传图片'));
+
+        const mime = req.file ? req.file.mimetype : (req.body && req.body.mime) || 'image/jpeg';
+        // 默认强制腾讯 OCR：这个接口存在的意义就是换引擎
+        const force = normalizeForce(req.body && req.body.force) || 'tencent_ocr';
+        await handleImageAccounting(req, res, imageBase64, mime, force);
+    } catch (err) {
+        console.error('[图片重转录 ERROR]', err && err.stack ? err.stack : err);
+        handleServerError(res, err, '重新识别');
+    }
+});
+
+function normalizeForce(v) {
+    const s = String(v || '').trim();
+    return (s === 'model' || s === 'tencent_ocr') ? s : null;
+}
 
 // ==========================================
 // AI 对话记账（文字 / 语音转写文本 / 截图多模态）
@@ -1249,7 +1112,8 @@ router.post('/transcribe', async (req, res) => {
    本次【不改动】legacy 行为，二者并存；待 web/android/harmony 三端切到本链路后再移除 legacy。
    ============================================ */
 
-const aiModule = require('../modules/ai');
+// ⚠️ aiModule 的 require 已提到文件顶部（图片通道 /ocr 在本行之前就要用它，
+//    const 有 TDZ，留在这里会让 /ocr 直接 ReferenceError）。
 
 // source 表示【输入通道】而非客户端平台，取值必须与 schema 的 ai_predictions_source_check 一致。
 // 客户端平台（web/android/harmony）请放在 context.platform，避免通道枚举被平台维度污染。
@@ -1274,12 +1138,13 @@ router.post('/transactions/parse', async (req, res) => {
         }
 
         const context = (req.body && req.body.context) || {};
-        const { transactions, validation, decision_trace } = await aiModule.parseTransactions(db, {
+        const parsed = await aiModule.parseTransactions(db, {
             userId: req.userId,
             bookId: req.bookId,
             text,
             context,
         });
+        const { transactions, validation, decision_trace } = parsed;
 
         if (!transactions.length) {
             return res.status(422).json(fail('未能从文本中识别出交易信息'));
@@ -1294,6 +1159,12 @@ router.post('/transactions/parse', async (req, res) => {
             transactions,
             validation,
             decisionTrace: decision_trace,
+            // Phase 3/4 新增快照：记忆证据 / 模型原始请求响应 / 实际路由
+            // 落库是「事后可复盘」的前提：没有它，线上一条错判永远查不出是记忆错还是模型错。
+            memorySnapshot: parsed.memory_snapshot,
+            modelRequest: parsed.model_request,
+            modelResponse: parsed.model_response,
+            route: parsed.route,
         });
 
         res.json(success({
@@ -1304,6 +1175,10 @@ router.post('/transactions/parse', async (req, res) => {
             reasons: validation.reasons,
             // 前端据此决定是否弹确认框
             needs_confirmation: validation.verdict !== 'ready',
+            // 可解释性：让用户看到「为什么这么判」，也便于三端展示证据来源标签
+            route: parsed.route,
+            complexity: decision_trace.complexity ? decision_trace.complexity.level : 'simple',
+            memory_applied: decision_trace.memory ? decision_trace.memory.applied : [],
         }));
     } catch (err) {
         handleServerError(res, err, 'AI 解析交易');
@@ -1330,6 +1205,10 @@ router.get('/predictions/:id', async (req, res) => {
             transactions: pred.candidate_txns,
             validation: pred.validation,
             decision_trace: pred.decision_trace,   // 已通过 user_id 过滤，属主可见
+            memory_snapshot: pred.memory_snapshot, // 记忆证据快照（可解释性）
+            model_request: pred.model_request,
+            model_response: pred.model_response,
+            route: pred.route,
             final_txns: pred.final_txns,
             final_diff: pred.final_diff,
             committed_at: pred.committed_at,
@@ -1391,5 +1270,257 @@ router.post('/predictions/:id/discard', async (req, res) => {
         handleServerError(res, err, '弃置 AI 预测');
     }
 });
+
+/* ============================================
+   AI v0.2 · 规则演化与记忆治理（Phase 3 · 方案 §4）
+   ------------------------------------------------
+   为什么必须暴露这组接口：
+     方案 §4 的验收标准要求「错误习惯可 disabled」「证据可审计」。
+     若规则只在后台默默演化而用户无法查看/干预，一条学错的规则会
+     永久污染后续识别 —— 学习系统必须自带刹车。
+
+   命名统一 /ai/rules/*：与 /ai/predictions/* 平级，同属 v0.2 闭环。
+   ============================================ */
+
+const AI_RULE_TYPES = ['merchant_category', 'merchant_account', 'keyword_category', 'keyword_type'];
+
+// ---- GET /api/ai/rules ----
+// 列出「我的记账习惯」。管理通道：全状态可见（含 disabled），否则用户无法重新启用
+router.get('/rules', async (req, res) => {
+    try {
+        const status = req.query.status || null;
+        if (status && !['candidate', 'verified', 'trusted', 'degraded', 'disabled'].includes(status)) {
+            return res.status(400).json(fail('status 取值非法'));
+        }
+        const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
+        const { rules, total } = await aiModule.listRules(db, {
+            userId: req.userId, bookId: req.bookId, status, limit, offset,
+        });
+
+        res.json(success({
+            rules, total, limit, offset,
+            // 前端展示「多少分能升级」需要阈值，硬编码在客户端会与后端漂移
+            thresholds: aiModule.STATUS_THRESHOLDS,
+            weights: aiModule.EVIDENCE_WEIGHTS,
+            half_life_days: aiModule.HALF_LIFE_DAYS,
+        }));
+    } catch (err) {
+        handleServerError(res, err, '查询 AI 规则');
+    }
+});
+
+// ---- POST /api/ai/rules ----
+// 用户显式创建规则（manual_rule_creation +10，直接 trusted）
+router.post('/rules', async (req, res) => {
+    try {
+        const body = req.body || {};
+        const matchKey = String(body.match_key || '').trim();
+        if (!matchKey) return res.status(400).json(fail('请提供 match_key（商家名或关键词）'));
+        if (matchKey.length > 120) return res.status(400).json(fail('match_key 最长 120 字'));
+
+        const ruleType = body.rule_type || 'merchant_category';
+        if (!AI_RULE_TYPES.includes(ruleType)) {
+            return res.status(400).json(fail(`rule_type 必须是 ${AI_RULE_TYPES.join(' / ')} 之一`));
+        }
+
+        const targetCategoryId = body.target_category_id ? parseInt(body.target_category_id, 10) : null;
+        const targetAccountId = body.target_account_id ? parseInt(body.target_account_id, 10) : null;
+        const targetType = body.target_type || null;
+        if (targetType && !['expense', 'income', 'transfer'].includes(targetType)) {
+            return res.status(400).json(fail("target_type 必须是 'expense' / 'income' / 'transfer'"));
+        }
+        if (!targetCategoryId && !targetAccountId && !targetType) {
+            return res.status(400).json(fail('至少要指定一个目标（类目 / 账户 / 收支方向）'));
+        }
+
+        // 归属校验必须在入口做：规则指向别人的类目会让后续 parse 产出无法落账的预测，
+        // 而那时报错已经离用户操作太远、无从诊断。
+        // ⚠️ 归属条件严格照搬 routes/categories.js:13 的既有范式：
+        //    系统预设(user_id IS NULL) + 用户级共享(book_id IS NULL) + 当前账本专属。
+        //    漏掉 user_id IS NULL 会让「早午晚餐」这类系统类目全部建不了规则。
+        if (targetCategoryId) {
+            const cat = await db.queryOne(
+                `SELECT id FROM categories
+                  WHERE id = ?
+                    AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))`,
+                [targetCategoryId, req.userId, req.bookId]
+            );
+            if (!cat) return res.status(400).json(fail('目标类目不存在或不属于当前账本'));
+        }
+        if (targetAccountId) {
+            // 账户没有系统预设，条件与 accounts 路由一致
+            const acc = await db.queryOne(
+                `SELECT id FROM accounts
+                  WHERE id = ? AND user_id = ? AND (book_id = ? OR book_id IS NULL)`,
+                [targetAccountId, req.userId, req.bookId]
+            );
+            if (!acc) return res.status(400).json(fail('目标账户不存在或不属于当前账本'));
+        }
+
+        const rule = await aiModule.createManualRule(db, {
+            userId: req.userId, bookId: req.bookId, matchKey, ruleType,
+            targetCategoryId, targetAccountId, targetType,
+        });
+        if (!rule) return res.status(500).json(fail('规则创建失败，请稍后重试'));
+
+        res.json(success({ message: '规则已创建', rule }));
+    } catch (err) {
+        handleServerError(res, err, '创建 AI 规则');
+    }
+});
+
+// ---- POST /api/ai/rules/:id/disable ----
+// 停用规则（rule_disabled −20，且不自动复活）
+router.post('/rules/:id/disable', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的规则 ID'));
+        const reason = String((req.body && req.body.reason) || '').slice(0, 200);
+
+        const r = await aiModule.disableRule(db, { userId: req.userId, ruleId: id, reason });
+        if (!r.ok) return res.status(404).json(fail(r.error || '规则不存在'));
+        res.json(success({ message: '规则已停用', rule: r }));
+    } catch (err) {
+        handleServerError(res, err, '停用 AI 规则');
+    }
+});
+
+// ---- POST /api/ai/rules/:id/enable ----
+// 重新启用（回到 candidate 重新攒证据，不恢复历史分数）
+router.post('/rules/:id/enable', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的规则 ID'));
+
+        const r = await aiModule.enableRule(db, { userId: req.userId, ruleId: id });
+        if (!r.ok) return res.status(404).json(fail(r.error || '规则不存在'));
+        res.json(success({ message: '规则已重新启用（重新积累证据）', rule: r }));
+    } catch (err) {
+        handleServerError(res, err, '启用 AI 规则');
+    }
+});
+
+// ---- GET /api/ai/rules/:id/evidence ----
+// 证据流水：这条规则的每一分从哪来
+router.get('/rules/:id/evidence', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的规则 ID'));
+
+        const trail = await aiModule.ruleEvidenceTrail(db, {
+            userId: req.userId, ruleId: id,
+            limit: Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50)),
+        });
+        res.json(success({ rule_id: id, evidence: trail }));
+    } catch (err) {
+        handleServerError(res, err, '查询规则证据');
+    }
+});
+
+// ---- GET /api/ai/learning/stats ----
+// 「越用越聪明」的举证面板：证据分布 + 矛盾检测 + 线上指标 + 熔断状态
+router.get('/learning/stats', async (req, res) => {
+    try {
+        const [stats, contradictions, online, usage] = await Promise.all([
+            aiModule.evidenceStats(db, req.userId),
+            aiModule.detectContradictions(db, req.userId),
+            aiModule.collectOnlineMetrics(db, req.userId),
+            aiModule.usageMetrics(db, req.userId),
+        ]);
+
+        res.json(success({
+            evidence: stats,
+            // 同一商家出现两个高分类目 = 需要用户裁定，不该由系统猜
+            contradictions,
+            metrics: online,
+            usage,
+            breakers: aiModule.breakerStates(),
+        }));
+    } catch (err) {
+        handleServerError(res, err, '查询 AI 学习统计');
+    }
+});
+
+/* ============================================
+   AI v0.2 · 评测系统（Phase 5 · 方案 §12）
+   ------------------------------------------------
+   方案原文：「任何版本发布前都必须比较基线」。
+   ⇒ 跑批接口默认自动取最近一次跑批作基线，并在响应里直出 regressions。
+      不做「先查基线再手工传 id」，否则最容易被跳过的就是这一步。
+   ============================================ */
+
+// ---- POST /api/ai/evaluation/run ----
+router.post('/evaluation/run', async (req, res) => {
+    try {
+        const label = String((req.body && req.body.label) || '').slice(0, 80);
+        const persist = (req.body && req.body.persist) !== false;   // 默认落库
+
+        // 离线跑批：不连库、不调模型，纯 CPU
+        const result = aiModule.runOfflineEvaluation();
+
+        const baselineRow = await aiModule.latestRun(db);
+        const baseline = baselineRow
+            ? (typeof baselineRow.metrics === 'object' ? baselineRow.metrics : JSON.parse(baselineRow.metrics || '{}'))
+            : null;
+        const regression = aiModule.compareWithBaseline(result.metrics, baseline);
+
+        let runId = null;
+        if (persist) {
+            runId = await aiModule.persistRun(db, {
+                userId: req.userId, label, engineVersion: String(aiModule.PREDICTION_VERSION),
+                result, baselineRunId: baselineRow ? baselineRow.id : null,
+            });
+        }
+
+        res.json(success({
+            run_id: runId,
+            metrics: result.metrics,
+            summary: result.summary,
+            baseline_run_id: baselineRow ? baselineRow.id : null,
+            regression,
+            // 只回失败用例的明细：全量 36 条 actual 会让响应膨胀到没人读
+            failed_cases: result.cases.filter(c => !c.passed),
+        }));
+    } catch (err) {
+        handleServerError(res, err, '运行 AI 评测');
+    }
+});
+
+// ---- GET /api/ai/evaluation/runs ----
+router.get('/evaluation/runs', async (req, res) => {
+    try {
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+        let runs = [];
+        try {
+            runs = await db.query(
+                `SELECT id, label, dataset_version, engine_version, total_cases, passed_cases,
+                        metrics, baseline_run_id, regression, created_at
+                   FROM ai_evaluation_runs
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT ${limit}`
+            );
+        } catch (_) { runs = []; }   // 老库未升级 → 空列表，不给 500
+
+        res.json(success({
+            runs: runs.map(r => ({
+                ...r,
+                metrics: typeof r.metrics === 'object' ? r.metrics : safeJson(r.metrics, {}),
+                regression: typeof r.regression === 'object' ? r.regression : safeJson(r.regression, null),
+            })),
+            dataset_version: aiModule.DATASET_VERSION,
+        }));
+    } catch (err) {
+        handleServerError(res, err, '查询评测历史');
+    }
+});
+
+// PG 的 JSONB 列驱动已自动反序列化，MySQL 的 JSON 列回来是字符串 —— 这里统一兜底。
+function safeJson(v, dflt) {
+    if (v === null || v === undefined) return dflt;
+    if (typeof v === 'object') return v;
+    try { return JSON.parse(v); } catch (_) { return dflt; }
+}
 
 module.exports = router;

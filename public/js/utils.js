@@ -27,6 +27,45 @@ function csvCell(v) {
     return /[",\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
 }
 
+// Blob → base64（不含 data:* 前缀），用于语音转写把录音文件发给后端
+// 仅浏览器侧使用（依赖 FileReader），Node 测试时不挂
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onerror = () => reject(new Error('读取音频失败'));
+        fr.onload = () => {
+            const s = String(fr.result || '');
+            // data:audio/webm;base64,XXXX → 取逗号之后
+            const i = s.indexOf(',');
+            resolve(i >= 0 ? s.slice(i + 1) : s);
+        };
+        fr.readAsDataURL(blob);
+    });
+}
+
+/**
+ * 把 ISO8601 时间格式化为「刚刚 / 3 分钟前 / 2 小时前 / 3 天前 / YYYY-MM-DD」相对文案。
+ * 用于 ai-advice / ai-rules 等页面的 generatedAt 展示。
+ */
+function formatRelativeTime(iso) {
+    if (!iso) return '';
+    const t = Date.parse(iso);
+    if (isNaN(t)) return String(iso);
+    const diffMs = Date.now() - t;
+    if (diffMs < 0) {
+        // 服务端时间略晚于客户端时钟，倒数 30 分钟内算"即将"
+        const ahead = -diffMs;
+        if (ahead < 60_000) return '即将';
+        if (ahead < 3_600_000) return `约 ${Math.round(ahead / 60_000)} 分钟后`;
+        if (ahead < 86_400_000) return `约 ${Math.round(ahead / 3_600_000)} 小时后`;
+    }
+    if (diffMs < 60_000) return '刚刚';
+    if (diffMs < 3_600_000) return `${Math.round(diffMs / 60_000)} 分钟前`;
+    if (diffMs < 86_400_000) return `${Math.round(diffMs / 3_600_000)} 小时前`;
+    if (diffMs < 30 * 86_400_000) return `${Math.round(diffMs / 86_400_000)} 天前`;
+    try { return new Date(t).toISOString().slice(0, 10); } catch (_) { return String(iso); }
+}
+
 // ==========================================
 // 统一 API 调用（auth.js + app.js 共用）
 // 支持 token 自动注入、401 触发登录层、silent 模式不弹 toast
@@ -79,8 +118,10 @@ if (typeof window !== 'undefined') {
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
     window.csvCell = csvCell;
+    window.blobToBase64 = blobToBase64;
+    window.formatRelativeTime = formatRelativeTime;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, csvCell, api };
+    module.exports = { escapeHtml, fmt, csvCell, api, blobToBase64, formatRelativeTime };
 }

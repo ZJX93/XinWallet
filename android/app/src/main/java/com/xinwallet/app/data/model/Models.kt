@@ -1078,3 +1078,202 @@ data class ImportedCounts(
 data class ImportBackupResult(
     val imported: ImportedCounts = ImportedCounts()
 )
+
+/* ================= AI 消费洞察（POST /ai/insight） ================= */
+
+/** POST /ai/insight 请求体。month 为 "YYYY-MM"，null 时服务端取本月。 */
+data class AiInsightRequest(
+    val month: String? = null
+)
+
+/**
+ * 单条洞察。level 三态：warning（需重视）/ info（关注）/ tip（小建议）。
+ * 服务端返回的是大模型从财务数据抽取的 3-5 条结构化洞察；客户端只渲染，不擅自改写文案。
+ */
+data class AiInsightItem(
+    val title: String = "",
+    val description: String = "",
+    val action: String = "",
+    val level: String = "info"
+)
+
+/** POST /ai/insight 响应体。generatedAt 是服务端生成时间，ISO8601 字符串。 */
+data class AiInsightResponse(
+    val insights: List<AiInsightItem> = emptyList(),
+    @SerializedName("generated_at") val generatedAt: String? = null
+)
+
+/* ================= AI 服务商配置（/ai/providers 系列） =================
+ * 契约（与 server/routes/ai.js validateProvider 对齐）：
+ *   - name / base_url / model 必填；api_type 必须是 openai | anthropic
+ *   - api_key 在 GET 列表时返回掩码版本（maskKey），POST/PUT 时原样发往后端入库加密
+ *   - is_active 触发「单选激活」语义：激活 A 会把其他都置为 false
+ *   - 测试连接返回 {ok, reply} 或 {ok:false, error}
+ */
+
+data class AiProvider(
+    val id: Int = 0,
+    val name: String = "",
+    @SerializedName("api_type") val apiType: String = "openai",
+    @SerializedName("base_url") val baseUrl: String = "",
+    /** 服务端返回的是 maskKey 掩码（如 sk-****abcd），UI 上要明确提示用户这是脱敏值 */
+    @SerializedName("api_key") val apiKey: String = "",
+    val model: String = "",
+    @SerializedName("is_active") val isActive: Boolean = false,
+    @SerializedName("sort_order") val sortOrder: Int = 0,
+)
+
+/** GET /ai/providers 响应体 */
+data class AiProviderListResponse(
+    val providers: List<AiProvider> = emptyList()
+)
+
+/**
+ * POST /ai/providers 与 PUT /ai/providers/:id 共用同一份入参。
+ * apiKey 为空字符串时：创建必传、修改不动原值（语义见 validateProvider + PUT 分支的
+ * `if (typeof api_key === 'string' && api_key.trim())` 判定）。
+ */
+data class AiProviderPayload(
+    val name: String,
+    @SerializedName("api_type") val apiType: String,
+    @SerializedName("base_url") val baseUrl: String,
+    @SerializedName("api_key") val apiKey: String,
+    val model: String,
+    @SerializedName("is_active") val isActive: Boolean = false,
+    @SerializedName("sort_order") val sortOrder: Int = 0,
+)
+
+/** POST /providers/:id/test 响应体 —— 成功/失败都走 success 包装（见服务端） */
+data class AiProviderTestResponse(
+    val ok: Boolean = false,
+    val reply: String? = null,
+    val error: String? = null
+)
+
+/** POST /providers/:id/activate 响应体 */
+data class AiProviderActivateResponse(
+    val activated: Boolean = false
+)
+
+/* ================= AI 财务建议（POST /ai/advice） =================
+ * 与 insight 的差别：advice 覆盖范围更广（收支/预算/储蓄目标/账户/债务），
+ * 输出字段多了「impact 预期影响」和 priority 三态（high/medium/low）。
+ * 入参为空 body，服务端固定取「本月」与「上月」做环比。 */
+
+/**
+ * 单条财务建议。priority 三态：high（重要）/ medium（中等）/ low（可选）。
+ * 与 insight 同源（同样由大模型从财务数据抽取），但 prompt 要求更可量化、更排序化。
+ */
+data class AiAdviceItem(
+    val title: String = "",
+    val content: String = "",
+    val impact: String = "",
+    val priority: String = "medium"
+)
+
+/** POST /ai/advice 响应体 */
+data class AiAdviceResponse(
+    val advice: List<AiAdviceItem> = emptyList(),
+    @SerializedName("generated_at") val generatedAt: String? = null
+)
+
+/* ================= AI 规则（/ai/rules 系列） =================
+ * 契约（server/routes/ai.js）：
+ *   - GET 列表支持 status 过滤（candidate/verified/trusted/degraded/disabled）+ limit + offset
+ *   - 同时返回 thresholds/weights/half_life_days（前端展示「多少分升级」用，严禁客户端硬编码）
+ *   - POST 创建 body 至少要 target 三选一（category_id / account_id / type）
+ *   - disable / enable 不可逆：disable 不自动复活，enable 回到 candidate 重攒证据
+ *
+ * rule 字段较多（match_key/rule_type/score/accuracy/sample_count/status/target_* 等）
+ * 且状态枚举可能在 v0.3+ 调整，用 Map<String, Any?> 兜底以避免反序列化脆弱。 */
+
+data class AiRule(
+    val id: Int = 0,
+    @SerializedName("match_key") val matchKey: String = "",
+    @SerializedName("rule_type") val ruleType: String = "merchant_category",
+    val score: Double = 0.0,
+    val accuracy: Double = 0.0,
+    @SerializedName("sample_count") val sampleCount: Int = 0,
+    val status: String = "candidate",
+    @SerializedName("target_category_id") val targetCategoryId: Int? = null,
+    @SerializedName("target_account_id") val targetAccountId: Int? = null,
+    @SerializedName("target_type") val targetType: String? = null,
+    /** 其他未列字段（如 disabled_at/disabled_reason/last_hit_at 等）走这个兜底 */
+    val extras: Map<String, Any?> = emptyMap(),
+)
+
+/** GET /ai/rules 响应体：列表 + 元数据 */
+data class AiRuleListResponse(
+    val rules: List<AiRule> = emptyList(),
+    val total: Int = 0,
+    val limit: Int = 0,
+    val offset: Int = 0,
+    val thresholds: Map<String, Any?> = emptyMap(),
+    val weights: Map<String, Any?> = emptyMap(),
+    @SerializedName("half_life_days") val halfLifeDays: Int? = null,
+)
+
+/** POST /ai/rules body。三个 target 至少要传一个，否则服务端 400。 */
+data class AiRuleCreatePayload(
+    @SerializedName("match_key") val matchKey: String,
+    @SerializedName("rule_type") val ruleType: String = "merchant_category",
+    @SerializedName("target_category_id") val targetCategoryId: Int? = null,
+    @SerializedName("target_account_id") val targetAccountId: Int? = null,
+    @SerializedName("target_type") val targetType: String? = null,
+)
+
+/** GET /ai/rules/:id/evidence 响应体 */
+data class AiRuleEvidenceResponse(
+    @SerializedName("rule_id") val ruleId: Int = 0,
+    val evidence: List<Map<String, Any?>> = emptyList(),
+)
+
+/** POST /ai/rules/:id/disable body（reason 可选） */
+data class AiRuleDisablePayload(
+    val reason: String? = null,
+)
+
+/** POST /ai/rules / disable / enable 通用响应：rule 字段较多，走 Map 兜底 */
+data class AiRuleActionResponse(
+    val message: String = "",
+    val rule: Map<String, Any?> = emptyMap(),
+)
+
+/* ================= AI 学习统计 + 评测（/learning/stats, /evaluation/） =================
+ * 契约（server/routes/ai.js）：
+ *   - learning/stats: 4 个 Promise.all 查询 → {evidence, contradictions, metrics, usage, breakers}
+ *     字段大多是嵌套结构 + 数字，UI 端按需挑用即可，客户端不强类型化（避免漂移）
+ *   - evaluation/run: 入参 {label, persist}（persist 默认 true），响应含 metrics + regression
+ *     「服务端自动取最近一次跑批作基线」—— 任何版本发布前必跑，UI 上要明显标 regressions
+ *   - evaluation/runs: 历史跑批列表（最多 50 条），metrics/regression 字段是 JSON 字符串
+ *
+ * 全部用 Map<String, Any?> 兜底，避免 v0.3+ 字段调整导致反序列化失败。 */
+
+data class AiLearningStatsResponse(
+    val evidence: Map<String, Any?> = emptyMap(),
+    val contradictions: List<Map<String, Any?>> = emptyList(),
+    val metrics: Map<String, Any?> = emptyMap(),
+    val usage: Map<String, Any?> = emptyMap(),
+    val breakers: Map<String, Any?> = emptyMap(),
+)
+
+/** POST /ai/evaluation/run body。label 给跑批加注释，persist=false 表示不落库（CI 临时验证用） */
+data class AiEvaluationRunPayload(
+    val label: String? = null,
+    val persist: Boolean = true,
+)
+
+/** POST /ai/evaluation/run 响应：单次跑批结果 + 与基线对比 */
+data class AiEvaluationRunResponse(
+    @SerializedName("run_id") val runId: Long? = null,
+    val metrics: Map<String, Any?> = emptyMap(),
+    val summary: Map<String, Any?> = emptyMap(),
+    @SerializedName("baseline_run_id") val baselineRunId: Long? = null,
+    val regression: Map<String, Any?> = emptyMap(),
+    @SerializedName("failed_cases") val failedCases: List<Map<String, Any?>> = emptyList(),
+)
+
+/** GET /ai/evaluation/runs 响应：历史列表（每条 metrics/regression 都是字符串化的 JSON） */
+data class AiEvaluationRunsResponse(
+    val runs: List<Map<String, Any?>> = emptyList(),
+)

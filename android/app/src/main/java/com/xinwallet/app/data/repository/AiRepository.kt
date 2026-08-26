@@ -4,7 +4,12 @@ import com.xinwallet.app.data.model.AiCandidateTxn
 import com.xinwallet.app.data.model.AiCommitRequest
 import com.xinwallet.app.data.model.AiDiscardRequest
 import com.xinwallet.app.data.model.AiParseContext
+import com.xinwallet.app.data.model.AiEvaluationRunPayload
+import com.xinwallet.app.data.model.AiInsightRequest
 import com.xinwallet.app.data.model.AiParseRequest
+import com.xinwallet.app.data.model.AiProviderPayload
+import com.xinwallet.app.data.model.AiRuleCreatePayload
+import com.xinwallet.app.data.model.AiRuleDisablePayload
 import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.model.TranscribeRequest
 import com.xinwallet.app.data.remote.ApiService
@@ -87,4 +92,91 @@ class AiRepository(private val apiProvider: () -> ApiService) {
     /** 生成幂等键（服务端限制 64 字符） */
     fun newIdempotencyKey(predictionId: Int): String =
         "android-$predictionId-${UUID.randomUUID().toString().replace("-", "")}".take(64)
+
+    /* ---------------- AI 消费洞察 ---------------- */
+
+    /**
+     * 取当月（或指定月）的消费洞察。返回 3-5 条结构化建议，每条含 title/description/action/level。
+     * 月份空缺时服务端兜底当前月（按用户账本所在的服务器时区，可能与本地有 ±1 天偏差）。
+     * 调用方需要已激活一个对话服务商（GPT / Claude / 国产）；未配置会 400。
+     */
+    suspend fun insight(month: String? = null) =
+        safeApiCall { apiProvider().aiInsight(AiInsightRequest(month = month)) }
+
+    /* ---------------- AI 服务商配置 ----------------
+     * GET 列表返回的 apiKey 是服务端掩码（如 sk-****abcd），不可用于回传；PUT 时若
+     * 用户不修改 key 字段，传 "" 即可，服务端会自动保留原值。
+     * 测试连接返回 {ok, reply} 或 {ok:false, error} —— 调用方按 ok 字段判定结果。 */
+
+    suspend fun listProviders() =
+        safeApiCall { apiProvider().aiProviders() }
+
+    suspend fun createProvider(payload: AiProviderPayload) =
+        safeApiCall { apiProvider().aiProviderCreate(payload) }
+
+    suspend fun updateProvider(id: Int, payload: AiProviderPayload) =
+        safeApiCall { apiProvider().aiProviderUpdate(id, payload) }
+
+    suspend fun deleteProvider(id: Int) =
+        safeApiCall { apiProvider().aiProviderDelete(id) }
+
+    suspend fun activateProvider(id: Int) =
+        safeApiCall { apiProvider().aiProviderActivate(id) }
+
+    suspend fun testProvider(id: Int) =
+        safeApiCall { apiProvider().aiProviderTest(id) }
+
+    /* ---------------- AI 财务建议 ----------------
+     * 与 insight 类似：服务端从财务数据抽取 3-5 条建议；输出多 impact + priority 三态。
+     * 入参无（body 留空），调用前需要已激活一个对话服务商。 */
+    suspend fun advice() =
+        safeApiCall { apiProvider().aiAdvice() }
+
+    /* ---------------- AI 规则 ----------------
+     * 用户可手动管理（验收 #6「用户可 disable」客户端路径）。
+     * listRules 必须把返回的 thresholds/weights 一起带回 UI，禁客户端硬编码阈值。 */
+
+    suspend fun listRules(
+        status: String? = null,
+        limit: Int = 100,
+        offset: Int = 0,
+    ) = safeApiCall { apiProvider().aiRules(status = status, limit = limit, offset = offset) }
+
+    suspend fun createRule(payload: AiRuleCreatePayload) =
+        safeApiCall { apiProvider().aiRuleCreate(payload) }
+
+    suspend fun disableRule(id: Int, reason: String? = null) =
+        safeApiCall { apiProvider().aiRuleDisable(id, AiRuleDisablePayload(reason = reason)) }
+
+    suspend fun enableRule(id: Int) =
+        safeApiCall { apiProvider().aiRuleEnable(id) }
+
+    suspend fun ruleEvidence(id: Int, limit: Int = 50) =
+        safeApiCall { apiProvider().aiRuleEvidence(id, limit = limit) }
+
+    /* ---------------- AI 学习统计 + 评测 ----------------
+     * evaluation/run 任意时刻可调，但要在 UI 上明确「这会发起一次离线跑批（可能耗时数秒）」
+     * —— 与 advice/insight 不同，evaluation 不依赖对话服务商，是纯本地 CPU 操作。 */
+
+    suspend fun learningStats() =
+        safeApiCall { apiProvider().aiLearningStats() }
+
+    suspend fun runEvaluation(label: String? = null, persist: Boolean = true) =
+        safeApiCall { apiProvider().aiEvaluationRun(AiEvaluationRunPayload(label = label, persist = persist)) }
+
+    suspend fun listEvaluationRuns(limit: Int = 10) =
+        safeApiCall { apiProvider().aiEvaluationRuns(limit = limit) }
+
+    /* ---------------- OCR 重转录 ----------------
+     * 与 ocr() 几乎相同，但服务端强制走 tencent_ocr 引擎（用户说「识别有误」时的兜底路径）。
+     * force 可空（默认 tencent_ocr）；传 "model" 可强制大模型多模态（CI 调试用）。 */
+    suspend fun ocrRetranscribe(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg", force: String? = null) =
+        safeApiCall {
+            val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
+            val part = MultipartBody.Part.createFormData("image", fileName, body)
+            val forcePart = force?.let {
+                okhttp3.RequestBody.create("text/plain".toMediaTypeOrNull(), it)
+            }
+            apiProvider().aiOcrRetranscribe(part, forcePart)
+        }
 }

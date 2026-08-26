@@ -28,12 +28,17 @@ async function ensureCategory(conn, userId, name, type, icon) {
 
 // ==========================================
 // 备注兜底：尊重调用方给定的 note，不做强制拼接。
-// 业务规则（2026-08-20 调整）：
-//   1. AI 流程：AI 在 prompt 中被要求**自己**用「场景-对象」格式生成完整 note（场景 X 由 AI
-//      自由决定：可以是类目/消费品/事件，对象 Y 是商家或个人）。AI 给了 note 就用 note。
-//   2. AI 没给 note 但给了 merchant（如只识别出商家名）：fallback 到 merchant（最简洁自然）。
+// ⛔ 本函数【不做任何格式化】——「有 note 就用 note」而已。
+//    2026-08-25 踩过的坑：deterministic-extractor 曾注释「commit 时经 resolveNote
+//    规范化」，据此把原始片段直接当 note 传进来，结果备注落成
+//    `2026年8月20日老乡鸡 18元`（日期金额全冗余），且完全不报错。
+//    「场景-对象」格式由 `modules/ai/extraction/note-composer.js` 在【抽取阶段】生成，
+//    不要指望这里补救。
+// 业务规则：
+//   1. 调用方给了 note 就用（AI 链路的 note 已由 note-composer 规范化为「场景-对象」）。
+//   2. 没给 note 但给了 merchant（如只识别出商家名）：fallback 到 merchant（最简洁自然）。
 //   3. 都没给：用类目名兜底（避免空备注）。常见于手动记账+用户忘填场景。
-// 用于 /ai/chat 工具调用、/transactions 创建与更新、客户端 AI 记账等所有入口。
+// 用于 /transactions 创建与更新、AI 预测 commit 等所有入口。
 // ==========================================
 async function resolveNote(conn, userId, categoryId, note, merchant) {
     if (note) return note;

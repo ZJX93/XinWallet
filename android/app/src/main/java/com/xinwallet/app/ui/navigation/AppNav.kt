@@ -77,6 +77,14 @@ import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
 import com.xinwallet.app.ui.screens.AiScanScreen
+import com.xinwallet.app.ui.screens.AiInsightScreen
+import com.xinwallet.app.ui.screens.RuleListScreen
+import com.xinwallet.app.ui.screens.RuleEvidenceScreen
+import com.xinwallet.app.ui.screens.ProviderListScreen
+import com.xinwallet.app.ui.screens.ProviderEditScreen
+import com.xinwallet.app.ui.screens.AiAdviceScreen
+import com.xinwallet.app.ui.screens.LearningStatsScreen
+import com.xinwallet.app.ui.screens.EvaluationScreen
 import com.xinwallet.app.ui.screens.AppLockScreen
 import com.xinwallet.app.ui.screens.CategoryScreen
 import com.xinwallet.app.ui.screens.ChatScreen
@@ -133,6 +141,24 @@ sealed class Screen(val route: String) {
             if (month != null) "edit-transfer/$id?month=$month" else "edit-transfer/$id"
     }
     object AiScan : Screen("ai-scan")
+    object AiInsight : Screen("ai-insight")
+    object ProviderList : Screen("provider-list")
+    /** id=0 表示新建；其他表示编辑 */
+    object ProviderEdit : Screen("provider-edit/{id}") {
+        fun create(id: Int) = if (id == 0) "provider-edit/0" else "provider-edit/$id"
+    }
+    /** 规则管理列表（GET /ai/rules） */
+    object RuleList : Screen("rule-list")
+    /** 单条规则证据流水（GET /ai/rules/:id/evidence） */
+    object RuleEvidence : Screen("rule-evidence/{id}?title={title}") {
+        fun create(id: Int, title: String) = "rule-evidence/$id?title=$title"
+    }
+    /** AI 财务建议（POST /ai/advice） */
+    object AiAdvice : Screen("ai-advice")
+    /** AI 学习统计（GET /ai/learning/stats） */
+    object LearningStats : Screen("learning-stats")
+    /** AI 模型评测（POST /ai/evaluation/run + GET /ai/evaluation/runs） */
+    object Evaluation : Screen("evaluation")
     object Investments : Screen("investments")
     object InvestmentDetail : Screen("investment/{id}") {
         fun create(id: Int) = "investment/$id"
@@ -500,6 +526,28 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             AddTransactionScreen(navController, editTransferId = id, month = month)
         }
         composable(Screen.AiScan.route) { AiScanScreen(navController) }
+        composable(Screen.AiInsight.route) { AiInsightScreen(navController) }
+        composable(Screen.ProviderList.route) { ProviderListScreen(navController) }
+        composable(
+            Screen.ProviderEdit.route,
+            arguments = listOf(navArgument("id") { type = NavType.IntType })
+        ) { entry ->
+            val id = entry.arguments?.getInt("id") ?: 0
+            ProviderEditScreen(navController, id)
+        }
+        composable(Screen.RuleList.route) { RuleListScreen(navController) }
+        composable(
+            Screen.RuleEvidence.route,
+            arguments = listOf(
+                navArgument("id") { type = NavType.IntType },
+                navArgument("title") { type = NavType.StringType }
+            )
+        ) { entry ->
+            RuleEvidenceScreen(navController, entry.arguments?.getInt("id") ?: 0, entry.arguments?.getString("title") ?: "规则证据")
+        }
+        composable(Screen.AiAdvice.route) { AiAdviceScreen(navController) }
+        composable(Screen.LearningStats.route) { LearningStatsScreen(navController) }
+        composable(Screen.Evaluation.route) { EvaluationScreen(navController) }
         composable(Screen.Investments.route) { InvestmentsScreen(navController) }
         composable(
             Screen.InvestmentDetail.route,

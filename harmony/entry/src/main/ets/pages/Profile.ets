@@ -27,6 +27,12 @@ interface Iface1 {
  */
 const GRID: Iface1[] = [
   { iconRes: 'ic_camera', label: '截图记账', url: 'pages/AiScan' },
+  { iconRes: 'ic_target', label: 'AI 洞察', url: 'pages/Insight' },
+  { iconRes: 'ic_cloud', label: 'AI 服务商', url: 'pages/ProviderList' },
+  { iconRes: 'ic_advice', label: 'AI 建议', url: 'pages/Advice' },
+  { iconRes: 'ic_rule', label: 'AI 规则', url: 'pages/RuleList' },
+  { iconRes: 'ic_learn', label: '学习统计', url: 'pages/LearningStats' },
+  { iconRes: 'ic_evaluate', label: '模型评测', url: 'pages/Evaluation' },
   { iconRes: 'ic_tag', label: '分类管理', url: 'pages/Category' },
   { iconRes: 'ic_tags', label: '标签管理', url: 'pages/Tags' },
   { iconRes: 'ic_wallet', label: '资产账户', url: 'pages/Accounts' },

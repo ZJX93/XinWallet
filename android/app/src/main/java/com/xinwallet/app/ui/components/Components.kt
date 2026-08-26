@@ -402,9 +402,35 @@ fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.co
     }
 }
 
+/**
+ * 双行空态重载：标题（加粗）+ 说明（次要色），保留 AI 各屏两段式文案意图。
+ * 与单参 EmptyState(String) 并存，调用点按命名参数区分，互不影响。
+ */
 @Composable
-fun LoadingBox() {
-    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+fun EmptyState(
+    title: String,
+    desc: String = "",
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.ReceiptLong
+) {
+    Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        icon?.let {
+            Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(12.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (desc.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+fun LoadingBox(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
 }

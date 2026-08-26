@@ -54,6 +54,10 @@ const AISmartEntry = {
         document.getElementById('aiSmartCommitBtn').addEventListener('click', () => this.commit());
         document.getElementById('aiSmartDiscardBtn').addEventListener('click', () => this.discard());
 
+        // 🎙 语音：单击切到录音态，再单击停止；最长 60 秒（防误触长开）
+        const voiceBtn = document.getElementById('aiSmartVoiceBtn');
+        if (voiceBtn) voiceBtn.addEventListener('click', () => this._toggleVoice());
+
         const input = document.getElementById('aiSmartText');
         // Ctrl/Cmd + Enter 快捷解析；单独回车留给多行输入
         input.addEventListener('keydown', (e) => {
@@ -66,6 +70,93 @@ const AISmartEntry = {
                 input.focus();
             });
         });
+    },
+
+    /* ========== 步骤 0：语音转写（点击开始 / 再点击停止） ==========
+     * 浏览器侧 MediaRecorder 录 webm/opus，base64 后 POST /ai/transcribe。
+     * 成功后把转写文本灌回 #aiSmartText（不清空用户已输内容，append 模式），
+     * 用户再点 🪄 解析走原有链路。最长 60 秒（达到上限自动停止）。 */
+    _voice: { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null },
+
+    async _toggleVoice() {
+        const btn = document.getElementById('aiSmartVoiceBtn');
+        if (!btn) return;
+        if (this._voice.recorder && this._voice.recorder.state === 'recording') {
+            this._voice.stopped = true;
+            clearTimeout(this._voice.maxTimer);
+            this._voice.recorder.stop();
+            btn.textContent = '⏳ 转写中...';
+            btn.disabled = true;
+            return;
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showToast('当前浏览器不支持麦克风录制', 'error'); return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // 优先 webm/opus（Chrome/Edge），Safari 用 mp4/m4a 兜底
+            const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+            this._voice.recorder = mime
+                ? new MediaRecorder(stream, { mimeType: mime })
+                : new MediaRecorder(stream);
+            this._voice.mime = this._voice.recorder.mimeType || mime || 'audio/webm';
+            this._voice.chunks = [];
+            this._voice.stopped = false;
+
+            this._voice.recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) this._voice.chunks.push(e.data);
+            };
+            this._voice.recorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());   // 关麦克风（关键：不解锁红灯）
+                const blob = new Blob(this._voice.chunks, { type: this._voice.mime });
+                await this._sendTranscribe(blob);
+            };
+            this._voice.recorder.start();
+            btn.textContent = '⏹ 停止';
+            btn.classList.add('is-recording');
+            // 60 秒上限自动停
+            this._voice.maxTimer = setTimeout(() => {
+                if (this._voice.recorder && this._voice.recorder.state === 'recording') {
+                    showToast('已达最长录音时长，自动停止', 'info');
+                    this._voice.recorder.stop();
+                }
+            }, 60_000);
+        } catch (e) {
+            // getUserMedia 失败：权限拒绝 / 设备占用 / 不安全上下文（http）
+            const msg = (e && (e.message || e.name)) || '无法访问麦克风';
+            showToast(`录音失败：${msg}（https 站点才可授权）`, 'error');
+        }
+    },
+
+    async _sendTranscribe(blob) {
+        const btn = document.getElementById('aiSmartVoiceBtn');
+        try {
+            const b64 = await blobToBase64(blob);
+            const res = await api('/ai/transcribe', 'POST', {
+                audio: b64,
+                mime: blob.type || this._voice.mime
+            });
+            const text = (res && (res.text || res.transcript)) || '';
+            const input = document.getElementById('aiSmartText');
+            if (!text) {
+                showToast('未识别到语音内容，请重试', 'warning');
+            } else {
+                // append 模式：已有内容时换行追加；空时直接填入
+                input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
+                input.focus();
+                showToast('已填入转写文本，可点「🪄 解析」', 'success');
+            }
+        } catch (err) {
+            // 服务端 422 / 502 时仍可保留已录内容，下次再试
+            showToast((err && err.payload && err.payload.message) || '语音转写失败', 'error');
+        } finally {
+            btn.textContent = '🎙 按住说话';
+            btn.classList.remove('is-recording');
+            btn.disabled = false;
+            this._voice = { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null };
+        }
     },
 
     // ========== 步骤 1：解析 ==========

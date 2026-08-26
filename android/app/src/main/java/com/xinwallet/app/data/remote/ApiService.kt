@@ -343,4 +343,89 @@ interface ApiService {
     @POST("backup/import")
     suspend fun importBackup(@Part file: MultipartBody.Part): Response<ApiResponse<ImportBackupResult>>
 
+    /* ---------- AI 消费洞察（POST /ai/insight）---------- */
+    /**
+     * 生成当月消费洞察。month 形如 "YYYY-MM"，null 时服务端取「本月」。
+     * 需要先在「服务商配置」中激活至少一个对话服务商（GPT 系 / Claude 系 / 国产），否则 400。
+     */
+    @POST("ai/insight")
+    suspend fun aiInsight(@Body req: AiInsightRequest): Response<ApiResponse<AiInsightResponse>>
+
+    /* ---------- AI 服务商配置（/ai/providers 系列）----------
+     * 端点路径不带前导斜杠（Retrofit 规范，与项目其他端点保持一致）。
+     * 入参 AiProviderPayload 在 PUT 时 apiKey 为空字符串表示「不修改原 key」；
+     * 与服务端 `if (typeof api_key === 'string' && api_key.trim())` 分支对齐。 */
+    @GET("ai/providers")
+    suspend fun aiProviders(): Response<ApiResponse<AiProviderListResponse>>
+
+    @POST("ai/providers")
+    suspend fun aiProviderCreate(@Body req: AiProviderPayload): Response<ApiResponse<Unit>>
+
+    @PUT("ai/providers/{id}")
+    suspend fun aiProviderUpdate(@Path("id") id: Int, @Body req: AiProviderPayload): Response<ApiResponse<Unit>>
+
+    @DELETE("ai/providers/{id}")
+    suspend fun aiProviderDelete(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    /** 激活某个服务商（同时把其他都置为 inactive，单选语义） */
+    @POST("ai/providers/{id}/activate")
+    suspend fun aiProviderActivate(@Path("id") id: Int): Response<ApiResponse<AiProviderActivateResponse>>
+
+    /** 测试连通性：服务端实际发起一次最小调用（"回复 OK"），返回 {ok, reply} 或 {ok:false, error} */
+    @POST("ai/providers/{id}/test")
+    suspend fun aiProviderTest(@Path("id") id: Int): Response<ApiResponse<AiProviderTestResponse>>
+
+    /* ---------- AI 财务建议（POST /ai/advice）----------
+     * 入参为空 body（服务端固定取本月 + 上月环比）。
+     * 输出 priority 三态 high/medium/low，与 insight 配套但字段更量化。 */
+    @POST("ai/advice")
+    suspend fun aiAdvice(): Response<ApiResponse<AiAdviceResponse>>
+
+    /* ---------- AI 规则（/ai/rules 系列）----------
+     * ⚠️ listRules 返回 thresholds / weights / half_life_days 必须一并展示给用户，
+     * 客户端硬编码阈值会与后端漂移（这是 v0.2 验收铁律之一，见 server/modules/ai/rules/rule-store.js）。 */
+    @GET("ai/rules")
+    suspend fun aiRules(
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0,
+    ): Response<ApiResponse<AiRuleListResponse>>
+
+    @POST("ai/rules")
+    suspend fun aiRuleCreate(@Body req: AiRuleCreatePayload): Response<ApiResponse<AiRuleActionResponse>>
+
+    /** 停用规则：reason 可空（200 字内）；不传 reason 服务端默认空串 */
+    @POST("ai/rules/{id}/disable")
+    suspend fun aiRuleDisable(@Path("id") id: Int, @Body req: AiRuleDisablePayload): Response<ApiResponse<AiRuleActionResponse>>
+
+    /** 重新启用：回到 candidate 重新攒证据，不恢复历史分数 */
+    @POST("ai/rules/{id}/enable")
+    suspend fun aiRuleEnable(@Path("id") id: Int): Response<ApiResponse<AiRuleActionResponse>>
+
+    @GET("ai/rules/{id}/evidence")
+    suspend fun aiRuleEvidence(@Path("id") id: Int, @Query("limit") limit: Int = 50): Response<ApiResponse<AiRuleEvidenceResponse>>
+
+    /* ---------- AI 学习统计 + 评测 ----------
+     * 字段都用 Map<String, Any?> 兜底：服务端这一组查询结果结构嵌套深、版本演进快，
+     * 客户端不强类型化，避免 v0.3+ 字段调整时反序列化失败。 */
+    @GET("ai/learning/stats")
+    suspend fun aiLearningStats(): Response<ApiResponse<AiLearningStatsResponse>>
+
+    @POST("ai/evaluation/run")
+    suspend fun aiEvaluationRun(@Body req: AiEvaluationRunPayload): Response<ApiResponse<AiEvaluationRunResponse>>
+
+    @GET("ai/evaluation/runs")
+    suspend fun aiEvaluationRuns(@Query("limit") limit: Int = 10): Response<ApiResponse<AiEvaluationRunsResponse>>
+
+    /* ---------- OCR 重转录（POST /ai/ocr/retranscribe）----------
+     * 与 /ai/ocr 字段一致（multipart 'image'），但服务端强制走 tencent_ocr；
+     * 调用方传 multipart 同时可选传 'force'（model/tencent_ocr），默认 tencent_ocr。
+     * 复用现有 OcrResponse 数据类（响应结构与 /ocr 一致）。 */
+    @Multipart
+    @POST("ai/ocr/retranscribe")
+    suspend fun aiOcrRetranscribe(
+        @Part image: MultipartBody.Part,
+        @Part("force") force: okhttp3.RequestBody? = null,
+    ): Response<ApiResponse<OcrResponse>>
+
 }

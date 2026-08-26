@@ -26,6 +26,7 @@ struct AiScan {
   @State loading: boolean = false;
   @State picking: boolean = false;
   @State done: number = 0;
+  private lastB64: string = '';
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void { this.init(); }
@@ -55,6 +56,7 @@ struct AiScan {
         fs.readSync(f.fd, buf);
         fs.closeSync(f);
         const b64 = buffer.from(buf).toString('base64');
+        this.lastB64 = b64;
         this.loading = true;
         const r = await Api.ocr(b64);
         const rd: ESObject = r.data as ESObject;
@@ -129,6 +131,35 @@ struct AiScan {
     }
   }
 
+  /**
+   * 识别有误时换腾讯 OCR 重新识别（POST /ai/ocr/retranscribe）。
+   * 服务端强制走 tencent_ocr 引擎，结果与主链路结构一致，直接复用同一套映射。
+   */
+  async retranscribe(): Promise<void> {
+    if (this.lastB64.length === 0) return;
+    this.loading = true;
+    try {
+      const r = await Api.aiOcrRetranscribe(this.lastB64);
+      const rd: ESObject = (r.data as ESObject) || {};
+      const items: ESObject[] = ((rd['transactions'] as ESObject[]) || (rd['items'] as ESObject[]) || []);
+      this.rows = items.map((t: ESObject, i: number): ScanRow => ({
+        picked: true,
+        id: i,
+        merchant: (t['note'] as string) || (t['merchant'] as string) || (t['category']?.['name'] as string) || '消费',
+        amount: (t['amount'] as number) || 0,
+        type: (t['type'] as string) || 'expense',
+        categoryId: this.categories.find((c: Category) => c.type === ((t['type'] as string) || 'expense'))?.id || (this.categories[0]?.id || 0),
+        date: ((t['date'] as string) || '').slice(0, 10) || this.today(),
+        note: (t['note'] as string) || ''
+      }));
+      toast('已用腾讯 OCR 重新识别');
+    } catch (e) {
+      toastLong('重识别失败：' + ((e as ApiError).message || '请检查网络'));
+    } finally {
+      this.loading = false;
+    }
+  }
+
   build() {
     Stack() {
       AppBackground()
@@ -172,6 +203,12 @@ struct AiScan {
               }, (r: ScanRow) => r.id.toString())
               Button(`确认入账 ${this.rows.filter(r => r.picked).length} 笔`).width('100%')
                 .onClick(() => this.confirm())
+              if (this.lastB64.length > 0) {
+                Button('🔄 识别有误？换腾讯 OCR 重试')
+                  .width('100%').height(44).fontSize(14).fontColor(COLORS.brand)
+                  .backgroundColor(COLORS.brandBg).borderRadius(12)
+                  .onClick(() => this.retranscribe())
+              }
             } else {
               EmptyState({ icon: '📷', text: '选择一张小票照片，自动识别记账' })
             }

@@ -1,10 +1,17 @@
 /* ============================================
-   AI v0.2 · 确定性抽取器 —— 商家 / 币种
+   AI v0.2 · 确定性抽取器 —— 商家
    ------------------------------------------------
-   商家用「本地词典 + 结构线索」两级：命中词典最可靠；
-   否则从「在X」「去X」这类介词结构里截取候选，置信度压低。
-   Phase 3 会用 ai_rules 的用户历史商家来增强本模块（此处留好接口）。
+   商家用「用户历史 → 内置词典 → 结构线索」三级：历史最贴合个人习惯，
+   词典次之；否则从「在X」「去X」这类介词结构里截取候选，置信度压低。
+
+   📌 币种抽取已按方案 §2 拆分到独立模块 currency-extractor.js。
+      此处保留 extractCurrency 的再导出，避免既有 require 断裂
+      （deterministic-extractor / 冒烟套件都从本文件取过它）。
    ============================================ */
+
+const { extractCurrency } = require('./currency-extractor');
+// 键归一与记忆层共用同一份实现（写侧存脏键 = 规则永远命中不了自己，见 memory/keys.js 注释）
+const { normalizeKey, isUsefulKey } = require('../memory/keys');
 
 // 常见商家/平台词典（覆盖高频记账场景，命中即高置信）
 const MERCHANT_DICT = [
@@ -18,14 +25,7 @@ const MERCHANT_DICT = [
     '支付宝', '微信', '云闪付',
 ];
 
-const CURRENCY_MAP = [
-    { re: /(?:¥|￥|RMB|人民币|元|块)/i, code: 'CNY', conf: 0.95 },
-    { re: /(?:\$|USD|美元|美金)/i, code: 'USD', conf: 0.95 },
-    { re: /(?:€|EUR|欧元)/i, code: 'EUR', conf: 0.95 },
-    { re: /(?:£|GBP|英镑)/i, code: 'GBP', conf: 0.95 },
-    { re: /(?:¥|JPY|日元|日圆)/i, code: 'JPY', conf: 0.80 },
-    { re: /(?:HKD|港币|港元)/i, code: 'HKD', conf: 0.95 },
-];
+const CURRENCY_MAP_MOVED = 'currency-extractor.js';
 
 /**
  * 抽取商家。
@@ -55,24 +55,24 @@ function extractMerchant(text, userMerchants = []) {
     // 3) 结构线索：「在XX」「去XX」「XX买/吃」——截 2~8 字非数字片段
     const struct = text.match(/(?:在|去|到)\s*([^\d\s，,。;；元块¥￥]{2,8}?)(?:买|吃|喝|花|消费|付|充|加油|办)/);
     if (struct) {
-        return { value: struct[1], source: 'structural_hint', confidence: 0.55 };
+        // ⚠️ 必须过 normalizeKey：正则的非贪婪可能连带首尾虚词（如「在到星巴克花」），
+        //    而这个值会成为 evidence-engine 的学习键 —— 存脏了规则就永远命中不了自己。
+        const v = normalizeKey(struct[1]);
+        if (isUsefulKey(v)) return { value: v, source: 'structural_hint', confidence: 0.55 };
+    }
+
+    // 4) 兜底结构：「在XX 38元」——商家后面直接跟金额，没有动词
+    //    这是最自然的输入之一（「在星巴克 38」），原先完全抽不到商家 ⇒ 学不到任何习惯。
+    const bare = text.match(/(?:在|去|到)\s*([^\d\s，,。;；元块¥￥]{2,10})(?=\s*[\d¥￥]|$)/);
+    if (bare) {
+        const v = normalizeKey(bare[1]);
+        // 置信度压到 0.5：比带动词的结构更弱，仅够作为记忆检索键，不足以自行裁决
+        if (isUsefulKey(v)) return { value: v, source: 'structural_bare', confidence: 0.5 };
     }
 
     return null;
 }
 
-/**
- * 抽取币种。默认 CNY（本项目主币），置信度 0.85（无显式符号时的合理默认）。
- * @param {string} text
- * @returns {{value:string, source:string, confidence:number}}
- */
-function extractCurrency(text) {
-    if (text && typeof text === 'string') {
-        for (const { re, code, conf } of CURRENCY_MAP) {
-            if (re.test(text)) return { value: code, source: 'symbol_match', confidence: conf };
-        }
-    }
-    return { value: 'CNY', source: 'default_cny', confidence: 0.85 };
-}
-
+// extractCurrency 已迁至 currency-extractor.js（方案 §2 要求独立模块）。
+// 这里原样再导出，保证既有调用点（deterministic-extractor、冒烟套件）零改动。
 module.exports = { extractMerchant, extractCurrency, MERCHANT_DICT };

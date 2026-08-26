@@ -26,19 +26,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -182,6 +188,12 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val row1 = listOf(
                         QuickAction("截图记账", Icons.Filled.CameraAlt, QuickActionKind.Nav) { navController.navigate(Screen.AiScan.route) },
+                        QuickAction("AI 洞察", Icons.Filled.Insights, QuickActionKind.Nav) { navController.navigate(Screen.AiInsight.route) },
+                        QuickAction("AI 服务商", Icons.Filled.Cloud, QuickActionKind.Nav) { navController.navigate(Screen.ProviderList.route) },
+                        QuickAction("AI 规则", Icons.Filled.AccountTree, QuickActionKind.Nav) { navController.navigate(Screen.RuleList.route) },
+                        QuickAction("AI 建议", Icons.Filled.Lightbulb, QuickActionKind.Nav) { navController.navigate(Screen.AiAdvice.route) },
+                        QuickAction("学习统计", Icons.Filled.School, QuickActionKind.Nav) { navController.navigate(Screen.LearningStats.route) },
+                        QuickAction("模型评测", Icons.Filled.Assessment, QuickActionKind.Nav) { navController.navigate(Screen.Evaluation.route) },
                         QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
                         QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
                         QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) }

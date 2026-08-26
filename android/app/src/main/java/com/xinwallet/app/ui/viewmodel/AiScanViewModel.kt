@@ -51,7 +51,9 @@ data class AiScanUiState(
     /** 是否已配置腾讯云 OCR 密钥；false 时提示去 Web 端配置 */
     val ocrConfigured: Boolean = true,
     val doneCount: Int = 0,
-    val finished: Boolean = false
+    val finished: Boolean = false,
+    /** 腾讯 OCR 重转录进行中（用户说「识别有误」时的兜底路径） */
+    val retranscribing: Boolean = false
 )
 
 class AiScanViewModel(
@@ -96,6 +98,29 @@ class AiScanViewModel(
                     )
                 }
                 is ApiResult.Error -> _state.value = _state.value.copy(recognizing = false, error = r.message)
+            }
+        }
+    }
+
+    /**
+     * OCR 重转录：复用已选图片，强制走腾讯 OCR 引擎（用户说「识别有误」时的兜底路径）。
+     * 响应结构与 /ocr 一致，复用 toRow 映射；成功后替换当前 rows 并提示已用腾讯 OCR 重新识别。
+     */
+    fun retranscribe(bytes: ByteArray, fileName: String, mime: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(retranscribing = true, error = null, rows = emptyList(), reason = null)
+            when (val r = aiRepo.ocrRetranscribe(bytes, fileName, mime)) {
+                is ApiResult.Success -> {
+                    val rows = r.data.items.mapIndexed { idx, it -> it.toRow(idx) }
+                    _state.value = _state.value.copy(
+                        retranscribing = false,
+                        rows = rows,
+                        rawText = r.data.text,
+                        reason = r.data.reason?.takeIf { it.isNotBlank() && rows.isEmpty() },
+                        toast = "已用腾讯 OCR 重新识别"
+                    )
+                }
+                is ApiResult.Error -> _state.value = _state.value.copy(retranscribing = false, error = r.message)
             }
         }
     }

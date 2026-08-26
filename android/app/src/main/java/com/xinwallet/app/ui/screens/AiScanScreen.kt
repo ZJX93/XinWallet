@@ -205,6 +205,22 @@ fun AiScanContent(navController: NavHostController, contentPadding: androidx.com
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            if (state.rows.isNotEmpty() && !state.recognizing) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = { image?.let { vm.retranscribe(it.bytes, "bill.jpg", "image/jpeg") } },
+                                    enabled = !state.retranscribing,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (state.retranscribing) {
+                                        CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("腾讯 OCR 重新识别中…")
+                                    } else {
+                                        Text("🔄 识别有误？换腾讯 OCR 重试")
+                                    }
+                                }
+                            }
                             Spacer(Modifier.height(12.dp))
                         }
                     }

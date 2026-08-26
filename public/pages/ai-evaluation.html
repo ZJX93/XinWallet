@@ -1,0 +1,29 @@
+<!-- ===== AI 评测中心（POST /ai/evaluation/run · GET /ai/evaluation/runs） ===== -->
+<section class="page" id="page-ai-evaluation" data-lazy="pages/ai-evaluation.html">
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title">📊 AI 评测中心</h3>
+                <p class="card-desc">离线跑批验证识别引擎，自动与最近一次基线对比（纯本地计算，不调模型）</p>
+            </div>
+            <button class="btn btn-primary btn-ai" id="aiEvalRunBtn" title="运行评测">
+                ▶ 运行评测
+            </button>
+        </div>
+
+        <div id="aiEvalLoading" class="ai-page-loading" style="display:none">
+            <div class="skeleton-wrap" data-skeleton="text">
+                <div class="skeleton-line shimmer" style="width:78%"></div>
+                <div class="skeleton-line shimmer" style="width:66%"></div>
+            </div>
+            <p class="ai-page-loading-text">正在跑批评测（纯 CPU，约数秒）...</p>
+        </div>
+
+        <div id="aiEvalError" class="ai-rules-error-bar" style="display:none"></div>
+
+        <div id="aiEvalResult" class="ai-eval-result"></div>
+
+        <h4 class="ai-eval-history-title">历史跑批</h4>
+        <div id="aiEvalHistory" class="ai-eval-history"></div>
+    </div>
+</section>

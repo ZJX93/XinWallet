@@ -1,0 +1,96 @@
+<!-- ===== AI 规则管理（GET /ai/rules + disable/enable + evidence） ===== -->
+<section class="page" id="page-ai-rules" data-lazy="pages/ai-rules.html">
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title">🧠 AI 规则管理</h3>
+                <p class="card-desc">查看/启用/禁用 AI 学到的商家归类规则，查看每条规则的证据流水</p>
+            </div>
+            <div class="ai-page-actions">
+                <button class="btn btn-ghost btn-ai" id="aiRulesAddBtn" title="手动新增一条规则">＋ 新增</button>
+                <button class="btn btn-ghost btn-ai" id="aiRulesRefreshBtn" title="重新加载">
+                    <span class="ai-icon-refresh">↻</span> 刷新
+                </button>
+            </div>
+        </div>
+
+        <div id="aiRulesMeta" class="ai-page-meta"></div>
+
+        <!-- 状态过滤 -->
+        <div class="ai-rules-filter-row">
+            <span class="ai-rules-filter-chip active" data-ai-rules-filter="all">全部</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="verified">已生效</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="trusted">高可信</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="candidate">候选</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="disabled">已禁用</span>
+        </div>
+
+        <div id="aiRulesErrorBar" class="ai-rules-error-bar" style="display:none"></div>
+
+        <div id="aiRulesLoading" class="ai-page-loading" style="display:none">
+            <div class="skeleton-wrap" data-skeleton="text">
+                <div class="skeleton-line shimmer" style="width:78%"></div>
+                <div class="skeleton-line shimmer" style="width:60%"></div>
+            </div>
+            <p class="ai-page-loading-text">加载规则中...</p>
+        </div>
+
+        <div id="aiRulesList" class="ai-rules-list"></div>
+    </div>
+
+    <!-- 手动新增对话框 -->
+    <div id="aiRulesAddDialog" class="ai-rules-dialog" style="display:none">
+        <div class="ai-rules-dialog-card">
+            <div class="ai-rules-dialog-head">
+                <h4>新增 AI 规则</h4>
+                <button class="btn btn-ghost" id="aiRulesAddCloseBtn">✕</button>
+            </div>
+            <div class="ai-rules-dialog-body">
+                <label class="ai-rules-dialog-field">
+                    <span>match_key（必填，触发关键字）</span>
+                    <input type="text" id="aiRulesAddmatchKey" placeholder="如：滴滴出行" />
+                </label>
+                <label class="ai-rules-dialog-field">
+                    <span>rule_type</span>
+                    <select id="aiRulesAddruleType">
+                        <option value="merchant_category">merchant_category（商家→类目）</option>
+                        <option value="merchant_account">merchant_account（商家→账户）</option>
+                        <option value="keyword_type">keyword_type（关键字→收/支）</option>
+                    </select>
+                </label>
+                <label class="ai-rules-dialog-field">
+                    <span>target_category_id（任一即可）</span>
+                    <input type="number" id="aiRulesAddtargetCategoryId" placeholder="如：23 (打车拼车)" />
+                </label>
+                <label class="ai-rules-dialog-field">
+                    <span>target_account_id</span>
+                    <input type="number" id="aiRulesAddtargetAccountId" placeholder="如：1" />
+                </label>
+                <label class="ai-rules-dialog-field">
+                    <span>target_type（仅 keyword_type）</span>
+                    <select id="aiRulesAddtargetType">
+                        <option value="">（无）</option>
+                        <option value="expense">expense</option>
+                        <option value="income">income</option>
+                        <option value="transfer">transfer</option>
+                    </select>
+                </label>
+            </div>
+            <div class="ai-rules-dialog-foot">
+                <button class="btn btn-ghost" id="aiRulesAddCloseBtn2">取消</button>
+                <button class="btn btn-primary" id="aiRulesAddSubmitBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 证据抽屉 -->
+    <div id="aiRulesEvidenceDrawer" class="ai-rules-drawer" style="display:none">
+        <div class="ai-rules-drawer-card">
+            <div class="ai-rules-drawer-head">
+                <h4>📜 证据流水</h4>
+                <button class="btn btn-ghost" id="aiRulesEvidenceCloseBtn">✕</button>
+            </div>
+            <div id="aiRulesEvidenceBody" class="ai-rules-drawer-body"></div>
+        </div>
+    </div>
+</section>

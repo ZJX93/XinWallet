@@ -1284,6 +1284,18 @@
 }
 .ai-smart-tip { font-size: var(--text-caption); color: var(--text-tertiary); }
 
+/* 🎙 语音按钮录音态：红色脉冲，提示用户正在录制 */
+#aiSmartVoiceBtn.is-recording {
+    background: var(--error-500);
+    color: #fff;
+    border-color: var(--error-500);
+    animation: ai-smart-voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ai-smart-voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.45); }
+    50%      { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+}
+
 .ai-smart-loading { padding: var(--space-4) 0; text-align: center; }
 .ai-smart-loading-text {
   margin-top: var(--space-2); font-size: var(--text-body-sm); color: var(--text-tertiary);
@@ -2344,3 +2356,185 @@
   padding: 6px 12px;
   font-size: var(--text-caption, 12px);
 }
+
+/* ============================================
+ * AI 财务建议页 / AI 规则管理页（共用 ai-page-* 类）
+ * ============================================ */
+.ai-page-card { padding: 20px 24px 32px; }
+.ai-page-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 6px;
+}
+.ai-page-header .card-title { margin: 0 0 4px 0; font-size: 18px; font-weight: 600; }
+.ai-page-header .card-desc { margin: 0; color: var(--text-secondary, #666); font-size: 13px; }
+.ai-page-actions { display: flex; gap: 8px; align-items: center; }
+.ai-page-meta { margin: 12px 0 16px 0; font-size: 12px; color: var(--text-secondary, #666); }
+.ai-page-loading { padding: 16px; }
+.ai-page-loading-text { margin-top: 8px; font-size: 12px; color: var(--text-secondary, #666); text-align: center; }
+
+/* AI Advice：三级 priority 配色 */
+.ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
+.ai-advice-card {
+  position: relative;
+  padding: 16px 16px 16px 56px;
+}
+.ai-advice-card::before {
+  content: '';
+  position: absolute;
+  left: 12px; top: 18px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--brand-soft, rgba(99,102,241,0.15));
+}
+.ai-advice-priority-tag {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: var(--surface-2, #f3f4f6); color: var(--text-secondary, #666);
+}
+.ai-advice-card.priority-high .ai-advice-priority-tag { background: #fde2e2; color: #b91c1c; }
+.ai-advice-card.priority-high::before { background: #fde2e2; }
+.ai-advice-card.priority-medium .ai-advice-priority-tag { background: #dbeafe; color: #1d4ed8; }
+.ai-advice-card.priority-medium::before { background: #dbeafe; }
+.ai-advice-card.priority-low .ai-advice-priority-tag { background: #dcfce7; color: #15803d; }
+.ai-advice-card.priority-low::before { background: #dcfce7; }
+.ai-advice-title { margin: 0 0 8px 0; font-size: 15px; font-weight: 600; }
+.ai-advice-content { margin: 0 0 6px 0; font-size: 14px; color: var(--text-primary, #111); line-height: 1.55; }
+.ai-advice-impact, .ai-advice-action { margin: 4px 0 0 0; font-size: 13px; color: var(--text-secondary, #555); }
+
+/* AI Rules：过滤 + 卡片 */
+.ai-rules-filter-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin: 8px 0 16px 0;
+}
+.ai-rules-filter-chip {
+  display: inline-block;
+  padding: 6px 14px;
+  font-size: 13px;
+  border-radius: 16px;
+  background: var(--surface-2, #f3f4f6);
+  color: var(--text-secondary, #555);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.ai-rules-filter-chip.active { background: var(--brand, #6366f1); color: #fff; }
+.ai-rules-filter-chip:hover:not(.active) { background: var(--surface-3, #e5e7eb); }
+.ai-rules-error-bar {
+  margin: 8px 0;
+  padding: 10px 14px;
+  background: #fde2e2; color: #b91c1c; border-radius: 8px;
+  font-size: 13px;
+}
+.ai-rules-list { display: flex; flex-direction: column; gap: 10px; }
+.ai-rules-card { padding: 14px 16px; }
+.ai-rules-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 6px;
+}
+.ai-rules-key { font-size: 15px; font-weight: 600; }
+.ai-rules-status {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: var(--surface-2, #f3f4f6);
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+.ai-rules-status.status-trusted { background: #dbeafe; color: #1d4ed8; }
+.ai-rules-status.status-verified { background: #dcfce7; color: #15803d; }
+.ai-rules-status.status-candidate { background: #fef3c7; color: #b45309; }
+.ai-rules-status.status-disabled { background: #fde2e2; color: #b91c1c; }
+.ai-rules-meta {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-secondary, #666);
+  margin-bottom: 6px;
+}
+.ai-rules-target {
+  font-size: 12px; color: var(--text-secondary, #666); margin-top: 2px;
+}
+.ai-rules-actions { display: flex; gap: 8px; margin-top: 10px; }
+.ai-rules-actions .btn { flex: 1; font-size: 13px; }
+.btn-danger { border: 1px solid #fca5a5; color: #b91c1c; background: #fef2f2; }
+.btn-danger:hover { background: #fee2e2; }
+
+/* 新增对话框 / 证据抽屉 */
+.ai-rules-dialog, .ai-rules-drawer {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45);
+}
+.ai-rules-dialog-card, .ai-rules-drawer-card {
+  background: var(--surface, #fff);
+  border-radius: 12px; padding: 20px; max-width: 480px; width: 92vw;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.ai-rules-drawer-card { max-width: 520px; align-self: flex-end; height: 80vh; }
+.ai-rules-dialog-head, .ai-rules-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ai-rules-dialog-head h4, .ai-rules-drawer-head h4 { margin: 0; font-size: 16px; font-weight: 600; }
+.ai-rules-dialog-body { display: flex; flex-direction: column; gap: 10px; }
+.ai-rules-dialog-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ai-rules-dialog-field input, .ai-rules-dialog-field select {
+  padding: 8px 10px; font-size: 14px; border-radius: 6px;
+  border: 1px solid var(--border, #e5e7eb); background: var(--surface, #fff);
+  color: var(--text-primary, #111);
+}
+.ai-rules-dialog-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.ai-rules-drawer-body { display: flex; flex-direction: column; gap: 8px; }
+.ai-rules-ev-row {
+  padding: 10px 12px; border-radius: 8px;
+  background: var(--surface-2, #f8fafc);
+}
+.ai-rules-ev-head { display: flex; align-items: center; justify-content: space-between; }
+.ai-rules-ev-date { font-size: 12px; color: var(--text-secondary, #666); }
+.ai-rules-ev-action {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #f3f4f6; color: #666;
+}
+.ai-rules-ev-action.action-confirmed { background: #dcfce7; color: #15803d; }
+.ai-rules-ev-action.action-corrected { background: #dbeafe; color: #1d4ed8; }
+.ai-rules-ev-action.action-rejected { background: #fde2e2; color: #b91c1c; }
+.ai-rules-ev-body { font-size: 13px; margin-top: 6px; }
+.ai-rules-ev-note { font-size: 11px; color: var(--text-secondary, #888); margin-top: 4px; }}
+
+/* ===== AI 学习统计页 ===== */
+.ai-learning-body { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.ai-learn-section { background: var(--surface-2, #f6f7fb); border: 1px solid var(--border-subtle, #eceef3); border-radius: 12px; padding: 14px 16px; }
+.ai-learn-section-title { margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: var(--text-primary, #111); }
+.ai-learn-sub { font-size: 12px; color: var(--text-tertiary, #999); margin: 10px 0 6px; font-weight: 600; }
+.ai-kv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
+.ai-kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; background: var(--surface-card, #fff); border-radius: 8px; border: 1px solid var(--border-subtle, #eceef3); }
+.ai-kv-k { font-size: 12px; color: var(--text-secondary, #666); white-space: nowrap; }
+.ai-kv-v { font-size: 12px; color: var(--text-primary, #111); font-weight: 600; text-align: right; word-break: break-all; }
+.ai-cons-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface-card, #fff); border: 1px solid var(--border-subtle, #eceef3); border-radius: 8px; }
+.ai-cons-key { font-size: 13px; font-weight: 600; color: var(--text-primary, #111); }
+.ai-cons-meta { font-size: 12px; color: var(--text-secondary, #666); }
+.ai-cons-flag { margin-left: auto; font-size: 11px; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 999px; }
+
+/* ===== AI 评测中心页 ===== */
+.ai-eval-result { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+.ai-eval-summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ai-eval-summary-main { font-size: 15px; color: var(--text-primary, #111); }
+.ai-eval-summary-main b { color: var(--brand, #6366f1); font-size: 17px; }
+.ai-eval-baseline { font-size: 12px; color: var(--text-secondary, #666); }
+.ai-eval-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.ai-eval-metric { background: var(--surface-2, #f6f7fb); border: 1px solid var(--border-subtle, #eceef3); border-radius: 10px; padding: 12px; text-align: center; }
+.ai-eval-metric-label { font-size: 12px; color: var(--text-secondary, #666); }
+.ai-eval-metric-acc { font-size: 22px; font-weight: 700; color: var(--brand, #6366f1); line-height: 1.2; }
+.ai-eval-metric-sub { font-size: 11px; color: var(--text-tertiary, #999); }
+.ai-eval-reg { border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.ai-eval-reg-title { font-weight: 600; margin-bottom: 6px; }
+.ai-eval-reg.ok { background: #dcfce7; color: #15803d; }
+.ai-eval-reg.neutral { background: #e0e7ff; color: #3730a3; }
+.ai-eval-reg:not(.ok):not(.neutral) { background: #fde2e2; color: #b91c1c; }
+.ai-eval-reg-row { font-size: 12px; padding: 2px 0; }
+.ai-eval-failed { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 10px 12px; }
+.ai-eval-failed-row { font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #fde0c2; }
+.ai-eval-failed-row:last-child { border-bottom: none; }
+.ai-eval-failed-input { font-size: 12px; color: var(--text-secondary, #666); margin-top: 2px; }
+.ai-eval-history-title { margin: 20px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-primary, #111); }
+.ai-eval-history { display: flex; flex-direction: column; gap: 8px; }
+.ai-eval-hist-row { background: var(--surface-2, #f6f7fb); border: 1px solid var(--border-subtle, #eceef3); border-radius: 8px; padding: 8px 12px; }
+.ai-eval-hist-main { font-size: 13px; font-weight: 600; color: var(--text-primary, #111); }
+.ai-eval-hist-sub { font-size: 11px; color: var(--text-tertiary, #999); }

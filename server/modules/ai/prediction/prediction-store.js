@@ -23,18 +23,28 @@ const { toAmount, toNumber } = require('../../../validate');
  * 创建不可变预测快照。
  * @returns {Promise<number>} prediction_id
  */
-async function createPrediction({ userId, bookId, source, text, context, transactions, validation, decisionTrace }) {
+async function createPrediction({
+    userId, bookId, source, text, context, transactions, validation, decisionTrace,
+    memorySnapshot = null, modelRequest = null, modelResponse = null, route = 'local',
+}) {
     // ⚠️ 不要手写 RETURNING id：db.js 的 autoReturning() 会在 PG 侧自动追加，
     //    MySQL 侧则依赖原生 insertId。手写会破坏 MySQL 兼容（MySQL 不支持 RETURNING）。
     const ins = await db.query(
-        `INSERT INTO ai_predictions (user_id, book_id, source, request, candidate_txns, validation, decision_trace)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ai_predictions
+           (user_id, book_id, source, request, candidate_txns, validation, decision_trace,
+            memory_snapshot, model_request, model_response, route, prediction_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             userId, bookId || null, source || 'parse',
             JSON.stringify({ text, context: context || {} }),
             JSON.stringify(transactions),
             JSON.stringify(validation),
             JSON.stringify(decisionTrace || {}),
+            JSON.stringify(memorySnapshot || {}),
+            modelRequest ? JSON.stringify(modelRequest) : null,
+            modelResponse ? JSON.stringify(modelResponse) : null,
+            route || 'local',
+            (decisionTrace && decisionTrace.prediction_version) || 2,
         ]
     );
     return ins.insertId;
@@ -57,6 +67,9 @@ async function getPrediction(id, userId) {
     row.decision_trace = safeParse(row.decision_trace, {});
     row.final_txns = safeParse(row.final_txns, null);
     row.final_diff = safeParse(row.final_diff, null);
+    row.memory_snapshot = safeParse(row.memory_snapshot, {});
+    row.model_request = safeParse(row.model_request, null);
+    row.model_response = safeParse(row.model_response, null);
     return row;
 }
 
@@ -75,8 +88,9 @@ async function commitPrediction(id, userId, bookId, action, correctedTxns, idemp
     // 幂等键兜底：未传时用 prediction_id 保证单次提交天然幂等
     const idem = idempotencyKey || `pred-${id}`;
 
+    let result;
     try {
-        return await doCommit(id, userId, bookId, action, correctedTxns, idem);
+        result = await doCommit(id, userId, bookId, action, correctedTxns, idem);
     } catch (err) {
         // 幂等竞态兜底：并发双提交时，后到者在写入 idempotency_key 时触发唯一冲突（23505）。
         // 此时事务已回滚（db.transaction 内部 ROLLBACK），账本无重复写入 —— 这正是我们要的。
@@ -102,6 +116,30 @@ async function commitPrediction(id, userId, bookId, action, correctedTxns, idemp
         }
         throw err;
     }
+
+    // ⛔ 方案 §11：「Commit 成功后异步触发 Learning/Evidence。
+    //    学习失败不得回滚已成功保存的账本。」
+    //    ⇒ 必须在【事务之外】、且只在真正首次落账（非幂等重放）时触发。
+    //    _learn 由 doCommit 在成功路径上挂载；幂等返回时不带该字段，天然不重复学习。
+    if (result && result.status === 200 && result._learn) {
+        const payload = result._learn;
+        delete result._learn;
+        // 不 await：学习是后台增强，不让用户等；异常在内部被吞掉
+        setImmediate(() => {
+            triggerLearning(payload).catch(err => {
+                console.error(`[ai] learning failed for prediction ${payload.predictionId}`, err);
+            });
+        });
+    }
+
+    return result;
+}
+
+/** 触发 Evidence Engine（独立函数便于测试直接 await） */
+async function triggerLearning(payload) {
+    // 懒加载避免循环依赖（evidence-engine → rule-store → 无回环，但保持一致风格）
+    const { learnFromCommit } = require('../learning/evidence-engine');
+    return learnFromCommit(db, payload);
 }
 
 /** commit 的事务主体（被 commitPrediction 包裹以处理幂等竞态） */
@@ -133,7 +171,21 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
 
         // 3) 解析候选交易
         const candidates = safeParse(pred.candidate_txns, []);
-        const finalTxns = action === 'corrected' ? (correctedTxns || []) : candidates;
+        const rawFinal = action === 'corrected' ? (correctedTxns || []) : candidates;
+
+        /*  ⛔ 修正分支必须把候选的 raw_segment 按 seq 补回来（2026-08-25 加）：
+            前端提交的修正交易只带用户可编辑的字段（金额/类目/账户/备注），
+            【不含】raw_segment —— 那是抽取阶段的原文快照。
+            而 evidence-engine.learnableKey 在「无商家」时靠 raw_segment 取学习键；
+            拿不到就退到 note，note 又已被 note-composer 规范化成「场景-对象」，
+            无商家时会退化成纯类目名（如「其他支出」）⇒ 所有无商家交易共用
+            学习键「其他」，规则互相污染、学习静默失效。
+            补回是安全的：raw_segment 用户不可编辑，候选里的值就是真相。 */
+        const finalTxns = Array.isArray(rawFinal) ? rawFinal.map((t) => {
+            if (t && t.raw_segment) return t;
+            const orig = candidates.find(c => c.seq === (t && t.seq));
+            return (orig && orig.raw_segment) ? { ...t, raw_segment: orig.raw_segment } : t;
+        }) : rawFinal;
 
         if (!Array.isArray(finalTxns) || finalTxns.length === 0) {
             return { status: 422, body: { error: '无有效交易可提交' } };
@@ -194,7 +246,10 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, accountId]);
                 await syncCreditCardDebt(conn, userId, accountId);
 
-                committedTxns.push({ id: txId, seq: txn.seq, type: txn.type, amount, category_id: categoryId, account_id: accountId });
+                /*  ⚠️ 必须回填 note 与 date：这两个字段在服务端会被改写
+                    （note 经 note-composer 规范化成「场景-对象」、date 有默认值兜底），
+                    不返回的话前端只能显示自己提交的原值，与真实落账内容不一致。 */
+                committedTxns.push({ id: txId, seq: txn.seq, type: txn.type, amount, category_id: categoryId, account_id: accountId, note, date });
             }
 
             // 转账 —— 需要走 transfer_out + transfer_in 双分录
@@ -324,12 +379,14 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
         const firstTxn = finalTxns[0] || {};
         const accountId = firstTxn.account_id || firstTxn.from_account_id || null;
 
+        let feedbackEventId = null;
         try {
-            await conn.query(
+            const fbIns = await conn.query(
                 `INSERT INTO ai_feedback_events (user_id, book_id, account_id, prediction_id, event_type, evidence_score, payload)
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [userId, bookId, accountId, id, eventType, evidenceScore,
                  JSON.stringify({ action, transaction_count: committedTxns.length, corrected: action === 'corrected' })]);
+            feedbackEventId = fbIns.insertId;
         } catch (_) {
             // 学习类写入失败不回滚已落账数据（只记日志，后续由 cron 兜底）
             console.error(`[ai] feedback event insert failed for prediction ${id}`, _);
@@ -338,7 +395,20 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
         // 9) 幂等竞态由外层 commitPrediction() 捕获 23505/1062 处理（见上方 catch），
         //    事务回滚保证账本无重复写入，客户端重试会拿到首次提交结果。
 
-        return { status: 200, body: { message: '提交成功', prediction_id: id, transactions: committedTxns } };
+        // 10) 学习载荷 —— ⛔ 只作为返回值传出，【绝不在事务内执行学习】。
+        //     外层 commitPrediction 在事务提交后用 setImmediate 异步触发（方案 §11）。
+        //     matched_rule_ids 从 decision_trace 里取：那是 parse 当时真实命中的规则。
+        const trace = safeParse(pred.decision_trace, {});
+        const matchedRuleIds = (trace.memory && trace.memory.matched_rule_ids) || [];
+
+        return {
+            status: 200,
+            body: { message: '提交成功', prediction_id: id, transactions: committedTxns },
+            _learn: {
+                userId, bookId, predictionId: id, feedbackEventId, action,
+                candidateTxns: candidates, finalTxns, matchedRuleIds,
+            },
+        };
     });
 }
 
@@ -376,4 +446,4 @@ function safeParse(val, fallback) {
     try { return JSON.parse(val); } catch { return fallback; }
 }
 
-module.exports = { createPrediction, getPrediction, commitPrediction, discardPrediction };
+module.exports = { createPrediction, getPrediction, commitPrediction, discardPrediction, triggerLearning };

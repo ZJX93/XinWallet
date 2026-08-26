@@ -172,10 +172,24 @@ test('空类目表时不得凭空造 id（降级为 null + 低置信度强制确
     assert.ok(r.confidence < 0.9, `类目表为空时必须压低置信度触发用户确认，实际 ${r.confidence}`);
 });
 
-test('OCR 侧已复用同一份词表（不得再有独立类目词表）', () => {
+test('类目词表唯一真相：v0.2 抽取器复用它，路由层不得自建', () => {
+    /*  2026-08-25：legacy OCR 解析器（含 118 行独立词表）已删除。
+        词表唯一真相 = extraction/category-matcher.js，由 v0.2 抽取器消费。
+        路由层只依赖模块桶 `modules/ai`，不再直接 require 任何 extraction 子模块。 */
     const aiSrc = fs.readFileSync(path.join(__dirname, '..', 'server', 'routes', 'ai.js'), 'utf8');
-    assert.match(aiSrc, /require\('\.\.\/modules\/ai\/extraction\/category-matcher'\)/);
+
+    // 路由层走桶文件
+    assert.match(aiSrc, /require\('\.\.\/modules\/ai'\)/);
+    assert.doesNotMatch(aiSrc, /require\('\.\.\/modules\/ai\/extraction\//,
+        '⛔ 路由层不得直接 require extraction 子模块');
+
     // 原 fallbackExtractItems 内的 118 行独立词表不得回归
     assert.doesNotMatch(aiSrc, /const level1 = \[/);
     assert.doesNotMatch(aiSrc, /const level2 = \[/);
+    assert.doesNotMatch(aiSrc, /function fallbackExtractItems/);
+
+    // 抽取器确实在用这份词表（否则词表成了孤岛，图片/文字通道又会各行其是）
+    const extractorSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'modules', 'ai', 'extraction', 'deterministic-extractor.js'), 'utf8');
+    assert.match(extractorSrc, /require\('\.\/category-matcher'\)/);
 });

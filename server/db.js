@@ -399,6 +399,27 @@ async function ensureColumn(table, column, definition) {
   }
 }
 
+/**
+ * 索引自愈。
+ * ⛔ 为什么必须有：schema 文件在 initDatabase 的第 2 步执行，而补列在第 3 步。
+ *    老库若缺 ai_feedback_events.rule_id，schema 里的 `CREATE INDEX ... (rule_id)`
+ *    会先报 "column rule_id does not exist" 被吞掉，列随后才补上 ——
+ *    索引要等到【下一次启动】才建成。补列后立刻建索引，把这个窗口关掉。
+ */
+async function ensureIndex(name, table, columns) {
+  try {
+    if (IS_PG) {
+      await query(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns})`);
+    } else {
+      // MySQL 8 不支持 CREATE INDEX IF NOT EXISTS，靠捕获 1061 幂等
+      await query(`CREATE INDEX ${name} ON ${table} (${columns})`);
+    }
+  } catch (err) {
+    if (/already exists|duplicate key name|1061|42P07/i.test(err.message)) return;
+    console.warn(`⚠️ 建索引 ${name} 失败（不影响启动，下次启动重试）:`, err.message);
+  }
+}
+
 async function healSchemaColumns() {
   // 投资理财：清仓当天保留 / 隔天归档所需的清仓日期
   await ensureColumn('investments', 'sold_date', 'DATE');
@@ -408,6 +429,58 @@ async function healSchemaColumns() {
   await ensureColumn('accounts', 'annual_rate', 'DECIMAL(8,4) NOT NULL DEFAULT 0');
   await ensureColumn('accounts', 'interest_cycle', "VARCHAR(10) DEFAULT 'monthly'");
   await ensureColumn('accounts', 'last_interest_date', 'DATE');
+
+  // AI v0.2 Phase 3/4：预测快照的三个新增维度 + 路由记录。
+  // ⚠️ 老库的 ai_predictions 由 Phase 1 建成，CREATE TABLE IF NOT EXISTS 不会补列，
+  //    缺列会让 prediction-store 的 INSERT 直接 500。
+  const jsonType = IS_PG ? 'JSONB' : 'JSON';
+  await ensureColumn('ai_predictions', 'memory_snapshot', `${jsonType} DEFAULT NULL`);
+  await ensureColumn('ai_predictions', 'model_request', `${jsonType} DEFAULT NULL`);
+  await ensureColumn('ai_predictions', 'model_response', `${jsonType} DEFAULT NULL`);
+  await ensureColumn('ai_predictions', 'route', "VARCHAR(20) NOT NULL DEFAULT 'local'");
+  // 反馈事件关联到规则（Evidence Engine 的溯源起点）
+  await ensureColumn('ai_feedback_events', 'rule_id', 'INT DEFAULT NULL');
+
+  // AI v0.2 图片通道：记录该服务商到底能不能读图。
+  // ⛔ 三态而非布尔：'unknown' 表示还没试过（乐观尝试一次），
+  //    'yes'/'no' 是真实调用验证过的结论。用布尔会分不清「没试过」和「不支持」，
+  //    导致每次上传图片都要先白试一次失败调用（多等一轮超时 + 白烧 token）。
+  await ensureColumn('ai_providers', 'vision_support', "VARCHAR(10) NOT NULL DEFAULT 'unknown'");
+
+  // 补列后立刻补索引：schema 里这条索引在 rule_id 还不存在时已经失败过一次（见 ensureIndex 注释）
+  // ⚠️ 只补 schema 里真实声明过的索引 —— 这里凭空多建的索引在全新库上不存在，会造成两种库结构不一致。
+  // route 是 4 值低基数列，刻意不建索引（选择性太差，PG 也不会走它）。
+  await ensureIndex('idx_ai_fb_rule', 'ai_feedback_events', 'rule_id');
+}
+
+/**
+ * AI 表 CHECK 约束自愈（仅 Postgres 需要）。
+ * ⛔ 背景：Phase 1 建库时 ai_feedback_events.event_type 的白名单只有 6 个值，
+ *    Phase 3 的 Evidence Engine 会写入 consistent_reuse / negative_signal，
+ *    在老库上会撞 23514（check constraint violation）—— 而 CREATE TABLE IF NOT EXISTS
+ *    对已存在的表完全跳过，约束永远不会更新。故此处显式 DROP + ADD 重建。
+ * MySQL 的 CHECK 名称由系统生成且 8.0.16 前直接忽略 CHECK，故跳过（不影响写入）。
+ */
+async function healAiConstraints() {
+  if (!IS_PG) return;
+  const allowed = [
+    'explicit_confirmation', 'explicit_correction', 'discard',
+    'manual_rule_creation', 'contradiction', 'rule_disabled',
+    'consistent_reuse', 'negative_signal',
+  ].map(v => `'${v}'`).join(',');
+  try {
+    // 约束名由 Postgres 按 <表>_<列>_check 规则自动生成
+    await query('ALTER TABLE ai_feedback_events DROP CONSTRAINT IF EXISTS ai_feedback_events_event_type_check');
+    await query(
+      `ALTER TABLE ai_feedback_events
+         ADD CONSTRAINT ai_feedback_events_event_type_check
+         CHECK (event_type IN (${allowed}))`
+    );
+  } catch (err) {
+    // 表还不存在（全新库尚未执行 schema）或约束已是新版，均属预期
+    if (/does not exist|already exists/i.test(err.message)) return;
+    console.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
+  }
 }
 
 async function initDatabase() {
@@ -505,6 +578,14 @@ async function initDatabase() {
       console.log('✅ schema 列自愈完成（无需补列时无任何变化）');
     } catch (err) {
       console.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
+    }
+
+    // AI CHECK 约束自愈：把 Phase 1 建的旧白名单升级到 Phase 3 的 8 个事件类型
+    try {
+      await healAiConstraints();
+      console.log('✅ AI 约束自愈完成（无需修复时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // 注：为保证「已部署库」升级兼容，上面仍运行幂等自愈步骤

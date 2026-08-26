@@ -1,0 +1,26 @@
+<!-- ===== AI 学习统计（GET /ai/learning/stats） ===== -->
+<section class="page" id="page-ai-learning" data-lazy="pages/ai-learning.html">
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title">🧠 AI 学习统计</h3>
+                <p class="card-desc">越用越聪明：反馈事件、规则演化、在线指标与调用用量全景</p>
+            </div>
+            <button class="btn btn-ghost btn-ai" id="aiLearningRefreshBtn" title="刷新">
+                <span class="ai-icon-refresh">↻</span> 刷新
+            </button>
+        </div>
+
+        <div id="aiLearningLoading" class="ai-page-loading" style="display:none">
+            <div class="skeleton-wrap" data-skeleton="text">
+                <div class="skeleton-line shimmer" style="width:78%"></div>
+                <div class="skeleton-line shimmer" style="width:60%"></div>
+            </div>
+            <p class="ai-page-loading-text">正在统计学习数据...</p>
+        </div>
+
+        <div id="aiLearningError" class="ai-rules-error-bar" style="display:none"></div>
+
+        <div id="aiLearningBody" class="ai-learning-body"></div>
+    </div>
+</section>

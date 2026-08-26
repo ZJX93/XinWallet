@@ -7,7 +7,7 @@
 const express = require('express');
 const { authMiddleware } = require('./auth');
 const { validate, rules } = require('./validate');
-const { apiLimiter, writeLimiter, aiLimiter } = require('./rate-limit-user');
+const { apiLimiter, writeLimiter, aiLimiter, ocrRetranscribeLimiter } = require('./rate-limit-user');
 
 const router = express.Router();
 
@@ -61,6 +61,11 @@ router.use(validate({
 // 业务路由模块（按域拆分的路由）
 // ==========================================
 router.use('/accounts', require('./routes/accounts'));
+/*  图片重转录走独立配额：它只调腾讯云 OCR（不调大模型），且用户会在
+    「识别有误」后连续重试 —— 共用 aiLimiter 的 10 次/分会让人试两三次就 429，
+    而一笔账都还没记成。aiLimiter 已对该路径 skip，两者不重复计数。
+    ⚠️ 顺序必须在 aiLimiter 之前：express 中间件按注册顺序执行。 */
+router.use('/ai/ocr/retranscribe', ocrRetranscribeLimiter);
 router.use('/ai', aiLimiter, require('./routes/ai'));
 router.use('/transfers', require('./routes/transfers'));
 router.use('/transactions', require('./routes/transactions'));   // /transactions, /transactions/months, /transactions/summary, /ledger

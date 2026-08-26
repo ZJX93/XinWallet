@@ -15,6 +15,9 @@ const { extractType } = require('./type-extractor');
 const { extractMerchant, extractCurrency } = require('./merchant-extractor');
 const { matchCategory } = require('./category-matcher');
 const { splitTransactions } = require('./transaction-splitter');
+// 备注规范化：「场景-对象」格式在服务端确定性生成，不靠 prompt 求模型听话。
+// ⛔ 唯一真相在 note-composer.js —— 别在路由层或 prompt 里再写第二套。
+const { composeNote } = require('./note-composer');
 
 /**
  * 确定性抽取：文本 → 候选交易数组（含字段级置信度）
@@ -66,7 +69,17 @@ function extractTransactions(text, ctx = {}) {
             category_name: category.value,
             account_id,
             date: date.value,
-            note: seg,               // 原始片段留作备注基底，commit 时经 resolveNote 规范化
+            /*  备注：服务端确定性生成「场景-对象」（如 `早午晚餐-老乡鸡`）。
+                ⛔ 曾经这里是 `note: seg`（原始片段）并注释「commit 时经 resolveNote
+                   规范化」—— 但 resolveNote 第一行就是 `if (note) return note`，
+                   从来没规范化过。真实落账备注长这样：
+                     ❌ `2026年8月20日老乡鸡 18元`（日期金额全冗余）
+                   而且不报错，只能人肉看备注才发现。详见 note-composer.js 文件头。 */
+            note: composeNote({
+                segment: seg,
+                merchant: merchant ? merchant.value : null,
+                categoryName: category.value,
+            }),
             raw_segment: seg,
             // 字段级置信度：缺失字段给 0，让 validator 判 invalid
             confidence: {

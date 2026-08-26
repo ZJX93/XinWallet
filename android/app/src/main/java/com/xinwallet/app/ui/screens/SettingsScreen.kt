@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
@@ -75,6 +76,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.BuildConfig
 import com.xinwallet.app.data.repository.ApkVerifier
 import com.xinwallet.app.di.AppContainer
@@ -189,6 +191,14 @@ fun SettingsScreen(navController: NavHostController) {
                     vm.setTheme(modes[next])
                     scope.launch { snackbar.showSnackbar("外观主题：${labels[next]}") }
                 }
+            )
+
+            // AI 服务商（v0.2 新增）—— 跳到 ProviderListScreen
+            SettingsRow(
+                icon = Icons.Filled.Cloud,    // 复用现有 icon；若不存在就改 Dns / Storage
+                title = "AI 服务商",
+                subtitle = "管理对话 / 转写服务（GPT、Claude、国产转 OpenAI）",
+                onClick = { navController.navigate(Screen.ProviderList.route) }
             )
 
             // 服务器地址

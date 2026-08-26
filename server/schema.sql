@@ -502,6 +502,9 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   api_key TEXT DEFAULT NULL,                          -- AES-256-GCM 加密存储
   model VARCHAR(100) NOT NULL,
   is_active BOOLEAN DEFAULT FALSE,
+  -- 图片理解能力：unknown=未验证（乐观尝试一次）/ yes / no。
+  -- 由 modules/ai/vision 在真实调用后写回；no 时图片通道直接走腾讯云 OCR 兜底。
+  vision_support VARCHAR(10) NOT NULL DEFAULT 'unknown',
   sort_order INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -668,6 +671,12 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
   candidate_txns JSONB NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
   validation JSONB NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
   decision_trace JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 证据链（仅属主可见）
+  -- 方案 §6 要求的另外三个快照维度（Phase 3/4 落地后有内容；纯本地链路时为 {} / null）
+  memory_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Memory Retrieval 当时给出的 evidence candidates
+  model_request JSONB DEFAULT NULL,                    -- 升级到模型时的请求（脱敏后）
+  model_response JSONB DEFAULT NULL,                   -- 模型原始响应
+  route VARCHAR(20) NOT NULL DEFAULT 'local'
+    CHECK (route IN ('local','cheap_model','strong_model','fallback')),
   final_txns JSONB DEFAULT NULL,                       -- commit 后的最终交易集
   final_diff JSONB DEFAULT NULL,                       -- candidate vs final 差异（供 Phase 3 学习）
   idempotency_key VARCHAR(64) DEFAULT NULL,            -- commit 幂等键
@@ -697,16 +706,20 @@ CREATE TABLE IF NOT EXISTS ai_prediction_transactions (
 CREATE INDEX IF NOT EXISTS idx_ai_ptxn_pred ON ai_prediction_transactions (prediction_id);
 CREATE INDEX IF NOT EXISTS idx_ai_ptxn_txn  ON ai_prediction_transactions (transaction_id);
 
--- 证据事件（学习信号来源；Phase 1 只写 confirmation/correction/discard）
+-- 证据事件（学习信号来源）
+-- ⚠️ event_type 的 CHECK 白名单在 Phase 3 扩充了 consistent_reuse / negative_signal，
+--    已部署库的旧约束由 db.js:healAiConstraints() 幂等重建（否则 INSERT 撞 23514）。
 CREATE TABLE IF NOT EXISTS ai_feedback_events (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   account_id INT DEFAULT NULL,
   prediction_id INT DEFAULT NULL,
+  rule_id INT DEFAULT NULL,
   event_type VARCHAR(32) NOT NULL
     CHECK (event_type IN ('explicit_confirmation','explicit_correction','discard',
-                          'manual_rule_creation','contradiction','rule_disabled')),
+                          'manual_rule_creation','contradiction','rule_disabled',
+                          'consistent_reuse','negative_signal')),
   evidence_score INT NOT NULL DEFAULT 0,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -714,3 +727,156 @@ CREATE TABLE IF NOT EXISTS ai_feedback_events (
 CREATE INDEX IF NOT EXISTS idx_ai_fb_user ON ai_feedback_events (user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_fb_pred ON ai_feedback_events (prediction_id);
 CREATE INDEX IF NOT EXISTS idx_ai_fb_type ON ai_feedback_events (event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_fb_rule ON ai_feedback_events (rule_id);
+
+-- ============================================
+-- AI 智能记账 v0.2 · 记忆与规则演化（Phase 3）
+-- 设计要点（对齐方案 §4）：
+--   学习不看 sample_count，而是累计【可审计证据】evidence_score。
+--   规则状态机：candidate → verified → trusted → degraded → disabled
+--   时间衰减 decay_score 防止旧习惯永久统治新行为。
+-- ⛔ 铁律：规则只是「经验」不是「真理」——命中规则也必须过 Result Validator。
+-- ============================================
+
+-- 规则（手工规则 + 学习规则统一表；origin 区分来源）
+CREATE TABLE IF NOT EXISTS ai_rules (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  -- 规则类型：merchant→category 是主力；keyword→category / merchant→account 备用
+  rule_type VARCHAR(32) NOT NULL DEFAULT 'merchant_category'
+    CHECK (rule_type IN ('merchant_category','keyword_category','merchant_account','merchant_type')),
+  -- 匹配键（规范化后的小写 merchant / keyword）
+  match_key VARCHAR(120) NOT NULL,
+  -- 目标值：category_id / account_id / type 之一，按 rule_type 解读
+  target_category_id INT DEFAULT NULL,
+  target_account_id INT DEFAULT NULL,
+  target_type VARCHAR(16) DEFAULT NULL,
+  -- 来源：manual=用户显式创建（最高优先级）；learned=证据累积产生
+  origin VARCHAR(16) NOT NULL DEFAULT 'learned'
+    CHECK (origin IN ('manual','learned')),
+  status VARCHAR(16) NOT NULL DEFAULT 'candidate'
+    CHECK (status IN ('candidate','verified','trusted','degraded','disabled')),
+  evidence_score INT NOT NULL DEFAULT 0,
+  sample_count INT NOT NULL DEFAULT 0,
+  hit_count INT NOT NULL DEFAULT 0,
+  correct_count INT NOT NULL DEFAULT 0,
+  incorrect_count INT NOT NULL DEFAULT 0,
+  accuracy_rate DECIMAL(5,4) NOT NULL DEFAULT 0,
+  -- 衰减后分数（读取时按 last_confirmed_at 距今天数半衰期折算并回写）
+  decay_score DECIMAL(10,4) NOT NULL DEFAULT 0,
+  last_matched_at TIMESTAMP DEFAULT NULL,
+  last_confirmed_at TIMESTAMP DEFAULT NULL,
+  last_corrected_at TIMESTAMP DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+-- 同一用户 + 账本 + 类型 + 匹配键 唯一：证据累积到同一行，不产生重复规则
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_rule_key
+  ON ai_rules (user_id, book_id, rule_type, match_key);
+CREATE INDEX IF NOT EXISTS idx_ai_rule_user_status ON ai_rules (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_ai_rule_lookup      ON ai_rules (user_id, rule_type, match_key);
+CREATE INDEX IF NOT EXISTS idx_ai_rule_category    ON ai_rules (target_category_id);
+CREATE INDEX IF NOT EXISTS idx_ai_rule_created     ON ai_rules (user_id, created_at DESC);
+DROP TRIGGER IF EXISTS trg_ai_rule_updated ON ai_rules;
+CREATE TRIGGER trg_ai_rule_updated BEFORE UPDATE ON ai_rules
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 规则证据流水（可审计：每一分 evidence_score 都能溯源到具体事件）
+CREATE TABLE IF NOT EXISTS ai_rule_evidence (
+  id SERIAL PRIMARY KEY,
+  rule_id INT NOT NULL,
+  user_id INT NOT NULL DEFAULT 1,
+  feedback_event_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  event_type VARCHAR(32) NOT NULL,
+  delta INT NOT NULL DEFAULT 0,
+  score_after INT NOT NULL DEFAULT 0,
+  status_after VARCHAR(16) DEFAULT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_rev_rule ON ai_rule_evidence (rule_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_rev_user ON ai_rule_evidence (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_rev_pred ON ai_rule_evidence (prediction_id);
+
+-- Semantic / Negative Memory 持久化（方案 §3.3 / §3.5）
+-- kind='semantic' → 归纳出的习惯假设；kind='negative' → 被反复证伪的假设
+CREATE TABLE IF NOT EXISTS ai_memory_items (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  kind VARCHAR(16) NOT NULL DEFAULT 'semantic'
+    CHECK (kind IN ('semantic','negative')),
+  subject VARCHAR(120) NOT NULL,          -- 主体（商家 / 关键词）
+  predicate VARCHAR(32) NOT NULL DEFAULT 'category',  -- 断言维度
+  object_value VARCHAR(120) NOT NULL,     -- 断言值（类目名 / 类目 id 文本）
+  object_category_id INT DEFAULT NULL,
+  support_count INT NOT NULL DEFAULT 0,   -- 支持次数
+  refute_count INT NOT NULL DEFAULT 0,    -- 反驳次数
+  confidence DECIMAL(5,4) NOT NULL DEFAULT 0,
+  last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_mem_item
+  ON ai_memory_items (user_id, book_id, kind, subject, predicate, object_value);
+CREATE INDEX IF NOT EXISTS idx_ai_mem_lookup ON ai_memory_items (user_id, kind, subject);
+DROP TRIGGER IF EXISTS trg_ai_mem_updated ON ai_memory_items;
+CREATE TRIGGER trg_ai_mem_updated BEFORE UPDATE ON ai_memory_items
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- AI 智能记账 v0.2 · 评测系统（Phase 5）
+-- 「任何版本发布前都必须比较基线」——run 存一次跑批的 11 项指标，case 存逐条明细。
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
+  id SERIAL PRIMARY KEY,
+  user_id INT DEFAULT NULL,               -- 离线跑批可为 NULL
+  label VARCHAR(80) NOT NULL DEFAULT '',
+  dataset_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+  engine_version VARCHAR(32) NOT NULL DEFAULT '',
+  total_cases INT NOT NULL DEFAULT 0,
+  passed_cases INT NOT NULL DEFAULT 0,
+  metrics JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 11 项指标
+  baseline_run_id INT DEFAULT NULL,
+  regression JSONB NOT NULL DEFAULT '{}'::jsonb, -- 与基线的逐指标差值
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_eval_run_created ON ai_evaluation_runs (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
+  id SERIAL PRIMARY KEY,
+  run_id INT NOT NULL,
+  case_id VARCHAR(64) NOT NULL,
+  scenario VARCHAR(32) NOT NULL DEFAULT '',   -- single/multi/income/transfer/fuzzy/...
+  input_text TEXT NOT NULL,
+  expected JSONB NOT NULL DEFAULT '{}'::jsonb,
+  actual JSONB NOT NULL DEFAULT '{}'::jsonb,
+  field_results JSONB NOT NULL DEFAULT '{}'::jsonb,  -- 各字段是否命中
+  passed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_eval_case_run ON ai_evaluation_cases (run_id);
+CREATE INDEX IF NOT EXISTS idx_ai_eval_case_pass ON ai_evaluation_cases (run_id, passed);
+
+-- Provider 用量与成本（Phase 4：cost_per_prediction 的数据来源）
+CREATE TABLE IF NOT EXISTS ai_provider_usage (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  provider_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  route VARCHAR(20) NOT NULL DEFAULT 'local'
+    CHECK (route IN ('local','cheap_model','strong_model','fallback')),
+  model VARCHAR(80) NOT NULL DEFAULT '',
+  prompt_tokens INT NOT NULL DEFAULT 0,
+  completion_tokens INT NOT NULL DEFAULT 0,
+  latency_ms INT NOT NULL DEFAULT 0,
+  cost_micro_cny INT NOT NULL DEFAULT 0,   -- 单位：0.000001 元，避免浮点累计误差
+  outcome VARCHAR(16) NOT NULL DEFAULT 'success'
+    CHECK (outcome IN ('success','timeout','error','circuit_open','skipped')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_provider_usage (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_route   ON ai_provider_usage (route, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_pred    ON ai_provider_usage (prediction_id);

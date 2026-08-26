@@ -69,6 +69,8 @@ const AIRecognition = {
         fileInput.addEventListener('change', (e) => { if (e.target.files[0]) this.handleFile(e.target.files[0]); });
         recognizeBtn.addEventListener('click', () => this.ocrRecognize());
         document.getElementById('ocrClearBtn').addEventListener('click', () => this.ocrClear());
+        const retransBtn = document.getElementById('ocrRetranscribeBtn');
+        if (retransBtn) retransBtn.addEventListener('click', () => this.ocrRetranscribe());
 
         // 账单导入
         const billArea = document.getElementById('billUploadArea');
@@ -510,8 +512,55 @@ const AIRecognition = {
         }
     },
 
+    // ====== OCR 重转录（POST /ai/ocr/retranscribe）======
+    // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图。
+    // 响应结构与 /ocr 一致，故复用同一套结果处理逻辑。
+    async ocrRetranscribe() {
+        if (!this.selectedFile) { showToast('请先上传图片', 'warning'); return; }
+        if (!(await this.checkProvider())) {
+            showToast('未配置 AI 服务商，请前往 AI 配置', 'warning');
+            return;
+        }
+        const btn = document.getElementById('ocrRetranscribeBtn');
+        if (btn) btn.disabled = true;
+        document.getElementById('ocrLoading').style.display = 'block';
+        try {
+            const formData = new FormData();
+            formData.append('image', this.compressedFile || this.selectedFile);
+            const token = localStorage.getItem('xin_token');
+            const res = await fetch(`${API}/ai/ocr/retranscribe`, {
+                method: 'POST',
+                headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+                body: formData
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || '重识别失败');
+            this.parsedItems = (data.data && data.data.items) || [];
+            if (data.data && data.data.text) {
+                const tp = document.getElementById('ocrTextPreview');
+                tp.textContent = data.data.text;
+                tp.style.display = 'block';
+            }
+            if (data.data && data.data.reason) showToast(data.data.reason, 'warning');
+            if (this.parsedItems.length === 0) {
+                showToast('重识别仍未识别到交易项', 'warning');
+                return;
+            }
+            this.renderOcrResults();
+            showToast('腾讯 OCR 重新识别完成', 'success');
+        } catch (err) {
+            showToast(err.message || '重识别失败', 'error');
+        } finally {
+            document.getElementById('ocrLoading').style.display = 'none';
+            if (btn) btn.disabled = false;
+        }
+    },
+
     renderOcrResults() {
         document.getElementById('aiResults').style.display = 'block';
+        // 仅当上传的是图片时才展示「换腾讯 OCR 重试」（账单导入无图，不适用）
+        const retransBtn = document.getElementById('ocrRetranscribeBtn');
+        if (retransBtn) retransBtn.style.display = this.selectedFile ? 'inline-block' : 'none';
         const cats = cache.categories || [];
         const expenseCats = cats.filter(c => c.type === 'expense');
         const incomeCats = cats.filter(c => c.type === 'income');

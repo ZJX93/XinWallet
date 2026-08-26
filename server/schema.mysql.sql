@@ -644,6 +644,11 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
   candidate_txns JSON NOT NULL,
   validation JSON NOT NULL,
   decision_trace JSON NOT NULL,
+  memory_snapshot JSON DEFAULT NULL,
+  model_request JSON DEFAULT NULL,
+  model_response JSON DEFAULT NULL,
+  route VARCHAR(20) NOT NULL DEFAULT 'local'
+    CHECK (route IN ('local','cheap_model','strong_model','fallback')),
   final_txns JSON DEFAULT NULL,
   final_diff JSON DEFAULT NULL,
   idempotency_key VARCHAR(64) DEFAULT NULL,
@@ -672,13 +677,141 @@ CREATE TABLE IF NOT EXISTS ai_feedback_events (
   book_id INT DEFAULT NULL,
   account_id INT DEFAULT NULL,
   prediction_id INT DEFAULT NULL,
+  rule_id INT DEFAULT NULL,
   event_type VARCHAR(32) NOT NULL
     CHECK (event_type IN ('explicit_confirmation','explicit_correction','discard',
-                          'manual_rule_creation','contradiction','rule_disabled')),
+                          'manual_rule_creation','contradiction','rule_disabled',
+                          'consistent_reuse','negative_signal')),
   evidence_score INT NOT NULL DEFAULT 0,
   payload JSON NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_ai_fb_user (user_id),
   KEY idx_ai_fb_pred (prediction_id),
+  KEY idx_ai_fb_rule (rule_id),
   KEY idx_ai_fb_type (event_type, created_at)
+);
+
+-- ============================================
+-- AI v0.2 Phase 3/4/5 表（MySQL 方言）
+-- 差异同上：SERIAL→INT AUTO_INCREMENT；JSONB→JSON 且去掉字面量默认值；
+-- 部分唯一索引→普通 UNIQUE KEY；触发器→ON UPDATE CURRENT_TIMESTAMP。
+-- ============================================
+CREATE TABLE IF NOT EXISTS ai_rules (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  rule_type VARCHAR(32) NOT NULL DEFAULT 'merchant_category'
+    CHECK (rule_type IN ('merchant_category','keyword_category','merchant_account','merchant_type')),
+  match_key VARCHAR(120) NOT NULL,
+  target_category_id INT DEFAULT NULL,
+  target_account_id INT DEFAULT NULL,
+  target_type VARCHAR(16) DEFAULT NULL,
+  origin VARCHAR(16) NOT NULL DEFAULT 'learned'
+    CHECK (origin IN ('manual','learned')),
+  status VARCHAR(16) NOT NULL DEFAULT 'candidate'
+    CHECK (status IN ('candidate','verified','trusted','degraded','disabled')),
+  evidence_score INT NOT NULL DEFAULT 0,
+  sample_count INT NOT NULL DEFAULT 0,
+  hit_count INT NOT NULL DEFAULT 0,
+  correct_count INT NOT NULL DEFAULT 0,
+  incorrect_count INT NOT NULL DEFAULT 0,
+  accuracy_rate DECIMAL(5,4) NOT NULL DEFAULT 0,
+  decay_score DECIMAL(10,4) NOT NULL DEFAULT 0,
+  last_matched_at TIMESTAMP NULL DEFAULT NULL,
+  last_confirmed_at TIMESTAMP NULL DEFAULT NULL,
+  last_corrected_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_ai_rule_key (user_id, book_id, rule_type, match_key),
+  KEY idx_ai_rule_user_status (user_id, status),
+  KEY idx_ai_rule_lookup (user_id, rule_type, match_key),
+  KEY idx_ai_rule_category (target_category_id),
+  KEY idx_ai_rule_created (user_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS ai_rule_evidence (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  rule_id INT NOT NULL,
+  user_id INT NOT NULL DEFAULT 1,
+  feedback_event_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  event_type VARCHAR(32) NOT NULL,
+  delta INT NOT NULL DEFAULT 0,
+  score_after INT NOT NULL DEFAULT 0,
+  status_after VARCHAR(16) DEFAULT NULL,
+  payload JSON DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_rev_rule (rule_id, created_at),
+  KEY idx_ai_rev_user (user_id),
+  KEY idx_ai_rev_pred (prediction_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_memory_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  kind VARCHAR(16) NOT NULL DEFAULT 'semantic'
+    CHECK (kind IN ('semantic','negative')),
+  subject VARCHAR(120) NOT NULL,
+  predicate VARCHAR(32) NOT NULL DEFAULT 'category',
+  object_value VARCHAR(120) NOT NULL,
+  object_category_id INT DEFAULT NULL,
+  support_count INT NOT NULL DEFAULT 0,
+  refute_count INT NOT NULL DEFAULT 0,
+  confidence DECIMAL(5,4) NOT NULL DEFAULT 0,
+  last_seen_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_ai_mem_item (user_id, book_id, kind, subject, predicate, object_value),
+  KEY idx_ai_mem_lookup (user_id, kind, subject)
+);
+
+CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT DEFAULT NULL,
+  label VARCHAR(80) NOT NULL DEFAULT '',
+  dataset_version VARCHAR(32) NOT NULL DEFAULT 'v1',
+  engine_version VARCHAR(32) NOT NULL DEFAULT '',
+  total_cases INT NOT NULL DEFAULT 0,
+  passed_cases INT NOT NULL DEFAULT 0,
+  metrics JSON DEFAULT NULL,
+  baseline_run_id INT DEFAULT NULL,
+  regression JSON DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_eval_run_created (created_at)
+);
+
+CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  run_id INT NOT NULL,
+  case_id VARCHAR(64) NOT NULL,
+  scenario VARCHAR(32) NOT NULL DEFAULT '',
+  input_text TEXT NOT NULL,
+  expected JSON DEFAULT NULL,
+  actual JSON DEFAULT NULL,
+  field_results JSON DEFAULT NULL,
+  passed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_eval_case_run (run_id),
+  KEY idx_ai_eval_case_pass (run_id, passed)
+);
+
+CREATE TABLE IF NOT EXISTS ai_provider_usage (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  provider_id INT DEFAULT NULL,
+  prediction_id INT DEFAULT NULL,
+  route VARCHAR(20) NOT NULL DEFAULT 'local'
+    CHECK (route IN ('local','cheap_model','strong_model','fallback')),
+  model VARCHAR(80) NOT NULL DEFAULT '',
+  prompt_tokens INT NOT NULL DEFAULT 0,
+  completion_tokens INT NOT NULL DEFAULT 0,
+  latency_ms INT NOT NULL DEFAULT 0,
+  cost_micro_cny INT NOT NULL DEFAULT 0,
+  outcome VARCHAR(16) NOT NULL DEFAULT 'success'
+    CHECK (outcome IN ('success','timeout','error','circuit_open','skipped')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ai_usage_user (user_id, created_at),
+  KEY idx_ai_usage_route (route, created_at),
+  KEY idx_ai_usage_pred (prediction_id)
 );

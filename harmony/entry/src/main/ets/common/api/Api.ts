@@ -186,6 +186,35 @@ export async function aiDiscardPrediction(id: number, req: AiDiscardRequest): Pr
   return post<AiSimpleMessage>(`ai/predictions/${id}/discard`, req);
 }
 
+/* AI 消费洞察：基于多维度财务数据生成结构化建议（warning/info/tip 三级） */
+
+/** POST /ai/insight 请求体。month 为 "YYYY-MM"，undefined 时服务端取本月 */
+export interface AiInsightRequest {
+  month?: string;
+}
+
+/** 单条洞察条目（与安卓 AiInsightItem 对齐） */
+export interface AiInsightItem {
+  title: string;
+  description: string;
+  action: string;
+  level: 'warning' | 'info' | 'tip';
+}
+
+/** POST /ai/insight 响应体 */
+export interface AiInsightResponse {
+  insights: AiInsightItem[];
+  generated_at?: string;
+}
+
+/**
+ * 取当月（或指定月）消费洞察。需要已激活至少一个对话服务商，否则 400。
+ * 与安卓 AiRepository.insight 对齐：缺省 month 时服务端兜底「本月」。
+ */
+export async function aiInsight(req: AiInsightRequest): Promise<ApiResponse<AiInsightResponse>> {
+  return post<AiInsightResponse>('ai/insight', req);
+}
+
 /* 预算 */
 export async function getBudgets(): Promise<ApiResponse<object[]>> {
   return get<object[]>('budgets');
@@ -301,6 +330,252 @@ export async function exportBackup(): Promise<string> {
 /** 导入账本备份（xlsx 文件路径，服务端解析恢复） */
 export async function importBackup(filePath: string): Promise<ApiResponse<object>> {
   return uploadFileFrom('backup/import', filePath);
+}
+
+/* AI 服务商配置：与安卓 AiProvider / AiProviderPayload / AiProviderTestResponse 对齐。
+ * 契约（server/routes/ai.js validateProvider）：
+ *   - name / base_url / model 必填；api_type ∈ {openai, anthropic}
+ *   - GET 列表返回的 apiKey 是服务端 maskKey 掩码（如 sk-****abcd），不可回传
+ *   - PUT 时 apiKey 留空字符串 = 不修改原 key（服务端按 trim 判定）
+ *   - 测试连接返回 {ok, reply} 或 {ok:false, error} —— 调用方按 ok 判定结果 */
+
+export interface AiProvider {
+  id: number;
+  name: string;
+  api_type: 'openai' | 'anthropic';
+  base_url: string;
+  /** 服务端返回的是掩码值；新建/修改时若传原值则会被加密入库 */
+  api_key: string;
+  model: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface AiProviderListResponse {
+  providers: AiProvider[];
+}
+
+export interface AiProviderPayload {
+  name: string;
+  api_type: 'openai' | 'anthropic';
+  base_url: string;
+  api_key: string;
+  model: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface AiProviderTestResponse {
+  ok: boolean;
+  reply?: string;
+  error?: string;
+}
+
+export interface AiProviderActivateResponse {
+  activated: boolean;
+}
+
+/** GET /ai/providers —— 列表；apiKey 是掩码 */
+export async function aiProviders(): Promise<ApiResponse<AiProviderListResponse>> {
+  return get<AiProviderListResponse>('ai/providers');
+}
+
+/** POST /ai/providers —— 创建（name/apiType/baseUrl/model/apiKey 必填） */
+export async function aiProviderCreate(req: AiProviderPayload): Promise<ApiResponse<null>> {
+  return post<null>('ai/providers', req);
+}
+
+/** PUT /ai/providers/:id —— 更新；apiKey 为空字符串则保留原值 */
+export async function aiProviderUpdate(id: number, req: AiProviderPayload): Promise<ApiResponse<null>> {
+  return put<null>(`ai/providers/${id}`, req);
+}
+
+/** DELETE /ai/providers/:id —— 删除 */
+export async function aiProviderDelete(id: number): Promise<ApiResponse<null>> {
+  return del<null>(`ai/providers/${id}`);
+}
+
+/** POST /ai/providers/:id/activate —— 激活（单选语义：会先把其他置为 inactive） */
+export async function aiProviderActivate(id: number): Promise<ApiResponse<AiProviderActivateResponse>> {
+  return post<AiProviderActivateResponse>(`ai/providers/${id}/activate`, {});
+}
+
+/** POST /ai/providers/:id/test —— 测试连通性（服务端实际发一次"回复 OK"调用） */
+export async function aiProviderTest(id: number): Promise<ApiResponse<AiProviderTestResponse>> {
+  return post<AiProviderTestResponse>(`ai/providers/${id}/test`, {});
+}
+
+/* AI 财务建议：与 insight 同源，输出多 impact + priority 三态（high/medium/low） */
+
+export interface AiAdviceItem {
+  title: string;
+  content: string;
+  impact: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface AiAdviceResponse {
+  advice: AiAdviceItem[];
+  generated_at?: string;
+}
+
+/** POST /ai/advice —— 入参为空，服务端固定取本月+上月环比；需已激活服务商 */
+export async function aiAdvice(): Promise<ApiResponse<AiAdviceResponse>> {
+  return post<AiAdviceResponse>('ai/advice', {});
+}
+
+/* AI 规则（/ai/rules 系列）：用户可手动管理（验收 #6「用户可 disable」客户端路径）。
+ * 契约（server/routes/ai.js）：
+ *   - GET 列表支持 status 过滤 + limit/offset；同时返回 thresholds/weights/half_life_days
+ *   - POST 创建 body 至少要 target 三选一（category_id / account_id / type）
+ *   - disable / enable 不可逆：disable 不自动复活，enable 回到 candidate 重攒证据
+ *
+ * ⚠️ listRules 返回 thresholds / weights / half_life_days 必须一并展示给用户，
+ * 客户端硬编码阈值会与后端漂移（v0.2 验收铁律）。 */
+
+export interface AiRule {
+  id: number;
+  match_key: string;
+  rule_type: string;
+  score: number;
+  accuracy: number;
+  sample_count: number;
+  status: 'candidate' | 'verified' | 'trusted' | 'degraded' | 'disabled';
+  target_category_id?: number | null;
+  target_account_id?: number | null;
+  target_type?: 'expense' | 'income' | 'transfer' | null;
+  /** 状态枚举字段较多且可能在 v0.3+ 调整，用 ESObject 兜底接住所有未列字段 */
+  extras?: ESObject;
+}
+
+export interface AiRuleListResponse {
+  rules: AiRule[];
+  total: number;
+  limit: number;
+  offset: number;
+  /** 「多少分能升级」阈值，前端必须用这个展示，禁止硬编码 */
+  thresholds: ESObject;
+  weights: ESObject;
+  half_life_days?: number;
+}
+
+export interface AiRuleCreatePayload {
+  match_key: string;
+  rule_type?: string;
+  target_category_id?: number | null;
+  target_account_id?: number | null;
+  target_type?: 'expense' | 'income' | 'transfer' | null;
+}
+
+export interface AiRuleActionResponse {
+  message: string;
+  rule: ESObject;
+}
+
+export interface AiRuleEvidenceItem {
+  id?: number;
+  rule_id?: number;
+  evidence_type?: string;
+  score_delta?: number;
+  source?: string;
+  transaction_id?: number | null;
+  raw_segment?: string;
+  note?: string;
+  occurred_at?: string;
+}
+
+export interface AiRuleEvidenceResponse {
+  rule_id: number;
+  evidence: AiRuleEvidenceItem[];
+}
+
+/** GET /ai/rules —— 列表 + 元数据；status 可空（返回所有） */
+export async function aiRules(status?: string, limit: number = 100, offset: number = 0): Promise<ApiResponse<AiRuleListResponse>> {
+  return get<AiRuleListResponse>('ai/rules', { status: status || '', limit, offset });
+}
+
+/** POST /ai/rules —— 创建规则。三个 target 至少要传一个 */
+export async function aiRuleCreate(req: AiRuleCreatePayload): Promise<ApiResponse<AiRuleActionResponse>> {
+  return post<AiRuleActionResponse>('ai/rules', req);
+}
+
+/** POST /ai/rules/:id/disable —— 停用；reason 可选（200 字内） */
+export async function aiRuleDisable(id: number, reason?: string): Promise<ApiResponse<AiRuleActionResponse>> {
+  return post<AiRuleActionResponse>(`ai/rules/${id}/disable`, { reason: reason || '' });
+}
+
+/** POST /ai/rules/:id/enable —— 重新启用（回到 candidate 重攒证据） */
+export async function aiRuleEnable(id: number): Promise<ApiResponse<AiRuleActionResponse>> {
+  return post<AiRuleActionResponse>(`ai/rules/${id}/enable`, {});
+}
+
+/** GET /ai/rules/:id/evidence —— 证据流水 */
+export async function aiRuleEvidence(id: number, limit: number = 50): Promise<ApiResponse<AiRuleEvidenceResponse>> {
+  return get<AiRuleEvidenceResponse>(`ai/rules/${id}/evidence`, { limit });
+}
+
+/* AI 学习统计 + 评测（/learning/stats, /evaluation/*）：
+ * 字段都用 ESObject 兜底 —— 这一组查询结果结构嵌套深、版本演进快，
+ * 客户端不强类型化，避免 v0.3+ 字段调整时反序列化失败。
+ *
+ * ⚠️ evaluation/run 是「离线跑批」：纯本地 CPU，不依赖对话服务商，但可能耗时数秒，
+ * UI 上要明确告知用户「正在跑评测」并禁用按钮。 */
+
+export interface AiLearningStatsResponse {
+  evidence: ESObject;
+  contradictions: ESObject[];
+  metrics: ESObject;
+  usage: ESObject;
+  breakers: ESObject;
+}
+
+export interface AiEvaluationRunPayload {
+  label?: string;
+  /** 默认 true 落库；CI 临时验证可传 false 不留痕 */
+  persist?: boolean;
+}
+
+export interface AiEvaluationRunResponse {
+  run_id?: number;
+  metrics: ESObject;
+  summary: ESObject;
+  baseline_run_id?: number;
+  regression: ESObject;
+  failed_cases: ESObject[];
+}
+
+export interface AiEvaluationRunsResponse {
+  runs: ESObject[];
+}
+
+/** GET /ai/learning/stats —— 4 个 Promise.all 查询合一 */
+export async function aiLearningStats(): Promise<ApiResponse<AiLearningStatsResponse>> {
+  return get<AiLearningStatsResponse>('ai/learning/stats');
+}
+
+/** POST /ai/evaluation/run —— 跑一次离线评测 */
+export async function aiEvaluationRun(req: AiEvaluationRunPayload = {}): Promise<ApiResponse<AiEvaluationRunResponse>> {
+  return post<AiEvaluationRunResponse>('ai/evaluation/run', req);
+}
+
+/** GET /ai/evaluation/runs —— 历史跑批列表 */
+export async function aiEvaluationRuns(limit: number = 10): Promise<ApiResponse<AiEvaluationRunsResponse>> {
+  return get<AiEvaluationRunsResponse>('ai/evaluation/runs', { limit });
+}
+
+/* OCR 重转录（POST /ai/ocr/retranscribe）：
+ * 与 /ai/ocr 字段一致，但服务端强制走 tencent_ocr 引擎。
+ * ⚠️ 服务端同时接受 JSON body（req.body.image）+ multipart，本模块与 ocr() 保持一致走 JSON 路径，
+ * 避免引入新 multipart 上传通道（鸿蒙 uploadFileFrom 不支持 form 字段拼接）。
+ *
+ * force 可空（默认 tencent_ocr）；传 "model" 可强制大模型多模态（CI 调试用）。
+ * 用户在识别结果页看到「识别有误」时点「重识别」按钮触发。 */
+
+export async function aiOcrRetranscribe(imageBase64: string, force?: string): Promise<ApiResponse<OcrResponse>> {
+  return post<OcrResponse>('ai/ocr/retranscribe', {
+    image: imageBase64,
+    force: force || 'tencent_ocr',
+  });
 }
 
 export { ApiError };

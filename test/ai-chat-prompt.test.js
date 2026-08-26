@@ -63,11 +63,29 @@ test('chat prompt 补充段：明确"工具"才是查账户/类目的可靠方�
     assert.match(src, /\*\*必须\*\*调 list_accounts \/ list_categories 实时确认/);
 });
 
-test('chat prompt：「场景-对象」备注格式仅保留在 OCR 侧（chat 已无新建交易能力）', () => {
-    // chat 规则里不再需要教模型写 note —— 它已经不能新建交易了
+test('「场景-对象」备注格式已迁到服务端确定性生成（不再靠 prompt 求模型听话）', () => {
+    /*  2026-08-25 架构变更：
+        旧做法 —— 在 OCR prompt 里写一整段规则，请 LLM 自己把 note 写成「场景-对象」。
+        新做法 —— `modules/ai/extraction/note-composer.js` 在抽取阶段确定性生成。
+        原因：备注格式是确定性规则，不该依赖模型听话；且图片通道与文字通道
+        必须得到完全一致的备注，靠 prompt 做不到（不同服务商/温度都可能不一样）。
+
+        ⛔ 断言方向也随之反转：chat prompt 里【不得】再出现教模型写 note 的条款。 */
     assert.doesNotMatch(src, /11\. 记账时，\*\*你自己\*\*在 note 字段写入完整「场景-对象」格式/);
-    // 但 OCR prompt 仍需要（LLM 直接产出 items）
-    assert.match(src, /note 由你\*\*自己生成完整\*\*「场景-对象」格式/);
+    assert.doesNotMatch(src, /note 由你\*\*自己生成完整\*\*「场景-对象」格式/,
+        'note 格式规则不得回到 prompt —— 已由 note-composer.js 确定性生成');
+
+    // 新实现必须存在，且是唯一真相
+    const composerPath = path.join(__dirname, '..', 'server', 'modules', 'ai', 'extraction', 'note-composer.js');
+    assert.ok(fs.existsSync(composerPath), 'note-composer.js 必须存在（「场景-对象」的唯一真相）');
+    const composerSrc = fs.readFileSync(composerPath, 'utf8');
+    assert.match(composerSrc, /function composeNote/);
+    // 抽取器必须真的用上它 —— 否则模块存在但没接线，备注会静默退回原始片段
+    const extractorSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'modules', 'ai', 'extraction', 'deterministic-extractor.js'), 'utf8');
+    assert.match(extractorSrc, /composeNote\(/, '抽取器必须调用 composeNote，否则 note 会退回原始片段');
+    assert.doesNotMatch(extractorSrc, /note:\s*seg,/,
+        '⛔ note 不得再直接用原始片段 —— 那会落成「2026年8月20日老乡鸡 18元」这种冗余备注');
 });
 
 test('list_accounts 工具定义存在且说明文字准确', () => {
@@ -108,25 +126,39 @@ test('list_categories 工具实现：支持模糊匹配 + 类型过滤 + 全局�
     assert.match(body, /type_filter/);
 });
 
-test('OCR prompt：note 自己生成完整「场景-对象」（与 chat 记账约定一致）', () => {
-    assert.match(src, /note 由你\*\*自己生成完整\*\*「场景-对象」格式/);
-});
+test('⛔ legacy OCR prompt 与正则解析器已彻底移除，不得回归', () => {
+    /*  2026-08-25：删除 `fallbackExtractItems`（253 行 legacy OCR 正则解析器）
+        与整段 OCR prompt。图片通道改为：
+          转录（大模型 vision 主路 / 腾讯 OCR 兜底）→ 票据版式预处理 → v0.2 主链路
+        腾讯 OCR【只识别、不学习】，产出纯文字后与手打文字完全同权。
 
-test('⛔ OCR prompt 的类目清单必须动态生成，不得硬编码', () => {
-    assert.match(src, /category 必须从下面列表中选择最合适的/);
-    // 类目清单来自真实 categories 表（模板变量），不是写死的字符串
-    assert.match(src, /可选分类：\$\{catChoices\}/);
-    // 不得回归硬编码的过时类目名（真表叫「早午晚餐/打车拼车/房租月供」）
+        ⛔ 为什么必须反向断言：legacy 的根本问题是让图片通道和文字通道
+           【各有一个大脑】—— 规则学到的习惯在图片通道完全不生效。
+           一旦有人图省事把 prompt 抽取写回来，这个缺陷就复发，且不报错。 */
+    assert.doesNotMatch(src, /function fallbackExtractItems/, 'legacy 正则解析器不得回归');
+    assert.doesNotMatch(src, /可选分类：\$\{catChoices\}/, 'legacy OCR prompt 不得回归');
+    assert.doesNotMatch(src, /category 必须从下面列表中选择最合适的/, 'legacy OCR prompt 不得回归');
+    // 独立词表更不得回归（词表唯一真相是 extraction/category-matcher.js）
+    assert.doesNotMatch(src, /const level1 = \[/);
+    assert.doesNotMatch(src, /const level2 = \[/);
+    // 过时的硬编码类目名（真表叫「早午晚餐/打车拼车」）
     assert.doesNotMatch(src, /可选分类：早餐\|午餐\|晚餐/);
-    // 餐别时间推断已随「早午晚餐」合并而移除
     assert.doesNotMatch(src, /餐别按时间推断/);
 });
 
-test('⛔ OCR 类目推断必须复用 v0.2 的 category-matcher（不得再有独立词表）', () => {
-    assert.match(src, /require\('\.\.\/modules\/ai\/extraction\/category-matcher'\)/);
-    // 原先 118 行的 level1/level2 独立词表不得回归
-    assert.doesNotMatch(src, /const level1 = \[/);
-    assert.doesNotMatch(src, /const level2 = \[/);
+test('⛔ 图片通道的类目推断必须复用 v0.2 链路（路由层不得自建词表/抽取）', () => {
+    /*  路由层【只能】依赖模块桶 `modules/ai`（见 modules/ai/index.js 头部约定）。
+        原先直接 require 的 extraction/category-matcher 已随 legacy 解析器一并移除
+        —— 它是那 253 行的唯一使用者。 */
+    assert.match(src, /require\('\.\.\/modules\/ai'\)/, '路由层必须走模块桶');
+    assert.doesNotMatch(src, /require\('\.\.\/modules\/ai\/extraction\//,
+        '⛔ 路由层不得直接 require extraction 子模块（绕过桶文件 = 分层白做）');
+
+    // 类目词表的唯一真相仍在 category-matcher，且被 v0.2 抽取器使用
+    const extractorSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'modules', 'ai', 'extraction', 'deterministic-extractor.js'), 'utf8');
+    assert.match(extractorSrc, /require\('\.\/category-matcher'\)/,
+        'v0.2 抽取器必须复用同一份类目词表');
 });
 
 test('AI 记账 prompt 第 12 条：自然对话风格，禁止暴露工具名 / JSON 块', () => {

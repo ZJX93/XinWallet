@@ -337,4 +337,8 @@ async function httpsPostRaw(url, headers, bufferBody) {
     });
 }
 
-module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools, auditProviderKeys };
+module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools, auditProviderKeys,
+    // 多模态 content 归一化：图片转录层（modules/ai/vision）也要用。
+    // ⛔ 必须导出复用，不许各处抄一份 —— 两份实现漂移后，同一张图在
+    //    「对话通道」和「图片记账通道」会发出不同格式的请求，且只在某一端报错。
+    toOpenAIContent, toAnthropicContent, mimeToAnthropic };

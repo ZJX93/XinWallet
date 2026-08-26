@@ -1,0 +1,27 @@
+<!-- ===== AI 财务建议（POST /ai/advice） ===== -->
+<section class="page" id="page-ai-advice" data-lazy="pages/ai-advice.html">
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title">💡 AI 财务建议</h3>
+                <p class="card-desc">基于本月与上月对比，给出可量化的省钱点与风险提示</p>
+            </div>
+            <button class="btn btn-ghost btn-ai" id="aiAdviceRefreshBtn" title="重新生成">
+                <span class="ai-icon-refresh">↻</span> 刷新
+            </button>
+        </div>
+
+        <div id="aiAdviceMeta" class="ai-page-meta"></div>
+
+        <div id="aiAdviceLoading" class="ai-page-loading" style="display:none">
+            <div class="skeleton-wrap" data-skeleton="text">
+                <div class="skeleton-line shimmer" style="width:78%"></div>
+                <div class="skeleton-line shimmer" style="width:60%"></div>
+                <div class="skeleton-line shimmer" style="width:82%"></div>
+            </div>
+            <p class="ai-page-loading-text">正在分析你的财务数据...</p>
+        </div>
+
+        <div id="aiAdviceList" class="ai-advice-list"></div>
+    </div>
+</section>
