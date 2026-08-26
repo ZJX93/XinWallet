@@ -82,7 +82,7 @@ const AIRules = {
         this._showLoading(true);
         this.errorMsg = '';
         try {
-            const r = await api('/ai/rules', 'GET', { limit: 100 });
+            const r = await api('/ai/rules', 'GET');
             if (r && r.success && r.data) {
                 this.rules = Array.isArray(r.data.rules) ? r.data.rules : [];
                 this.total = r.data.total || this.rules.length;
@@ -137,7 +137,7 @@ const AIRules = {
         this.evidenceItems = [];
         this._openEvidenceDrawer();
         try {
-            const r = await api(`/ai/rules/${id}/evidence`, 'GET', { limit: 50 });
+            const r = await api(`/ai/rules/${id}/evidence`, 'GET');
             if (r && r.success && r.data) {
                 this.evidenceItems = Array.isArray(r.data.evidence) ? r.data.evidence : [];
             } else {

@@ -63,7 +63,7 @@ const AIEvaluation = {
 
     async loadHistory() {
         try {
-            const r = await api('/ai/evaluation/runs', 'GET', { limit: 10 });
+            const r = await api('/ai/evaluation/runs', 'GET');
             if (r && r.success && r.data) this._renderHistory(r.data.runs || []);
         } catch (e) {
             // 历史失败不阻断主流程

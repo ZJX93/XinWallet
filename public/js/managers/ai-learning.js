@@ -41,7 +41,7 @@ const AILearning = {
         this._showError('');
         this._showLoading(true);
         try {
-            const r = await api('/ai/learning/stats', 'GET', {});
+            const r = await api('/ai/learning/stats', 'GET');
             if (r && r.success && r.data) {
                 this.data = r.data;
                 this._render();

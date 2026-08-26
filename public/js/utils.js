@@ -80,7 +80,10 @@ async function api(path, method = 'GET', body = null, opts = {}) {
     if (bid) headers['X-Book-Id'] = bid;
 
     const reqOpts = { method, headers };
-    if (body) reqOpts.body = JSON.stringify(body);
+    // GET/HEAD 规范禁止带 body；调用方常常把筛选参数塞进第 3 参（如 {limit:10}），
+    // 这里主动忽略避免 TypeError: Request with GET/HEAD method cannot have body
+    const upper = String(method || 'GET').toUpperCase();
+    if (body && upper !== 'GET' && upper !== 'HEAD') reqOpts.body = JSON.stringify(body);
 
     try {
         const res = await fetch(`${(typeof window !== 'undefined' ? (window.XIN_API_BASE || '/api') : '/api')}${path}`, reqOpts);
