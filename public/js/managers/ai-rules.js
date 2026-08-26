@@ -83,10 +83,10 @@ const AIRules = {
         this.errorMsg = '';
         try {
             const r = await api('/ai/rules', 'GET');
-            if (r && r.success && r.data) {
-                this.rules = Array.isArray(r.data.rules) ? r.data.rules : [];
-                this.total = r.data.total || this.rules.length;
-                this.thresholds = r.data.thresholds || {};
+            if (r && Array.isArray(r.rules)) {
+                this.rules = r.rules;
+                this.total = r.total || this.rules.length;
+                this.thresholds = r.thresholds || {};
                 this._render();
             } else {
                 this.errorMsg = (r && r.message) || '加载规则失败';
@@ -138,8 +138,8 @@ const AIRules = {
         this._openEvidenceDrawer();
         try {
             const r = await api(`/ai/rules/${id}/evidence`, 'GET');
-            if (r && r.success && r.data) {
-                this.evidenceItems = Array.isArray(r.data.evidence) ? r.data.evidence : [];
+            if (r && Array.isArray(r.evidence)) {
+                this.evidenceItems = r.evidence;
             } else {
                 this.evidenceItems = [];
                 this.errorMsg = (r && r.message) || '加载证据失败';

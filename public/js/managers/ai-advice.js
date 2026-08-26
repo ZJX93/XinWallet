@@ -44,9 +44,9 @@ const AIAdvice = {
         this.lastError = '';
         try {
             const r = await api('/ai/advice', 'POST', {});
-            if (r && r.success && r.data) {
-                this.items = Array.isArray(r.data.advice) ? r.data.advice : [];
-                this.generatedAt = r.data.generatedAt || r.data.generated_at || '';
+            if (r && Array.isArray(r.advice)) {
+                this.items = r.advice;
+                this.generatedAt = r.generatedAt || r.generated_at || '';
                 this._render();
             } else {
                 this.lastError = (r && r.message) || '获取建议失败';

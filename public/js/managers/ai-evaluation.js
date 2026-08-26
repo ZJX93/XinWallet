@@ -44,9 +44,9 @@ const AIEvaluation = {
         this._showLoading(true);
         try {
             const r = await api('/ai/evaluation/run', 'POST', { label: 'web-manual', persist: true });
-            if (r && r.success && r.data) {
-                this.data = r.data;
-                this._renderResult(r.data);
+            if (r && r.metrics) {
+                this.data = r;
+                this._renderResult(r);
                 await this.loadHistory();
                 showToast('评测完成', 'success');
             } else {
@@ -64,7 +64,7 @@ const AIEvaluation = {
     async loadHistory() {
         try {
             const r = await api('/ai/evaluation/runs', 'GET');
-            if (r && r.success && r.data) this._renderHistory(r.data.runs || []);
+            if (r && Array.isArray(r.runs)) this._renderHistory(r.runs);
         } catch (e) {
             // 历史失败不阻断主流程
             const el = document.getElementById('aiEvalHistory');

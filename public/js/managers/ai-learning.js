@@ -42,8 +42,8 @@ const AILearning = {
         this._showLoading(true);
         try {
             const r = await api('/ai/learning/stats', 'GET');
-            if (r && r.success && r.data) {
-                this.data = r.data;
+            if (r && r.evidence) {
+                this.data = r;
                 this._render();
             } else {
                 this._showError((r && r.message) || '加载学习统计失败');
