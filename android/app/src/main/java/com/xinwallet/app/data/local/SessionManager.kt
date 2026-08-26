@@ -41,6 +41,11 @@ class SessionManager(private val context: Context) {
         // 应用锁：PIN 哈希值（SHA-256 hex）；空串 = 未启用应用锁
         val APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
         val APP_LOCK_ENABLED = stringPreferencesKey("app_lock_enabled")
+        // AI 智能分析缓存（v0.2.1：insight 与 advice 合并进 /ai/advice，缓存两段 JSON）
+        // 用 JSON 字符串承载结构化数据，避免每字段一个 key 导致 API 演进需迁移
+        val AI_ADVICE_CACHE = stringPreferencesKey("ai_advice_cache_json")
+        val AI_INSIGHT_CACHE = stringPreferencesKey("ai_insight_cache_json")
+        val AI_ADVICE_GENERATED_AT = stringPreferencesKey("ai_advice_generated_at")
     }
 
     suspend fun saveTokens(access: String, refresh: String) {
@@ -117,6 +122,22 @@ class SessionManager(private val context: Context) {
     fun appLockEnabledFlow(): Flow<Boolean> = context.dataStore.data.map { it[APP_LOCK_ENABLED] == "true" }
     suspend fun setAppLockEnabled(enabled: Boolean) {
         context.dataStore.edit { it[APP_LOCK_ENABLED] = if (enabled) "true" else "false" }
+    }
+
+    // —— AI 智能分析缓存（JSON 字符串）——
+    /** 读 AI advice 缓存 JSON（服务端 AiAdviceResponse.advice 数组的 JSON 序列化）；空串表示无缓存 */
+    suspend fun aiAdviceCacheJson(): String = context.dataStore.data.first()[AI_ADVICE_CACHE] ?: ""
+    /** 读 AI insight 缓存 JSON（服务端 AiAdviceResponse.insights 数组的 JSON 序列化）；空串表示无缓存 */
+    suspend fun aiInsightCacheJson(): String = context.dataStore.data.first()[AI_INSIGHT_CACHE] ?: ""
+    /** 读 AI 报告生成时间（ISO8601）；空串表示未生成 */
+    suspend fun aiAdviceGeneratedAt(): String = context.dataStore.data.first()[AI_ADVICE_GENERATED_AT] ?: ""
+    /** 写入 AI advice/insight 缓存 + 生成时间。adviceJson/insightJson 是数组的 JSON 字符串；空串表示清空 */
+    suspend fun saveAiAdviceCache(adviceJson: String, insightJson: String, generatedAt: String) {
+        context.dataStore.edit {
+            it[AI_ADVICE_CACHE] = adviceJson
+            it[AI_INSIGHT_CACHE] = insightJson
+            it[AI_ADVICE_GENERATED_AT] = generatedAt
+        }
     }
 
     /**

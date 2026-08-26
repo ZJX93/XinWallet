@@ -352,13 +352,9 @@ interface ApiService {
     @POST("backup/import")
     suspend fun importBackup(@Part file: MultipartBody.Part): Response<ApiResponse<ImportBackupResult>>
 
-    /* ---------- AI 消费洞察（POST /ai/insight）---------- */
-    /**
-     * 生成当月消费洞察。month 形如 "YYYY-MM"，null 时服务端取「本月」。
-     * 需要先在「服务商配置」中激活至少一个对话服务商（GPT 系 / Claude 系 / 国产），否则 400。
-     */
-    @POST("ai/insight")
-    suspend fun aiInsight(@Body req: AiInsightRequest): Response<ApiResponse<AiInsightResponse>>
+    /* ---------- AI 消费洞察（v0.2.1 起合并进 /ai/advice，insights 字段随之返回）----------
+     * ⚠️ 原 /ai/insight 端点已废弃（服务端返回 410 + replacement 提示）。
+     *   此处移除 aiInsight 端点声明；调用方改用 aiAdvice() 拿 AiAdviceResponse.insights。 */
 
     /* ---------- AI 服务商配置（/ai/providers 系列）----------
      * 端点路径不带前导斜杠（Retrofit 规范，与项目其他端点保持一致）。

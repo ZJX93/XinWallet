@@ -77,7 +77,6 @@ import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
 import com.xinwallet.app.ui.screens.AiScanScreen
-import com.xinwallet.app.ui.screens.AiInsightScreen
 import com.xinwallet.app.ui.screens.RuleListScreen
 import com.xinwallet.app.ui.screens.RuleEvidenceScreen
 import com.xinwallet.app.ui.screens.ProviderListScreen
@@ -142,7 +141,6 @@ sealed class Screen(val route: String) {
             if (month != null) "edit-transfer/$id?month=$month" else "edit-transfer/$id"
     }
     object AiScan : Screen("ai-scan")
-    object AiInsight : Screen("ai-insight")
     object ProviderList : Screen("provider-list")
     /** id=0 表示新建；其他表示编辑 */
     object ProviderEdit : Screen("provider-edit/{id}") {
@@ -531,7 +529,6 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             AddTransactionScreen(navController, editTransferId = id, month = month)
         }
         composable(Screen.AiScan.route) { AiScanScreen(navController) }
-        composable(Screen.AiInsight.route) { AiInsightScreen(navController) }
         composable(Screen.ProviderList.route) { ProviderListScreen(navController) }
         composable(
             Screen.ProviderEdit.route,

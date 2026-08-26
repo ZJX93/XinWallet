@@ -191,12 +191,10 @@ export async function aiDiscardPrediction(id: number, req: AiDiscardRequest): Pr
   return post<AiSimpleMessage>(`ai/predictions/${id}/discard`, req);
 }
 
-/* AI 消费洞察：基于多维度财务数据生成结构化建议（warning/info/tip 三级） */
-
-/** POST /ai/insight 请求体。month 为 "YYYY-MM"，undefined 时服务端取本月 */
-export interface AiInsightRequest {
-  month?: string;
-}
+/* AI 消费洞察（v0.2.1 起合并进 /ai/advice，insights 字段随之返回）
+   ⚠️ 原 /ai/insight 端点已废弃（服务端返回 410 + replacement 提示）。
+     aiInsight() 已移除；调用方改用 aiAdvice() 拿 AiAdviceResponse.insights。
+     AiInsightItem interface 保留供 advice 响应解析。 */
 
 /** 单条洞察条目（与安卓 AiInsightItem 对齐） */
 export interface AiInsightItem {
@@ -204,20 +202,6 @@ export interface AiInsightItem {
   description: string;
   action: string;
   level: 'warning' | 'info' | 'tip';
-}
-
-/** POST /ai/insight 响应体 */
-export interface AiInsightResponse {
-  insights: AiInsightItem[];
-  generated_at?: string;
-}
-
-/**
- * 取当月（或指定月）消费洞察。需要已激活至少一个对话服务商，否则 400。
- * 与安卓 AiRepository.insight 对齐：缺省 month 时服务端兜底「本月」。
- */
-export async function aiInsight(req: AiInsightRequest): Promise<ApiResponse<AiInsightResponse>> {
-  return post<AiInsightResponse>('ai/insight', req);
 }
 
 /* 预算 */

@@ -513,11 +513,11 @@ const DashboardManager = {
     },
 
     renderDashAI() {
-        // 从 localStorage 读取缓存的 AI 结果
-        const insights = (typeof AnalysisManager !== 'undefined' && AnalysisManager._loadInsights)
-            ? AnalysisManager._loadInsights() : null;
-        const advice = (typeof AnalysisManager !== 'undefined' && AnalysisManager._loadAdvice)
-            ? AnalysisManager._loadAdvice() : null;
+        // ⚠️ 2026-08-27 合并：insight 跟 advice 合并到 /ai/advice，洞察/建议都从 AIAdvice 缓存读
+        const insights = (typeof AIAdvice !== 'undefined' && AIAdvice._loadInsights)
+            ? AIAdvice._loadInsights() : null;
+        const advice = (typeof AIAdvice !== 'undefined' && AIAdvice._loadAdvice)
+            ? AIAdvice._loadAdvice() : null;
 
         const ie = document.getElementById('dashInsights');
         if (ie) {
@@ -529,8 +529,8 @@ const DashboardManager = {
                     <div class="dash-ai-desc">${escapeHtml(first.description)}${insights.length > 1 ? `<br><span style="color:var(--text-tertiary);font-size:var(--text-xs)">等 ${insights.length} 条洞察</span>` : ''}</div>
                 </div>`;
             } else {
-                ie.innerHTML = `<div class="empty-hint"><div class="empty-icon">🧠</div><p>尚未生成洞察</p><button class="btn btn-sm btn-primary go-analysis-btn" style="margin-top:8px">前往消费分析</button></div>`;
-                ie.querySelector('.go-analysis-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('analysis'));
+                ie.innerHTML = `<div class="empty-hint"><div class="empty-icon">🧠</div><p>尚未生成 AI 洞察</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 建议</button></div>`;
+                ie.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-advice'));
             }
         }
 
@@ -544,8 +544,8 @@ const DashboardManager = {
                     <div class="dash-ai-desc">${escapeHtml(first.content)}${advice.length > 1 ? `<br><span style="color:var(--text-tertiary);font-size:var(--text-xs)">等 ${advice.length} 条建议</span>` : ''}</div>
                 </div>`;
             } else {
-                ae.innerHTML = `<div class="empty-hint"><div class="empty-icon">💡</div><p>尚未生成建议</p><button class="btn btn-sm btn-primary go-analysis-btn" style="margin-top:8px">前往消费分析</button></div>`;
-                ae.querySelector('.go-analysis-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('analysis'));
+                ae.innerHTML = `<div class="empty-hint"><div class="empty-icon">💡</div><p>尚未生成 AI 建议</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 建议</button></div>`;
+                ae.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-advice'));
             }
         }
     }

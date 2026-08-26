@@ -1183,9 +1183,10 @@ data class AiAdviceItem(
     val priority: String = "medium"
 )
 
-/** POST /ai/advice 响应体 */
+/** POST /ai/advice 响应体（v0.2.1 起同时返回 insights 观察型） */
 data class AiAdviceResponse(
     val advice: List<AiAdviceItem> = emptyList(),
+    val insights: List<AiInsightItem> = emptyList(),
     @SerializedName("generated_at") val generatedAt: String? = null
 )
 

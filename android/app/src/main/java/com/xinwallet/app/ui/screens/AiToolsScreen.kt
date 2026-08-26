@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Card
@@ -48,22 +47,18 @@ import com.xinwallet.app.ui.theme.Brown500
 /**
  * AI 工具聚合页 — 收纳「我的」页宫格里所有 AI 子模块，集中跳转入口。
  *
- * 7 个子项（移动端独立页面：Web 端 AI 工具分组只列了 5 个，安卓多了 AI 洞察 + AI 服务商 2 个独立页）：
+ * 6 个子项（v0.2.1 起：AI 洞察已合并进 AI 建议，洞察/建议在 AiAdviceScreen 内分段展示）：
  *   ① 截图记账   — 上传截图/选图自动识别（Web 端对应"AI 识别"），页面 AiScanScreen
  *                   ⭐ 用户明确"AI 工具里的截图记账不能删除"：除了用本页进入，底栏 FAB → AI 记账对话
  *                   也可以发送图片（不与本页重复）。
- *   ② AI 洞察    — 月度消费趋势智能分析（AiInsightScreen）
- *   ③ AI 建议    — 个性化财务改善建议（AiAdviceScreen）
- *   ④ AI 服务商  — 配置 / 切换 AI 模型与服务商（ProviderListScreen）
- *   ⑤ AI 规则    — 查看 / 管理类目识别规则与样本（RuleListScreen）
- *   ⑥ 学习统计   — 规则样本量、准确率与置信度分布（LearningStatsScreen）
- *   ⑦ AI 评测    — 跑离线评测，对比模型准确率（EvaluationScreen）
+ *   ② AI 建议    — 个性化财务改善建议 + 消费洞察（AiAdviceScreen，insight 已合并）
+ *   ③ AI 服务商  — 配置 / 切换 AI 模型与服务商（ProviderListScreen）
+ *   ④ AI 规则    — 查看 / 管理类目识别规则与样本（RuleListScreen）
+ *   ⑤ 学习统计   — 规则样本量、准确率与置信度分布（LearningStatsScreen）
+ *   ⑥ AI 评测    — 跑离线评测，对比模型准确率（EvaluationScreen）
  *
  * 设计：参照 SettingsScreen 的 TopBar + Card + SettingsRow 模式，
  * 与「我的」页 row1 第 1 位「AI 工具」宫格相配套，点击跳转对应 AI 子页。
- *
- * ⭐ 2026-08-26 与 row1 平铺的 7 个 AI 项合并。聚合页面收敛了原 row1 的所有 AI 入口，
- * 不再保留「我的」页平铺的 AI 子项。
  */
 @Composable
 fun AiToolsScreen(navController: NavHostController) {
@@ -99,16 +94,9 @@ fun AiToolsScreen(navController: NavHostController) {
                     )
                     RowDivider()
                     AiToolsRow(
-                        icon = Icons.Filled.Insights,
-                        title = "AI 洞察",
-                        subtitle = "月度消费趋势智能分析，定位异常与重点",
-                        onClick = { navController.navigate(Screen.AiInsight.route) }
-                    )
-                    RowDivider()
-                    AiToolsRow(
                         icon = Icons.Filled.Lightbulb,
                         title = "AI 建议",
-                        subtitle = "基于消费习惯生成的个性化财务改善建议",
+                        subtitle = "基于消费习惯生成的个性化财务改善建议（含消费洞察）",
                         onClick = { navController.navigate(Screen.AiAdvice.route) }
                     )
                     RowDivider()

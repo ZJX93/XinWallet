@@ -1,10 +1,10 @@
-<!-- ===== AI 财务建议（POST /ai/advice） ===== -->
+<!-- ===== AI 智能分析（POST /ai/advice，2026-08-27 合并 insight） ===== -->
 <section class="page" id="page-ai-advice" data-lazy="pages/ai-advice.html">
     <div class="glass-card ai-page-card">
         <div class="ai-page-header">
             <div>
-                <h3 class="card-title">💡 AI 财务建议</h3>
-                <p class="card-desc">基于本月与上月对比，给出可量化的省钱点与风险提示</p>
+                <h3 class="card-title">💡 AI 智能分析</h3>
+                <p class="card-desc">基于本月与上月对比，给出可量化的财务洞察与可执行建议</p>
             </div>
             <button class="btn btn-ghost btn-ai" id="aiAdviceRefreshBtn" title="重新生成">
                 <span class="ai-icon-refresh">↻</span> 刷新
@@ -22,6 +22,16 @@
             <p class="ai-page-loading-text">正在分析你的财务数据...</p>
         </div>
 
-        <div id="aiAdviceList" class="ai-advice-list"></div>
+        <!-- 洞察区（观察型：warning/info/tip） -->
+        <div class="ai-insight-section">
+            <h4 class="ai-section-title">🧠 消费洞察</h4>
+            <div id="aiInsightList" class="ai-insight-list"></div>
+        </div>
+
+        <!-- 建议区（可执行：high/medium/low） -->
+        <div class="ai-advice-section">
+            <h4 class="ai-section-title">💡 财务建议</h4>
+            <div id="aiAdviceList" class="ai-advice-list"></div>
+        </div>
     </div>
 </section>

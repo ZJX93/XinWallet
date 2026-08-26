@@ -186,9 +186,9 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val row1 = listOf(
-                        // 第一格 AI 工具聚合入口（2026-08-26 新增）—— 收纳截图记账 / AI 洞察 /
-                        // AI 建议 / AI 服务商 / AI 规则 / 学习统计 / 模型评测 共 7 项，
-                        // 点击 → AiToolsScreen。
+                        // 第一格 AI 工具聚合入口（2026-08-26 新增，2026-08-27 减 1 项）——
+                        // 收纳截图记账 / AI 建议（含洞察）/ AI 服务商 / AI 规则 / 学习统计 / 模型评测
+                        // 共 6 项（AI 洞察 v0.2.1 已合并进 AI 建议），点击 → AiToolsScreen。
                         // 原 row1 的 7 个 AI 平铺入口已全部迁移到聚合页，避免重复入口冗余。
                         QuickAction("AI 工具", Icons.Filled.AutoAwesome, QuickActionKind.Nav) { navController.navigate(Screen.AiTools.route) },
                         QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },

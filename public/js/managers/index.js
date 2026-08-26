@@ -23,7 +23,6 @@ import AIEvaluation from './ai-evaluation.js?v=1';
 import AIProviderManager from './ai-provider.js';
 import ReportManager from './report.js';
 import QuickAdd from './quick-add.js';
-import AnalysisManager from './analysis.js';
 import DashboardManager from './dashboard.js';
 import ChartManager from './chart.js';
 
@@ -51,7 +50,6 @@ window.AIEvaluation = AIEvaluation;
 window.AIProviderManager = AIProviderManager;
 window.ReportManager = ReportManager;
 window.QuickAdd = QuickAdd;
-window.AnalysisManager = AnalysisManager;
 window.DashboardManager = DashboardManager;
 window.ChartManager = ChartManager;
 

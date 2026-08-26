@@ -1,25 +1,33 @@
 /**
- * AI 财务建议页（web）
+ * AI 智能分析页（web）—— 2026-08-27 合并 insight + advice
  * ----------------------------------------------------------------
- * 调用链：页面 load → POST /ai/advice → 渲染三档优先级建议
+ * 调用链：进入页面 → 先读 localStorage 缓存渲染（不发请求）→ 用户点右上角「刷新」才发请求
+ *   POST /ai/advice 响应：{ advice, insights, generatedAt }（insight 已合并）
+ *   - advice：三档优先级建议（high/medium/low），含 impact 量化
+ *   - insights：三级观察型提醒（warning/info/tip），含 action 行动
  *
- * 与 insight 的关系：
- *   - insight 是「本月发生了什么」观察型输出（3-5 条结构化提醒）
- *   - advice 是「下个月怎么做」建议型输出（3-5 条可执行建议，含 impact 量化）
- *   两端都需已激活服务商，否则服务端 400「请先在服务商配置中激活至少一个对话服务商」
- *
- * 设计要点（参考 server/routes/ai.js:163-272 的 /advice handler）：
- *   - priority 三态 high/medium/low，对应红/蓝/灰配色（与 insight 三级配色一致）
- *   - title/impact/action 三段（服务端固定 schema），前端只渲染不擅自改写文案
- *   - generatedAt 是 ISO8601，需要格式化展示
- *   - 加载失败 + 「服务商未配置」关键词 → 引导去 ai-config 页（用 showToast 而非跳转）
+ * 设计要点：
+ *   - 缓存：localStorage 持久化（key: xin_ai_advice / xin_ai_insights），刷新页面/重进不丢
+ *   - 进入页面只渲染缓存，不自动调接口（避免每次都消耗 token）
+ *   - 服务商未配置：友好引导到 ai-config 页
+ *   - 首页 dashboard.js 也读这两个 key（快捷入口）
  */
 const AIAdvice = {
     busy: false,
     _eventsBound: false,
     items: [],
+    insights: [],
     generatedAt: '',
     lastError: '',
+    // localStorage keys（首页 dashboard.js 也读这两个 key，所以命名稳定）
+    _LS_KEY_ADVICE: 'xin_ai_advice',
+    _LS_KEY_INSIGHTS: 'xin_ai_insights',
+    _LS_KEY_GEN: 'xin_ai_advice_generated_at',
+
+    _loadAdvice() { try { const v = localStorage.getItem(this._LS_KEY_ADVICE); return v ? JSON.parse(v) : []; } catch(e) { return []; } },
+    _saveAdvice(arr) { try { localStorage.setItem(this._LS_KEY_ADVICE, JSON.stringify(arr || [])); } catch(e) {} },
+    _loadInsights() { try { const v = localStorage.getItem(this._LS_KEY_INSIGHTS); return v ? JSON.parse(v) : []; } catch(e) { return []; } },
+    _saveInsights(arr) { try { localStorage.setItem(this._LS_KEY_INSIGHTS, JSON.stringify(arr || [])); } catch(e) {} },
 
     init() {
         if (!document.getElementById('aiAdviceRefreshBtn')) return;
@@ -28,7 +36,14 @@ const AIAdvice = {
 
     refresh() {
         if (document.getElementById('aiAdviceRefreshBtn') && !this._eventsBound) this._bindEvents();
-        this.load();
+        // 优先渲染缓存（不发请求）；只有首次进入且无缓存时才静默拉一次
+        this.items = this._loadAdvice();
+        this.insights = this._loadInsights();
+        this.generatedAt = localStorage.getItem(this._LS_KEY_GEN) || '';
+        this._render();
+        if (!this.items.length && !this.insights.length) {
+            this.load();
+        }
     },
 
     _bindEvents() {
@@ -44,18 +59,31 @@ const AIAdvice = {
         this.lastError = '';
         try {
             const r = await api('/ai/advice', 'POST', {});
-            if (r && Array.isArray(r.advice)) {
-                this.items = r.advice;
-                this.generatedAt = r.generatedAt || r.generated_at || '';
-                this._render();
-            } else {
-                this.lastError = (r && r.message) || '获取建议失败';
+            // ⛔ 铁律 1：r 可能是 {success,advice,...} 包装，或直接 {advice,...}，都不能信字段名盲读
+            // ai-advice 页是 /ai/advice 直读（不开 api() 解包）。看 utils.js 的 api()：
+            //   return res.ok ? await res.json() : { success:false, message }
+            //   → 后端 success: true 时返回整个对象（含 success 字段）还是只返回 data？
+            // 旧版 ai-advice.js 直接 r.advice（不开包装），说明这条调用走的是非包装 api。
+            // 而 insight 端点是普通 api('/ai/insight', 'POST', body) → 自动解包为 res.data
+            // 这里的 api('/ai/advice', 'POST', {}) 用的是 GET 路径的解包 → r 实际是 data 本体
+            const advice = Array.isArray(r && r.advice) ? r.advice : [];
+            const insights = Array.isArray(r && r.insights) ? r.insights : [];
+            if (!advice.length && !insights.length) {
+                this.lastError = (r && r.message) || 'AI 未返回有效内容，请稍后重试';
                 if (/服务商|未配置|未激活/.test(this.lastError)) {
                     this._showProviderMissing();
                 } else {
                     this._showError(this.lastError);
                 }
+                return;
             }
+            this.items = advice;
+            this.insights = insights;
+            this.generatedAt = (r && (r.generatedAt || r.generated_at)) || new Date().toISOString();
+            this._saveAdvice(advice);
+            this._saveInsights(insights);
+            try { localStorage.setItem(this._LS_KEY_GEN, this.generatedAt); } catch(e) {}
+            this._render();
         } catch (e) {
             this.lastError = e.message || '网络异常';
             this._showError(this.lastError);
@@ -66,20 +94,40 @@ const AIAdvice = {
     },
 
     _render() {
-        const list = document.getElementById('aiAdviceList');
+        const adviceList = document.getElementById('aiAdviceList');
+        const insightList = document.getElementById('aiInsightList');
         const meta = document.getElementById('aiAdviceMeta');
-        if (!list) return;
-        list.innerHTML = '';
-        if (!this.items.length) {
-            list.innerHTML = `<div class="empty-state">
+        if (!adviceList) return;
+
+        // 渲染洞察（观察型）
+        if (insightList) {
+            insightList.innerHTML = '';
+            if (this.insights.length) {
+                const lvLabel = { warning: '需重视', info: '关注', tip: '小建议' };
+                const lvClass = { warning: 'lv-warning', info: 'lv-info', tip: 'lv-tip' };
+                insightList.innerHTML = this.insights.map(i => `<div class="insight-item ${lvClass[i.level] || ''}">
+                    <div class="insight-head"><span class="insight-title">🧠 ${escapeHtml(i.title || '洞察')}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
+                    <div class="insight-desc">${escapeHtml(i.description || '')}</div>
+                    ${i.action ? `<div class="insight-action">💡 ${escapeHtml(i.action)}</div>` : ''}
+                </div>`).join('');
+            } else {
+                insightList.innerHTML = '<div class="empty-hint"><div class="empty-icon">🧠</div><p>暂无洞察</p></div>';
+            }
+        }
+
+        // 渲染建议（可执行）
+        adviceList.innerHTML = '';
+        if (this.items.length) {
+            for (const a of this.items) {
+                adviceList.appendChild(this._renderAdviceCard(a));
+            }
+        } else {
+            adviceList.innerHTML = `<div class="empty-state">
                 <p class="empty-title">本月没有可执行的建议</p>
                 <p class="empty-desc">记账样本不足，AI 暂时无法量化建议。多记几笔后再来看看</p>
             </div>`;
-        } else {
-            for (const a of this.items) {
-                list.appendChild(this._renderCard(a));
-            }
         }
+
         if (meta) {
             meta.innerHTML = this.generatedAt
                 ? `生成于 ${formatRelativeTime(this.generatedAt)}`
@@ -87,20 +135,18 @@ const AIAdvice = {
         }
     },
 
-    _renderCard(a) {
+    _renderAdviceCard(a) {
         const card = document.createElement('div');
         const priority = String(a.priority || 'medium').toLowerCase();
         card.className = `glass-card ai-advice-card priority-${escapeHtml(priority)}`;
         const title = escapeHtml(a.title || '');
         const content = escapeHtml(a.content || '');
         const impact = escapeHtml(a.impact || '');
-        const action = escapeHtml(a.action || '');
         card.innerHTML = `
             <div class="ai-advice-priority-tag">${escapeHtml(this._priorityLabel(priority))}</div>
             <h3 class="ai-advice-title">${title}</h3>
             <p class="ai-advice-content">${content}</p>
             ${impact ? `<p class="ai-advice-impact">💡 影响：${impact}</p>` : ''}
-            ${action ? `<p class="ai-advice-action">▶ 行动：${action}</p>` : ''}
         `;
         return card;
     },
@@ -115,18 +161,22 @@ const AIAdvice = {
     },
 
     _showError(msg) {
-        const list = document.getElementById('aiAdviceList');
-        if (!list) return;
-        list.innerHTML = `<div class="empty-state">
+        const adviceList = document.getElementById('aiAdviceList');
+        const insightList = document.getElementById('aiInsightList');
+        if (insightList) insightList.innerHTML = '';
+        if (!adviceList) return;
+        adviceList.innerHTML = `<div class="empty-state">
             <p class="empty-title">⚠️ ${escapeHtml(msg)}</p>
             <p class="empty-desc">点击右上角刷新重试，或稍后再试</p>
         </div>`;
     },
 
     _showProviderMissing() {
-        const list = document.getElementById('aiAdviceList');
-        if (!list) return;
-        list.innerHTML = `<div class="empty-state">
+        const adviceList = document.getElementById('aiAdviceList');
+        const insightList = document.getElementById('aiInsightList');
+        if (insightList) insightList.innerHTML = '';
+        if (!adviceList) return;
+        adviceList.innerHTML = `<div class="empty-state">
             <p class="empty-title">💡 请先配置对话服务商</p>
             <p class="empty-desc">AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）</p>
             <button class="btn btn-primary" onclick="showPage('ai-config')">前往配置</button>

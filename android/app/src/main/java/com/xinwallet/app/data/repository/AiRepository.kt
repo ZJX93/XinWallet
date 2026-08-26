@@ -97,15 +97,10 @@ class AiRepository(private val apiProvider: () -> ApiService) {
     fun newIdempotencyKey(predictionId: Int): String =
         "android-$predictionId-${UUID.randomUUID().toString().replace("-", "")}".take(64)
 
-    /* ---------------- AI 消费洞察 ---------------- */
-
-    /**
-     * 取当月（或指定月）的消费洞察。返回 3-5 条结构化建议，每条含 title/description/action/level。
-     * 月份空缺时服务端兜底当前月（按用户账本所在的服务器时区，可能与本地有 ±1 天偏差）。
-     * 调用方需要已激活一个对话服务商（GPT / Claude / 国产）；未配置会 400。
-     */
-    suspend fun insight(month: String? = null) =
-        safeApiCall { apiProvider().aiInsight(AiInsightRequest(month = month)) }
+    /* ---------------- AI 消费洞察 ----------------
+     * ⚠️ 2026-08-27 合并：insight 改由 advice() 一并返回（AiAdviceResponse.insights）。
+     *   /ai/insight 路由服务端已置 410 软弃；此处不再提供 insight() 方法，
+     *   AiInsightViewModel.kt 已删除。 */
 
     /* ---------------- AI 服务商配置 ----------------
      * GET 列表返回的 apiKey 是服务端掩码（如 sk-****abcd），不可用于回传；PUT 时若
