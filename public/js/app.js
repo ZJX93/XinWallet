@@ -451,46 +451,6 @@ function quickAddFromAI(catId, note) {
     document.getElementById('quickNote').value = note;
 }
 
-// AI 洞察 & 建议按钮（消费分析页面内）
-document.getElementById('genInsightBtn').addEventListener('click', async () => {
-    if (!(await AIRecognition.checkProvider())) {
-        AIRecognition.renderNoProvider('insightList');
-        return;
-    }
-    const list = document.getElementById('insightList');
-    list.innerHTML = '<div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div><div class="skeleton-line shimmer" style="width:84%"></div></div>';
-    const btn = document.getElementById('genInsightBtn');
-    btn.disabled = true;
-    try {
-        const res = await api('/ai/insight', 'POST', { month: cache.currentMonth });
-        if (!res || !res.insights) {
-            list.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>${res && res.message ? escapeHtml(res.message) : '获取洞察失败，请检查 AI 配置'}</p></div>`;
-            return;
-        }
-        const items = res.insights || [];
-        if (!items.length) {
-            list.innerHTML = '<div class="empty-hint"><div class="empty-icon">🧠</div><p>AI 未生成有效洞察，可尝试调整提示词或稍后重试</p></div>';
-            return;
-        }
-        const lvLabel = { warning: '需重视', info: '关注', tip: '小建议' };
-        const lvClass = { warning: 'lv-warning', info: 'lv-info', tip: 'lv-tip' };
-        list.innerHTML = items.map(i => `<div class="insight-item ${lvClass[i.level] || ''}">
-            <div class="insight-head"><span class="insight-title">🧠 ${escapeHtml(i.title || '洞察')}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
-            <div class="insight-desc">${escapeHtml(i.description || '')}</div>
-            ${i.action ? `<div class="insight-action">💡 ${escapeHtml(i.action)}</div>` : ''}
-        </div>`).join('');
-        // 持久化到 localStorage + 内存缓存，刷新不丢失
-        AnalysisManager._cachedInsights = items;
-        AnalysisManager._saveInsights(items);
-    } catch (err) {
-        list.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>${escapeHtml(err.message || '获取洞察失败')}</p></div>`;
-    } finally {
-        btn.disabled = false;
-    }
-});
-
-document.getElementById('aiGenAdviceBtn').addEventListener('click', () => AnalysisManager.genAdvice());
-
 // ==========================================
 // 交易月份筛选选项（依赖 cache.currentMonth，由 boot() 中 initCache() 之后调用）
 function initTransMonthFilter() {
