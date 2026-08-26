@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 /** 识别结果中的一条待确认交易，用户可逐条改分类/金额/日期或取消勾选 */
 data class ScanRow(
     val key: Int,
+    /** 服务端候选交易的 seq（commit 时按 seq 对齐回 prediction 快照） */
+    val seq: Int = 0,
     val selected: Boolean = true,
     val name: String = "",
     val amount: Double = 0.0,
@@ -44,6 +46,12 @@ data class AiScanUiState(
     val categories: List<Category> = emptyList(),
     val accountId: Int? = null,
     val rows: List<ScanRow> = emptyList(),
+    /**
+     * v0.2 OCR 预测快照 ID：提交时优先走 /ai/predictions/:id/commit 形成学习闭环。
+     * ⚠️ 0 = 旧版 OCR（无快照）或识别失败时没有候选——此时退回老路径 POST /transactions。
+     *    判据不是 nullable，避免 Gson 缺失字段引发的 null 路径
+     */
+    val predictionId: Int = 0,
     /** OCR 原始文字，识别不出条目时展示给用户排查 */
     val rawText: String = "",
     /** 后端解释为什么没提取到条目 */
@@ -86,13 +94,14 @@ class AiScanViewModel(
 
     fun recognize(bytes: ByteArray, fileName: String, mime: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(recognizing = true, error = null, rows = emptyList(), reason = null)
+            _state.value = _state.value.copy(recognizing = true, error = null, rows = emptyList(), predictionId = 0, reason = null)
             when (val r = aiRepo.ocr(bytes, fileName, mime)) {
                 is ApiResult.Success -> {
                     val rows = r.data.items.mapIndexed { idx, it -> it.toRow(idx) }
                     _state.value = _state.value.copy(
                         recognizing = false,
                         rows = rows,
+                        predictionId = r.data.predictionId,
                         rawText = r.data.text,
                         reason = r.data.reason?.takeIf { it.isNotBlank() && rows.isEmpty() }
                     )
@@ -108,13 +117,14 @@ class AiScanViewModel(
      */
     fun retranscribe(bytes: ByteArray, fileName: String, mime: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(retranscribing = true, error = null, rows = emptyList(), reason = null)
+            _state.value = _state.value.copy(retranscribing = true, error = null, rows = emptyList(), predictionId = 0, reason = null)
             when (val r = aiRepo.ocrRetranscribe(bytes, fileName, mime)) {
                 is ApiResult.Success -> {
                     val rows = r.data.items.mapIndexed { idx, it -> it.toRow(idx) }
                     _state.value = _state.value.copy(
                         retranscribing = false,
                         rows = rows,
+                        predictionId = r.data.predictionId,
                         rawText = r.data.text,
                         reason = r.data.reason?.takeIf { it.isNotBlank() && rows.isEmpty() },
                         toast = "已用腾讯 OCR 重新识别"
@@ -140,6 +150,8 @@ class AiScanViewModel(
         val t = rawDate.substringAfter(' ', "").takeIf { it.length == 8 } ?: "00:00:00"
         return ScanRow(
             key = index,
+            // seq = items 数组下标，与服务端 transactions[].seq 对齐（commit 时按 seq 找候选）
+            seq = index,
             name = name.ifBlank { note.orEmpty() },
             amount = kotlin.math.abs(amount),
             type = type,
@@ -176,10 +188,17 @@ class AiScanViewModel(
     }
 
     fun clearRows() {
-        _state.value = _state.value.copy(rows = emptyList(), rawText = "", reason = null, doneCount = 0)
+        _state.value = _state.value.copy(rows = emptyList(), predictionId = 0, rawText = "", reason = null, doneCount = 0)
     }
 
-    /** 批量入账：逐条调 POST /transactions，任一条失败则中断并报告已成功数量 */
+    /**
+     * 批量入账：
+     * 1) 有 v0.2 prediction 快照 → 走 /ai/predictions/:id/commit（action=corrected，
+     *    transactions=用户改后的全部候选），事务内原子落账 + 反馈学习闭环。
+     * 2) 没有 prediction（predictionId=0，旧版 OCR 或服务端未来回退）→ 退回老路径
+     *    逐条 POST /transactions，保证不阻塞用户。
+     * 任一提交失败立刻中断并报告已成功数量。
+     */
     fun submitAll() {
         val s = _state.value
         val accountId = s.accountId
@@ -200,10 +219,50 @@ class AiScanViewModel(
 
         viewModelScope.launch {
             _state.value = _state.value.copy(submitting = true, error = null, doneCount = 0)
+
+            if (s.predictionId > 0) {
+                // ── v0.2 commit 闭环 ──────────────────────────────────────
+                val corrected = picked.map { row ->
+                    // 客户端不做格式拼接：note 直接透传；merchant 单独透传（服务端拼「类目名-merchant」）
+                    val note = row.note?.takeIf { it.isNotBlank() }?.take(100)
+                    val merchant = row.merchant?.takeIf { it.isNotBlank() }?.take(50)
+                    com.xinwallet.app.data.model.AiCandidateTxn(
+                        seq = row.seq,
+                        type = row.type,
+                        amount = kotlin.math.abs(row.amount),
+                        merchant = merchant,
+                        categoryId = row.categoryId,
+                        categoryName = row.categoryName,
+                        accountId = accountId,
+                        date = "${row.date} ${row.time}",
+                        note = note
+                    )
+                }
+                val idemKey = aiRepo.newIdempotencyKey(s.predictionId)
+                when (val r = aiRepo.commitPrediction(s.predictionId, corrected, idemKey)) {
+                    is ApiResult.Success -> {
+                        val committed = r.data.transactions.size
+                        _state.value = _state.value.copy(
+                            submitting = false,
+                            toast = "已入账 $committed 笔",
+                            finished = true
+                        )
+                    }
+                    is ApiResult.Error -> {
+                        // commit 失败不静默回退——保留完整错误给用户，
+                        // 避免「看起来没事但数据没写」的事故（铁律 1：验证系统行为不验证假设）。
+                        _state.value = _state.value.copy(
+                            submitting = false,
+                            error = "提交失败：${r.message}（请重新识别后重试）"
+                        )
+                    }
+                }
+                return@launch
+            }
+
+            // ── 老路径兜底（predictionId=0：旧版 OCR / 识别失败）────
             var ok = 0
             for (row in picked) {
-                // 客户端不做格式拼接：note 直接透传（AI 在 prompt 里被要求按「场景-对象」格式生成完整 note）；
-                // row.merchant 单独传给服务端作冗余字段（用于后续分析/兜底）。
                 val note = row.note?.takeIf { it.isNotBlank() }?.take(100)
                 val merchant = row.merchant?.takeIf { it.isNotBlank() }?.take(50)
                 val req = CreateTransactionRequest(

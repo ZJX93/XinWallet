@@ -13,7 +13,7 @@ import { TopBar, LoadingBox, CategoryIcon, EmptyState, AppBackground } from '../
 import { TransactionItem, Category } from '../common/models';
 import { toast, toastLong } from '../common/ui';
 
-interface ScanRow { picked: boolean; id: number; merchant: string; amount: number; type: string; categoryId: number; date: string; note: string; }
+interface ScanRow { picked: boolean; id: number; seq: number; merchant: string; amount: number; type: string; categoryId: number; date: string; note: string; categoryName?: string; }
 
 @Entry
 @Component
@@ -26,6 +26,11 @@ struct AiScan {
   @State loading: boolean = false;
   @State picking: boolean = false;
   @State done: number = 0;
+  /**
+   * v0.2 OCR 预测快照 ID：提交时优先走 /ai/predictions/:id/commit 形成学习闭环。
+   * 0 = 老路径回退（识别失败 / 旧版 OCR / 老服务端）。
+   */
+  @State predictionId: number = 0;
   private lastB64: string = '';
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -61,13 +66,16 @@ struct AiScan {
         const r = await Api.ocr(b64);
         const rd: ESObject = r.data as ESObject;
         const items: ESObject[] = ((rd.transactions as ESObject[]) || (rd.items as ESObject[]) || []);
+        this.predictionId = (rd.prediction_id as number) || 0;
         this.rows = items.map((t: ESObject, i: number): ScanRow => ({
           picked: true,
           id: i,
-          merchant: t.note || t.merchant || t.category?.name || '消费',
+          seq: i,
+          merchant: t.merchant || t.note || t.category?.name || '消费',
           amount: t.amount || 0,
           type: t.type || 'expense',
           categoryId: this.categories.find(c => c.type === (t.type || 'expense'))?.id || (this.categories[0]?.id || 0),
+          categoryName: (t.category_name as string) || (t.category?.name as string) || '',
           date: (t.date || '').slice(0, 10) || this.today(),
           note: t.note || ''
         }));
@@ -97,16 +105,54 @@ struct AiScan {
   async confirm(): Promise<void> {
     const picked = this.rows.filter(r => r.picked);
     this.done = 0;
-    // 批量入账允许部分失败，但**必须把失败数告诉用户** ——
-    // 原先逐条吞错误后无条件 back()，10 条只成 3 条用户也毫不知情
+    if (picked.length === 0) {
+      toastLong('请至少勾选一条记录');
+      return;
+    }
+
+    // ── v0.2 commit 闭环（与安卓 AiScanViewModel.submitAll 同根因同改法）──
+    if (this.predictionId > 0) {
+      try {
+        const accountId = (this.accounts[0] as ESObject)?.id as number || 0;
+        const corrected: Api.AiCandidateTxn[] = picked.map(r => ({
+          seq: r.seq,
+          type: r.type,
+          amount: r.amount,
+          merchant: r.merchant || undefined,
+          category_id: r.categoryId,
+          category_name: r.categoryName || '',
+          account_id: accountId,
+          date: r.date,
+          note: r.note || undefined
+        }));
+        const idemKey = 'harmony-' + this.predictionId + '-' + Math.random().toString(36).slice(2, 18);
+        const r = await Api.aiCommitPrediction(this.predictionId, {
+          action: 'corrected',
+          transactions: corrected,
+          idempotency_key: idemKey
+        });
+        if (r.success) {
+          const txns = (r.data as Api.AiCommitResponse)?.transactions || [];
+          toast('已入账 ' + txns.length + ' 笔');
+          router.back();
+          return;
+        }
+        // commit 失败不静默回退——保留完整错误给用户（铁律 1：验证系统行为不验证假设）
+        toastLong('提交失败：' + ((r as ESObject).message as string || '请重新识别后重试'));
+        return;
+      } catch (e) {
+        toastLong('提交失败：' + ((e as ApiError).message || '请检查网络'));
+        return;
+      }
+    }
+
+    // ── 老路径兜底（predictionId=0：旧版 OCR / 识别失败）────
     let failed = 0;
     let lastErr = '';
     for (const r of picked) {
       try {
-        // 客户端不做格式拼接：note 直接透传（AI 在 prompt 里被要求按「场景-对象」格式生成完整 note）；
-        // merchant 单独传给服务端作冗余字段（用于后续分析/兜底）
         await Api.createTransaction({
-          account_id: this.accounts[0]?.id || 0,
+          account_id: (this.accounts[0] as ESObject)?.id || 0,
           category_id: r.categoryId,
           type: r.type,
           amount: r.amount,
@@ -124,7 +170,6 @@ struct AiScan {
       toast('已入账 ' + this.done + ' 笔');
       router.back();
     } else if (this.done > 0) {
-      // 部分成功：停在当前页，让用户能看到还剩哪些没成
       toastLong('已入账 ' + this.done + ' 笔，' + failed + ' 笔失败：' + lastErr);
     } else {
       toastLong('入账失败：' + lastErr);
@@ -142,13 +187,16 @@ struct AiScan {
       const r = await Api.aiOcrRetranscribe(this.lastB64);
       const rd: ESObject = (r.data as ESObject) || {};
       const items: ESObject[] = ((rd['transactions'] as ESObject[]) || (rd['items'] as ESObject[]) || []);
+      this.predictionId = (rd['prediction_id'] as number) || 0;
       this.rows = items.map((t: ESObject, i: number): ScanRow => ({
         picked: true,
         id: i,
-        merchant: (t['note'] as string) || (t['merchant'] as string) || (t['category']?.['name'] as string) || '消费',
+        seq: i,
+        merchant: (t['merchant'] as string) || (t['note'] as string) || (t['category']?.['name'] as string) || '消费',
         amount: (t['amount'] as number) || 0,
         type: (t['type'] as string) || 'expense',
         categoryId: this.categories.find((c: Category) => c.type === ((t['type'] as string) || 'expense'))?.id || (this.categories[0]?.id || 0),
+        categoryName: ((t['category_name'] as string) || (t['category']?.['name'] as string) || ''),
         date: ((t['date'] as string) || '').slice(0, 10) || this.today(),
         note: (t['note'] as string) || ''
       }));
