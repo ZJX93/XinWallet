@@ -3,7 +3,7 @@
    ============================================
    设计目标：
    - index.html 内联主要常用页面（dashboard, accounts, transfers, transactions）
-   - 重量级页面（investments, ai-recognition, reports, analysis 等）改为按需 fetch
+   - 重量级页面（investments, ai-recognition, reports, ai-advice 等）改为按需 fetch
    - 减少首屏 DOM 节点，提升首屏加载速度
 
    使用方法：

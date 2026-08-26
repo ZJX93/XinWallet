@@ -1619,146 +1619,8 @@
 .data-table tr:hover td { background: var(--surface-hover); }
 
 /* --------------------------------------------------------------------------
-   11. ANALYSIS
+   11. AI 洞察/建议条目（insights + advice，ai-advice.html 渲染）
    -------------------------------------------------------------------------- */
-#analysisStructure { margin: var(--space-3) 0; }
-#anomalyList, #insightList { margin: var(--space-3) 0; }
-
-/* 异常检测：两列网格 */
-#anomalyList {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);
-}
-
-.anomaly-item {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--expense-soft);
-  margin-bottom: var(--space-2);
-}
-
-.anomaly-icon { font-size: 18px; }
-.anomaly-info { flex: 1; font-size: var(--text-body-sm); }
-
-.insight-item {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--surface-hover);
-  margin-bottom: var(--space-2);
-  font-size: var(--text-body-sm); line-height: 1.6;
-}
-.analysis-ai-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
-  margin-top: var(--space-4);
-}
-
-.analysis-overview {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-.analysis-overview-card {
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-lg);
-  background: var(--surface-card);
-  text-align: center;
-  transition: transform var(--transition-fast);
-}
-
-.analysis-overview-card:hover { transform: translateY(-2px); }
-
-.analysis-overview-card .overview-icon {
-  font-size: 28px; margin-bottom: var(--space-1);
-}
-
-.analysis-overview-card .overview-value {
-  font-size: 26px; font-weight: var(--fw-bold);
-  margin-bottom: 2px;
-}
-
-.analysis-overview-card .overview-label {
-  font-size: var(--text-caption);
-  color: var(--text-tertiary);
-}
-
-.analysis-overview-card.income .overview-value { color: var(--income); }
-.analysis-overview-card.expense .overview-value { color: var(--expense); }
-.analysis-overview-card.balance .overview-value { color: var(--accent-500); }
-
-.analysis-grid-2col {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-/* 预算总览条 */
-.analysis-budget-bar {
-  grid-column: 1 / -1;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--surface-hover);
-  display: flex; align-items: center; gap: var(--space-3);
-  font-size: var(--text-body-sm);
-}
-
-.analysis-budget-bar .budget-label {
-  white-space: nowrap; color: var(--text-secondary);
-}
-
-.analysis-budget-bar .budget-progress-wrap {
-  flex: 1; height: 8px; border-radius: 4px;
-  background: var(--surface-default); overflow: hidden;
-}
-
-.analysis-budget-bar .budget-progress-fill {
-  height: 100%; border-radius: 4px; transition: width 0.4s ease;
-}
-
-.analysis-budget-bar .budget-text {
-  white-space: nowrap; font-weight: var(--fw-semibold);
-  color: var(--text-primary);
-}
-
-/* 消费结构条 */
-.analysis-structure-item {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-1) 0;
-}
-
-.analysis-structure-cat {
-  min-width: 80px; font-size: var(--text-body-sm);
-  color: var(--text-secondary); white-space: nowrap;
-}
-
-.analysis-structure-bar {
-  flex: 1; height: 8px; border-radius: 4px;
-  background: var(--surface-default); overflow: hidden;
-}
-
-.analysis-structure-fill {
-  height: 100%; border-radius: 4px; transition: width 0.5s ease;
-}
-
-.analysis-structure-percent {
-  min-width: 40px; text-align: right;
-  font-size: var(--text-caption); font-weight: var(--fw-semibold);
-}
-
-/* 异常检测条目 */
-.anomaly-item {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--expense-soft);
-  margin-bottom: var(--space-1);
-  font-size: var(--text-body-sm);
-}
-
-.anomaly-item .anomaly-icon { font-size: 16px; flex-shrink: 0; }
-.anomaly-item .anomaly-info { flex: 1; min-width: 0; }
-.anomaly-item .anomaly-title { font-weight: var(--fw-medium); color: var(--text-primary); }
-.anomaly-item .anomaly-desc { color: var(--text-tertiary); font-size: var(--text-caption); }
-
-/* 洞察/建议条目：2列网格，紧凑卡片 */
 .insight-item, .ai-advice-item {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
@@ -1806,10 +1668,8 @@
 .ai-advice-item.pr-high { border-left: 3px solid var(--expense); }
 .insight-item.lv-warning { border-left: 3px solid var(--error-500); }
 
-/* 洞察/建议列表内容区：限制高度滚动 */
+/* 洞察/建议列表内容区：自适应高度（避免短条目被滚动裁掉） */
 #insightList, #aiAdviceList {
-  /* 自适应高度：AI 建议 / 洞察列表每条都很短，硬编码 360px 会把下方 content/impact 切到滚动区外。
-     之前 max-height:360px + overflow-y:auto 让 5 张卡的内容看不到，现改为自然展开。 */
   margin: var(--space-3) 0;
   padding-right: 2px;
 }
@@ -1818,12 +1678,6 @@
    12. RESPONSIVE
    -------------------------------------------------------------------------- */
 @media (max-width: 720px) {
-  .analysis-overview { grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
-  .analysis-overview-card { padding: var(--space-3); }
-  .analysis-overview-card .overview-value { font-size: 20px; }
-  .analysis-grid-2col { grid-template-columns: 1fr; }
-  .analysis-ai-grid { grid-template-columns: 1fr; }
-  #anomalyList { grid-template-columns: 1fr; }
   .account-list { grid-template-columns: 1fr; }
   .inv-summary-row { grid-template-columns: repeat(2, 1fr); }
   #savingsGoalList,

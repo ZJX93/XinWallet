@@ -6,7 +6,7 @@
 // 拆分日期：2026-07-22
 // 拆分原因：将单体 app.js 按职责拆分为 ES Module，便于按需加载与维护
 // 依赖（运行时全局）：api、escapeHtml、fmt、fmtSigned、switchPage、
-//                    ChartManager.renderDash、AnalysisManager、
+//                    ChartManager.renderDash、AIAdvice 缓存读写、
 //                    showEmpty、DOM 元素（dashKpiBar、dashDetailModal 等）
 // ============================================================
 

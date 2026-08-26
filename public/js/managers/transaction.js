@@ -33,7 +33,7 @@ const TransactionManager = {
     //      这正是 server/routes/transactions.js:143 那段注释警告的坑。
     //   ② 服务端 GET /transactions 返回**裸数组**、不带 total，
     //      要做服务端分页得先改接口契约（加 COUNT 查询 + 包一层 {items,total}），
-    //      会波及 dashboard / report / analysis 等所有调用方。
+    //      会波及 dashboard / report / ai-advice 等所有调用方。
     //   ③ 现有 limit=200 一次拉全，翻页时**不再打接口**，纯内存切片 → 翻页零延迟。
     // ⇒ 超过 200 条的账本需要服务端分页时，必须连同 ①② 一起改，别只改这里。
     _page: 1,

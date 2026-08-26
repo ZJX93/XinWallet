@@ -247,7 +247,6 @@ const PAGE_META = {
     'ai-learning': { title: 'AI 学习统计', subtitle: '越用越聪明' },
     'ai-evaluation': { title: 'AI 评测', subtitle: '离线跑批验证' },
     reports: { title: '报表中心', subtitle: '专业报表，深度回顾' },
-    analysis: { title: '消费分析', subtitle: '洞察消费模式' },
     tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
     'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
     'ai-config': { title: 'AI配置', subtitle: 'AI 服务商配置' }

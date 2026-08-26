@@ -541,9 +541,10 @@ const spec = {
     },
     '/api/ai/insight': {
       post: {
-        tags: ['AI'], summary: 'AI 消费洞察',
+        tags: ['AI'], summary: 'AI 消费洞察（已废弃）',
+        description: '已合并进 /ai/advice（v0.2.1，2026-08-27）。所有调用都返回 410 Gone + replacement 提示。',
         requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { month: { type: 'string', example: '2026-07' } } } } } },
-        responses: { 200: { description: '消费分析结果' } },
+        responses: { 410: { description: '已废弃，请改用 POST /ai/advice' } },
       },
     },
 
