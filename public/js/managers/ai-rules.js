@@ -303,8 +303,8 @@ const AIRules = {
             </div>
             <div class="ai-rules-meta">
                 <span>类型 ${escapeHtml(r.rule_type || 'merchant_category')}</span>
-                <span>Score ${Number(r.score || 0).toFixed(1)}</span>
-                <span>Accuracy ${Math.round(Number(r.accuracy || 0) * 100)}%</span>
+                <span>Score ${Number(r.evidence_score != null ? r.evidence_score : (r.score || 0)).toFixed(1)}</span>
+                <span>Accuracy ${Math.round(Number(r.accuracy_rate != null ? r.accuracy_rate : (r.accuracy || 0)) * 100)}%</span>
                 <span>样本 ${Number(r.sample_count || 0)}</span>
             </div>
             ${r.target_category_id ? `<div class="ai-rules-target">目标类目 #${r.target_category_id}</div>` : ''}

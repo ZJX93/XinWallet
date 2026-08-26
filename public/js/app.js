@@ -554,6 +554,8 @@ async function boot() {
     safeInit('AISmartEntry', () => AISmartEntry.init());
     safeInit('AIAdvice', () => AIAdvice.init());
     safeInit('AIRules', () => AIRules.init());
+    safeInit('AILearning', () => AILearning.init());
+    safeInit('AIEvaluation', () => AIEvaluation.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());

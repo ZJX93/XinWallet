@@ -46,7 +46,7 @@ struct RuleList {
     this.loading = false;
   }
 
-  private get filtered(): Api.AiRule[] {
+  private filtered(): Api.AiRule[] {
     if (this.filter === 'all') return this.rules;
     return this.rules.filter((it: Api.AiRule) => it.status === this.filter);
   }
@@ -131,11 +131,11 @@ struct RuleList {
             }.width('100%').padding({ left: 16, right: 16, top: 4, bottom: 8 })
           }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
 
-          if (this.filtered.length === 0) {
+          if (this.filtered().length === 0) {
             EmptyState({ icon: '🔍', text: `「${this.filter}」状态下没有规则，切换其他过滤查看` })
           } else {
             List({ space: 10 }) {
-              ForEach(this.filtered, (rule: Api.AiRule) => {
+              ForEach(this.filtered(), (rule: Api.AiRule) => {
                 ListItem() { this.RuleCard(rule) }
               }, (rule: Api.AiRule) => `rule_${rule.id}_${rule.status}`)
             }.width('100%').layoutWeight(1)

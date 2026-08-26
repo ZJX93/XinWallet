@@ -81,16 +81,22 @@ const AIEvaluation = {
 
     _metricGrid(metrics) {
         if (!metrics || typeof metrics !== 'object') return '<p class="empty-desc">无指标</p>';
+        // 服务端 runner.js:148-156 直接暴露每个维度的准确率（0~1），不需要前端再做 total/hit 计算
         const pairs = [
-            ['count', '笔数识别'], ['amount', '金额'], ['type', '类型'],
-            ['category', '类目'], ['date', '日期'], ['verdict', '裁决'],
+            ['transaction_count_accuracy', '笔数识别'],
+            ['amount_accuracy', '金额'],
+            ['type_accuracy', '类型'],
+            ['category_accuracy', '类目'],
+            ['date_accuracy', '日期'],
+            ['verdict_accuracy', '裁决'],
         ];
         const cards = pairs.map(([k, label]) => {
-            const total = metrics[k + '_total'], hit = metrics[k + '_hit'];
+            const acc = Number(metrics[k]);
+            const pct = isFinite(acc) ? (acc * 100).toFixed(1) + '%' : '—';
             return `<div class="ai-eval-metric">
                 <div class="ai-eval-metric-label">${escapeHtml(label)}</div>
-                <div class="ai-eval-metric-acc">${this._pctOf(hit, total)}</div>
-                <div class="ai-eval-metric-sub">${this._num(hit)} / ${this._num(total)}</div>
+                <div class="ai-eval-metric-acc">${pct}</div>
+                <div class="ai-eval-metric-sub">case_pass_rate: ${isFinite(Number(metrics.case_pass_rate)) ? (Number(metrics.case_pass_rate) * 100).toFixed(1) + '%' : '—'}</div>
             </div>`;
         });
         return `<div class="ai-eval-metric-grid">${cards.join('')}</div>`;
