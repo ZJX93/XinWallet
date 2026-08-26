@@ -1808,7 +1808,8 @@
 
 /* 洞察/建议列表内容区：限制高度滚动 */
 #insightList, #aiAdviceList {
-  max-height: 360px; overflow-y: auto;
+  /* 自适应高度：AI 建议 / 洞察列表每条都很短，硬编码 360px 会把下方 content/impact 切到滚动区外。
+     之前 max-height:360px + overflow-y:auto 让 5 张卡的内容看不到，现改为自然展开。 */
   margin: var(--space-3) 0;
   padding-right: 2px;
 }
