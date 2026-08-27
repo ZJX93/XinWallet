@@ -109,8 +109,9 @@ test('list_accounts 工具实现：SQL 包含 user_id / book_id / status active 
     const m = src.match(/if \(name === 'list_accounts'\)\s*\{([\s\S]*?)\n\s\s\s\s\}/);
     assert.ok(m, 'list_accounts 实现分支必须存在');
     const body = m[1];
-    assert.match(body, /user_id\s*=\s*\$1/);
-    assert.match(body, /book_id\s*=\s*\$2/);
+    // 源码用 ? 占位符，由 db.query() 运行时转换为 $N；测试断言源码形态
+    assert.match(body, /user_id\s*=\s*\?/);
+    assert.match(body, /book_id\s*=\s*\?/);
     assert.match(body, /status\s*=\s*'active'/);
     assert.match(body, /ORDER BY/);
     assert.match(body, /LIMIT/);
@@ -120,9 +121,10 @@ test('list_categories 工具实现：支持模糊匹配 + 类型过滤 + 全局�
     const m = src.match(/if \(name === 'list_categories'\)\s*\{([\s\S]*?)\n\s\s\s\s\}/);
     assert.ok(m, 'list_categories 实现分支必须存在');
     const body = m[1];
+    // 源码用 ? 占位符（运行时转换），断言源码形态
     assert.match(body, /user_id\s+IS\s+NULL/);
-    assert.match(body, /book_id\s+IS\s+NULL\s+OR\s+book_id\s+=\s*\$2/);
-    assert.match(body, /name LIKE \$3/);
+    assert.match(body, /book_id\s+IS\s+NULL\s+OR\s+book_id\s*=\s*\?/);
+    assert.match(body, /name\s+LIKE\s+\?/);
     assert.match(body, /type_filter/);
 });
 
