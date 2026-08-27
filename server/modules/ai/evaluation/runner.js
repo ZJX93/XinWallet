@@ -1,7 +1,7 @@
 /* ============================================
-   AI v0.2 · §12 Evaluation Runner
+   Evaluation Runner
    ------------------------------------------------
-   方案 §12 的 11 项核心指标：
+   11 项核心指标：
      transaction_count_accuracy / amount_accuracy / type_accuracy
      category_accuracy / date_accuracy / confirmation_rate / correction_rate
      rule_hit_rate / llm_call_rate / fallback_rate / cost_per_prediction

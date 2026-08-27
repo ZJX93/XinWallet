@@ -1,7 +1,7 @@
 /* ============================================
-   AI v0.2 · §10 Model Router + 熔断
+   Model Router + 熔断
    ------------------------------------------------
-   路由表（方案 §10 原文）：
+   路由表：
      simple  → local 或 cheap model
      medium  → cheap model
      complex → strong model

@@ -1,7 +1,6 @@
 /* ============================================
-   AI v0.2 · Memory Retrieval —— 五层记忆汇总
+   Memory Retrieval —— 五层记忆汇总
    ------------------------------------------------
-   方案 §3 结尾原文：
      「Memory Retrieval 不直接替代业务判断，而是输出 evidence candidates，
        由 Decision Engine 统一裁决。」
 

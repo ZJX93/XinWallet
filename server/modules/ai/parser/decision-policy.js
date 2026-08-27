@@ -1,5 +1,5 @@
 /* ============================================
-   AI v0.2 · §9 Decision Policy
+   Decision Policy
    ------------------------------------------------
    把「字段级置信度」翻译成三态裁决 ready / needs_confirmation / invalid。
 

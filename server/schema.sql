@@ -649,7 +649,7 @@ CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions
 CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
 
 -- ============================================
--- AI 智能记账 v0.2 · 预测闭环（Phase 1）
+-- 预测闭环
 -- 核心原则：AI 输出【永不直接写账本】，必经 prediction 快照 → 用户确认 → 原子 commit。
 -- status  = 生命周期（pending/committed/discarded）
 -- verdict = 校验裁决（ready/needs_confirmation/invalid）
@@ -671,14 +671,13 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
   candidate_txns JSONB NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
   validation JSONB NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
   decision_trace JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 证据链（仅属主可见）
-  -- 方案 §6 要求的另外三个快照维度（Phase 3/4 落地后有内容；纯本地链路时为 {} / null）
   memory_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Memory Retrieval 当时给出的 evidence candidates
   model_request JSONB DEFAULT NULL,                    -- 升级到模型时的请求（脱敏后）
   model_response JSONB DEFAULT NULL,                   -- 模型原始响应
   route VARCHAR(20) NOT NULL DEFAULT 'local'
     CHECK (route IN ('local','cheap_model','strong_model','fallback')),
   final_txns JSONB DEFAULT NULL,                       -- commit 后的最终交易集
-  final_diff JSONB DEFAULT NULL,                       -- candidate vs final 差异（供 Phase 3 学习）
+  final_diff JSONB DEFAULT NULL,                       -- candidate vs final 差异（供学习系统使用）
   idempotency_key VARCHAR(64) DEFAULT NULL,            -- commit 幂等键
   committed_at TIMESTAMP DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -707,7 +706,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_ptxn_pred ON ai_prediction_transactions (predi
 CREATE INDEX IF NOT EXISTS idx_ai_ptxn_txn  ON ai_prediction_transactions (transaction_id);
 
 -- 证据事件（学习信号来源）
--- ⚠️ event_type 的 CHECK 白名单在 Phase 3 扩充了 consistent_reuse / negative_signal，
+-- ⚠️ event_type 的 CHECK 白名单已扩充，
 --    已部署库的旧约束由 db.js:healAiConstraints() 幂等重建（否则 INSERT 撞 23514）。
 CREATE TABLE IF NOT EXISTS ai_feedback_events (
   id SERIAL PRIMARY KEY,
@@ -730,8 +729,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_fb_type ON ai_feedback_events (event_type, cre
 CREATE INDEX IF NOT EXISTS idx_ai_fb_rule ON ai_feedback_events (rule_id);
 
 -- ============================================
--- AI 智能记账 v0.2 · 记忆与规则演化（Phase 3）
--- 设计要点（对齐方案 §4）：
+-- 记忆与规则演化
+-- 设计要点：
 --   学习不看 sample_count，而是累计【可审计证据】evidence_score。
 --   规则状态机：candidate → verified → trusted → degraded → disabled
 --   时间衰减 decay_score 防止旧习惯永久统治新行为。
@@ -827,7 +826,7 @@ CREATE TRIGGER trg_ai_mem_updated BEFORE UPDATE ON ai_memory_items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- AI 智能记账 v0.2 · 评测系统（Phase 5）
+-- 评测系统
 -- 「任何版本发布前都必须比较基线」——run 存一次跑批的 11 项指标，case 存逐条明细。
 -- ============================================
 CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
@@ -860,7 +859,7 @@ CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
 CREATE INDEX IF NOT EXISTS idx_ai_eval_case_run ON ai_evaluation_cases (run_id);
 CREATE INDEX IF NOT EXISTS idx_ai_eval_case_pass ON ai_evaluation_cases (run_id, passed);
 
--- Provider 用量与成本（Phase 4：cost_per_prediction 的数据来源）
+-- Provider 用量与成本
 CREATE TABLE IF NOT EXISTS ai_provider_usage (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
@@ -880,3 +879,116 @@ CREATE TABLE IF NOT EXISTS ai_provider_usage (
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_provider_usage (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_route   ON ai_provider_usage (route, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_pred    ON ai_provider_usage (prediction_id);
+
+-- ============================================
+-- AI 模块扩展表
+-- 新增：ai_conversations / ai_messages / ai_user_profiles / ai_insights
+-- ============================================
+
+-- 对话会话（Chat 基础）
+CREATE TABLE IF NOT EXISTS ai_conversations (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  title VARCHAR(200) NOT NULL DEFAULT '新对话',
+  status VARCHAR(12) NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','archived')),
+  model_used VARCHAR(80) DEFAULT NULL,
+  message_count INT NOT NULL DEFAULT 0,
+  last_message_at TIMESTAMP DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_conv_user      ON ai_conversations (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_conv_user_stat ON ai_conversations (user_id, status, last_message_at DESC);
+DROP TRIGGER IF EXISTS trg_ai_conv_updated ON ai_conversations;
+CREATE TRIGGER trg_ai_conv_updated BEFORE UPDATE ON ai_conversations
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 对话消息（Chat 历史）
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id SERIAL PRIMARY KEY,
+  conversation_id INT NOT NULL,
+  user_id INT NOT NULL DEFAULT 1,
+  role VARCHAR(12) NOT NULL CHECK (role IN ('user','assistant','system','tool')),
+  content TEXT NOT NULL,
+  model_used VARCHAR(80) DEFAULT NULL,
+  prompt_tokens INT NOT NULL DEFAULT 0,
+  completion_tokens INT NOT NULL DEFAULT 0,
+  latency_ms INT NOT NULL DEFAULT 0,
+  -- attachments: [{type:'image'|'file', url/content}]
+  attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tool_calls JSONB DEFAULT NULL,           -- 模型 tool_call 调用记录
+  tool_results JSONB DEFAULT NULL,         -- tool 输出结果
+  error VARCHAR(200) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_msg_conv   ON ai_messages (conversation_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_ai_msg_user   ON ai_messages (user_id, created_at DESC);
+
+-- 用户 AI Profile（偏好/交互风格/通知设置）
+CREATE TABLE IF NOT EXISTS ai_user_profiles (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE,
+  book_id INT DEFAULT NULL,
+  -- preferences: {language, currency, timezone, density, ...}
+  preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+  -- interaction_style: concise / detailed / expert
+  interaction_style VARCHAR(16) NOT NULL DEFAULT 'detailed'
+    CHECK (interaction_style IN ('concise','detailed','expert')),
+  -- notification: 洞察推送偏好
+  notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  insight_frequency VARCHAR(12) NOT NULL DEFAULT 'daily'
+    CHECK (insight_frequency IN ('realtime','daily','weekly','never')),
+  -- insight_rank_threshold: importance >= 此值才推送
+  insight_rank_threshold INT NOT NULL DEFAULT 3,
+  -- 统计摘要（供 Radar 使用，定期刷新）
+  stats_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_insight_at TIMESTAMP DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+DROP TRIGGER IF EXISTS trg_ai_profile_updated ON ai_user_profiles;
+CREATE TRIGGER trg_ai_profile_updated BEFORE UPDATE ON ai_user_profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 主动洞察记录（对齐方案 §5.5 Insight 系统）
+-- status: pending→generated→read→dismissed→archived
+CREATE TABLE IF NOT EXISTS ai_insights (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,
+  insight_type VARCHAR(32) NOT NULL
+    CHECK (insight_type IN (
+      'spending_spike','spending_drop','budget_near','budget_exceeded',
+      'income_increase','income_decrease','balance_anomaly',
+      'merchant_new','category_shift','savings_opportunity',
+      'debt_alert','investment_alert','habit_change','trend','other'
+    )),
+  importance INT NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  title VARCHAR(200) NOT NULL,
+  content TEXT NOT NULL,                          -- 洞察正文（可显示给用户）
+  -- evidence: {transactions:[], stats:{before:{}, after:{}}, ...}
+  evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+  -- 推荐动作（可选）
+  action_suggestion VARCHAR(200) DEFAULT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'generated'
+    CHECK (status IN ('pending','generated','read','dismissed','archived')),
+  read_at TIMESTAMP DEFAULT NULL,
+  dismissed_at TIMESTAMP DEFAULT NULL,
+  -- cooldown 防止同一类型洞察短期内重复推送
+  cooldown_until TIMESTAMP DEFAULT NULL,
+  -- 去重键：同一 user+book+insight_type+dedupe_key 在 cooldown_until 内只生成一次
+  dedupe_key VARCHAR(120) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_insight_user     ON ai_insights (user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_insight_type     ON ai_insights (insight_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_insight_importance ON ai_insights (importance, created_at DESC);
+-- cooldown 去重索引（cooldown_until IS NOT NULL 时才激活）
+CREATE INDEX IF NOT EXISTS idx_ai_insight_dedupe
+  ON ai_insights (user_id, insight_type, dedupe_key)
+  WHERE dedupe_key IS NOT NULL AND cooldown_until IS NOT NULL;
+DROP TRIGGER IF EXISTS trg_ai_insight_updated ON ai_insights;
+CREATE TRIGGER trg_ai_insight_updated BEFORE UPDATE ON ai_insights
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

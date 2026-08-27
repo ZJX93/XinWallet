@@ -1,7 +1,7 @@
 /* ============================================
-   AI v0.2 · Context Builder
+   Context Builder
    ------------------------------------------------
-   方案 §1 架构图里 Deterministic Extractor 之后紧跟 Context Builder，
+   Deterministic Extractor 之后紧跟 Context Builder，
    职责是把「解析所需的一切外部事实」组装成一个不可变对象：
      - 类目表（唯一真相，类目 id 绝不能臆造）
      - Working Memory（本次请求现场）

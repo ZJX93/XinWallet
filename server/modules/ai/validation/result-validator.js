@@ -1,7 +1,7 @@
 /* ============================================
-   AI v0.2 · 结果验证器（Result Validator）
+   结果验证器（Result Validator）
    ------------------------------------------------
-   落实 v0.2 §5：【禁止只看整体 confidence】。
+   落实【禁止只看整体 confidence】。
    即便 overall=0.85，只要 category=0.55 也必须 needs_confirmation。
    overall 仅作展示用，裁决完全由「最低字段是否达标」决定。
 
