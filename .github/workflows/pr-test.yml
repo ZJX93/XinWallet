@@ -54,10 +54,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          # pg_isready -d xinwallet 检查目标数据库是否已创建（POSTGRES_DB 环境变量会触发 Docker 镜像自动建库）
+          # Docker 容器报告就绪（TCP 端口开放）≠ xinwallet 数据库已创建完毕，此处多等一步更稳妥
+          for i in $(seq 1 30); do
+            if PGPASSWORD=postgres pg_isready -h localhost -p 5432 -U postgres -d xinwallet -q 2>/dev/null; then
+              echo "PostgreSQL and xinwallet database are ready"
+              exit 0
+            fi
+            echo "Waiting for PostgreSQL xinwallet database... ($i/30)"
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+
       - name: Initialize database schema
         # schema.sql 内含系统分类种子（is_system），一次性建表 + 种子
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d xinwallet -v ON_ERROR_STOP=1 -f server/schema.sql
+          for i in $(seq 1 5); do
+            echo "Attempt $i/5: initializing database schema..."
+            if PGPASSWORD=postgres psql -h localhost -U postgres -d xinwallet -v ON_ERROR_STOP=1 -f server/schema.sql; then
+              echo "Database schema initialized successfully."
+              exit 0
+            fi
+            echo "Attempt $i/5 failed, retrying in 5s..."
+            sleep 5
+          done
+          echo "Database schema initialization failed after 5 attempts."
+          exit 1
 
       - name: Run test suite
         run: npm test
