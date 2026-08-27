@@ -211,7 +211,7 @@ async function transactionsSearch({
 
     const where = [
       `a.user_id = COALESCE(?, a.user_id)`,
-      keyword ? `t.merchant ILIKE ? OR t.note ILIKE ?` : null,
+      keyword ? `t.merchant LIKE ? OR t.note LIKE ?` : null,
       category_id ? `t.category_id = ?` : null,
       account_id ? `t.account_id = ?` : null,
       type ? `t.type = ?` : null,

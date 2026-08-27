@@ -288,11 +288,19 @@ async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
                 console.error(`❌ 数据库初始化失败 (尝试 ${attempt}/${maxAttempts}): ${err.message}`);
                 if (err.code) console.error(`   错误代码: ${err.code}`);
                 // 输出排查建议
+                const isPg = db.DB_DIALECT === 'pg';
                 console.error('   排查方向:');
-                console.error('   1) 确认 PostgreSQL 已启动并监听 0.0.0.0:5432 (非仅 127.0.0.1)');
-                console.error('   2) 确认用户有建表/建库权限 (CREATEDB, CREATE TABLE, ALTER, INDEX)');
-                console.error('   3) 确认防火墙放行 5432 端口');
-                console.error('   4) 在终端执行: psql -U postgres -h <HOST> 验证能登录');
+                if (isPg) {
+                    console.error('   1) 确认 PostgreSQL 已启动并监听 0.0.0.0:5432 (非仅 127.0.0.1)');
+                    console.error('   2) 确认用户有建表/建库权限 (CREATEDB, CREATE TABLE, ALTER, INDEX)');
+                    console.error('   3) 确认防火墙放行 5432 端口');
+                    console.error('   4) 在终端执行: psql -U postgres -h <HOST> 验证能登录');
+                } else {
+                    console.error('   1) 确认 MySQL 已启动并监听 0.0.0.0:3306 (非仅 127.0.0.1)');
+                    console.error('   2) 确认用户有建表/建库权限 (CREATE DATABASE, CREATE TABLE, ALTER, INDEX)');
+                    console.error('   3) 确认防火墙放行 3306 端口');
+                    console.error('   4) 在终端执行: mysql -u root -p -h <HOST> 验证能登录');
+                }
             }
         }
         console.log(`⏳ 等待数据库就绪并初始化 (${attempt}/${maxAttempts})...`);
@@ -308,7 +316,7 @@ async function start() {
     // 等待数据库就绪并初始化（幂等建库建表，复用既有数据）
     const ready = await waitForDatabaseAndInit();
     if (!ready) {
-        console.error('❌ 数据库在限定重试次数内未就绪，请检查 PostgreSQL 容器状态或 .env 数据库连接配置');
+        console.error(`❌ 数据库在限定重试次数内未就绪，请检查 ${db.DB_DIALECT === 'mysql' ? 'MySQL' : 'PostgreSQL'} 容器状态或 .env 数据库连接配置（DB_DIALECT=${db.DB_DIALECT}）`);
         process.exit(1);
     }
 
@@ -343,7 +351,7 @@ async function start() {
             const demoPw = process.env.DEMO_PASSWORD || 'demo123456';
             const demoHash = await hashPassword(demoPw);
             await db.query(
-                'INSERT INTO users (username, password_hash, nickname) VALUES ($1, $2, $3)',
+                'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
                 ['demo', demoHash, '演示用户']
             );
             console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);

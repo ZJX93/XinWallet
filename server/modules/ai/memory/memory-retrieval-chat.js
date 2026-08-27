@@ -134,14 +134,16 @@ async function retrieveRelevantRules(userId, intent, message = '') {
 
         // 额外：若消息中有商家名，优先返回该商家的规则
         if (message) {
+            // MySQL 不支持 ILIKE ANY(?) 数组语法，动态构建 LOWER() + LIKE OR 链
+            const likeOrs = message.map(() => 'OR LOWER(match_key) LIKE LOWER(?)').join('\n                     ');
             const merchantRules = await db.query(
                 `SELECT type, match_key, category_id, confidence, status
                    FROM ai_rules
                    WHERE user_id = ? AND type = 'merchant_category'
-                     AND match_key ILIKE ANY(?)  -- 包含商家名
+                     AND (${likeOrs})
                      AND status IN ('candidate','verified','trusted')
                    ORDER BY confidence DESC LIMIT 5`,
-                [userId, message]
+                [userId, ...message]
             );
             // 商家规则优先级更高，合并去重
             const seen = new Set();

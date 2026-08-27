@@ -162,7 +162,7 @@ async function analyzeSpendingSpike(userId, bookId, weekStart) {
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.type = 'expense'
-      AND t.trans_date >= ? - INTERVAL '5 weeks'
+      AND t.trans_date >= ? - INTERVAL 5 WEEK
       AND t.trans_date < ?
     GROUP BY 1
     ORDER BY 1 ASC
@@ -246,13 +246,13 @@ async function analyzeNewMerchants(userId, bookId, lookbackDays = 30) {
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.merchant IS NOT NULL AND t.merchant != ''
-      AND t.trans_date >= NOW() - INTERVAL '1 day' * ?
-      AND t.trans_date < NOW() - INTERVAL '1 day'
+      AND t.trans_date >= CURDATE() - INTERVAL ${lookbackDays} DAY
+      AND t.trans_date < CURDATE() - INTERVAL 1 DAY
     GROUP BY merchant
     HAVING COUNT(*) = 1   -- 仅出现 1 次 = 新商家
     ORDER BY total DESC
     LIMIT 5
-  `, [userId, bookId, lookbackDays]);
+  `, [userId, bookId]);
 
   return rows.map(r => ({
     insightType: 'merchant_new',
@@ -276,7 +276,7 @@ async function analyzeIncomeChange(userId, bookId) {
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.type = 'income'
-      AND t.trans_date >= NOW() - INTERVAL '3 months'
+      AND t.trans_date >= NOW() - INTERVAL 3 MONTH
     GROUP BY 1
     ORDER BY 1 ASC
   `, [userId, bookId]);
@@ -414,7 +414,7 @@ async function dismissInsight(userId, insightId) {
 async function cleanupOldInsights(userId) {
   return db.query(
     `DELETE FROM ai_insights
-       WHERE user_id = ? AND created_at < NOW() - INTERVAL '90 days'
+       WHERE user_id = ? AND created_at < NOW() - INTERVAL 90 DAY
          AND status IN ('read','dismissed','archived')`,
     [userId]
   );

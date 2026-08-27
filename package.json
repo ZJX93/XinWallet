@@ -1,7 +1,7 @@
 {
   "name": "xinwallet",
   "version": "1.0.0",
-  "description": "鑫钱包 - 个人财务助手 (Node.js + Express + PostgreSQL)",
+  "description": "鑫钱包 - 个人财务助手 (Node.js + Express + PostgreSQL / MySQL 双方言)",
   "main": "server/index.js",
   "private": true,
   "engines": {
@@ -13,7 +13,10 @@
     "test": "node --test \"test/*.test.js\"",
     "test:integration": "node scripts/smoke-test.js",
     "test:routes": "node scripts/verify-routes.js",
-    "test:full": "node scripts/full-verify.js"
+    "test:full": "node scripts/full-verify.js",
+    "mysql:init": "node -e \"require('./scripts/mysql-init.js')()\"",
+    "schema:convert": "node scripts/convert-pg-schema-to-mysql.js",
+    "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -28,6 +31,7 @@
     "libsodium-wrappers": "^0.8.4",
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
+    "mysql2": "^3.11.0",
     "pg": "^8.13.1",
     "swagger-ui-dist": "^5.32.11",
     "tencentcloud-sdk-nodejs-ocr": "^4.1.268"

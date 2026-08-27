@@ -60,7 +60,7 @@ function validateProvider(body) {
 // 获取服务商列表
 router.get('/providers', async (req, res) => {
     try {
-        const rows = await db.query('SELECT id, user_id, name, api_type, base_url, api_key, model, is_active, sort_order, created_at FROM ai_providers WHERE user_id = $1 ORDER BY sort_order, id', [req.userId]);
+        const rows = await db.query('SELECT id, user_id, name, api_type, base_url, api_key, model, is_active, sort_order, created_at FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [req.userId]);
         res.json(success({
             providers: rows.map(r => ({
                 id: r.id, name: r.name, api_type: r.api_type, base_url: r.base_url,
@@ -79,11 +79,11 @@ router.post('/providers', async (req, res) => {
         const { name, api_type, base_url, api_key, model, is_active, sort_order } = req.body;
         const encryptedKey = api_key ? encrypt(api_key.trim()) : null;
         const result = await db.query(
-            'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+            'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [req.userId, name.trim(), api_type, base_url.trim(), encryptedKey, model.trim(), is_active ? 1 : 0, sort_order || 0]
         );
         if (is_active) {
-            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1 AND id != $2', [req.userId, result.insertId]);
+            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ? AND id != ?', [req.userId, result.insertId]);
         }
         res.json(success({ id: result.insertId }, '服务商已创建'));
     } catch (err) { handleServerError(res, err); }
@@ -111,7 +111,7 @@ router.put('/providers/:id', async (req, res) => {
         await db.query(`UPDATE ai_providers SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ? AND user_id = ?`, values);
 
         if (is_active) {
-            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1 AND id != $2', [req.userId, req.params.id]);
+            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ? AND id != ?', [req.userId, req.params.id]);
         }
         res.json(success({ updated: true }, '服务商已更新'));
     } catch (err) { handleServerError(res, err); }
@@ -122,7 +122,7 @@ router.delete('/providers/:id', async (req, res) => {
     try {
         const existing = await db.queryOne('SELECT id FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!existing) return res.status(404).json(fail('服务商不存在'));
-        await db.query('DELETE FROM ai_providers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+        await db.query('DELETE FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         res.json(success({ deleted: true }, '服务商已删除'));
     } catch (err) { handleServerError(res, err); }
 });
@@ -132,8 +132,8 @@ router.post('/providers/:id/activate', async (req, res) => {
     try {
         const existing = await db.queryOne('SELECT id FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!existing) return res.status(404).json(fail('服务商不存在'));
-        await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1', [req.userId]);
-        await db.query('UPDATE ai_providers SET is_active = TRUE WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+        await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ?', [req.userId]);
+        await db.query('UPDATE ai_providers SET is_active = TRUE WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         res.json(success({ activated: true }, '已启用该服务商'));
     } catch (err) { handleServerError(res, err); }
 });
@@ -176,15 +176,15 @@ router.post('/advice', async (req, res) => {
                 [req.userId, req.bookId, currentMonth]
             ),
             db.query(
-                'SELECT name, amount FROM budgets WHERE user_id = $1 AND book_id = $2 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
+                'SELECT name, amount FROM budgets WHERE user_id = ? AND book_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
                 [req.userId, req.bookId]
             ),
             db.query(
-                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = $1 AND book_id = $2 AND status = 'active'",
+                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = ? AND book_id = ? AND status = 'active'",
                 [req.userId, req.bookId]
             ),
             db.query(
-                "SELECT name, balance, type FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = 'active' ORDER BY balance DESC",
+                "SELECT name, balance, type FROM accounts WHERE user_id = ? AND book_id = ? AND status = 'active' ORDER BY balance DESC",
                 [req.userId, req.bookId]
             ),
             db.query(
@@ -325,15 +325,8 @@ router.post('/ocr-config', async (req, res) => {
         const finalKey = keyVal ? encrypt(keyVal) : existing?.secret_key;
         const finalRegion = (region || existing?.region || 'ap-guangzhou').trim();
 
-        await db.query(
-            `INSERT INTO ai_ocr_config (user_id, provider, secret_id, secret_key, region)
-             VALUES (?, 'tencent', ?, ?, ?)
-             ON CONFLICT (user_id) DO UPDATE SET
-             secret_id = EXCLUDED.secret_id,
-             secret_key = EXCLUDED.secret_key,
-             region = EXCLUDED.region`,
-            [req.userId, finalId, finalKey, finalRegion]
-        );
+        const upsertSql = db.upsertSql('ai_ocr_config', ['user_id'], ['provider', 'secret_id', 'secret_key', 'region']);
+        await db.query(upsertSql, [req.userId, 'tencent', finalId, finalKey, finalRegion]);
         res.json(success({ saved: true }, 'OCR 配置已保存'));
     } catch (err) { handleServerError(res, err); }
 });
@@ -765,7 +758,7 @@ ${accRef}`;
                 const metric = args.metric;
                 const month = args.month || new Date().toISOString().slice(0, 7);
                 if (metric === 'total_balance') {
-                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = $1 AND book_id = $2 AND status='active'", [req.userId, req.bookId]);
+                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = ? AND book_id = ? AND status='active'", [req.userId, req.bookId]);
                     return { ok: true, metric, value: parseFloat(rows[0].b) };
                 }
                 if (metric === 'month_income' || metric === 'month_expense' || metric === 'month_balance') {
@@ -804,8 +797,8 @@ ${accRef}`;
                 const limit = Math.min(Math.max(parseInt(args.limit) || 50, 1), 100);
                 const rows = await db.query(
                     `SELECT id, name, type, balance, icon FROM accounts
-                     WHERE user_id = $1 AND book_id = $2 AND status = 'active'
-                       ${query ? 'AND name LIKE $3' : ''}
+                     WHERE user_id = ? AND book_id = ? AND status = 'active'
+                       ${query ? 'AND name LIKE ?' : ''}
                      ORDER BY sort_order, id LIMIT ${limit}`,
                     query ? [req.userId, req.bookId, query] : [req.userId, req.bookId]
                 );
@@ -823,8 +816,8 @@ ${accRef}`;
                 const limit = Math.min(Math.max(parseInt(args.limit) || 50, 1), 100);
                 const params = [req.userId, req.bookId];
                 let sql = `SELECT id, name, type, icon FROM categories
-                           WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))`;
-                if (query) { sql += ' AND name LIKE $3'; params.push(query); }
+                           WHERE (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))`;
+                if (query) { sql += ' AND name LIKE ?'; params.push(query); }
                 if (typeFilter) { params.push(typeFilter); sql += ` AND type = $${params.length}`; }
                 sql += ' ORDER BY type, sort_order LIMIT ' + limit;
                 const rows = await db.query(sql, params);
@@ -891,7 +884,7 @@ ${accRef}`;
                     for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
                     for (const aid of affected) {
-                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });
@@ -907,20 +900,20 @@ ${accRef}`;
                     const affectedAccounts = new Set([parseInt(old.account_id)]);
                     if (old.transfer_id) {
                         const paired = await conn.query(
-                            'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3 AND book_id = $4',
+                            'SELECT id, account_id FROM transactions WHERE transfer_id = ? AND id != ? AND user_id = ? AND book_id = ?',
                             [old.transfer_id, txId, req.userId, req.bookId]
                         );
                         paired.forEach(p => { affectedAccounts.add(parseInt(p.account_id)); });
-                        await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
-                        await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
+                        await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
+                        await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
                     } else {
-                        await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [txId, req.userId, req.bookId]);
+                        await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [txId, req.userId, req.bookId]);
                     }
                     const newBalances = {};
                     for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affectedAccounts) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
                     for (const aid of affectedAccounts) {
-                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });

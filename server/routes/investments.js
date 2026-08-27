@@ -65,10 +65,10 @@ async function assertTypeEditable(id) {
 
 // 投资理财一级（支出）：名下挂「投资买入」「理财保险」二级
 async function getInvestmentTopCategoryId(conn) {
-    const rows = await conn.query('SELECT id FROM categories WHERE code = $1 AND type = $2', ['E1100', 'expense']);
+    const rows = await conn.query('SELECT id FROM categories WHERE code = ? AND type = ?', ['E1100', 'expense']);
     if (rows[0]) return rows[0].id;
     const r = await conn.query(
-        'INSERT INTO categories (code, name, type, icon, color, is_system) VALUES ($1, $2, $3, $4, $5, TRUE)',
+        'INSERT INTO categories (code, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, ?, TRUE)',
         ['E1100', '投资理财', 'expense', '💹', '#22c55e']
     );
     return r.insertId;
@@ -77,7 +77,7 @@ async function getInvestmentTopCategoryId(conn) {
 // 判断是否保险类理财产品（买入应归入「理财保险」而非「投资买入」）
 async function isInsuranceType(conn, typeId) {
     if (!typeId) return false;
-    const t = await conn.query('SELECT category, name FROM investment_types WHERE id = $1', [typeId]);
+    const t = await conn.query('SELECT category, name FROM investment_types WHERE id = ?', [typeId]);
     if (!t[0]) return false;
     return t[0].category === 'insurance' || (t[0].name && t[0].name.indexOf('保险') !== -1);
 }
@@ -85,19 +85,19 @@ async function isInsuranceType(conn, typeId) {
 // 买入分类（支出）：保险类→理财保险，其余→投资买入；均为「投资理财」二级
 async function getOrCreateInvestmentBuyCategory(conn, isInsurance) {
     const name = isInsurance ? '理财保险' : '投资买入';
-    const rows = await conn.query('SELECT id, parent_id FROM categories WHERE name = $1 AND type = $2', [name, 'expense']);
+    const rows = await conn.query('SELECT id, parent_id FROM categories WHERE name = ? AND type = ?', [name, 'expense']);
     if (rows[0]) {
         // 历史动态创建的「投资买入」可能无 parent，挂回投资理财下
         if (rows[0].parent_id == null) {
             const topId = await getInvestmentTopCategoryId(conn);
-            await conn.query('UPDATE categories SET parent_id = $1 WHERE id = $2', [topId, rows[0].id]);
+            await conn.query('UPDATE categories SET parent_id = ? WHERE id = ?', [topId, rows[0].id]);
         }
         return rows[0].id;
     }
     const topId = await getInvestmentTopCategoryId(conn);
     const icon = isInsurance ? '🛡️' : '📈';
     const r = await conn.query(
-        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES ($1, $2, $3, $4, $5, TRUE)',
+        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, TRUE)',
         [name, 'expense', icon, '#22c55e', topId]
     );
     return r.insertId;
@@ -105,13 +105,13 @@ async function getOrCreateInvestmentBuyCategory(conn, isInsurance) {
 
 // 理财收益分类（收入，隶属于被动收入）：卖出/减仓/清仓共用
 async function getInvestmentSellCategoryId(conn) {
-    const rows = await conn.query('SELECT id FROM categories WHERE name = $1 AND type = $2', ['理财收益', 'income']);
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['理财收益', 'income']);
     if (rows[0]) return rows[0].id;
     // 理财收益缺失时自动补建到「被动收入」下，保证卖出分类口径正确
-    const parent = await conn.query('SELECT id FROM categories WHERE name = $1 AND type = $2', ['被动收入', 'income']);
+    const parent = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['被动收入', 'income']);
     const parentId = parent[0] ? parent[0].id : null;
     const result = await conn.query(
-        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES ($1, $2, $3, $4, $5, $6, TRUE)',
+        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
         ['理财收益', 'income', '📊', '#22c55e', parentId]
     );
     return result.insertId;
@@ -130,17 +130,17 @@ async function createInvestmentCreateTxn(conn, userId, bookId, accId, cost, name
     );
     // 以账本为准重算关联账户余额
     const newBalance = await computeAccountBalance(conn, userId, accId);
-    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, accId]);
+    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
     return txResult.insertId;
 }
 
 // 回滚创建持仓时生成的台账交易（删除交易并按账本重算账户余额）
 async function rollbackInvestmentCreateTxn(conn, userId, txId, accId) {
     if (!txId) return;
-    await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2', [txId, userId]);
+    await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ?', [txId, userId]);
     if (accId) {
         const newBalance = await computeAccountBalance(conn, userId, accId);
-        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, accId]);
+        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
     }
 }
 
@@ -177,7 +177,7 @@ router.delete('/:id', async (req, res) => {
         );
         if (count.cnt > 0) return res.status(400).json(fail('该类型下仍有持仓，无法删除'));
 
-        await db.query('DELETE FROM investment_types WHERE id = $1 AND is_system = FALSE', [typeId]);
+        await db.query('DELETE FROM investment_types WHERE id = ? AND is_system = FALSE', [typeId]);
         res.json(success(null, '类型已删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -317,7 +317,7 @@ router.post('/investments', async (req, res) => {
             // 关联账户：买入扣款，保持账本一致；并把台账交易关联回理财买入流水(investment_txn_id)
             const createTxnId = await createInvestmentCreateTxn(conn, req.userId, req.bookId, accId, costVal, name, buyDate, parseInt(investment_type_id), initBuyTxn.insertId);
             if (createTxnId) {
-                await conn.query('UPDATE investments SET create_transaction_id = $1 WHERE id = $2', [createTxnId, invId]);
+                await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [createTxnId, invId]);
             }
 
             return invResult;
@@ -340,7 +340,7 @@ router.put('/investments/:id', async (req, res) => {
 
         if (isQuoteRefresh) {
             await db.query(
-                'UPDATE investments SET current_price=$1, current_value=$2, actual_rate=$3 WHERE id=$4 AND user_id=$5',
+                'UPDATE investments SET current_price=?, current_value=?, actual_rate=? WHERE id=? AND user_id=?',
                 [parseFloat(current_price) || 0, parseFloat(current_value) || 0, parseFloat(actual_rate) || 0, id, req.userId]
             );
             res.json(success(null, '持仓已更新'));
@@ -354,7 +354,7 @@ router.put('/investments/:id', async (req, res) => {
 
         await db.transaction(async (conn) => {
             // 取出旧持仓，用于回滚旧台账交易
-            const oldRows = await conn.query('SELECT * FROM investments WHERE id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
+            const oldRows = await conn.query('SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
             const old = oldRows[0] || null;
 
             // 回滚旧的创建交易（避免账本残留）
@@ -381,7 +381,7 @@ router.put('/investments/:id', async (req, res) => {
 
             // 按新参数重建创建交易（账户/成本/名称/日期变化时），沿用原持仓所属账本
             const newTxnId = await createInvestmentCreateTxn(conn, req.userId, old ? old.book_id : req.bookId, newAccId, newCost, newName, newBuyDate, parseInt(investment_type_id));
-            await conn.query('UPDATE investments SET create_transaction_id = $1 WHERE id = $2', [newTxnId, id]);
+            await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [newTxnId, id]);
         });
 
         res.json(success(null, '持仓已更新'));
@@ -429,7 +429,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
         // 如果是卖出，更新持仓（净投入本金口径：成本按回款全额扣减，与 recompute 一致）
         if (type === 'sell') {
             await db.query(
-                'UPDATE investments SET quantity = quantity - $1, total_cost = total_cost - $2, current_value = current_value - $3 WHERE id = $4 AND user_id = $5',
+                'UPDATE investments SET quantity = quantity - ?, total_cost = total_cost - ?, current_value = current_value - ? WHERE id = ? AND user_id = ?',
                 [parseFloat(quantity), parseFloat(amount), parseFloat(amount), investmentId, req.userId]
             );
         }
@@ -447,7 +447,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
                         );
                         // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
                         const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
                 });
             }
             msg = type === 'dividend' ? '分红已记录' : '利息已记录';
@@ -459,7 +459,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
             const newQty = parseFloat(ownedInv.quantity) + addedQty;
             const newCurrentValue = newQty * nav;
             await db.query(
-                'UPDATE investments SET quantity = $1, current_value = $2 WHERE id = $3 AND user_id = $4',
+                'UPDATE investments SET quantity = ?, current_value = ? WHERE id = ? AND user_id = ?',
                 [newQty, newCurrentValue, investmentId, req.userId]
             );
             msg = '红利再投已记录，持有份额已增加';
@@ -551,7 +551,7 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
             // 关联账户余额重算（单一真相）
             if (investment.account_id) {
                 const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
             }
         });
 
@@ -596,7 +596,7 @@ router.put('/investments/:id/sell', async (req, res) => {
                 );
                 // 以账本为准重算账户余额
                 const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
             }
         });
 
@@ -652,7 +652,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
                 }
                 res.json(success(null, '已加仓'));
             } else {
@@ -689,7 +689,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
                 }
                 res.json(success(null, remainingQty > 0 ? '已减仓' : '已清仓'));
             }
@@ -703,7 +703,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
 router.delete('/investments/:id', async (req, res) => {
     try {
         await db.transaction(async (conn) => {
-            const invRows = await conn.query('SELECT * FROM investments WHERE id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
+            const invRows = await conn.query('SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
             const inv = invRows[0] || null;
 
             // 收集需要按账本重算余额的账户（单一真相，避免增量回滚漂移）
@@ -712,7 +712,7 @@ router.delete('/investments/:id', async (req, res) => {
 
             // 该持仓的全部理财流水（建仓/加仓/减仓/清仓/分红/利息）
             const invTxns = await conn.query(
-                'SELECT id FROM investment_transactions WHERE investment_id = $1 AND user_id = $2 AND book_id = $3',
+                'SELECT id FROM investment_transactions WHERE investment_id = ? AND user_id = ? AND book_id = ?',
                 [req.params.id, req.userId, req.bookId]
             );
 
@@ -735,14 +735,14 @@ router.delete('/investments/:id', async (req, res) => {
             }
 
             // 删除理财流水与持仓本身
-            await conn.query('DELETE FROM investment_transactions WHERE investment_id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
-            await conn.query('DELETE FROM investments WHERE id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM investment_transactions WHERE investment_id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
 
             // 以账本为准统一重算受影响账户余额
             for (const aid of affectedAccounts) {
                 if (!aid) continue;
                 const newBalance = await computeAccountBalance(conn, req.userId, aid);
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, aid]);
             }
         });
         res.json(success(null, '持仓已删除'));
@@ -789,7 +789,7 @@ router.post('/:id/refresh', async (req, res) => {
         const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
 
         await db.query(
-            'UPDATE investments SET current_price=$1, current_value=$2, actual_rate=$3, nav_date=$4 WHERE id=$5 AND user_id=$6 AND book_id=$7',
+            'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
             [price, currentValue, actualRate, navDate || null, inv.id, req.userId, req.bookId]
         );
 
@@ -831,7 +831,7 @@ router.post('/refresh-all', async (req, res) => {
                 const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
 
                 await db.query(
-                    'UPDATE investments SET current_price=$1, current_value=$2, actual_rate=$3, nav_date=$4 WHERE id=$5 AND user_id=$6 AND book_id=$7',
+                    'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
                     [price, currentValue, actualRate, navDate || null, inv.id, req.userId, req.bookId]
                 );
                 results.push({ id: inv.id, code: inv.code, name: name || inv.name, price, currentValue, actualRate, navDate, status: 'ok' });

@@ -45,6 +45,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 18888
+      DB_DIALECT: pg
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres

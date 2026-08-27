@@ -69,7 +69,7 @@ async function usageMetrics(db, userId, days = 30) {
         const rows = await db.query(
             `SELECT route, COUNT(*) AS cnt, SUM(cost_micro_cny) AS cost, AVG(latency_ms) AS lat
                FROM ai_provider_usage
-              WHERE user_id = ? AND created_at >= CURRENT_TIMESTAMP - INTERVAL '${Number(days)} days'
+              WHERE user_id = ? AND created_at >= NOW() - INTERVAL ${Number(days)} DAY
               GROUP BY route`,
             [userId]
         );
@@ -90,7 +90,7 @@ async function usageMetrics(db, userId, days = 30) {
         }
         if (latN > 0) out.avg_latency_ms = Math.round(latSum / latN);
     } catch (_) {
-        // MySQL 不支持 INTERVAL 'N days' 语法 → 退回不带时间窗的全量统计
+        // 出错时退回不带时间窗的全量统计（兼容双方言）
         try {
             const rows = await db.query(
                 `SELECT route, COUNT(*) AS cnt, SUM(cost_micro_cny) AS cost

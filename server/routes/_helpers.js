@@ -204,7 +204,7 @@ function polishChatReply(text, hasTransactions) {
 
     // 5) 折叠 3+ 连续空行 + 修剪多余标点
     s = s.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
-    s = s.replace(/([。！!？\?])\1+/g, '$1');
+    s = s.replace(/([。！!？\?])\1+/g, '?');
 
     // 6) 当本次真的落账 + reply 没有「已记」类提示时，追加一句自然口语
     //    注意：如果之前的安全网已改写 reply（"很抱歉，这笔其实没有记录成功…"），这里不会再追加"已记好"
@@ -250,7 +250,7 @@ async function sumLedgerEffects(conn, userId, accountId) {
 // 是"计算 → 落库 → 再读出参与下一轮计算"的闭环起点，也是浮点误差被放大
 // 并永久固化的关键链路。此处改用整数分精确加法，杜绝分位漂移。
 async function computeAccountBalance(conn, userId, accountId) {
-    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = $1 AND user_id = $2', [accountId, userId]);
+    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
     const opening = acc[0] ? acc[0].opening_balance : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
     // 储蓄目标现已镜像关联账户的余额（current_amount = 账户余额），
@@ -262,7 +262,7 @@ async function computeAccountBalance(conn, userId, accountId) {
 // 用于交易/转账/还款/储蓄等可能改变余额的操作
 async function enforceBalanceLimit(conn, userId, accountId, balance) {
     const rows = await conn.query(
-        'SELECT name, type, credit_limit FROM accounts WHERE id = $1 AND user_id = $2',
+        'SELECT name, type, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
         [accountId, userId]
     );
     const acc = rows[0];
@@ -300,12 +300,13 @@ async function ensureWeeklySnapshots(userId, investments) {
 
     // 一次性取回全部持仓的首笔交易日期（原为逐持仓查询）
     // 安全：原查询缺 user_id 条件，此处补齐归属限定
+    const { sql: invSql, params: invParams } = db.buildInClause(invIds);
     const firstTxRows = await db.query(
         `SELECT investment_id, MIN(date) as first_date
            FROM investment_transactions
-          WHERE user_id = ? AND investment_id = ANY(?)
+          WHERE user_id = ? AND investment_id ${invSql}
           GROUP BY investment_id`,
-        [userId, invIds]
+        [userId, ...invParams]
     );
     const firstTxMap = new Map(firstTxRows.map(r => [Number(r.investment_id), r.first_date]));
 
@@ -339,10 +340,13 @@ async function ensureWeeklySnapshots(userId, investments) {
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
         const chunk = rows.slice(i, i + CHUNK_SIZE);
         const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+        // INSERT IGNORE = MySQL 等价幂等写；ON CONFLICT = PG 幂等写（schema 双方言都有 UNIQUE (investment_id, nav_date)）
+        const suffix = db.DB_DIALECT === 'mysql'
+            ? ''   // INSERT IGNORE 无需 ON CONFLICT
+            : ' ON CONFLICT (investment_id, nav_date) DO NOTHING';
         await db.query(
             `INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
-             VALUES ${placeholders}
-             ON CONFLICT (investment_id, nav_date) DO NOTHING`,
+             VALUES ${placeholders}${suffix}`,
             chunk.flat()
         );
     }

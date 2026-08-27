@@ -21,11 +21,11 @@ const { syncCreditCardDebt, resolveNote } = require('./utils');
 // 与「加减仓/清仓」增量更新完全等价，但天然支持删除任意一笔后重算，
 // 含清仓的反向还原（不依赖已丢失的历史持仓快照）。
 async function recomputeInvestmentPosition(conn, investmentId, userId) {
-    const inv = await conn.query('SELECT * FROM investments WHERE id = $1 AND user_id = $2', [investmentId, userId]);
+    const inv = await conn.query('SELECT * FROM investments WHERE id = ? AND user_id = ?', [investmentId, userId]);
     const row = inv[0];
     if (!row) return;
     const txns = await conn.query(
-        `SELECT * FROM investment_transactions WHERE investment_id = $1 AND user_id = $2 ORDER BY date ASC, id ASC`,
+        `SELECT * FROM investment_transactions WHERE investment_id = ? AND user_id = ? ORDER BY date ASC, id ASC`,
         [investmentId, userId]
     );
     let qty = 0, cost = 0;
@@ -52,8 +52,8 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
     // 做T：数量归 0 也不立即标记 sold，保持 holding；隔夜由列表查询自动归档。
     // 手动清仓（sell 路由）会单独写 status='sold' + sold_date=today。
     await conn.query(
-        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status='holding', sold_date=NULL
-         WHERE id=$5 AND user_id=$6`,
+        `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status='holding', sold_date=NULL
+         WHERE id=? AND user_id=?`,
         [qty, cost, currentValue, buyPrice, investmentId, userId]
     );
 }
@@ -65,7 +65,7 @@ async function reverseLinkedInvestmentTxn(conn, userId, investmentTxnId) {
     const t = invTxn[0];
     if (!t) return;
     const investmentId = t.investment_id;
-    await conn.query('DELETE FROM investment_transactions WHERE id = $1 AND user_id = $2', [investmentTxnId, userId]);
+    await conn.query('DELETE FROM investment_transactions WHERE id = ? AND user_id = ?', [investmentTxnId, userId]);
     await recomputeInvestmentPosition(conn, investmentId, userId);
 }
 
@@ -399,7 +399,7 @@ router.post('/', async (req, res) => {
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
             const newBalance = await computeAccountBalance(conn, req.userId, parseInt(account_id));
             await enforceBalanceLimit(conn, req.userId, parseInt(account_id), newBalance);
-            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, parseInt(account_id)]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, parseInt(account_id)]);
 
             // 自动同步信用卡债务
             await syncCreditCardDebt(conn, req.userId, parseInt(account_id));
@@ -407,7 +407,7 @@ router.post('/', async (req, res) => {
             // 写入交易标签
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [insertResult.insertId, tid]);
+                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [insertResult.insertId, tid]);
             }
 
             return insertResult.insertId;
@@ -450,10 +450,10 @@ router.put('/:id', async (req, res) => {
             );
 
             // 重置交易标签
-            await conn.query('DELETE FROM transaction_tags WHERE transaction_id = $1', [id]);
+            await conn.query('DELETE FROM transaction_tags WHERE transaction_id = ?', [id]);
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [id, tid]);
+                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [id, tid]);
             }
 
             // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移
@@ -466,7 +466,7 @@ router.put('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affected) {
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                 // 自动同步信用卡债务
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -491,15 +491,15 @@ router.delete('/:id', async (req, res) => {
             if (old.transfer_id) {
                 // 删除同一 transfer_id 的所有关联交易
                 const paired = await conn.query(
-                    'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3 AND book_id = $4',
+                    'SELECT id, account_id FROM transactions WHERE transfer_id = ? AND id != ? AND user_id = ? AND book_id = ?',
                     [old.transfer_id, id, req.userId, req.bookId]
                 );
                 paired.forEach(p => affectedAccounts.add(parseInt(p.account_id)));
-                await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
+                await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
                 // 同时删除 transfers 表记录
-                await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
+                await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
             } else {
-                await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
+                await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
             }
             // 若该台账交易由理财操作生成，回滚对应持仓（删除理财流水 + 按剩余流水重算）
             await reverseLinkedInvestmentTxn(conn, req.userId, old.investment_txn_id);
@@ -512,7 +512,7 @@ router.delete('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                 // 自动同步信用卡债务（删除交易后余额变化）
                 await syncCreditCardDebt(conn, req.userId, aid);
             }

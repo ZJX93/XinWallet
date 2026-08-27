@@ -40,7 +40,7 @@ async function forecastCashflow(userId, { months = 6 } = {}) {
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id = ?
-          AND t.trans_date >= NOW() - INTERVAL '${lookbackMonths + 2} months'
+          AND t.trans_date >= CURDATE() - INTERVAL ${lookbackMonths + 2} MONTH
         GROUP BY 1
         ORDER BY 1 ASC
     `, [userId]);
@@ -142,7 +142,7 @@ async function simulateBudget(userId, categoryId, newBudget, { months = 3 } = {}
         WHERE a.user_id = ?
           AND t.category_id = ?
           AND t.type = 'expense'
-          AND t.trans_date >= NOW() - INTERVAL '${parseInt(months, 10) + 1} months'
+          AND t.trans_date >= CURDATE() - INTERVAL ${parseInt(months, 10) + 1} MONTH
         GROUP BY 1
         ORDER BY 1 ASC
     `, [userId, categoryId]);
@@ -202,7 +202,7 @@ async function simulateSavingsGoal(userId, targetAmount, { months = 12, monthlyS
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id = ?
-          AND t.trans_date >= NOW() - INTERVAL '12 months'
+          AND t.trans_date >= NOW() - INTERVAL 12 MONTH
         GROUP BY 1
         ORDER BY 1 ASC
     `, [userId]);

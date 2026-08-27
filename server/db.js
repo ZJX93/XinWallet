@@ -1,22 +1,50 @@
 /* ============================================
-  鑫钱包 · Database Connection Pool（PostgreSQL）
+  鑫钱包 · Database Connection Pool（PostgreSQL / MySQL 双方言）
+  ------------------------------------------------------------
+  通过环境变量 DB_DIALECT 切换，默认 'pg'。
+  - pg     : 使用 pg 驱动，占位符 ? -> $N，自动 RETURNING id
+  - mysql  : 使用 mysql2 驱动，占位符保持 ?，结果集结果归一化，
+             并由应用层在 UPDATE 时自动补 updated_at（替代 PG 触发器）
+  PostgreSQL 行为与此前完全一致（默认方言）。
   ============================================ */
 
+// 当前数据库方言：'pg' | 'mysql'。默认 PostgreSQL，保持向后兼容。
+const DB_DIALECT = (process.env.DB_DIALECT || 'pg').toLowerCase() === 'mysql' ? 'mysql' : 'pg';
+
 // 提升到模块作用域，供 initDatabase() 中建库用的 adminPool 复用（避免块级作用域导致 Pool is not defined）
-const { Pool } = require('pg');
-const pool = new Pool({
-  host: process.env.DB_HOST || '127.0.0.1',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'xinwallet',
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  // 显式指定客户端编码为 UTF-8，避免在 Windows / Git Bash 中文 locale 环境下
-  // pg 驱动读取 LC_* / LANG 环境变量导致中文被错误地按 GBK 编码往返。
-  options: '-c client_encoding=UTF8',
-});
+let pool;
+let adminPool = null; // 仅在 pg 下用于建库（连 postgres 库）
+if (DB_DIALECT === 'mysql') {
+  const mysql = require('mysql2/promise');
+  pool = mysql.createPool({
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'xinwallet',
+    charset: 'utf8mb4',
+    waitForConnections: true,
+    connectionLimit: 10,
+    maxIdle: 10,
+    enableKeepAlive: true,
+    // 中文环境显式 utf8mb4，避免 GBK 往返
+  });
+} else {
+  const { Pool } = require('pg');
+  pool = new Pool({
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'xinwallet',
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    // 显式指定客户端编码为 UTF-8，避免在 Windows / Git Bash 中文 locale 环境下
+    // pg 驱动读取 LC_* / LANG 环境变量导致中文被错误地按 GBK 编码往返。
+    options: '-c client_encoding=UTF8',
+  });
+}
 
 // 按分号切分 SQL 语句；跳过 $$ ... $$ 美元引号块（PL/pgSQL 函数体），避免块内分号被误切。
 function splitSqlStatements(sql) {
@@ -54,6 +82,28 @@ function autoReturning(sql) {
   if (/RETURNING/i.test(trimmed)) return sql;
   if (/ON\s+CONFLICT[\s\S]*DO\s+NOTHING/i.test(trimmed)) return sql;
   return sql + ' RETURNING id';
+}
+
+/**
+ * MySQL 专用：在 UPDATE 语句中若未显式设置 updated_at，自动补上 updated_at = NOW()，
+ * 以替代 PostgreSQL 的 updated_at 触发器（应用层兜底，跨方言一致）。
+ * 仅处理顶层 UPDATE ... SET ...，避免误伤子查询。
+ */
+function autoUpdatedAt(sql) {
+  const m = /^\s*UPDATE\s+([`"]?\w+[`"]?)\s+SET\s/i.exec(sql);
+  if (!m) return sql;
+  if (/\bupdated_at\s*=/.test(sql)) return sql; // 已手动设置
+  const setIdx = sql.search(/\bSET\s/i);
+  const tail = sql.slice(setIdx + 3);
+  let insertAt = tail.length;
+  const whereMatch = /\bWHERE\b/i.exec(tail);
+  if (whereMatch) insertAt = whereMatch.index;
+  else {
+    const endMatch = /\b(ORDER\s+BY|LIMIT)\b/i.exec(tail);
+    if (endMatch) insertAt = endMatch.index;
+  }
+  const before = tail.slice(0, insertAt).replace(/,\s*$/, '');
+  return sql.slice(0, setIdx + 3) + before + ',\n  updated_at = NOW()' + tail.slice(insertAt);
 }
 
 /**
@@ -96,8 +146,14 @@ function toPgPlaceholders(sql) {
   return out;
 }
 
-// 归一化：把业务 SQL 中的 ? 占位符转换为 PostgreSQL 的 $N 占位符，并自动补 RETURNING。
+// 归一化：根据方言准备 SQL。
 function prepare(sql) {
+  if (DB_DIALECT === 'mysql') {
+    // MySQL 占位符直接是 ?；仅对 UPDATE 做应用层 updated_at 兜底（替代 PG 触发器）。
+    let out = sql;
+    if (/^\s*UPDATE\s/i.test(sql)) out = autoUpdatedAt(out);
+    return out;
+  }
   return autoReturning(toPgPlaceholders(sql));
 }
 
@@ -108,8 +164,27 @@ function attachInsertId(rows) {
   return rows;
 }
 
+// MySQL 结果归一化：mysql2 返回 [rows, fields]，INSERT 的 insertId/affectedRows 在结果包上。
+function normalizeMyResult(res) {
+  const rows = Array.isArray(res) ? res[0] : res;
+  if (rows && !Array.isArray(rows)) {
+    const arr = [rows];
+    if ('insertId' in rows) arr.insertId = rows.insertId;
+    if ('affectedRows' in rows) arr.affectedRows = rows.affectedRows;
+    return arr;
+  }
+  return rows;
+}
+
 async function query(sql, params = []) {
   const text = prepare(sql);
+  if (DB_DIALECT === 'mysql') {
+    const [rows] = await pool.query(text, params);
+    const arr = Array.isArray(rows) ? rows : [rows];
+    if (rows && rows.insertId !== undefined) arr.insertId = rows.insertId;
+    if (rows && rows.affectedRows !== undefined) arr.affectedRows = rows.affectedRows;
+    return arr;
+  }
   const res = await pool.query(text, params);
   return attachInsertId(res.rows);
 }
@@ -120,34 +195,63 @@ async function queryOne(sql, params = []) {
 }
 
 /**
- * 事务封装：传入的 fn 接收一个 PG client，内部执行 SQL。
- * 覆盖的 client.query 同样应用占位符归一化 + RETURNING 翻译。
+ * 事务封装：传入的 fn 接收一个 client，内部执行 SQL。
+ * 覆盖的 client.query 同样应用方言归一化。
  */
 async function transaction(fn) {
-  const client = await pool.connect();
-  const origQuery = client.query.bind(client);
-  client.query = async (sql, params = []) => {
-    const res = await origQuery(autoReturning(toPgPlaceholders(sql)), params);
-    return attachInsertId(res.rows);
-  };
-  // 事务连接对齐顶层 db 的能力：补齐 queryOne，供 ensureDefaultBook 等
-  // 在事务内调用（否则报 client.queryOne is not a function）
-  client.queryOne = async (sql, params = []) => {
-    const rows = await client.query(sql, params);
-    return rows[0] || null;
-  };
-  try {
-    await origQuery('BEGIN');
-    const result = await fn(client);
-    await origQuery('COMMIT');
-    return result;
-  } catch (err) {
-    await origQuery('ROLLBACK');
-    throw err;
-  } finally {
-    client.query = origQuery; // 还原原生 query，避免污染连接池
-    delete client.queryOne;
-    client.release();
+  if (DB_DIALECT === 'mysql') {
+    const conn = await pool.getConnection();
+    await conn.beginTransaction();
+    const origQuery = conn.query.bind(conn);
+    conn.query = async (sql, params = []) => {
+      const [rows] = await origQuery(prepare(sql), params);
+      const arr = Array.isArray(rows) ? rows : [rows];
+      if (rows && rows.insertId !== undefined) arr.insertId = rows.insertId;
+      if (rows && rows.affectedRows !== undefined) arr.affectedRows = rows.affectedRows;
+      return arr;
+    };
+    conn.queryOne = async (sql, params = []) => {
+      const rows = await conn.query(sql, params);
+      return rows[0] || null;
+    };
+    try {
+      const result = await fn(conn);
+      await conn.commit();
+      return result;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.query = origQuery;
+      delete conn.queryOne;
+      conn.release();
+    }
+  } else {
+    const client = await pool.connect();
+    const origQuery = client.query.bind(client);
+    client.query = async (sql, params = []) => {
+      const res = await origQuery(autoReturning(toPgPlaceholders(sql)), params);
+      return attachInsertId(res.rows);
+    };
+    // 事务连接对齐顶层 db 的能力：补齐 queryOne，供 ensureDefaultBook 等
+    // 在事务内调用（否则报 client.queryOne is not a function）
+    client.queryOne = async (sql, params = []) => {
+      const rows = await client.query(sql, params);
+      return rows[0] || null;
+    };
+    try {
+      await origQuery('BEGIN');
+      const result = await fn(client);
+      await origQuery('COMMIT');
+      return result;
+    } catch (err) {
+      await origQuery('ROLLBACK');
+      throw err;
+    } finally {
+      client.query = origQuery; // 还原原生 query，避免污染连接池
+      delete client.queryOne;
+      client.release();
+    }
   }
 }
 
@@ -193,16 +297,29 @@ async function healCategoryData() {
     [2, 'E0200', '交通出行', 'expense', '🚗', '#22c55e', 2],
     [3, 'E0300', '购物消费', 'expense', '🛒', '#22c55e', 3],
   ];
-  for (const [id, code, name, type, icon, color, sort] of systemCats) {
-    await query(
-      'INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE) ON CONFLICT (id) DO NOTHING',
-      [id, code, name, type, icon, color, sort]
-    );
+  if (DB_DIALECT === 'mysql') {
+    for (const [id, code, name, type, icon, color, sort] of systemCats) {
+      await query(
+        'INSERT IGNORE INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)',
+        [id, code, name, type, icon, color, sort]
+      );
+    }
+    // MySQL 自增序列重置：找 MAX(id)，ALTER TABLE AUTO_INCREMENT
+    try {
+      const rows = await query('SELECT COALESCE(MAX(id), 1) as m FROM categories');
+      const maxId = rows[0]?.m || 1;
+      await query(`ALTER TABLE categories AUTO_INCREMENT = ${maxId + 1}`);
+    } catch (_) {} // 表不存在等异常可忽略
+  } else {
+    for (const [id, code, name, type, icon, color, sort] of systemCats) {
+      await query(
+        'INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE) ON CONFLICT (id) DO NOTHING',
+        [id, code, name, type, icon, color, sort]
+      );
+    }
+    // PG 序列重置
+    await query("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories), 1), true)");
   }
-  // 5) 重置自增序列：schema.sql 末尾的 setval 早于本函数执行，
-  //    本函数改动分类 id 后 MAX(id) 变化，必须在此重新校正，
-  //    否则新分类可能撞到被腾出前的低位 id 之外的空隙。
-  await query("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories), 1), true)");
 }
 
 /**
@@ -295,7 +412,7 @@ async function healSchemaColumns() {
   // AI v0.2 Phase 3/4：预测快照的三个新增维度 + 路由记录。
   // ⚠️ 老库的 ai_predictions 由 Phase 1 建成，CREATE TABLE IF NOT EXISTS 不会补列，
   //    缺列会让 prediction-store 的 INSERT 直接 500。
-  const jsonType = 'JSONB';
+  const jsonType = DB_DIALECT === 'mysql' ? 'JSON' : 'JSONB';
   await ensureColumn('ai_predictions', 'memory_snapshot', `${jsonType} DEFAULT NULL`);
   await ensureColumn('ai_predictions', 'model_request', `${jsonType} DEFAULT NULL`);
   await ensureColumn('ai_predictions', 'model_response', `${jsonType} DEFAULT NULL`);
@@ -321,8 +438,12 @@ async function healSchemaColumns() {
  *    Phase 3 的 Evidence Engine 会写入 consistent_reuse / negative_signal，
  *    在老库上会撞 23514（check constraint violation）—— 而 CREATE TABLE IF NOT EXISTS
  *    对已存在的表完全跳过，约束永远不会更新。故此处显式 DROP + ADD 重建。
+ *
+ * MySQL：CHECK 约束在 MySQL 8.0.16 之前不强制执行，且不支持 `DROP CONSTRAINT IF EXISTS`，
+ *    因此对 MySQL 直接跳过；如有问题由 schema.mysql.sql 建表时确保正确。
  */
 async function healAiConstraints() {
+  if (DB_DIALECT === 'mysql') return; // MySQL 不走 PG 这套约束自愈
   const allowed = [
     'explicit_confirmation', 'explicit_correction', 'discard',
     'manual_rule_creation', 'contradiction', 'rule_disabled',
@@ -347,30 +468,57 @@ async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
     const dbName = process.env.DB_NAME || 'xinwallet';
-    const schemaFile = 'schema.sql';
+    const schemaFile = DB_DIALECT === 'mysql' ? 'schema.mysql.sql' : 'schema.sql';
 
-    // 1) 连接到默认 postgres 库，确保目标数据库存在
-    const adminPool = new Pool({
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      database: 'postgres',
-      max: 2,
-    });
-    try {
-      const check = await adminPool.query(
-        'SELECT 1 FROM pg_database WHERE datname = $1', [dbName]
-      );
-      if (check.rowCount === 0) {
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
-          throw new Error(`非法数据库名: ${dbName}`);
+    // 1) 确保目标数据库存在
+    if (DB_DIALECT === 'mysql') {
+      // MySQL：连 information_schema 用单连接
+      const mysql = require('mysql2/promise');
+      const sysConn = await mysql.createConnection({
+        host: process.env.DB_HOST || '127.0.0.1',
+        port: parseInt(process.env.DB_PORT || '3306'),
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+      });
+      try {
+        const [rows] = await sysConn.query(
+          'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?', [dbName]
+        );
+        if (rows.length === 0) {
+          if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
+            throw new Error(`非法数据库名: ${dbName}`);
+          }
+          await sysConn.query(`CREATE DATABASE \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+          console.log(`✅ MySQL 数据库 ${dbName} 已创建`);
         }
-        await adminPool.query(`CREATE DATABASE "${dbName}" ENCODING 'UTF8'`);
-        console.log(`✅ 数据库 ${dbName} 已创建`);
+      } finally {
+        await sysConn.end();
       }
-    } finally {
-      await adminPool.end();
+    } else {
+      // PostgreSQL：连 postgres 系统库
+      const { Pool } = require('pg');
+      const adminPool = new Pool({
+        host: process.env.DB_HOST || '127.0.0.1',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || '',
+        database: 'postgres',
+        max: 2,
+      });
+      try {
+        const check = await adminPool.query(
+          'SELECT 1 FROM pg_database WHERE datname = $1', [dbName]
+        );
+        if (check.rowCount === 0) {
+          if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
+            throw new Error(`非法数据库名: ${dbName}`);
+          }
+          await adminPool.query(`CREATE DATABASE "${dbName}" ENCODING 'UTF8'`);
+          console.log(`✅ PostgreSQL 数据库 ${dbName} 已创建`);
+        }
+      } finally {
+        await adminPool.end();
+      }
     }
 
     // 2) 读取并执行对应方言的 schema 文件
@@ -426,12 +574,63 @@ async function initDatabase() {
     // 注：为保证「已部署库」升级兼容，上面仍运行幂等自愈步骤
     // （分类种子自愈 / 多账本回填 / 补齐新增列），对健康全新库均为 no-op，不会改动任何数据。
 
-    console.log('✅ 数据库表结构已初始化');
+    console.log(`✅ 数据库表结构已初始化 (${DB_DIALECT.toUpperCase()})`);
     return true;
   } catch (err) {
-    console.error('❌ 数据库初始化失败:', err.message);
+    console.error(`❌ 数据库初始化失败 [${DB_DIALECT.toUpperCase()}]:`, err.message);
     return false;
   }
 }
 
-module.exports = { pool, query, queryOne, transaction, initDatabase, healBooks, ensureDefaultBookId };
+/**
+ * 双方言 upsert helper：生成 PostgreSQL ON CONFLICT 或 MySQL ON DUPLICATE KEY UPDATE 的 SQL。
+ * @param {string} table - 表名
+ * @param {string[]} pkCols - 冲突检测列（ON CONFLICT 或 ON DUPLICATE KEY 的依据列）
+ * @param {string[]} setCols - 需要更新的列（不含主键）
+ * @returns {string} 方言适配的 upsert SQL 片段
+ *
+ * 用法示例：
+ *   const sql = db.pgUpsert('ai_ocr_config', ['user_id'], ['secret_id', 'secret_key', 'region']);
+ *   // PG:  INSERT INTO ai_ocr_config (...) VALUES (...) ON CONFLICT (user_id) DO UPDATE SET secret_id = EXCLUDED.secret_id, ...
+ *   // MySQL: INSERT INTO ai_ocr_config (...) VALUES (...) ON DUPLICATE KEY UPDATE secret_id = VALUES(secret_id), ...
+ */
+function upsertSql(table, pkCols, setCols) {
+  const colList = [...pkCols, ...setCols].join(', ');
+  const placeholders = [...pkCols, ...setCols].map((_, i) => `?`).join(', ');
+  if (DB_DIALECT === 'mysql') {
+    const setClause = setCols.map(c => `${c} = VALUES(${c})`).join(', ');
+    return `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${setClause}`;
+  }
+  const excludedCols = setCols.map(c => `${c} = EXCLUDED.${c}`).join(', ');
+  return `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON CONFLICT (${pkCols.join(', ')}) DO UPDATE SET ${excludedCols}`;
+}
+
+/**
+ * 双方言 IN 子句构建器，替代 PG 专属的 `= ANY(?)` 数组语法。
+ * @param {any[]} ids - ID 数组（自动过滤 null/undefined）
+ * @returns {{ sql: string, params: any[] }}
+ *
+ * 用法：
+ *   const { sql, params } = db.buildInClause(invIds);
+ *   await query(`SELECT ... WHERE investment_id ${sql}`, params);
+ *
+ * MySQL: 生成 `IN (?,?,?)` + 展平参数数组
+ * PG:    生成 `= ANY(?)` + 原始数组参数
+ */
+function buildInClause(ids) {
+  const cleaned = ids.filter(id => id != null);
+  if (cleaned.length === 0) return { sql: '= NULL', params: [] }; // 防误删全表
+  if (DB_DIALECT === 'mysql') {
+    return {
+      sql: `IN (${cleaned.map(() => '?').join(', ')})`,
+      params: cleaned,
+    };
+  }
+  return { sql: '= ANY(?)', params: [cleaned] };
+}
+
+module.exports = {
+  pool, query, queryOne, transaction, initDatabase,
+  healBooks, ensureDefaultBookId, DB_DIALECT, upsertSql,
+  buildInClause,
+};

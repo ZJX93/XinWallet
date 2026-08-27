@@ -1,21 +1,17 @@
+-- MySQL 8.0+
+-- 为确保自增 ID 从足够大的值开始（容纳显式插入的种子数据），
+-- 在 schema 末尾由 db.js healCategoryData() 执行 ALTER TABLE ... AUTO_INCREMENT = ...
+--
 -- ============================================
--- 鑫钱包 · PostgreSQL 数据库 Schema
--- 注意：本文件由 server/db.js 在 initDatabase() 中调用，数据库创建由 db.js 负责。
--- 说明：枚举统一用 VARCHAR + CHECK 约束；自增列用 SERIAL；幂等写入用 ON CONFLICT DO NOTHING。
+-- 鑫钱包 · MySQL 8.0 数据库 Schema
+-- 由 scripts/convert-pg-schema-to-mysql.js 自动从 schema.sql 转换生成
+-- MySQL 等价物：SERIAL -> INT AUTO_INCREMENT；JSON -> JSON；触发器 -> 应用层兜底。
+-- 说明：枚举统一用 VARCHAR + CHECK 约束；自增列用 INT AUTO_INCREMENT；幂等写入用 INSERT IGNORE。
 -- ============================================
-
--- updated_at 自动更新触发器函数
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
 -- 用户表
 CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   nickname VARCHAR(100),
@@ -26,8 +22,6 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-DROP TRIGGER IF EXISTS trg_users_updated ON users;
-CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ==========================================
 -- 多账本（账套）表
@@ -38,26 +32,24 @@ CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUN
 -- 仅用户自建分类才按 book_id 强隔离。
 -- ==========================================
 CREATE TABLE IF NOT EXISTS books (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   name VARCHAR(50) NOT NULL,                           -- 账本名称
   icon VARCHAR(10) DEFAULT '📒',                       -- 账本图标
   color VARCHAR(10) DEFAULT '#6366f1',                 -- 账本主题色
-  is_default BOOLEAN DEFAULT FALSE,                    -- 是否为默认账本
+  is_default BOOLEAN DEFAULT 0,                    -- 是否为默认账本
   sort_order INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_books_user ON books (user_id);
-DROP TRIGGER IF EXISTS trg_books_updated ON books;
-CREATE TRIGGER trg_books_updated BEFORE UPDATE ON books FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 账户表
 -- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
 --   如 A0201=储蓄卡-工商银行，A0100=现金类（虚拟分组）
 CREATE TABLE IF NOT EXISTS accounts (
-  id SERIAL PRIMARY KEY,
-  code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 A0201）
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(10) DEFAULT NULL,                        -- 结构化编码（如 A0201）
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,                            -- 所属账本（多账本隔离）
   name VARCHAR(50) NOT NULL,                          -- 账户名称
@@ -66,7 +58,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   balance DECIMAL(15,2) NOT NULL DEFAULT 0,           -- 当前余额
   opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,   -- 期初余额（复式记账）
   credit_limit DECIMAL(15,2) DEFAULT 0,               -- 信用额度(信用卡)
-  is_default BOOLEAN DEFAULT FALSE,                   -- 是否默认账户
+  is_default BOOLEAN DEFAULT 0,                   -- 是否默认账户
   sort_order INT DEFAULT 0,
   status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','closed')),
   annual_rate DECIMAL(8,4) NOT NULL DEFAULT 0,                 -- 年利率（百分比，如 1.5 表示 1.5%）；仅展示与「预计利息」估算
@@ -78,16 +70,14 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id);
 -- 注意：accounts 的 (user_id, book_id) 复合索引不在此处创建——旧库 accounts 尚无 book_id 列，
 -- 创建阶段建该索引会抛错并中断后续 schema 执行。统一放到末尾「多账本迁移」块（ADD COLUMN 之后）幂等创建。
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_code ON accounts (code) WHERE code IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_accounts_updated ON accounts;
-CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE UNIQUE INDEX idx_accounts_code ON accounts (code);
 
 -- 交易类别表
 -- code: 结构化编码（5位），E=支出 I=收入 T=转账 + 2位一级 + 2位二级
 --   如 E0101=支出-餐饮-早午晚餐，E0100=餐饮一级本身（仅展示），T0100=转账
 CREATE TABLE IF NOT EXISTS categories (
-  id SERIAL PRIMARY KEY,
-  code VARCHAR(5),                                      -- 结构化编码（如 E0101）；用户自建分类可不填，种子数据用 code 映射
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(10),                                      -- 结构化编码（如 E0101）；用户自建分类可不填，种子数据用 code 映射
   parent_id INT DEFAULT NULL,                         -- 父分类ID，NULL为一级分类
   user_id INT DEFAULT NULL,                           -- 所属用户ID（NULL=系统预设全局分类）
   name VARCHAR(50) NOT NULL,                          -- 类别名称
@@ -95,25 +85,18 @@ CREATE TABLE IF NOT EXISTS categories (
   icon VARCHAR(10) DEFAULT '📌',                      -- 图标
   color VARCHAR(10) DEFAULT '#6366f1',                -- 颜色
   sort_order INT DEFAULT 0,
-  is_system BOOLEAN DEFAULT TRUE,                     -- 是否系统预设
+  is_system BOOLEAN DEFAULT 1,                     -- 是否系统预设
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON categories (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_code ON categories (code);
--- 防重复：同一父分类下名称唯一（支持 ON CONFLICT DO NOTHING 幂等插入）
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'categories_parent_name_unique') THEN
-    ALTER TABLE categories ADD CONSTRAINT categories_parent_name_unique UNIQUE (parent_id, name);
-  END IF;
-END $$;
-
 -- categories.code 允许为 NULL：用户自建分类无需结构化编码，唯一索引允许 NULL。
 
 
 -- 交易记录表
 CREATE TABLE IF NOT EXISTS transactions (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   account_id INT NOT NULL,                            -- 关联账户
   category_id INT NOT NULL,                           -- 关联类别
@@ -138,17 +121,15 @@ CREATE INDEX IF NOT EXISTS idx_transactions_budget ON transactions (budget_id);
 CREATE INDEX IF NOT EXISTS idx_tx_source ON transactions (source_account_id);
 CREATE INDEX IF NOT EXISTS idx_tx_dest ON transactions (destination_account_id);
 -- 兼容已部署库：新增列与索引（幂等，列已存在则无操作）
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS investment_txn_id INT DEFAULT NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS location VARCHAR(100) DEFAULT NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS link_type VARCHAR(20) DEFAULT NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS link_id INT DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN investment_txn_id INT DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN location VARCHAR(100) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN link_type VARCHAR(20) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN link_id INT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_inv_txn ON transactions (investment_txn_id);
-DROP TRIGGER IF EXISTS trg_transactions_updated ON transactions;
-CREATE TRIGGER trg_transactions_updated BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 内部转账记录表
 CREATE TABLE IF NOT EXISTS transfers (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   from_account_id INT NOT NULL,                       -- 转出账户
   to_account_id INT NOT NULL,                         -- 转入账户
@@ -162,12 +143,10 @@ CREATE TABLE IF NOT EXISTS transfers (
 CREATE INDEX IF NOT EXISTS idx_transfers_user ON transfers (user_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_from ON transfers (from_account_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers (to_account_id);
-DROP TRIGGER IF EXISTS trg_transfers_updated ON transfers;
-CREATE TRIGGER trg_transfers_updated BEFORE UPDATE ON transfers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 预算表
 CREATE TABLE IF NOT EXISTS budgets (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   name VARCHAR(100) NOT NULL,                         -- 预算名称
   period_type VARCHAR(10) NOT NULL DEFAULT 'month' CHECK (period_type IN ('month','quarter','half','year')),
@@ -178,46 +157,44 @@ CREATE TABLE IF NOT EXISTS budgets (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id, name, start_date, end_date)
 );
-DROP TRIGGER IF EXISTS trg_budgets_updated ON budgets;
-CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 投资理财分类体系（一级 投资理财 + 二级 投资买入 / 理财保险）
 -- 保险类买入归入理财保险，故 investment_types.category 允许 'insurance'。
 -- 注意：此处必须显式指定 id（901/902/903），避开下方系统分类种子使用的 1~99 / 281 段。
 -- 若省略 id，SERIAL 自增会先抢占 id 1/2/3，导致下方显式 id=1「餐饮」等系统分类因主键冲突被
--- ON CONFLICT (id) DO NOTHING 静默跳过，进而使依赖系统分类的测试/业务因 category_id NOT NULL 而失败。
+-- ; 静默跳过，进而使依赖系统分类的测试/业务因 category_id NOT NULL 而失败。
 INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
-(901, 'E1100', '投资理财', 'expense', '💹', '#22c55e', 10, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(901, 'E1100', '投资理财', 'expense', '💹', '#22c55e', 10, 1)
+;
 INSERT INTO categories (id, code, name, type, icon, color, parent_id, is_system) VALUES
-(902, 'E1101', '投资买入', 'expense', '📈', '#22c55e', 901, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(902, 'E1101', '投资买入', 'expense', '📈', '#22c55e', 901, 1)
+;
 INSERT INTO categories (id, code, name, type, icon, color, parent_id, is_system) VALUES
-(903, 'E1102', '理财保险', 'expense', '🛡️', '#22c55e', 901, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(903, 'E1102', '理财保险', 'expense', '🛡️', '#22c55e', 901, 1)
+;
 
 -- 理财产品类型表（全局共享，无 user_id）
 -- code: 结构化编码（5位），V=投资 + 2位大类 + 2位序号
 --   V01=存款固收 V02=基金 V03=A股 V04=港股 V05=美股 V06=商品 V07=加密 V08=外汇 V99=其他
--- is_system：系统预置类型标记，为 TRUE 时禁止普通用户 UPDATE/DELETE，
+-- is_system：系统预置类型标记，为 1 时禁止普通用户 UPDATE/DELETE，
 --            防止任意用户篡改全局类型影响其他所有用户。
 CREATE TABLE IF NOT EXISTS investment_types (
-  id SERIAL PRIMARY KEY,
-  code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 V0203）
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(20) DEFAULT NULL,                        -- 结构化编码（如 V0203）
   name VARCHAR(50) NOT NULL,
   icon VARCHAR(10) DEFAULT '📈',
   risk_level VARCHAR(10) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high','very_high')),
   category VARCHAR(10) NOT NULL DEFAULT 'fund' CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex','insurance')),
   description VARCHAR(200) DEFAULT '',
   sort_order INT DEFAULT 0,
-  is_system BOOLEAN NOT NULL DEFAULT FALSE,
+  is_system BOOLEAN NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_investment_types_code ON investment_types (code) WHERE code IS NOT NULL;
+CREATE UNIQUE INDEX idx_investment_types_code ON investment_types (code);
 
 -- 理财持仓表
 CREATE TABLE IF NOT EXISTS investments (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   account_id INT DEFAULT NULL,                        -- 关联账户
   investment_type_id INT NOT NULL,                    -- 理财产品类型
@@ -244,12 +221,10 @@ CREATE TABLE IF NOT EXISTS investments (
 CREATE INDEX IF NOT EXISTS idx_investments_user ON investments (user_id);
 CREATE INDEX IF NOT EXISTS idx_investments_type ON investments (investment_type_id);
 CREATE INDEX IF NOT EXISTS idx_investments_status ON investments (status);
-DROP TRIGGER IF EXISTS trg_investments_updated ON investments;
-CREATE TRIGGER trg_investments_updated BEFORE UPDATE ON investments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 理财交易记录
 CREATE TABLE IF NOT EXISTS investment_transactions (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   investment_id INT NOT NULL,
   type VARCHAR(10) NOT NULL CHECK (type IN ('buy','sell','dividend','interest','fee','reinvest')),
@@ -264,7 +239,7 @@ CREATE INDEX IF NOT EXISTS idx_inv_tx_investment ON investment_transactions (inv
 
 -- 理财净值快照
 CREATE TABLE IF NOT EXISTS investment_snapshots (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   investment_id INT NOT NULL,
   total_value DECIMAL(15,2) NOT NULL DEFAULT 0,
@@ -283,13 +258,13 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON investment_snapshots (user
 -- code 编码规则：A + 2位类型 + 2位序号
 --   A01=cash A02=bank_card A03=credit_card A04=electronic_payment A05=financial A06=digital A99=other
 INSERT INTO accounts (id, code, user_id, name, type, icon, balance, opening_balance, credit_limit, is_default, sort_order) VALUES
-(1, 'A0101', 1, '现金',       'cash',                '💵', 500.00,   500.00,   0.00,     FALSE, 1),
-(2, 'A0201', 1, '工商银行',   'bank_card',           '🏦', 25000.00, 25000.00, 0.00,     TRUE,  2),
-(3, 'A0202', 1, '招商银行',   'bank_card',           '🏦', 18000.00, 18000.00, 0.00,     FALSE, 3),
-(4, 'A0401', 1, '微信支付',   'electronic_payment',  '💚', 3200.00,  3200.00,  0.00,     FALSE, 4),
-(5, 'A0402', 1, '支付宝',     'electronic_payment',  '🔵', 5000.00,  5000.00,  0.00,     FALSE, 5),
-(6, 'A0301', 1, '信用卡',     'credit_card',         '💳', 0.00,     0.00,     10000.00, FALSE, 6)
-ON CONFLICT (id) DO NOTHING;
+(1, 'A0101', 1, '现金',       'cash',                '💵', 500.00,   500.00,   0.00,     0, 1),
+(2, 'A0201', 1, '工商银行',   'bank_card',           '🏦', 25000.00, 25000.00, 0.00,     1,  2),
+(3, 'A0202', 1, '招商银行',   'bank_card',           '🏦', 18000.00, 18000.00, 0.00,     0, 3),
+(4, 'A0401', 1, '微信支付',   'electronic_payment',  '💚', 3200.00,  3200.00,  0.00,     0, 4),
+(5, 'A0402', 1, '支付宝',     'electronic_payment',  '🔵', 5000.00,  5000.00,  0.00,     0, 5),
+(6, 'A0301', 1, '信用卡',     'credit_card',         '💳', 0.00,     0.00,     10000.00, 0, 6)
+;
 
 -- ============================================
 -- 分类体系 v2：该合并合并、该拓展拓展
@@ -304,150 +279,150 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 支出类别（一级 10 个，code 以 00 结尾表示一级本身仅展示）
 INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
-(1,  'E0100', '餐饮',     'expense', '🍜', '#22c55e', 1,  TRUE),
-(2,  'E0200', '交通出行', 'expense', '🚗', '#22c55e', 2,  TRUE),
-(3,  'E0300', '购物消费', 'expense', '🛒', '#22c55e', 3,  TRUE),
-(4,  'E0400', '居家生活', 'expense', '🏠', '#22c55e', 4,  TRUE),
-(5,  'E0500', '休闲娱乐', 'expense', '🎮', '#22c55e', 5,  TRUE),
-(6,  'E0600', '医疗健康', 'expense', '💊', '#22c55e', 6,  TRUE),
-(7,  'E0700', '学习进修', 'expense', '📚', '#22c55e', 7,  TRUE),
-(9,  'E0800', '人情往来', 'expense', '🎁', '#22c55e', 8,  TRUE),
-(14, 'E1000', '其他支出', 'expense', '📌', '#22c55e', 99, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(1,  'E0100', '餐饮',     'expense', '🍜', '#22c55e', 1,  1),
+(2,  'E0200', '交通出行', 'expense', '🚗', '#22c55e', 2,  1),
+(3,  'E0300', '购物消费', 'expense', '🛒', '#22c55e', 3,  1),
+(4,  'E0400', '居家生活', 'expense', '🏠', '#22c55e', 4,  1),
+(5,  'E0500', '休闲娱乐', 'expense', '🎮', '#22c55e', 5,  1),
+(6,  'E0600', '医疗健康', 'expense', '💊', '#22c55e', 6,  1),
+(7,  'E0700', '学习进修', 'expense', '📚', '#22c55e', 7,  1),
+(9,  'E0800', '人情往来', 'expense', '🎁', '#22c55e', 8,  1),
+(14, 'E1000', '其他支出', 'expense', '📌', '#22c55e', 99, 1)
+;
 
 -- 育儿亲子（固定 ID=11）
 INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
-(11, 'E0900', '育儿亲子', 'expense', '👶', '#22c55e', 9, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(11, 'E0900', '育儿亲子', 'expense', '👶', '#22c55e', 9, 1)
+;
 
 -- ◆ 支出二级分类（44 个，code E+一级序号+二级序号）
 INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 餐饮 E01（6 子类）
-(23, 'E0101', 1, '早午晚餐', 'expense', '🌅', '#22c55e', 1, TRUE),
-(24, 'E0102', 1, '外卖小吃', 'expense', '🥡', '#22c55e', 2, TRUE),
-(25, 'E0103', 1, '零食饮料', 'expense', '🧋', '#22c55e', 3, TRUE),
-(26, 'E0104', 1, '烟酒',     'expense', '🍷', '#22c55e', 4, TRUE),
-(27, 'E0105', 1, '聚餐请客', 'expense', '🍻', '#22c55e', 5, TRUE),
-(28, 'E0106', 1, '生鲜食材', 'expense', '🥬', '#22c55e', 6, TRUE),
-(281, 'E0107', 1, '粮油调味', 'expense', '🌾', '#22c55e', 7, TRUE),
+(23, 'E0101', 1, '早午晚餐', 'expense', '🌅', '#22c55e', 1, 1),
+(24, 'E0102', 1, '外卖小吃', 'expense', '🥡', '#22c55e', 2, 1),
+(25, 'E0103', 1, '零食饮料', 'expense', '🧋', '#22c55e', 3, 1),
+(26, 'E0104', 1, '烟酒',     'expense', '🍷', '#22c55e', 4, 1),
+(27, 'E0105', 1, '聚餐请客', 'expense', '🍻', '#22c55e', 5, 1),
+(28, 'E0106', 1, '生鲜食材', 'expense', '🥬', '#22c55e', 6, 1),
+(281, 'E0107', 1, '粮油调味', 'expense', '🌾', '#22c55e', 7, 1),
 -- 交通出行 E02（6 子类）
-(29, 'E0201', 2, '公交地铁', 'expense', '🚌', '#22c55e', 1, TRUE),
-(30, 'E0202', 2, '打车拼车', 'expense', '🚕', '#22c55e', 2, TRUE),
-(31, 'E0203', 2, '加油充电', 'expense', '⛽', '#22c55e', 3, TRUE),
-(32, 'E0204', 2, '停车过路', 'expense', '🅿️', '#22c55e', 4, TRUE),
-(33, 'E0205', 2, '火车飞机', 'expense', '🚄', '#22c55e', 5, TRUE),
-(34, 'E0206', 2, '维保车险', 'expense', '🔧', '#22c55e', 6, TRUE),
+(29, 'E0201', 2, '公交地铁', 'expense', '🚌', '#22c55e', 1, 1),
+(30, 'E0202', 2, '打车拼车', 'expense', '🚕', '#22c55e', 2, 1),
+(31, 'E0203', 2, '加油充电', 'expense', '⛽', '#22c55e', 3, 1),
+(32, 'E0204', 2, '停车过路', 'expense', '🅿️', '#22c55e', 4, 1),
+(33, 'E0205', 2, '火车飞机', 'expense', '🚄', '#22c55e', 5, 1),
+(34, 'E0206', 2, '维保车险', 'expense', '🔧', '#22c55e', 6, 1),
 -- 购物消费 E03（4 子类）
-(35, 'E0301', 3, '日用百货', 'expense', '🧴', '#22c55e', 1, TRUE),
-(36, 'E0302', 3, '服饰美容', 'expense', '👗', '#22c55e', 2, TRUE),
-(37, 'E0303', 3, '数码电器', 'expense', '📱', '#22c55e', 3, TRUE),
-(38, 'E0304', 3, '家居家具', 'expense', '🛋️', '#22c55e', 4, TRUE),
+(35, 'E0301', 3, '日用百货', 'expense', '🧴', '#22c55e', 1, 1),
+(36, 'E0302', 3, '服饰美容', 'expense', '👗', '#22c55e', 2, 1),
+(37, 'E0303', 3, '数码电器', 'expense', '📱', '#22c55e', 3, 1),
+(38, 'E0304', 3, '家居家具', 'expense', '🛋️', '#22c55e', 4, 1),
 -- 居家生活 E04（7 子类）
-(39, 'E0401', 4, '房租月供', 'expense', '🏘️', '#22c55e', 1, TRUE),
-(40, 'E0402', 4, '水电燃气', 'expense', '💡', '#22c55e', 2, TRUE),
-(41, 'E0403', 4, '物业维修', 'expense', '🛠️', '#22c55e', 3, TRUE),
-(42, 'E0404', 4, '话费宽带', 'expense', '📶', '#22c55e', 4, TRUE),
-(43, 'E0405', 4, '社保保险', 'expense', '🛡️', '#22c55e', 5, TRUE),
-(44, 'E0406', 4, '日用杂货', 'expense', '🧹', '#22c55e', 6, TRUE),
-(45, 'E0407', 4, '快递邮寄', 'expense', '📦', '#22c55e', 7, TRUE),
+(39, 'E0401', 4, '房租月供', 'expense', '🏘️', '#22c55e', 1, 1),
+(40, 'E0402', 4, '水电燃气', 'expense', '💡', '#22c55e', 2, 1),
+(41, 'E0403', 4, '物业维修', 'expense', '🛠️', '#22c55e', 3, 1),
+(42, 'E0404', 4, '话费宽带', 'expense', '📶', '#22c55e', 4, 1),
+(43, 'E0405', 4, '社保保险', 'expense', '🛡️', '#22c55e', 5, 1),
+(44, 'E0406', 4, '日用杂货', 'expense', '🧹', '#22c55e', 6, 1),
+(45, 'E0407', 4, '快递邮寄', 'expense', '📦', '#22c55e', 7, 1),
 -- 休闲娱乐 E05（6 子类）
-(46, 'E0501', 5, '电影演出', 'expense', '🎬', '#22c55e', 1, TRUE),
-(47, 'E0502', 5, '游戏电竞', 'expense', '🎮', '#22c55e', 2, TRUE),
-(48, 'E0503', 5, '运动健身', 'expense', '🏋️', '#22c55e', 3, TRUE),
-(49, 'E0504', 5, '旅游度假', 'expense', '✈️', '#22c55e', 4, TRUE),
-(50, 'E0505', 5, '宠物开销', 'expense', '🐾', '#22c55e', 5, TRUE),
-(51, 'E0506', 5, '会员订阅', 'expense', '📺', '#22c55e', 6, TRUE),
+(46, 'E0501', 5, '电影演出', 'expense', '🎬', '#22c55e', 1, 1),
+(47, 'E0502', 5, '游戏电竞', 'expense', '🎮', '#22c55e', 2, 1),
+(48, 'E0503', 5, '运动健身', 'expense', '🏋️', '#22c55e', 3, 1),
+(49, 'E0504', 5, '旅游度假', 'expense', '✈️', '#22c55e', 4, 1),
+(50, 'E0505', 5, '宠物开销', 'expense', '🐾', '#22c55e', 5, 1),
+(51, 'E0506', 5, '会员订阅', 'expense', '📺', '#22c55e', 6, 1),
 -- 医疗健康 E06（4 子类）
-(52, 'E0601', 6, '门诊药品', 'expense', '💊', '#22c55e', 1, TRUE),
-(53, 'E0602', 6, '体检住院', 'expense', '🏥', '#22c55e', 2, TRUE),
-(54, 'E0603', 6, '牙科眼科', 'expense', '🦷', '#22c55e', 3, TRUE),
-(55, 'E0604', 6, '保健养生', 'expense', '🌿', '#22c55e', 4, TRUE),
+(52, 'E0601', 6, '门诊药品', 'expense', '💊', '#22c55e', 1, 1),
+(53, 'E0602', 6, '体检住院', 'expense', '🏥', '#22c55e', 2, 1),
+(54, 'E0603', 6, '牙科眼科', 'expense', '🦷', '#22c55e', 3, 1),
+(55, 'E0604', 6, '保健养生', 'expense', '🌿', '#22c55e', 4, 1),
 -- 学习进修 E07（3 子类）
-(56, 'E0701', 7, '培训考试', 'expense', '📝', '#22c55e', 1, TRUE),
-(57, 'E0702', 7, '书本文具', 'expense', '📚', '#22c55e', 2, TRUE),
-(58, 'E0703', 7, '知识付费', 'expense', '🎧', '#22c55e', 3, TRUE),
+(56, 'E0701', 7, '培训考试', 'expense', '📝', '#22c55e', 1, 1),
+(57, 'E0702', 7, '书本文具', 'expense', '📚', '#22c55e', 2, 1),
+(58, 'E0703', 7, '知识付费', 'expense', '🎧', '#22c55e', 3, 1),
 -- 人情往来 E08（4 子类）
-(59, 'E0801', 9, '孝敬父母', 'expense', '👴', '#22c55e', 1, TRUE),
-(60, 'E0802', 9, '送礼红包', 'expense', '🧧', '#22c55e', 2, TRUE),
-(61, 'E0803', 9, '慈善捐赠', 'expense', '💝', '#22c55e', 3, TRUE),
-(62, 'E0804', 9, '请客招待', 'expense', '🍻', '#22c55e', 4, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(59, 'E0801', 9, '孝敬父母', 'expense', '👴', '#22c55e', 1, 1),
+(60, 'E0802', 9, '送礼红包', 'expense', '🧧', '#22c55e', 2, 1),
+(61, 'E0803', 9, '慈善捐赠', 'expense', '💝', '#22c55e', 3, 1),
+(62, 'E0804', 9, '请客招待', 'expense', '🍻', '#22c55e', 4, 1)
+;
 
 -- 育儿亲子二级分类（E09，固定 ID 67-70，parent_id=11）
 INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
-(67, 'E0901', 11, '奶粉尿布', 'expense', '🍼', '#22c55e', 1, TRUE),
-(68, 'E0902', 11, '玩具童书', 'expense', '🧸', '#22c55e', 2, TRUE),
-(69, 'E0903', 11, '学费培训', 'expense', '🎓', '#22c55e', 3, TRUE),
-(70, 'E0904', 11, '医疗保健', 'expense', '🏥', '#22c55e', 4, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(67, 'E0901', 11, '奶粉尿布', 'expense', '🍼', '#22c55e', 1, 1),
+(68, 'E0902', 11, '玩具童书', 'expense', '🧸', '#22c55e', 2, 1),
+(69, 'E0903', 11, '学费培训', 'expense', '🎓', '#22c55e', 3, 1),
+(70, 'E0904', 11, '医疗保健', 'expense', '🏥', '#22c55e', 4, 1)
+;
 
 -- ◆ 收入类别（一级 4 个）
 INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
-(15, 'I0100', '职业收入', 'income',   '💼', '#ef4444', 1,  TRUE),
-(17, 'I0200', '被动收入', 'income',   '📈', '#ef4444', 2,  TRUE),
-(18, 'I0300', '兼职副业', 'income',   '💻', '#ef4444', 3,  TRUE),
-(21, 'I0400', '其他收入', 'income',   '📌', '#ef4444', 99, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(15, 'I0100', '职业收入', 'income',   '💼', '#ef4444', 1,  1),
+(17, 'I0200', '被动收入', 'income',   '📈', '#ef4444', 2,  1),
+(18, 'I0300', '兼职副业', 'income',   '💻', '#ef4444', 3,  1),
+(21, 'I0400', '其他收入', 'income',   '📌', '#ef4444', 99, 1)
+;
 
 -- ◆ 转账类别（一般转账 / 贷款债务 带二级明细；其他转账 为一级可选叶子，type 统一为 transfer）
 --   一般转账（银行转账 / 信用卡还款 / 存款取款）
 --   贷款债务（借入 / 借出 / 还款 / 收债）
 --   其他转账
 INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
-(22, 'T0100', '一般转账', 'transfer', '🏦', '#3b82f6', 1, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(22, 'T0100', '一般转账', 'transfer', '🏦', '#3b82f6', 1, 1)
+;
 
 INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 一般转账 T01（3 子类）
-(91, 'T0200', NULL, '贷款债务', 'transfer', '💸', '#3b82f6', 2, TRUE),
-(92, 'T0300', NULL, '其他转账', 'transfer', '↔️', '#3b82f6', 99, TRUE),
-(93, 'T0101', 22,   '银行转账', 'transfer', '🏦', '#3b82f6', 1, TRUE),
-(94, 'T0102', 22,   '信用卡还款', 'transfer', '💳', '#3b82f6', 2, TRUE),
-(95, 'T0103', 22,   '存款取款', 'transfer', '🏧', '#3b82f6', 3, TRUE),
-(96, 'T0201', 91,   '借入',     'transfer', '🏦', '#3b82f6', 1, TRUE),
-(97, 'T0202', 91,   '借出',     'transfer', '🤝', '#3b82f6', 2, TRUE),
-(98, 'T0203', 91,   '还款',     'transfer', '💸', '#3b82f6', 3, TRUE),
-(99, 'T0204', 91,   '收债',     'transfer', '💰', '#3b82f6', 4, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(91, 'T0200', NULL, '贷款债务', 'transfer', '💸', '#3b82f6', 2, 1),
+(92, 'T0300', NULL, '其他转账', 'transfer', '↔️', '#3b82f6', 99, 1),
+(93, 'T0101', 22,   '银行转账', 'transfer', '🏦', '#3b82f6', 1, 1),
+(94, 'T0102', 22,   '信用卡还款', 'transfer', '💳', '#3b82f6', 2, 1),
+(95, 'T0103', 22,   '存款取款', 'transfer', '🏧', '#3b82f6', 3, 1),
+(96, 'T0201', 91,   '借入',     'transfer', '🏦', '#3b82f6', 1, 1),
+(97, 'T0202', 91,   '借出',     'transfer', '🤝', '#3b82f6', 2, 1),
+(98, 'T0203', 91,   '还款',     'transfer', '💸', '#3b82f6', 3, 1),
+(99, 'T0204', 91,   '收债',     'transfer', '💰', '#3b82f6', 4, 1)
+;
 
 -- ◆ 收入二级分类（10 个）
 INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 职业收入 I01（3 子类）
-(71, 'I0101', 15, '工资薪水',   'income', '💰', '#ef4444', 1, TRUE),
-(72, 'I0102', 15, '奖金绩效',   'income', '🏆', '#ef4444', 2, TRUE),
-(73, 'I0103', 15, '补贴报销',   'income', '📋', '#ef4444', 3, TRUE),
+(71, 'I0101', 15, '工资薪水',   'income', '💰', '#ef4444', 1, 1),
+(72, 'I0102', 15, '奖金绩效',   'income', '🏆', '#ef4444', 2, 1),
+(73, 'I0103', 15, '补贴报销',   'income', '📋', '#ef4444', 3, 1),
 -- 被动收入 I02（3 子类）
-(74, 'I0201', 17, '理财收益',   'income', '📊', '#ef4444', 1, TRUE),
-(75, 'I0202', 17, '房租收入',   'income', '🏠', '#ef4444', 2, TRUE),
-(76, 'I0203', 17, '分红利息',   'income', '💹', '#ef4444', 3, TRUE),
+(74, 'I0201', 17, '理财收益',   'income', '📊', '#ef4444', 1, 1),
+(75, 'I0202', 17, '房租收入',   'income', '🏠', '#ef4444', 2, 1),
+(76, 'I0203', 17, '分红利息',   'income', '💹', '#ef4444', 3, 1),
 -- 兼职副业 I03（4 子类）
-(77, 'I0301', 18, '自由职业',   'income', '🎨', '#ef4444', 1, TRUE),
-(78, 'I0302', 18, '咨询服务',   'income', '🗣️', '#ef4444', 2, TRUE),
-(79, 'I0303', 18, '自媒体创作', 'income', '🎬', '#ef4444', 3, TRUE),
-(80, 'I0304', 18, '电商微商',   'income', '🛍️', '#ef4444', 4, TRUE)
-ON CONFLICT (id) DO NOTHING;
+(77, 'I0301', 18, '自由职业',   'income', '🎨', '#ef4444', 1, 1),
+(78, 'I0302', 18, '咨询服务',   'income', '🗣️', '#ef4444', 2, 1),
+(79, 'I0303', 18, '自媒体创作', 'income', '🎬', '#ef4444', 3, 1),
+(80, 'I0304', 18, '电商微商',   'income', '🛍️', '#ef4444', 4, 1)
+;
 
 -- 理财产品类型
 -- code 编码规则：V + 2位大类 + 2位序号
 --   V01=存款固收 V02=基金 V03=A股 V04=港股 V05=美股 V06=商品 V07=加密 V08=外汇 V99=其他
 INSERT INTO investment_types (id, code, name, icon, risk_level, description, sort_order, category, is_system) VALUES
-(1,  'V0101', '银行存款',    '🏦', 'low',       '银行定期/活期存款',               1, 'deposit', TRUE),
-(2,  'V0201', '货币基金',    '💰', 'low',       '余额宝等货币市场基金',             2, 'fund', TRUE),
-(3,  'V0202', '债券基金',    '📊', 'low',       '纯债/混合债基金',                 3, 'fund', TRUE),
-(4,  'V0203', '指数基金',    '📈', 'medium',    '沪深300/中证500等宽基指数',        4, 'fund', TRUE),
-(5,  'V0204', '混合基金',    '🔄', 'medium',    '股债混合型基金',                  5, 'fund', TRUE),
-(6,  'V0205', '股票基金',    '🚀', 'high',      '主动管理型股票基金',               6, 'fund', TRUE),
-(7,  'V0301', '个股',        '💹', 'very_high', '直接持有的个股',                   7, 'stock', TRUE),
-(8,  'V9901', '理财产品',    '💎', 'medium',    '银行/券商理财产品',                8, 'other', TRUE),
-(9,  'V0102', '国债',        '🏛️', 'low',       '国债/地方债',                      9, 'deposit', TRUE),
-(10, 'V0601', '黄金/贵金属', '🥇', 'medium',    '实物黄金/纸黄金/黄金ETF',          10, 'commodity', TRUE),
-(11, 'V9902', '其他理财',    '📌', 'medium',    '其他投资品种',                     99, 'other', TRUE),
-(12, 'V0401', '港股',        '🇭🇰', 'very_high', '香港交易所上市股票',               11, 'hk_stock', TRUE),
-(13, 'V0501', '美股',        '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票',        12, 'us_stock', TRUE),
-(14, 'V0701', '加密货币',    '₿',   'very_high', '比特币/以太坊等数字资产',          13, 'crypto', TRUE),
-(15, 'V0801', '外汇',        '💱', 'high',      '美元/欧元/日元等外汇品种',          14, 'forex', TRUE),
-(16, 'V0103', '债券',        '📜', 'low',       '企业债/可转债等固定收益品种',       15, 'deposit', TRUE)
-ON CONFLICT (id) DO NOTHING;
+(1,  'V0101', '银行存款',    '🏦', 'low',       '银行定期/活期存款',               1, 'deposit', 1),
+(2,  'V0201', '货币基金',    '💰', 'low',       '余额宝等货币市场基金',             2, 'fund', 1),
+(3,  'V0202', '债券基金',    '📊', 'low',       '纯债/混合债基金',                 3, 'fund', 1),
+(4,  'V0203', '指数基金',    '📈', 'medium',    '沪深300/中证500等宽基指数',        4, 'fund', 1),
+(5,  'V0204', '混合基金',    '🔄', 'medium',    '股债混合型基金',                  5, 'fund', 1),
+(6,  'V0205', '股票基金',    '🚀', 'high',      '主动管理型股票基金',               6, 'fund', 1),
+(7,  'V0301', '个股',        '💹', 'very_high', '直接持有的个股',                   7, 'stock', 1),
+(8,  'V9901', '理财产品',    '💎', 'medium',    '银行/券商理财产品',                8, 'other', 1),
+(9,  'V0102', '国债',        '🏛️', 'low',       '国债/地方债',                      9, 'deposit', 1),
+(10, 'V0601', '黄金/贵金属', '🥇', 'medium',    '实物黄金/纸黄金/黄金ETF',          10, 'commodity', 1),
+(11, 'V9902', '其他理财',    '📌', 'medium',    '其他投资品种',                     99, 'other', 1),
+(12, 'V0401', '港股',        '🇭🇰', 'very_high', '香港交易所上市股票',               11, 'hk_stock', 1),
+(13, 'V0501', '美股',        '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票',        12, 'us_stock', 1),
+(14, 'V0701', '加密货币',    '₿',   'very_high', '比特币/以太坊等数字资产',          13, 'crypto', 1),
+(15, 'V0801', '外汇',        '💱', 'high',      '美元/欧元/日元等外汇品种',          14, 'forex', 1),
+(16, 'V0103', '债券',        '📜', 'low',       '企业债/可转债等固定收益品种',       15, 'deposit', 1)
+;
 
 -- 注：id=10 黄金/贵金属 已在上方种子数据直接写入 category='commodity'（支持行情刷新）。
 
@@ -456,7 +431,7 @@ ON CONFLICT (id) DO NOTHING;
 -- 交易标签表
 -- ============================================
 CREATE TABLE IF NOT EXISTS tags (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   name VARCHAR(50) NOT NULL,
   color VARCHAR(20) DEFAULT '#3b82f6',
@@ -475,7 +450,7 @@ CREATE INDEX IF NOT EXISTS idx_tt_tag ON transaction_tags (tag_id);
 
 -- 储蓄目标表
 CREATE TABLE IF NOT EXISTS savings_goals (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   target_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
@@ -490,20 +465,18 @@ CREATE TABLE IF NOT EXISTS savings_goals (
 );
 CREATE INDEX IF NOT EXISTS idx_savings_user ON savings_goals (user_id);
 -- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的储蓄目标不重复）
-ALTER TABLE savings_goals ADD CONSTRAINT savings_goals_user_book_name_unique UNIQUE (user_id, book_id, name);
-DROP TRIGGER IF EXISTS trg_savings_updated ON savings_goals;
-CREATE TRIGGER trg_savings_updated BEFORE UPDATE ON savings_goals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_savings_user_book_name ON savings_goals (user_id, book_id, name);
 
 -- AI 服务商配置表
 CREATE TABLE IF NOT EXISTS ai_providers (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   api_type VARCHAR(10) NOT NULL DEFAULT 'openai' CHECK (api_type IN ('openai','anthropic')),
   base_url VARCHAR(255) NOT NULL,
   api_key TEXT DEFAULT NULL,                          -- AES-256-GCM 加密存储
   model VARCHAR(100) NOT NULL,
-  is_active BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT 0,
   -- 图片理解能力：unknown=未验证（乐观尝试一次）/ yes / no。
   -- 由 modules/ai/vision 在真实调用后写回；no 时图片通道直接走腾讯云 OCR 兜底。
   vision_support VARCHAR(10) NOT NULL DEFAULT 'unknown',
@@ -513,8 +486,6 @@ CREATE TABLE IF NOT EXISTS ai_providers (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_user ON ai_providers (user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_user_active ON ai_providers (user_id, is_active);
-DROP TRIGGER IF EXISTS trg_ai_updated ON ai_providers;
-CREATE TRIGGER trg_ai_updated BEFORE UPDATE ON ai_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 默认标签种子
 INSERT INTO tags (id, user_id, name, color, icon) VALUES
@@ -523,11 +494,11 @@ INSERT INTO tags (id, user_id, name, color, icon) VALUES
 (3, 1, '可省', '#10b981', '💡'),
 (4, 1, '大额', '#8b5cf6', '💎'),
 (5, 1, '订阅', '#3b82f6', '🔁')
-ON CONFLICT (id) DO NOTHING;
+;
 
 -- OCR 配置表
 CREATE TABLE IF NOT EXISTS ai_ocr_config (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   provider VARCHAR(50) NOT NULL DEFAULT 'tencent',
   secret_id TEXT NOT NULL,                            -- AES-256-GCM 加密存储
@@ -537,14 +508,12 @@ CREATE TABLE IF NOT EXISTS ai_ocr_config (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id)
 );
-DROP TRIGGER IF EXISTS trg_ocr_updated ON ai_ocr_config;
-CREATE TRIGGER trg_ocr_updated BEFORE UPDATE ON ai_ocr_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 债务台账（应付 + 应收双向）
 -- direction: payable = 我欠别人（默认，旧数据保持）；receivable = 别人欠我
 -- creditor: 对方名称（银行/机构/个人，语义通用：应付时是债权人，应收时是债务人）
 CREATE TABLE IF NOT EXISTS debts (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   account_id INT DEFAULT NULL,
   create_transaction_id INT DEFAULT NULL,                -- 创建债务时同步生成的台账交易（应收借出时扣减关联账户余额）
@@ -572,13 +541,11 @@ CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
 CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction);
 CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id);
 -- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的债务不重复）
-ALTER TABLE debts ADD CONSTRAINT debts_user_book_name_unique UNIQUE (user_id, book_id, name);
-DROP TRIGGER IF EXISTS trg_debts_updated ON debts;
-CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_debts_user_book_name ON debts (user_id, book_id, name);
 
 -- 债务还款流水
 CREATE TABLE IF NOT EXISTS debt_repayments (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   debt_id INT NOT NULL,
   account_id INT DEFAULT NULL,
@@ -595,7 +562,7 @@ CREATE INDEX IF NOT EXISTS idx_repay_debt ON debt_repayments (debt_id);
 
 -- 储蓄流水
 CREATE TABLE IF NOT EXISTS savings_transactions (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   goal_id INT DEFAULT NULL,
   account_id INT DEFAULT NULL,
@@ -609,34 +576,27 @@ CREATE INDEX IF NOT EXISTS idx_sav_tx_user ON savings_transactions (user_id);
 CREATE INDEX IF NOT EXISTS idx_sav_tx_goal ON savings_transactions (goal_id);
 CREATE INDEX IF NOT EXISTS idx_sav_tx_date ON savings_transactions (date);
 
--- ============================================
--- 修复 SERIAL 序列（种子数据使用了显式 ID，需要重置序列到最大值之后）
--- ============================================
-SELECT setval(pg_get_serial_sequence('accounts', 'id'), COALESCE((SELECT MAX(id) FROM accounts), 0) + 1, false);
-SELECT setval(pg_get_serial_sequence('categories', 'id'), COALESCE((SELECT MAX(id) FROM categories), 0) + 1, false);
-SELECT setval(pg_get_serial_sequence('investment_types', 'id'), COALESCE((SELECT MAX(id) FROM investment_types), 0) + 1, false);
-SELECT setval(pg_get_serial_sequence('tags', 'id'), COALESCE((SELECT MAX(id) FROM tags), 0) + 1, false);
 
 -- ============================================
 -- 多账本（账套）支持：为历史表追加 book_id 列 + 复合索引（幂等，新增库亦执行，结果一致）
 -- 每条用户财务数据归属某个 book_id；book_id IS NULL 表示「用户级共享」（如系统辅助分类、遗留未归属数据）。
 -- 具体归属与回填由 server/db.js 的 healBooks() 在启动时自愈完成（为每位用户建默认账本并回填 NULL 行）。
--- books 已在上方建表时包含 book_id；accounts 旧库可能无 book_id 列，需在此幂等补齐
+，需在此幂等补齐
 -- （否则旧库 CREATE TABLE IF NOT EXISTS 跳过重建，accounts 永远缺 book_id，接口 500）。
 -- ============================================
-ALTER TABLE accounts                 ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE categories               ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE transactions             ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE transfers                ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE budgets                 ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE tags                    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE savings_goals           ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE debts                   ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE debt_repayments         ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE investments              ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE savings_transactions    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
-ALTER TABLE investment_snapshots    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE accounts                 ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE categories               ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE transactions             ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE transfers                ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE budgets                 ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE tags                    ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE savings_goals           ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE debts                   ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE debt_repayments         ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE investments              ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE investment_transactions ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE savings_transactions    ADD COLUMN book_id INT DEFAULT NULL;
+ALTER TABLE investment_snapshots    ADD COLUMN book_id INT DEFAULT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_accounts_user_book        ON accounts (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
@@ -661,7 +621,7 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots
 -- 约定对齐现有表：SERIAL 主键、INT 引用列、不加 FOREIGN KEY（仅建索引）。
 -- ============================================
 CREATE TABLE IF NOT EXISTS ai_predictions (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   prediction_version INT NOT NULL DEFAULT 1,
@@ -671,17 +631,17 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
     CHECK (verdict IN ('ready','needs_confirmation','invalid')),
   source VARCHAR(16) NOT NULL DEFAULT 'parse'
     CHECK (source IN ('parse','chat','ocr','voice')),
-  request JSONB NOT NULL,                              -- { text, context:{ book_id?, account_id?, date?, timezone? } }
-  candidate_txns JSONB NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
-  validation JSONB NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
-  decision_trace JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 证据链（仅属主可见）
-  memory_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Memory Retrieval 当时给出的 evidence candidates
-  model_request JSONB DEFAULT NULL,                    -- 升级到模型时的请求（脱敏后）
-  model_response JSONB DEFAULT NULL,                   -- 模型原始响应
+  request JSON NOT NULL,                              -- { text, context:{ book_id?, account_id?, date?, timezone? } }
+  candidate_txns JSON NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
+  validation JSON NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
+  decision_trace JSON NOT NULL DEFAULT '{}',   -- 证据链（仅属主可见）
+  memory_snapshot JSON NOT NULL DEFAULT '{}',  -- Memory Retrieval 当时给出的 evidence candidates
+  model_request JSON DEFAULT NULL,                    -- 升级到模型时的请求（脱敏后）
+  model_response JSON DEFAULT NULL,                   -- 模型原始响应
   route VARCHAR(20) NOT NULL DEFAULT 'local'
     CHECK (route IN ('local','cheap_model','strong_model','fallback')),
-  final_txns JSONB DEFAULT NULL,                       -- commit 后的最终交易集
-  final_diff JSONB DEFAULT NULL,                       -- candidate vs final 差异（供学习系统使用）
+  final_txns JSON DEFAULT NULL,                       -- commit 后的最终交易集
+  final_diff JSON DEFAULT NULL,                       -- candidate vs final 差异（供学习系统使用）
   idempotency_key VARCHAR(64) DEFAULT NULL,            -- commit 幂等键
   committed_at TIMESTAMP DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -691,16 +651,13 @@ CREATE INDEX IF NOT EXISTS idx_ai_pred_user         ON ai_predictions (user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_pred_status       ON ai_predictions (status);
 CREATE INDEX IF NOT EXISTS idx_ai_pred_user_created ON ai_predictions (user_id, created_at DESC);
 -- 部分唯一索引：NULL 不参与冲突判定，未提交的预测彼此互不影响；
--- 非空重复键触发 23505，commit 据此做并发幂等兜底（见 modules/ai/prediction/prediction-store.js）。
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_pred_idem
-  ON ai_predictions (idempotency_key) WHERE idempotency_key IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_ai_pred_updated ON ai_predictions;
-CREATE TRIGGER trg_ai_pred_updated BEFORE UPDATE ON ai_predictions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+（见 modules/ai/prediction/prediction-store.js）。
+CREATE UNIQUE INDEX idx_ai_pred_idem ON ai_predictions (idempotency_key);
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 预测 → 台账交易 关联（审计与解释链路）
 CREATE TABLE IF NOT EXISTS ai_prediction_transactions (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   prediction_id INT NOT NULL,
   transaction_id INT NOT NULL,
   seq INT NOT NULL DEFAULT 1,
@@ -713,7 +670,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_ptxn_txn  ON ai_prediction_transactions (trans
 -- ⚠️ event_type 的 CHECK 白名单已扩充，
 --    已部署库的旧约束由 db.js:healAiConstraints() 幂等重建（否则 INSERT 撞 23514）。
 CREATE TABLE IF NOT EXISTS ai_feedback_events (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   account_id INT DEFAULT NULL,
@@ -724,7 +681,7 @@ CREATE TABLE IF NOT EXISTS ai_feedback_events (
                           'manual_rule_creation','contradiction','rule_disabled',
                           'consistent_reuse','negative_signal')),
   evidence_score INT NOT NULL DEFAULT 0,
-  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  payload JSON NOT NULL DEFAULT '{}',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ai_fb_user ON ai_feedback_events (user_id);
@@ -743,7 +700,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_fb_rule ON ai_feedback_events (rule_id);
 
 -- 规则（手工规则 + 学习规则统一表；origin 区分来源）
 CREATE TABLE IF NOT EXISTS ai_rules (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   -- 规则类型：merchant→category 是主力；keyword→category / merchant→account 备用
@@ -781,13 +738,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_rule_user_status ON ai_rules (user_id, status)
 CREATE INDEX IF NOT EXISTS idx_ai_rule_lookup      ON ai_rules (user_id, rule_type, match_key);
 CREATE INDEX IF NOT EXISTS idx_ai_rule_category    ON ai_rules (target_category_id);
 CREATE INDEX IF NOT EXISTS idx_ai_rule_created     ON ai_rules (user_id, created_at DESC);
-DROP TRIGGER IF EXISTS trg_ai_rule_updated ON ai_rules;
-CREATE TRIGGER trg_ai_rule_updated BEFORE UPDATE ON ai_rules
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 规则证据流水（可审计：每一分 evidence_score 都能溯源到具体事件）
 CREATE TABLE IF NOT EXISTS ai_rule_evidence (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   rule_id INT NOT NULL,
   user_id INT NOT NULL DEFAULT 1,
   feedback_event_id INT DEFAULT NULL,
@@ -796,7 +751,7 @@ CREATE TABLE IF NOT EXISTS ai_rule_evidence (
   delta INT NOT NULL DEFAULT 0,
   score_after INT NOT NULL DEFAULT 0,
   status_after VARCHAR(16) DEFAULT NULL,
-  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  payload JSON NOT NULL DEFAULT '{}',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ai_rev_rule ON ai_rule_evidence (rule_id, created_at DESC);
@@ -806,7 +761,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_rev_pred ON ai_rule_evidence (prediction_id);
 -- Semantic / Negative Memory 持久化（方案 §3.3 / §3.5）
 -- kind='semantic' → 归纳出的习惯假设；kind='negative' → 被反复证伪的假设
 CREATE TABLE IF NOT EXISTS ai_memory_items (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   kind VARCHAR(16) NOT NULL DEFAULT 'semantic'
@@ -825,39 +780,37 @@ CREATE TABLE IF NOT EXISTS ai_memory_items (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_mem_item
   ON ai_memory_items (user_id, book_id, kind, subject, predicate, object_value);
 CREATE INDEX IF NOT EXISTS idx_ai_mem_lookup ON ai_memory_items (user_id, kind, subject);
-DROP TRIGGER IF EXISTS trg_ai_mem_updated ON ai_memory_items;
-CREATE TRIGGER trg_ai_mem_updated BEFORE UPDATE ON ai_memory_items
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- ============================================
 -- 评测系统
 -- 「任何版本发布前都必须比较基线」——run 存一次跑批的 11 项指标，case 存逐条明细。
 -- ============================================
 CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT DEFAULT NULL,               -- 离线跑批可为 NULL
   label VARCHAR(80) NOT NULL DEFAULT '',
   dataset_version VARCHAR(32) NOT NULL DEFAULT 'v1',
   engine_version VARCHAR(32) NOT NULL DEFAULT '',
   total_cases INT NOT NULL DEFAULT 0,
   passed_cases INT NOT NULL DEFAULT 0,
-  metrics JSONB NOT NULL DEFAULT '{}'::jsonb,   -- 11 项指标
+  metrics JSON NOT NULL DEFAULT '{}',   -- 11 项指标
   baseline_run_id INT DEFAULT NULL,
-  regression JSONB NOT NULL DEFAULT '{}'::jsonb, -- 与基线的逐指标差值
+  regression JSON NOT NULL DEFAULT '{}', -- 与基线的逐指标差值
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ai_eval_run_created ON ai_evaluation_runs (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   run_id INT NOT NULL,
   case_id VARCHAR(64) NOT NULL,
   scenario VARCHAR(32) NOT NULL DEFAULT '',   -- single/multi/income/transfer/fuzzy/...
   input_text TEXT NOT NULL,
-  expected JSONB NOT NULL DEFAULT '{}'::jsonb,
-  actual JSONB NOT NULL DEFAULT '{}'::jsonb,
-  field_results JSONB NOT NULL DEFAULT '{}'::jsonb,  -- 各字段是否命中
-  passed BOOLEAN NOT NULL DEFAULT FALSE,
+  expected JSON NOT NULL DEFAULT '{}',
+  actual JSON NOT NULL DEFAULT '{}',
+  field_results JSON NOT NULL DEFAULT '{}',  -- 各字段是否命中
+  passed BOOLEAN NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ai_eval_case_run ON ai_evaluation_cases (run_id);
@@ -865,7 +818,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_eval_case_pass ON ai_evaluation_cases (run_id,
 
 -- Provider 用量与成本
 CREATE TABLE IF NOT EXISTS ai_provider_usage (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   provider_id INT DEFAULT NULL,
   prediction_id INT DEFAULT NULL,
@@ -891,7 +844,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_usage_pred    ON ai_provider_usage (prediction
 
 -- 对话会话（Chat 基础）
 CREATE TABLE IF NOT EXISTS ai_conversations (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   title VARCHAR(200) NOT NULL DEFAULT '新对话',
@@ -905,13 +858,11 @@ CREATE TABLE IF NOT EXISTS ai_conversations (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_conv_user      ON ai_conversations (user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_conv_user_stat ON ai_conversations (user_id, status, last_message_at DESC);
-DROP TRIGGER IF EXISTS trg_ai_conv_updated ON ai_conversations;
-CREATE TRIGGER trg_ai_conv_updated BEFORE UPDATE ON ai_conversations
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 对话消息（Chat 历史）
 CREATE TABLE IF NOT EXISTS ai_messages (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   conversation_id INT NOT NULL,
   user_id INT NOT NULL DEFAULT 1,
   role VARCHAR(12) NOT NULL CHECK (role IN ('user','assistant','system','tool')),
@@ -921,9 +872,9 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   completion_tokens INT NOT NULL DEFAULT 0,
   latency_ms INT NOT NULL DEFAULT 0,
   -- attachments: [{type:'image'|'file', url/content}]
-  attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
-  tool_calls JSONB DEFAULT NULL,           -- 模型 tool_call 调用记录
-  tool_results JSONB DEFAULT NULL,         -- tool 输出结果
+  attachments JSON NOT NULL DEFAULT '[]',
+  tool_calls JSON DEFAULT NULL,           -- 模型 tool_call 调用记录
+  tool_results JSON DEFAULT NULL,         -- tool 输出结果
   error VARCHAR(200) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -932,34 +883,32 @@ CREATE INDEX IF NOT EXISTS idx_ai_msg_user   ON ai_messages (user_id, created_at
 
 -- 用户 AI Profile（偏好/交互风格/通知设置）
 CREATE TABLE IF NOT EXISTS ai_user_profiles (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL UNIQUE,
   book_id INT DEFAULT NULL,
   -- preferences: {language, currency, timezone, density, ...}
-  preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+  preferences JSON NOT NULL DEFAULT '{}',
   -- interaction_style: concise / detailed / expert
   interaction_style VARCHAR(16) NOT NULL DEFAULT 'detailed'
     CHECK (interaction_style IN ('concise','detailed','expert')),
   -- notification: 洞察推送偏好
-  notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  notification_enabled BOOLEAN NOT NULL DEFAULT 1,
   insight_frequency VARCHAR(12) NOT NULL DEFAULT 'daily'
     CHECK (insight_frequency IN ('realtime','daily','weekly','never')),
   -- insight_rank_threshold: importance >= 此值才推送
   insight_rank_threshold INT NOT NULL DEFAULT 3,
   -- 统计摘要（供 Radar 使用，定期刷新）
-  stats_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  stats_summary JSON NOT NULL DEFAULT '{}',
   last_insight_at TIMESTAMP DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-DROP TRIGGER IF EXISTS trg_ai_profile_updated ON ai_user_profiles;
-CREATE TRIGGER trg_ai_profile_updated BEFORE UPDATE ON ai_user_profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 主动洞察记录（对齐方案 §5.5 Insight 系统）
 -- status: pending→generated→read→dismissed→archived
 CREATE TABLE IF NOT EXISTS ai_insights (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   insight_type VARCHAR(32) NOT NULL
@@ -973,7 +922,7 @@ CREATE TABLE IF NOT EXISTS ai_insights (
   title VARCHAR(200) NOT NULL,
   content TEXT NOT NULL,                          -- 洞察正文（可显示给用户）
   -- evidence: {transactions:[], stats:{before:{}, after:{}}, ...}
-  evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+  evidence JSON NOT NULL DEFAULT '{}',
   -- 推荐动作（可选）
   action_suggestion VARCHAR(200) DEFAULT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'generated'
@@ -990,9 +939,5 @@ CREATE INDEX IF NOT EXISTS idx_ai_insight_user     ON ai_insights (user_id, stat
 CREATE INDEX IF NOT EXISTS idx_ai_insight_type     ON ai_insights (insight_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_insight_importance ON ai_insights (importance, created_at DESC);
 -- cooldown 去重索引（cooldown_until IS NOT NULL 时才激活）
-CREATE INDEX IF NOT EXISTS idx_ai_insight_dedupe
-  ON ai_insights (user_id, insight_type, dedupe_key)
-  WHERE dedupe_key IS NOT NULL AND cooldown_until IS NOT NULL;
-DROP TRIGGER IF EXISTS trg_ai_insight_updated ON ai_insights;
-CREATE TRIGGER trg_ai_insight_updated BEFORE UPDATE ON ai_insights
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE INDEX idx_ai_insight_dedupe ON ai_insights (user_id, insight_type, dedupe_key);
+-- updated_at 由 db.js autoUpdatedAt() 应用层兜底

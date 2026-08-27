@@ -69,7 +69,7 @@ router.post('/', async (req, res) => {
         // 使用事务确保一致性
         const result = await db.transaction(async (conn) => {
             // 检查转出账户
-            const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [from_account_id, req.userId, req.bookId]);
+            const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [from_account_id, req.userId, req.bookId]);
             if (!fromAcc[0]) throw new Error('转出账户不存在');
 
             // 转账分类兜底：优先复用种子「一般转账」(id=22, type=transfer)，缺失则自动创建，避免硬编码 category_id
@@ -85,7 +85,7 @@ router.post('/', async (req, res) => {
             // 转入账户名必须在插 out 腿之前拿到 —— out 腿备注写的是「转账至<对方>」，
             // 需要的是转入账户名。原先这行在 out 腿之后，只能拿自己的名字凑。
             // 同时补上 user_id / book_id 过滤：原先只按 id 查，跨账本的账户 id 也能命中。
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [to_account_id, req.userId, req.bookId]);
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [to_account_id, req.userId, req.bookId]);
             if (!toAcc[0]) throw new Error('转入账户不存在');
 
             // 余额由账本推导（复式记账 single source of truth）
@@ -115,8 +115,8 @@ router.post('/', async (req, res) => {
             const toBal = await computeAccountBalance(conn, req.userId, to_account_id);
             await enforceBalanceLimit(conn, req.userId, from_account_id, fromBal);
             await enforceBalanceLimit(conn, req.userId, to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, from_account_id]);
-            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, to_account_id]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, from_account_id]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, to_account_id]);
 
             return insertResult.insertId;
         });
@@ -154,13 +154,13 @@ router.put('/:id', async (req, res) => {
                 [from_account_id, to_account_id, amountNum, note || '', transferDate, id, req.userId, req.bookId]
             );
 
-            await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
 
             // 两个账户名都要在插腿之前拿到，且必须带 user_id / book_id 过滤 ——
             // 原先只按 id 查，能读到别人账本的账户名。
-            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [from_account_id, req.userId, req.bookId]);
+            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [from_account_id, req.userId, req.bookId]);
             if (!fromAcc[0]) throw new Error('转出账户不存在');
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [to_account_id, req.userId, req.bookId]);
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [to_account_id, req.userId, req.bookId]);
             if (!toAcc[0]) throw new Error('转入账户不存在');
 
             // 备注规则与 POST 完全一致（见该处注释）：
@@ -188,7 +188,7 @@ router.put('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
             }
         });
 
@@ -207,14 +207,14 @@ router.delete('/:id', async (req, res) => {
         if (!transfer) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('转账记录不存在'));
 
         await db.transaction(async (conn) => {
-            await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
-            await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
             const fromBal = await computeAccountBalance(conn, req.userId, transfer.from_account_id);
             const toBal = await computeAccountBalance(conn, req.userId, transfer.to_account_id);
             await enforceBalanceLimit(conn, req.userId, transfer.from_account_id, fromBal);
             await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, transfer.from_account_id]);
-            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, transfer.to_account_id]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, transfer.from_account_id]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, transfer.to_account_id]);
         });
 
         res.json(success(null, '转账已删除'));

@@ -119,7 +119,7 @@ router.put('/:id', async (req, res) => {
         const baseDate = base_date || new Date().toISOString().split('T')[0];
         const range = calcPeriodRange(pType, baseDate);
         await db.query(
-            'UPDATE budgets SET name = $1, period_type = $2, start_date = $3, end_date = $4, amount = $5 WHERE id = $6 AND user_id = $7 AND book_id = $8',
+            'UPDATE budgets SET name = ?, period_type = ?, start_date = ?, end_date = ?, amount = ? WHERE id = ? AND user_id = ? AND book_id = ?',
             [name.trim(), pType, range.start, range.end, amountNum, req.params.id, req.userId, req.bookId]
         );
         res.json(success(null, '预算已更新'));
@@ -133,8 +133,8 @@ router.delete('/:id', async (req, res) => {
     try {
         // BUG-2 修复：transactions.budget_id 无外键约束，删除预算前需先置空引用，
         // 否则产生悬空 budget_id（预算列表/统计可能误关联已删除预算）。
-        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
-        await db.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
+        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+        await db.query('DELETE FROM budgets WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         res.json(success(null, '预算已删除'));
     } catch (err) {
         handleServerError(res, err);

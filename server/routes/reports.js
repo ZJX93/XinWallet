@@ -332,7 +332,7 @@ async function buildReport(userId, bookId, type, period) {
             )
             : Promise.resolve([]),
         db.query(
-            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'',
+            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\'',
             [userId, bookId]
         ),
         db.queryOne(
@@ -517,7 +517,7 @@ async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, current
     // 资产明细 / 投资持仓 / 长期负债 / 期初前交易净额 —— 彼此独立，并发查询压缩延迟
     const [accounts, investments, longTermDebts, txBefore] = await Promise.all([
         db.query(
-            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\' ORDER BY balance DESC',
+            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY balance DESC',
             [userId, bookId]
         ),
         db.query(

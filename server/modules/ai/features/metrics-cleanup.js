@@ -21,14 +21,14 @@ async function getHealthMetrics() {
             insightCount, ruleCount, providerUsage,
             pendingFeedback, recentErrors,
         ] = await Promise.all([
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_predictions WHERE created_at >= NOW() - INTERVAL '30 days'`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_conversations WHERE created_at >= NOW() - INTERVAL '30 days'`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE created_at >= NOW() - INTERVAL '30 days'`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_insights WHERE created_at >= NOW() - INTERVAL '30 days'`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_predictions WHERE created_at >= NOW() - INTERVAL 30 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_conversations WHERE created_at >= NOW() - INTERVAL 30 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE created_at >= NOW() - INTERVAL 30 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_insights WHERE created_at >= NOW() - INTERVAL 30 DAY`),
             db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_rules WHERE status != 'disabled'`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_provider_usage WHERE created_at >= NOW() - INTERVAL '7 days'`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_provider_usage WHERE created_at >= NOW() - INTERVAL 7 DAY`),
             db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_feedback_events WHERE processed = FALSE`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE error IS NOT NULL AND created_at >= NOW() - INTERVAL '7 days'`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE error IS NOT NULL AND created_at >= NOW() - INTERVAL 7 DAY`),
         ]);
 
         return {
@@ -65,10 +65,10 @@ async function getCostBreakdown({ days = 7 } = {}) {
                 SUM(cost_micro_cny) AS total_cost_micro_cny,
                 COUNT(*) AS call_count
             FROM ai_provider_usage
-            WHERE created_at >= NOW() - INTERVAL '1 day' * ?
+            WHERE created_at >= CURDATE() - INTERVAL ${days} DAY
             GROUP BY route
             ORDER BY total_cost_micro_cny DESC
-        `, [days]);
+        `);
 
         return {
             period_days: days,
@@ -102,7 +102,7 @@ async function cleanupOrphanedPredictions(userId) {
             `DELETE FROM ai_predictions
                WHERE user_id = ?
                  AND status = 'pending'
-                 AND created_at < NOW() - INTERVAL '7 days'`,
+                 AND created_at < NOW() - INTERVAL 7 DAY`,
             [userId]
         );
         return { deleted: result.rowCount || 0 };
@@ -121,7 +121,7 @@ async function archiveOldConversations(userId) {
                SET status = 'archived', updated_at = NOW()
                WHERE user_id = ?
                  AND status = 'active'
-                 AND last_message_at < NOW() - INTERVAL '90 days'`,
+                 AND last_message_at < NOW() - INTERVAL 90 DAY`,
             [userId]
         );
         return { archived: result.rowCount || 0 };
@@ -139,7 +139,7 @@ async function runFullCleanup(userId) {
     try {
         results.insights_cleanup = await db.query(
             `DELETE FROM ai_insights
-               WHERE user_id = ? AND created_at < NOW() - INTERVAL '90 days'
+               WHERE user_id = ? AND created_at < NOW() - INTERVAL 90 DAY
                  AND status IN ('read','dismissed','archived')`,
             [userId]
         );

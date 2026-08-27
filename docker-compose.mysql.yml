@@ -1,0 +1,76 @@
+# ============================================
+# 鑫钱包 · Docker Compose (MySQL 8.0)
+# 应用容器 + MySQL 容器，数据持久化于命名卷
+# 所有敏感变量均来自同目录 .env（已被 .gitignore 忽略，不会入库）
+#
+# 用法：
+#   docker compose -f docker-compose.mysql.yml up -d   # 启动 MySQL 版本
+#   docker compose -f docker-compose.mysql.yml down     # 停止（保留数据卷）
+# ============================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: xinwallet-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      MYSQL_DATABASE: ${DB_NAME:-xinwallet}
+    volumes:
+      - xinwallet-mysql-data:/var/lib/mysql
+    ports:
+      # 安全加固：默认不将数据库 3306 端口映射到宿主机，数据库仅在内部网络可达。
+      # 本地调试可临时改为： - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - xinwallet-mysql-net
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --skip-log-bin
+      --skip-slave-start
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/zjx93/xin-wallet/xinwallet:latest
+    container_name: xinwallet-app-mysql
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 18888
+      DB_DIALECT: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      DB_NAME: ${DB_NAME:-xinwallet}
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      ALLOW_DEMO: ${ALLOW_DEMO}
+      DEMO_PASSWORD: ${DEMO_PASSWORD}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    volumes:
+      - xinwallet-app-data:/app/data
+    ports:
+      - "${APP_PORT:-18889}:18888"
+    networks:
+      - xinwallet-mysql-net
+
+volumes:
+  xinwallet-mysql-data:
+  xinwallet-app-data:
+
+networks:
+  xinwallet-mysql-net:
+    driver: bridge

@@ -42,7 +42,7 @@ router.post('/register', validate({
 
         const hash = await hashPassword(password);
         const result = await db.query(
-            'INSERT INTO users (username, password_hash, nickname) VALUES ($1, $2, $3)',
+            'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
             [username, hash, nickname || username]
         );
         // 回查用户（含 avatar 默认值），避免登录响应缺失 avatar 导致前端回退默认头像
@@ -82,7 +82,7 @@ router.post('/login', validate({
             const shouldLock = failCount >= MAX_FAIL_COUNT;
             const lockedUntil = shouldLock ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000) : null;
             await db.query(
-                'UPDATE users SET fail_count = $1, locked_until = $2, last_fail_at = NOW() WHERE username = $3',
+                'UPDATE users SET fail_count = ?, locked_until = ?, last_fail_at = NOW() WHERE username = ?',
                 [failCount, lockedUntil, username]
             );
             // 安全加固：移除登录失败的人为 sleep —— 该延迟可被滥用为连接占用型 DoS，
@@ -95,7 +95,7 @@ router.post('/login', validate({
 
         // 成功登录：清除失败计数器与锁定
         if (user.fail_count > 0 || user.locked_until) {
-            await db.query('UPDATE users SET fail_count = 0, locked_until = NULL WHERE username = $1', [username]);
+            await db.query('UPDATE users SET fail_count = 0, locked_until = NULL WHERE username = ?', [username]);
         }
         const token = signToken({ id: user.id, username: user.username });
         const refreshToken = signRefreshToken({ id: user.id, username: user.username });
@@ -128,7 +128,7 @@ router.post('/demo', async (req, res) => {
             // 自动创建演示账号
             const demoHash = await hashPassword('demo123456');
             const result = await db.query(
-                'INSERT INTO users (username, password_hash, nickname) VALUES ($1, $2, $3)',
+                'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
                 ['demo', demoHash, '演示用户']
             );
             user = { id: result.insertId, username: 'demo', nickname: '演示用户', avatar: '👤' };

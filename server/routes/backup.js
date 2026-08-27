@@ -218,34 +218,34 @@ router.get('/export', async (req, res) => {
         const bookId = req.bookId;
 
         const [book, cats, tags, budgets, debts, goals, accounts, investments, investmentTxns, incExp, transfers] = await Promise.all([
-            db.queryOne('SELECT name, icon, color, is_default FROM books WHERE id = $1 AND user_id = $2', [bookId, userId]),
+            db.queryOne('SELECT name, icon, color, is_default FROM books WHERE id = ? AND user_id = ?', [bookId, userId]),
             db.query(
                 `SELECT c.code, c.name, c.type, c.icon, c.color, c.is_system,
                         p.name AS parent_name
                    FROM categories c LEFT JOIN categories p ON c.parent_id = p.id
-                  WHERE c.user_id IS NULL OR (c.user_id = $1 AND (c.book_id IS NULL OR c.book_id = $2))
+                  WHERE c.user_id IS NULL OR (c.user_id = ? AND (c.book_id IS NULL OR c.book_id = ?))
                   ORDER BY c.type, c.sort_order, c.id`,
                 [userId, bookId]
             ),
-            db.query('SELECT name, color, icon FROM tags WHERE user_id = $1 AND book_id = $2', [userId, bookId]),
-            db.query('SELECT name, period_type, amount, start_date, end_date FROM budgets WHERE user_id = $1 AND book_id = $2', [userId, bookId]),
+            db.query('SELECT name, color, icon FROM tags WHERE user_id = ? AND book_id = ?', [userId, bookId]),
+            db.query('SELECT name, period_type, amount, start_date, end_date FROM budgets WHERE user_id = ? AND book_id = ?', [userId, bookId]),
             db.query(
                 `SELECT d.name, d.type, direction, creditor, principal, remaining, interest_rate, term_months,
                         method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment,
                         d.status, note, a.name AS account_name
                    FROM debts d LEFT JOIN accounts a ON d.account_id = a.id
-                  WHERE d.user_id = $1 AND d.book_id = $2`,
+                  WHERE d.user_id = ? AND d.book_id = ?`,
                 [userId, bookId]
             ),
             db.query(
                 `SELECT g.name, target_amount, current_amount, g.icon, note, g.status, a.name AS account_name
                    FROM savings_goals g LEFT JOIN accounts a ON g.account_id = a.id
-                  WHERE g.user_id = $1 AND g.book_id = $2`,
+                  WHERE g.user_id = ? AND g.book_id = ?`,
                 [userId, bookId]
             ),
             db.query(
                 `SELECT code, name, type, icon, balance, opening_balance, credit_limit, is_default, status
-                   FROM accounts WHERE user_id = $1 AND book_id = $2 ORDER BY sort_order, id`,
+                   FROM accounts WHERE user_id = ? AND book_id = ? ORDER BY sort_order, id`,
                 [userId, bookId]
             ),
             db.query(
@@ -253,7 +253,7 @@ router.get('/export', async (req, res) => {
                        i.fee, i.buy_date, i.expected_rate, i.status, i.note, a.name AS account_name, it.name AS type_name
                    FROM investments i LEFT JOIN accounts a ON i.account_id = a.id
                    LEFT JOIN investment_types it ON i.investment_type_id = it.id
-                  WHERE i.user_id = $1 AND i.book_id = $2`,
+                  WHERE i.user_id = ? AND i.book_id = ?`,
                 [userId, bookId]
             ),
             db.query(
@@ -262,7 +262,7 @@ router.get('/export', async (req, res) => {
                    FROM investment_transactions it
                    LEFT JOIN investments i ON it.investment_id = i.id
                    LEFT JOIN accounts a ON i.account_id = a.id
-                  WHERE it.user_id = $1 AND it.book_id = $2
+                  WHERE it.user_id = ? AND it.book_id = ?
                   ORDER BY i.name, it.date ASC, it.id ASC`,
                 [userId, bookId]
             ),
@@ -270,7 +270,7 @@ router.get('/export', async (req, res) => {
                 `SELECT CAST(t.date AS CHAR(19)) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note
                    FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
                    LEFT JOIN categories c ON t.category_id = c.id
-                  WHERE t.user_id = $1 AND t.book_id = $2 AND t.type IN ('income','expense')
+                  WHERE t.user_id = ? AND t.book_id = ? AND t.type IN ('income','expense')
                   ORDER BY t.date DESC, t.id DESC`,
                 [userId, bookId]
             ),
@@ -279,7 +279,7 @@ router.get('/export', async (req, res) => {
                         a1.name AS from_account, a2.name AS to_account
                    FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id
                    LEFT JOIN accounts a2 ON t.to_account_id = a2.id
-                  WHERE t.user_id = $1 AND t.book_id = $2
+                  WHERE t.user_id = ? AND t.book_id = ?
                   ORDER BY t.date DESC, t.id DESC`,
                 [userId, bookId]
             )
@@ -338,7 +338,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
         const imported = { tags: 0, accounts: 0, categories: 0, budgets: 0, debts: 0, savings_goals: 0, investments: 0, transactions: 0, transfers: 0 };
 
         const transferCat = await db.queryOne(
-            "SELECT id FROM categories WHERE name='转账' AND type='transfer' AND (user_id IS NULL OR user_id=$1) LIMIT 1",
+            "SELECT id FROM categories WHERE name='转账' AND type='transfer' AND (user_id IS NULL OR user_id=?) LIMIT 1",
             [userId]
         );
         const transferCatId = transferCat ? transferCat.id : 22;
@@ -347,39 +347,39 @@ router.post('/import', upload.single('file'), async (req, res) => {
             // 0) 先清空当前账本全部数据，保证导入后是「干净账本」（替换而非合并）。
             //    仅删除本用户本账本的数据；系统预设分类(user_id IS NULL)全局共享，保留不删。
             //    这些表之间没有外键约束，按依赖逻辑先删子表再删父表；分类含自引用，逐级删叶子后清顶层。
-            await conn.query('DELETE FROM transaction_tags WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = $1 AND book_id = $2)', [userId, bookId]);
-            await conn.query('DELETE FROM transactions WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM transfers WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM investments WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM investment_transactions WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM debts WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM debt_repayments WHERE user_id = $1', [userId]);
-            await conn.query('DELETE FROM savings_goals WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM savings_transactions WHERE user_id = $1', [userId]);
-            await conn.query('DELETE FROM budgets WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM tags WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
-            await conn.query('DELETE FROM accounts WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM transaction_tags WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = ? AND book_id = ?)', [userId, bookId]);
+            await conn.query('DELETE FROM transactions WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM transfers WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM investments WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM investment_transactions WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM debts WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM debt_repayments WHERE user_id = ?', [userId]);
+            await conn.query('DELETE FROM savings_goals WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM savings_transactions WHERE user_id = ?', [userId]);
+            await conn.query('DELETE FROM budgets WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM tags WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            await conn.query('DELETE FROM accounts WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             // 分类：逐级清空本账本用户自建分类（子分类先于父分类删除），系统预设保留
             let catCleared = true;
             while (catCleared) {
                 const rc = await conn.query(
                     `DELETE FROM categories
-                      WHERE user_id = $1 AND book_id = $2
+                      WHERE user_id = ? AND book_id = ?
                         AND parent_id IS NOT NULL
-                        AND parent_id IN (SELECT id FROM categories WHERE user_id = $1 AND book_id = $2)`,
+                        AND parent_id IN (SELECT id FROM categories WHERE user_id = ? AND book_id = ?)`,
                     [userId, bookId]
                 );
                 catCleared = rc.rowCount > 0;
             }
-            await conn.query('DELETE FROM categories WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM categories WHERE user_id = ? AND book_id = ?', [userId, bookId]);
 
             // 1) 标签
             for (const t of (config['标签'] || [])) {
                 if (!t || !String(t['名称'] || '').trim()) continue;
-                const e = await conn.query('SELECT id FROM tags WHERE user_id = $1 AND book_id = $2 AND name = $3', [userId, bookId, t['名称']]);
+                const e = await conn.query('SELECT id FROM tags WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, t['名称']]);
                 if (!e || !e.length) {
                     await conn.query(
-                        'INSERT INTO tags (user_id, book_id, name, color, icon) VALUES ($1, $2, $3, $4, $5)',
+                        'INSERT INTO tags (user_id, book_id, name, color, icon) VALUES (?, ?, ?, ?, ?)',
                         [userId, bookId, t['名称'], typeof t['颜色'] === 'string' ? t['颜色'] : '#6366f1', typeof t['图标'] === 'string' ? t['图标'] : '🏷️']
                     );
                     imported.tags++;
@@ -402,13 +402,13 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         if (pname) {
                             if (catNameToId[pname] != null) parentId = catNameToId[pname];
                             else {
-                                const pr = await conn.query('SELECT id FROM categories WHERE user_id IS NULL AND name = $1 LIMIT 1', [pname]);
+                                const pr = await conn.query('SELECT id FROM categories WHERE user_id IS NULL AND name = ? LIMIT 1', [pname]);
                                 if (pr.length) parentId = pr[0].id;
                                 else continue; // 父分类尚未就绪，下一轮再试
                             }
                         }
-                        const existSql = 'SELECT id FROM categories WHERE user_id = $1 AND book_id = $2 AND name = $3 AND '
-                            + (parentId == null ? 'parent_id IS NULL' : 'parent_id = $4');
+                        const existSql = 'SELECT id FROM categories WHERE user_id = ? AND book_id = ? AND name = ? AND '
+                            + (parentId == null ? 'parent_id IS NULL' : 'parent_id = ?');
                         const existParams = parentId == null ? [userId, bookId, name] : [userId, bookId, name, parentId];
                         const ex = await conn.query(existSql, existParams);
                         let newId;
@@ -416,9 +416,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
                             newId = ex[0].id;
                         } else {
                             const ins = await conn.query(
-                                `INSERT INTO categories (user_id, book_id, code, name, type, icon, color, is_system, parent_id, sort_order)
-                                 VALUES ($1, $2, NULL, $3, $4, $5, $6, FALSE, $7, $8)
-                                 ON CONFLICT (parent_id, name) DO NOTHING`,
+                                `INSERT IGNORE INTO categories (user_id, book_id, code, name, type, icon, color, is_system, parent_id, sort_order)
+                                 VALUES (?, ?, NULL, ?, ?, ?, ?, FALSE, ?, ?)`,
                                 [
                                     userId, bookId, name,
                                     ['expense', 'income', 'transfer'].includes(c['类型']) ? c['类型'] : 'expense',
@@ -444,14 +443,14 @@ router.post('/import', upload.single('file'), async (req, res) => {
             const acMap = {};
             for (const a of (accounts['账户'] || [])) {
                 if (!a || !String(a['名称'] || '').trim()) continue;
-                const e = await conn.query('SELECT id FROM accounts WHERE user_id = $1 AND book_id = $2 AND name = $3', [userId, bookId, a['名称']]);
+                const e = await conn.query('SELECT id FROM accounts WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, a['名称']]);
                 if (e && e.length) { acMap[a['名称']] = e[0].id; continue; }
                 const balance = cellNum(a['余额']);
                 const opening = cellNum(a['期初余额']);
                 const limit = cellNum(a['信用额度']);
                 const r = await conn.query(
                     `INSERT INTO accounts (user_id, book_id, code, name, type, icon, balance, opening_balance, credit_limit, is_default, status)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userId, bookId,
                         typeof a['编码'] === 'string' && a['编码'] ? a['编码'] : null,
@@ -475,7 +474,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
             async function resolveCategoryId(name) {
                 if (!name) return 14;
                 const c = await conn.query(
-                    'SELECT id FROM categories WHERE name = $1 AND (user_id IS NULL OR user_id = $2) LIMIT 1',
+                    'SELECT id FROM categories WHERE name = ? AND (user_id IS NULL OR user_id = ?) LIMIT 1',
                     [name, userId]
                 );
                 return c && c.length ? c[0].id : 14;
@@ -494,10 +493,10 @@ router.post('/import', upload.single('file'), async (req, res) => {
             for (const i of (accounts['理财持仓'] || [])) {
                 if (!i || !String(i['名称'] || '').trim()) continue;
                 const aid = i['关联账户'] ? acMap[i['关联账户']] : null;
-                const it = await conn.query('SELECT id FROM investment_types WHERE name = $1', [String(i['类型'] || '其他')]);
+                const it = await conn.query('SELECT id FROM investment_types WHERE name = ?', [String(i['类型'] || '其他')]);
                 const ins = await conn.query(
                     `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
                     [
                         userId, bookId, aid, it && it.length ? it[0].id : 1,
                         i['名称'], String(i['代码'] || ''),
@@ -524,7 +523,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         const fdate = fmtDate(f['日期']) || fmtDate(i['买入日期']) || new Date().toISOString().slice(0, 10);
                         await conn.query(
                             `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
-                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                             [
                                 userId, bookId, newInvId, type,
                                 cellNum(f['金额']) || 0, cellNum(f['价格']) || 0, cellNum(f['数量']) || 0,
@@ -536,7 +535,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 } else if (newInvId && q0 > 0) {
                     await conn.query(
                         `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                         VALUES ($1, $2, $3, 'buy', $4, $5, $6, $7, '导入建仓')`,
+                         VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, '导入建仓')`,
                         [
                             userId, bookId, newInvId,
                             cellNum(i['成本价']) || 0, cellNum(i['买入价']) || 0, q0,
@@ -550,8 +549,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
             for (const b of (config['预算'] || [])) {
                 if (!b || !String(b['名称'] || '').trim()) continue;
                 await conn.query(
-                    `INSERT INTO budgets (user_id, book_id, name, period_type, amount, start_date, end_date)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+                    `INSERT IGNORE INTO budgets (user_id, book_id, name, period_type, amount, start_date, end_date)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
                     [userId, bookId, b['名称'], ['month', 'quarter', 'half', 'year'].includes(b['周期']) ? b['周期'] : 'month', cellNum(b['金额']) || 0, fmtDate(b['开始日期']), fmtDate(b['结束日期']) || fmtDate(b['开始日期'])]
                 );
                 imported.budgets++;
@@ -562,8 +561,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (!d || !String(d['名称'] || '').trim()) continue;
                 const aid = d['关联账户'] ? acMap[d['关联账户']] : null;
                 await conn.query(
-                    `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, status, note)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) ON CONFLICT DO NOTHING`,
+                    `INSERT IGNORE INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, status, note)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userId, bookId, aid, d['名称'],
                         ['credit_card', 'loan', 'personal', 'other'].includes(d['类型']) ? d['类型'] : 'loan',
@@ -588,8 +587,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (!g || !String(g['名称'] || '').trim()) continue;
                 const aid = g['关联账户'] ? acMap[g['关联账户']] : null;
                 await conn.query(
-                    `INSERT INTO savings_goals (user_id, book_id, name, target_amount, current_amount, account_id, icon, note, status)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`,
+                    `INSERT IGNORE INTO savings_goals (user_id, book_id, name, target_amount, current_amount, account_id, icon, note, status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userId, bookId, g['名称'],
                         cellNum(g['目标金额']) || 0, cellNum(g['当前金额']) || 0, aid,
@@ -615,18 +614,18 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     const note = String(t['备注'] || '');
                     const ins = await conn.query(
                         `INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed')`,
+                         VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
                         [userId, bookId, fa, ta, amount, note, date]
                     );
                     const tid = ins.insertId;
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES ($1, $2, $3, $4, 'transfer_out', $5, $6, $7, $8, $9, NULL)`,
+                         VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
                         [userId, bookId, fa, transferCatId, amount, `转账至${idToName[ta] || '对方'}`, date, tid, fa]
                     );
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES ($1, $2, $3, $4, 'transfer_in', $5, $6, $7, $8, NULL, $9)`,
+                         VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
                         [userId, bookId, ta, transferCatId, amount, `来自${idToName[fa] || '对方'}`, date, tid, ta]
                     );
                     imported.transfers++;
@@ -638,7 +637,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     const date = fmtDateTime(t['时间']) || fmtDate(t['时间']) || new Date().toISOString().slice(0, 19);
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                         [userId, bookId, aid, catId, typeVal, amount, String(t['备注'] || ''), date]
                     );
                     imported.transactions++;
@@ -648,7 +647,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
             // 8) 以账本为准重算所有导入账户余额，避免直接写入导致漂移
             for (const name of Object.keys(acMap)) {
                 const newBal = await computeAccountBalance(conn, userId, acMap[name]);
-                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBal, acMap[name]]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, acMap[name]]);
             }
         });
 

@@ -65,7 +65,7 @@ router.post('/', async (req, res) => {
             [type, parent_id || null, req.userId, req.bookId]
         );
         const result = await db.query(
-            'INSERT INTO categories (parent_id, user_id, book_id, name, icon, type, color, sort_order, is_system) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)',
+            'INSERT INTO categories (parent_id, user_id, book_id, name, icon, type, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE)',
             [parent_id || null, req.userId, req.bookId, name, icon || '📌', type, color || defaultColor, maxSort.n]
         );
         res.json(success({ id: result.insertId }, '分类已创建'));
@@ -83,7 +83,7 @@ router.put('/:id', async (req, res) => {
             return res.status(403).json(fail('无权修改该分类'));
         }
         await db.query(
-            'UPDATE categories SET parent_id = $1, name = $2, icon = $3, type = $4, color = $5, sort_order = $6 WHERE id = $7',
+            'UPDATE categories SET parent_id = ?, name = ?, icon = ?, type = ?, color = ?, sort_order = ? WHERE id = ?',
             [parent_id || null, name, icon, type, color, sort_order, req.params.id]
         );
         res.json(success(null, '分类已更新'));
@@ -102,7 +102,7 @@ router.delete('/:id', async (req, res) => {
         if (used && used.cnt > 0) return res.status(400).json(fail('该分类下有交易记录，无法删除'));
         const hasChildren = await db.queryOne('SELECT COUNT(*) as cnt FROM categories WHERE parent_id = ?', [req.params.id]);
         if (hasChildren && hasChildren.cnt > 0) return res.status(400).json(fail('该分类下有子分类，请先删除子分类'));
-        await db.query('DELETE FROM categories WHERE id = $1', [req.params.id]);
+        await db.query('DELETE FROM categories WHERE id = ?', [req.params.id]);
         res.json(success(null, '分类已删除'));
     } catch (err) { handleServerError(res, err); }
 });

@@ -86,7 +86,7 @@ router.get('/dashboard', async (req, res) => {
             ),
             // 账户总览
             db.query(
-                'SELECT * FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\' ORDER BY sort_order',
+                'SELECT * FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY sort_order',
                 [req.userId, req.bookId]
             ),
             // 理财总资产
@@ -152,12 +152,12 @@ router.get('/dashboard', async (req, res) => {
             ),
             // 活跃债务
             db.query(
-                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'',
+                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND book_id = ? AND status = \'active\'',
                 [req.userId, req.bookId]
             ),
             // 全部还款记录
             db.query(
-                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1 AND book_id = $2',
+                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = ? AND book_id = ?',
                 [req.userId, req.bookId]
             ),
             // 债务计数
@@ -449,12 +449,14 @@ router.get('/investments', async (req, res) => {
         const trendSeries = [];
         const totalTrend = [];
         if (investments.length > 0) {
+            const invIds = investments.map(i => i.id);
+            const { sql: invSql, params: invParams } = db.buildInClause(invIds);
             const allSnaps = await db.query(
                 `SELECT investment_id, nav_date, total_value, total_cost
                    FROM investment_snapshots
-                  WHERE user_id = ? AND book_id = ? AND investment_id = ANY(?)
+                  WHERE user_id = ? AND book_id = ? AND investment_id ${invSql}
                   ORDER BY nav_date ASC`,
-                [req.userId, req.bookId, investments.map(i => i.id)]
+                [req.userId, req.bookId, ...invParams]
             );
             const snapsByInv = new Map();
             for (const s of allSnaps) {

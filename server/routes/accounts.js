@@ -12,8 +12,8 @@ router.get('/', async (req, res) => {
     try {
         const all = req.query.all === '1' || req.query.all === 'true';
         const accounts = all
-            ? await db.query('SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? ORDER BY sort_order', [req.userId, req.bookId])
-            : await db.query('SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? AND status = \'active\' ORDER BY sort_order', [req.userId, req.bookId]);
+            ? await db.query('SELECT * FROM accounts WHERE user_id = ? AND book_id = ? ORDER BY sort_order', [req.userId, req.bookId])
+            : await db.query('SELECT * FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY sort_order', [req.userId, req.bookId]);
         // 金额精度（M3）：整数分累加，避免多账户浮点求和产生分位漂移
         const total = sumAmounts(accounts.filter(a => a.status !== 'closed'), a => a.balance || 0);
         res.json(success({ accounts, totalAssets: total }));
@@ -122,7 +122,7 @@ router.get('/:id/usage', async (req, res) => {
 router.post('/:id/close', async (req, res) => {
     try {
         await db.query(
-            'UPDATE accounts SET status = \'closed\' WHERE id = $1 AND user_id = $2 AND book_id = $3',
+            'UPDATE accounts SET status = \'closed\' WHERE id = ? AND user_id = ? AND book_id = ?',
             [req.params.id, req.userId, req.bookId]
         );
         res.json(success(null, '账户已关闭'));
@@ -198,7 +198,7 @@ router.delete('/:id', async (req, res) => {
             return res.status(409).json(fail(`该账户存在关联数据（${detail}），无法彻底删除。请先清理相关记录，或使用「关闭账户」保留历史。`));
         }
 
-        await db.query('DELETE FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [accId, req.userId, req.bookId]);
+        await db.query('DELETE FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         res.json(success(null, '账户已彻底删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -209,7 +209,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/reconcile', async (req, res) => {
     try {
         const accounts = await db.query(
-            "SELECT id, name, balance FROM accounts WHERE user_id = $1 AND book_id = ? AND status = 'active'",
+            "SELECT id, name, balance FROM accounts WHERE user_id = ? AND book_id = ? AND status = 'active'",
             [req.userId, req.bookId]
         );
         let fixed = 0;
@@ -218,7 +218,7 @@ router.post('/reconcile', async (req, res) => {
             const computed = await computeAccountBalance(db, req.userId, acc.id);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
-                await db.query('UPDATE accounts SET balance = $1 WHERE id = $2 AND user_id = $3 AND book_id = $4', [computed, acc.id, req.userId, req.bookId]);
+                await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [computed, acc.id, req.userId, req.bookId]);
                 fixed++;
                 // 金额精度（M3）：差额先收集，最后整数分求和，避免逐次浮点累加
                 diffs.push(subtractAmounts(computed, stored));
