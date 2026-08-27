@@ -53,9 +53,16 @@ function splitSqlStatements(sql) {
   let inDollarQuote = false;
   for (let i = 0; i < sql.length; i++) {
     if (sql[i] === '$' && sql[i + 1] === '$') {
-      inDollarQuote = !inDollarQuote;
-      current += '$$';
-      i++;
+      if (!inDollarQuote) {
+        // 进入美元引号：跳过开分隔符，块内分号不触发切分
+        inDollarQuote = true;
+        i++; // 跳过第 2 个 $
+      } else {
+        // 退出美元引号：闭合分隔符是语句的一部分，加入语句
+        current += '$$';
+        inDollarQuote = false;
+        i++; // 跳过第 2 个 $
+      }
       continue;
     }
     if (sql[i] === ';' && !inDollarQuote) {
