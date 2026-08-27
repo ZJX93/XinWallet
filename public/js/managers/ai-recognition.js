@@ -469,6 +469,16 @@ const AIRecognition = {
         }
         const formData = new FormData();
         formData.append('image', this.compressedFile || this.selectedFile);
+        // 自动带上「上次使用的账户」作兜底：
+        //   OCR 文本里如果没有「支付宝/微信/银行」等渠道关键词（如账单详情页），
+        //   后端 resolveAccount 会退到 fallback_default 路径并写入该账户，
+        //   识别依据里同时显示「上次使用：XXX」。
+        try {
+            const lastAccountId = localStorage.getItem('xinwallet.last_account_id');
+            const lastAccountName = localStorage.getItem('xinwallet.last_account_name');
+            if (lastAccountId) formData.append('account_id', String(lastAccountId));
+            if (lastAccountName) formData.append('account_name', String(lastAccountName));
+        } catch (_) { /* localStorage 不可用时静默跳过 */ }
         document.getElementById('ocrLoading').style.display = 'block';
         document.getElementById('aiResults').style.display = 'none';
         document.getElementById('ocrTextPreview').style.display = 'none';

@@ -34,6 +34,9 @@ function buildWorkingMemory({ userId, bookId, context = {}, now = new Date() }) 
         userId,
         bookId: bookId || null,
         accountId: context.account_id || null,
+        // 客户端透传的「上次使用的账户」名：OCR 文本无渠道关键词时
+        // resolveAccount 走 fallback_default 路径会用到，让识别依据可显示「上次使用：XXX」。
+        lastAccountName: context.last_account_name || null,
         timezone: context.timezone || DEFAULT_TIMEZONE,
         refDate,
         refDateStr: toDateStr(refDate),

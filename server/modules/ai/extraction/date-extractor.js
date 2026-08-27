@@ -94,7 +94,17 @@ function extractDate(text, refDate = new Date()) {
     const safeRef = refDate instanceof Date && !Number.isNaN(refDate.getTime()) ? refDate : new Date();
     const today = isoDate(safeRef);
     if (!text || typeof text !== 'string') {
-        return { value: today, confidence: 0.3, source: 'default_today', hasTime: false, time: null };
+        // 与下方 default_today_now 路径同源：带秒级时间戳。
+        const hh = pad(safeRef.getHours());
+        const mi = pad(safeRef.getMinutes());
+        const ss = pad(safeRef.getSeconds());
+        return {
+            value: `${today} ${hh}:${mi}:${ss}`,
+            confidence: 0.3,
+            source: 'default_today_now',
+            hasTime: true,
+            time: null,
+        };
     }
 
     /* ── 1. 相对时间：今天/昨天/前天/明天（精度只到日，时间置 00:00:00） ── */
@@ -182,8 +192,18 @@ function extractDate(text, refDate = new Date()) {
         return { value: iso, confidence: 0.65, source: 'cn_short_date', hasTime: false, time: null };
     }
 
-    /* ── 6. 兜底：今天 ── */
-    return { value: today, confidence: 0.3, source: 'default_today', hasTime: false, time: null };
+    /* ── 6. 兜底：今天（带秒级时间戳，避免两笔同秒提交时混淆） ── */
+    // safeRef 而非 now：extractDate 默认参数是 refDate，本函数体内的"今天"基准是 safeRef。
+    const hh = pad(safeRef.getHours());
+    const mi = pad(safeRef.getMinutes());
+    const ss = pad(safeRef.getSeconds());
+    return {
+        value: `${today} ${hh}:${mi}:${ss}`,
+        confidence: 0.3,
+        source: 'default_today_now',
+        hasTime: true,
+        time: null,
+    };
 }
 
 function isoDate(d) {

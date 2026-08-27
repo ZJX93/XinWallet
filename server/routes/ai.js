@@ -448,6 +448,9 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         receipt: receiptInfo,
         merchant_hints: merchantHints,
         account_id: toNumber(req.body && req.body.account_id) || null,
+        // 客户端透传的「上次使用账户」兜底名，OCR 文本无渠道关键词时
+        // resolveAccount 走 fallback_default 路径会用到，让识别依据可显示「上次使用：XXX」。
+        last_account_name: (req.body && req.body.account_name) ? String(req.body.account_name) : null,
         platform: (req.body && req.body.platform) || 'unknown',
     };
     if (receiptDate) imageContext.date = receiptDate;

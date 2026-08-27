@@ -150,31 +150,49 @@ function findAccountByChannel(accounts, channel) {
  *
  * @param {string} text            OCR 文本或用户输入
  * @param {object} ctx
- * @param {Array}  ctx.accounts    用户账户列表 [{id, name, type, ...}]
- * @param {number} [ctx.account_id] 客户端默认账户（无文本命中时回退到此）
+ * @param {Array}  ctx.accounts           用户账户列表 [{id, name, type, ...}]
+ * @param {number} [ctx.account_id]       客户端默认账户（无文本命中时回退到此）
+ * @param {string} [ctx.last_account_name] 客户端透传的「上次使用」账户名（兜底显示用）
  * @returns {{
  *   account_id: number|null,
  *   confidence: number,
  *   source: string,
  *   matched_channel: object|null,
  *   matched_account: object|null,
- *   channels: Array
+ *   channels: Array,
+ *   details: string
  * }}
  */
 function resolveAccount(text, ctx = {}) {
-    const { accounts = [], account_id: defaultAccountId = null } = ctx;
+    const {
+        accounts = [],
+        account_id: defaultAccountId = null,
+        last_account_name: lastAccountName = null,
+    } = ctx;
 
     const channels = scanPaymentChannels(text);
 
     // 文本中没扫到任何支付渠道 → 直接返回默认
     if (channels.length === 0) {
+        // 优先用「上次使用账户名」找对应的账户 id，让结果真正落在用户已有的账上；
+        // 找不到才退回到 defaultAccountId（OCR 上传时客户端传入）。
+        let fallbackId = defaultAccountId;
+        let fallbackName = lastAccountName || null;
+        if (lastAccountName) {
+            const hit = (accounts || []).find(a => norm(a.name) === norm(lastAccountName));
+            if (hit) {
+                fallbackId = hit.id;
+                fallbackName = hit.name;
+            }
+        }
         return {
-            account_id: defaultAccountId,
-            confidence: defaultAccountId != null ? 0.5 : 0.0,
+            account_id: fallbackId,
+            confidence: fallbackId != null ? 0.5 : 0.0,
             source: 'fallback_default',
             matched_channel: null,
             matched_account: null,
             channels: [],
+            details: fallbackName ? `未在文本中找到支付渠道，已按上次使用「${fallbackName}」兜底` : '未匹配到任何账户',
         };
     }
 

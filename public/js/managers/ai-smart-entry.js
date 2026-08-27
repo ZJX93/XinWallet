@@ -21,9 +21,14 @@
 // 与后端 result-validator.js 的 DECISIVE_FIELDS 对齐；merchant 记录但不参与裁决
 const DECISIVE_FIELDS = ['amount', 'type', 'category', 'date'];
 
+// 识别依据里「总是显示」的字段（不影响裁决，只是让用户看到识别路径）：
+//   - account：账单里「用了哪张卡/账户」，走 fallback_default 时要展示「上次使用：XXX」
+//   - currency：金额单位识别路径（默认值时一眼看出）
+const ALWAYS_SHOW_EVIDENCE_FIELDS = ['account', 'currency'];
+
 const FIELD_LABEL = {
     amount: '金额', type: '类型', category: '分类',
-    date: '日期', currency: '币种', merchant: '商户'
+    date: '日期', currency: '币种', merchant: '商户', account: '账户'
 };
 
 const AISmartEntry = {
@@ -339,10 +344,19 @@ const AISmartEntry = {
     _evidenceText(item) {
         const ev = item.evidence;
         if (!ev) return '';
-        const parts = DECISIVE_FIELDS
+        const decisiveParts = DECISIVE_FIELDS
             .filter(f => ev[f] && ev[f] !== 'missing')
-            .map(f => `${FIELD_LABEL[f]}=${ev[f]}`);
-        return parts.length ? `识别依据：${parts.join('  ·  ')}` : '';
+            .map(f => `${FIELD_LABEL[f] || f}=${ev[f]}`);
+        const alwaysParts = ALWAYS_SHOW_EVIDENCE_FIELDS
+            .filter(f => ev[f] && ev[f] !== 'missing' && !DECISIVE_FIELDS.includes(f))
+            .map(f => `${FIELD_LABEL[f] || f}=${ev[f]}`);
+        const parts = decisiveParts.concat(alwaysParts);
+        let text = parts.length ? `识别依据：${parts.join('  ·  ')}` : '';
+        // 附加账户识别的详细说明（如「未在文本中找到支付渠道，已按上次使用 XXX 兜底」）。
+        if (item.account_match_details) {
+            text = text ? `${text}\n${item.account_match_details}` : item.account_match_details;
+        }
+        return text;
     },
 
     _bindRowEvents() {

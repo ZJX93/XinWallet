@@ -61,16 +61,19 @@ test('extractDate: 「3天前」回退到日', () => {
     assert.equal(r.value, '2026-08-25');
 });
 
-test('extractDate: 完全无法识别 → 默认今天（仅日期）', () => {
+test('extractDate: 完全无法识别 → 默认今天（带秒级时间戳）', () => {
+    // v0.3 升级：default_today 路径输出 YYYY-MM-DD HH:MM:SS，
+    // 避免同日多笔交易日期完全相同导致下游排序/幂等键冲突。
     const r = extractDate('随便什么文本没有日期', REF);
-    assert.equal(r.value, '2026-08-28');
-    assert.equal(r.source, 'default_today');
-    assert.equal(r.hasTime, false);
+    assert.match(r.value, /^2026-08-28 \d{2}:\d{2}:\d{2}$/);
+    assert.equal(r.source, 'default_today_now');
+    assert.equal(r.hasTime, true);
 });
 
-test('extractDate: 文本非字符串 → 默认今天', () => {
+test('extractDate: 文本非字符串 → 默认今天（带秒级）', () => {
     const r = extractDate(null, REF);
-    assert.equal(r.value, '2026-08-28');
+    assert.match(r.value, /^2026-08-28 \d{2}:\d{2}:\d{2}$/);
+    assert.equal(r.source, 'default_today_now');
 });
 
 test('extractTime: HH:mm:ss 命中并补零', () => {

@@ -148,3 +148,41 @@ test('resolveAccount: 大小写不敏感（Alipay）', () => {
     });
     assert.equal(r.account_id, 1);
 });
+
+/* ─────────── v0.3 新增：上次使用账户兜底 ─────────── */
+
+test('resolveAccount: 文本无渠道 + 上次使用「支付宝 花呗」→ 用 1，details 含「上次使用」', () => {
+    // 模拟用户截图的「账单详情页」：OCR 文本里没有支付宝/微信等关键词，
+    // 不应让 account 留空 —— 而应按客户端传的「上次使用账户名」兜底。
+    const r = resolveAccount('永升物业樾溪臺 638.4元', {
+        accounts: ACCTS,
+        account_id: null,
+        last_account_name: '支付宝 花呗',
+    });
+    assert.equal(r.account_id, 1);
+    assert.equal(r.source, 'fallback_default');
+    assert.match(r.details, /上次使用.*支付宝 花呗/);
+});
+
+test('resolveAccount: last_account_name 不在用户账户列表里 → 退到 account_id', () => {
+    // 客户端传来一个已被删除的账户名（如多设备同步延迟），不应报错，应回退到默认账户。
+    const r = resolveAccount('买咖啡 28', {
+        accounts: ACCTS,
+        account_id: 4, // 现金
+        last_account_name: '已删除账户',
+    });
+    assert.equal(r.account_id, 4);
+    assert.equal(r.source, 'fallback_default');
+});
+
+test('resolveAccount: 文本无渠道 + 无 last_account_name + 无默认 → null + details 提示', () => {
+    const r = resolveAccount('买咖啡 28', {
+        accounts: ACCTS,
+        account_id: null,
+        last_account_name: null,
+    });
+    assert.equal(r.account_id, null);
+    assert.equal(r.source, 'fallback_default');
+    assert.equal(r.confidence, 0.0);
+    assert.match(r.details, /未匹配到任何账户/);
+});

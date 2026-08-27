@@ -65,10 +65,11 @@ function extractTransactions(text, ctx = {}) {
 
         // 账户解析：用 OCR/原文里出现的「支付宝/微信/银行/现金」关键词，
         // 优先于请求体里的默认账户（解决「账户像被锁死」的用户投诉）。
-        // 文本里完全没线索时才回退到默认账户。
+        // 文本里完全没线索时才回退到默认账户（含「上次使用」兜底）。
         const accountResolved = resolveAccount(seg, {
             accounts,
             account_id,
+            last_account_name: wm && wm.lastAccountName ? wm.lastAccountName : null,
         });
 
         return {
@@ -112,7 +113,12 @@ function extractTransactions(text, ctx = {}) {
                 date: date.source,
                 currency: currency.source,
                 merchant: merchant ? merchant.source : 'missing',
+                // 账户识别路径：渠道匹配 / 上次使用兜底 / 默认账户 等。
+                // 前端 _evidenceText 会把它显示为「账户=last_used:支付宝 花呗」一类。
+                account: accountResolved.source,
             },
+            // 账户识别详细说明（给前端「识别依据」展示用，含兜底账户名）
+            account_match_details: accountResolved.details || null,
         };
     })
         // ⚠️ 金额是记账的必要条件：无金额的段不是交易（如「今天天气不错」）。

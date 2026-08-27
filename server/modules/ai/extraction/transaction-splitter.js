@@ -38,6 +38,20 @@ function hasStandaloneTxnSemantics(seg) {
 }
 
 /**
+ * 判断片段是否「系统状态/流量/网速」等 App UI 噪音（不是交易）：
+ *   - K/s、KB/s、MB/s、Kbps、Mbps：网速单位
+ *   - 上行/下行/实时/平均/峰值：流量统计描述
+ *   - 流量、流量包、剩余流量：话费账单里的流量状态
+ * 这类文本常被金额锚点误拆成「63 元 K/s-76.3 K/s」这种伪交易，
+ *   实际是支付宝页面顶部的实时网速信息，不是真实消费。
+ */
+function isSystemNoiseSegment(seg) {
+    if (!seg) return false;
+    const noisePattern = /(?:K\s*\/\s*s|KB\s*\/\s*s|KBs|MB\s*\/\s*s|MBs|Kbps|Mbps|Gbps|流量|网速|上行|下行|实时|平均|峰值|剩余|已用)/i;
+    return noisePattern.test(seg);
+}
+
+/**
  * 拆分多笔交易。
  * @param {string} text
  * @returns {{segments:string[], source:string, multi:boolean}}
@@ -50,7 +64,7 @@ function splitTransactions(text) {
 
     // 1) 显式分隔符切分
     const hard = trimmed.split(HARD_SEP).map(s => s.trim()).filter(Boolean);
-    const hardTxns = hard.filter(looksLikeTxn);
+    const hardTxns = hard.filter(s => looksLikeTxn(s) && !isSystemNoiseSegment(s));
     if (hardTxns.length > 1) {
         return { segments: hardTxns, source: 'hard_separator', multi: true };
     }
@@ -58,7 +72,7 @@ function splitTransactions(text) {
     // 2) 「和 / 以及 / 还有 / 另外」连接的并列消费
     //    要求两侧都含数字，否则「我和朋友吃饭30」会被错拆。
     const conj = trimmed.split(/\s*(?:以及|还有|另外|外加|加上)\s*/).map(s => s.trim()).filter(Boolean);
-    const conjTxns = conj.filter(looksLikeTxn);
+    const conjTxns = conj.filter(s => looksLikeTxn(s) && !isSystemNoiseSegment(s));
     if (conjTxns.length > 1) {
         return { segments: conjTxns, source: 'conjunction', multi: true };
     }
@@ -84,7 +98,12 @@ function splitTransactions(text) {
             const start = i === 0 ? 0 : anchors[i - 1].index + anchors[i - 1][0].length;
             const end = anchors[i].index + anchors[i][0].length;
             const seg = trimmed.slice(start, end).trim();
-            if (seg && looksLikeTxn(seg)) segs.push(seg);
+            if (!seg || !looksLikeTxn(seg)) continue;
+            // 过滤「系统状态/流量/网速」等噪音段：
+            //   支付宝账单页常把 K/s-76.3 K/s（流量统计）、MB/s、网速等 App 系统信息混在截图里，
+            //   它们也带数字，会被金额锚点误拆成「交易」。
+            if (isSystemNoiseSegment(seg)) continue;
+            segs.push(seg);
         }
         // 尾部残留描述（如「…共花了」）忽略；仅当确实切出 >1 段才认为是多笔
         if (segs.length > 1) {
@@ -96,4 +115,4 @@ function splitTransactions(text) {
     return { segments: [trimmed], source: 'single', multi: false };
 }
 
-module.exports = { splitTransactions, looksLikeTxn, hasStandaloneTxnSemantics };
+module.exports = { splitTransactions, looksLikeTxn, hasStandaloneTxnSemantics, isSystemNoiseSegment };
