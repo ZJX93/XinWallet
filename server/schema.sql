@@ -489,8 +489,6 @@ CREATE TABLE IF NOT EXISTS savings_goals (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_savings_user ON savings_goals (user_id);
--- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的储蓄目标不重复）
-ALTER TABLE savings_goals ADD CONSTRAINT savings_goals_user_book_name_unique UNIQUE (user_id, book_id, name);
 DROP TRIGGER IF EXISTS trg_savings_updated ON savings_goals;
 CREATE TRIGGER trg_savings_updated BEFORE UPDATE ON savings_goals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -571,8 +569,6 @@ CREATE TABLE IF NOT EXISTS debts (
 CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
 CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction);
 CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id);
--- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的债务不重复）
-ALTER TABLE debts ADD CONSTRAINT debts_user_book_name_unique UNIQUE (user_id, book_id, name);
 DROP TRIGGER IF EXISTS trg_debts_updated ON debts;
 CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -637,6 +633,23 @@ ALTER TABLE investments              ADD COLUMN IF NOT EXISTS book_id INT DEFAUL
 ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE savings_transactions    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE investment_snapshots    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+
+-- 为 savings_goals 和 debts 添加唯一约束（幂等，首次执行或旧库升级均可）
+-- ADD CONSTRAINT IF NOT EXISTS 不存在，用 DO 块判断后添加
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'savings_goals_user_book_name_unique'
+  ) THEN
+    ALTER TABLE savings_goals ADD CONSTRAINT savings_goals_user_book_name_unique UNIQUE (user_id, book_id, name);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'debts_user_book_name_unique'
+  ) THEN
+    ALTER TABLE debts ADD CONSTRAINT debts_user_book_name_unique UNIQUE (user_id, book_id, name);
+  END IF;
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_accounts_user_book        ON accounts (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
