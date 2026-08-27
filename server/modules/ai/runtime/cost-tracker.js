@@ -1,7 +1,13 @@
 /* ============================================
+<<<<<<< HEAD
+   Cost Tracker
+   ------------------------------------------------
+   落库 ai_provider_usage，为 cost_per_prediction 与 llm_call_rate 供数。
+=======
    AI v0.2 · §10 Cost Tracker
    ------------------------------------------------
    落库 ai_provider_usage，为方案 §12 的 cost_per_prediction 与 llm_call_rate 供数。
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 
    ⛔ 金额一律用【微分（0.000001 元）整数】存储，不用浮点：
       单次调用成本常在 0.0001 元量级，float 累加上万次会漂移。

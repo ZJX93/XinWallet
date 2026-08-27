@@ -1078,6 +1078,15 @@ AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-2
 
 使用存储的 API Key 向服务商发一条探针请求。**响应** `200` — `data: { ok, reply }`；`400` 未配置 Key / 解密失败 / 连接失败（`data.ok = false` 时返回错误原因）。
 
+<<<<<<< HEAD
+#### `POST /ai/advice` — AI 财务建议 + 消费洞察
+
+汇总本月 / 上月收支、预算、储蓄目标、账户、债务，调用模型一次性生成建议与洞察。**响应** `200` — `data: { advice: [{ title, content, impact, priority }], insights: [{ title, description, action, level }], generatedAt }`；`400` 未配置服务商。
+
+#### `POST /ai/insight` — AI 消费洞察（已废弃）
+
+已合并进 `POST /ai/advice`，该端点返回 `410 Gone` 并提示改用 `/ai/advice`。
+=======
 #### `POST /ai/advice` — AI 财务建议
 
 汇总本月 / 上月收支、预算、储蓄目标、账户、债务，调用模型生成 3–5 条建议。**响应** `200` — `data: { advice: [{ title, content, impact, priority }], generatedAt }`；`400` 未配置服务商。
@@ -1085,6 +1094,7 @@ AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-2
 #### `POST /ai/insight` — AI 消费洞察
 
 **请求体**：`month`（可选，形如 `2025-07`，默认当前月）。基于当月支出分类、环比、预算执行、储蓄、债务生成洞察。**响应** `200` — `data: { insights: [{ title, description, action, level }], generatedAt }`；`400` 未配置服务商。
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 
 #### `GET /ai/ocr-config` — 获取 OCR 配置
 

@@ -1,7 +1,13 @@
 /* ============================================
+<<<<<<< HEAD
+   Complexity Analyzer
+   ------------------------------------------------
+   复杂度特征，全部落地为可测的布尔/数值信号：
+=======
    AI v0.2 · §10 Complexity Analyzer
    ------------------------------------------------
    方案列出的 8 个复杂度特征，全部落地为可测的布尔/数值信号：
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
      multiple_transactions / multiple_amounts / ambiguous_date / transfer_detection
      merchant_unknown / conflicting_signals / long_input / historical_conflict
 

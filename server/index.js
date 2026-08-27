@@ -320,6 +320,25 @@ async function start() {
         console.warn('⚠️ AI 凭证自检未执行（不影响启动）:', err.message);
     }
 
+<<<<<<< HEAD
+    // AI Event Bus 初始化：注册 transaction.created / budget.exceeded / balance.anomaly 等事件处理器
+    try {
+        const { initEventHandlers } = require('./modules/ai/events/event-handlers');
+        initEventHandlers();
+    } catch (err) {
+        console.warn('⚠️ Event Bus 初始化失败（不影响启动）:', err.message);
+    }
+
+    // AI Evidence Batch Scheduler 初始化（每 24h 批量学习）
+    try {
+        const { startScheduler } = require('./modules/ai/learning/evidence-scheduler');
+        startScheduler(24);
+    } catch (err) {
+        console.warn('⚠️ Evidence Scheduler 启动失败（不影响启动）:', err.message);
+    }
+
+=======
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
     // 确保演示账号存在（使用 bcrypt 真实哈希，避免明文占位符）
     try {
         const demo = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");

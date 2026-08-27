@@ -439,7 +439,11 @@ const AIProviderManager = {
             return this.setMsg('新建服务商时必须填写 API Key', 'error');
         }
         this.setMsg('正在测试连接...', 'info');
+<<<<<<< HEAD
+        // 临时保存到后端再调用 advice（确保后端有 key）
+=======
         // 临时保存到后端再调用 insight（确保后端有 key）
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
         const isEdit = !!this.editingId;
         const saveRes = isEdit
             ? await api(`/ai/providers/${this.editingId}`, 'PUT', { ...payload, is_active: true })
@@ -448,7 +452,11 @@ const AIProviderManager = {
             this.setMsg('保存失败，无法测试', 'error');
             return;
         }
+<<<<<<< HEAD
+        const res = await api('/ai/advice', 'POST', {});
+=======
         const res = await api('/ai/insight', 'POST', { month: cache.currentMonth });
+>>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
         if (res) {
             showToast('连接成功，AI 接口可用', 'success');
             this.setMsg('连接成功！点击「保存」保留或「取消」关闭。如需切换对话服务商，请在列表中点击「启用」。', 'success');
