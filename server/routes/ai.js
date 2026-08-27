@@ -9,11 +9,7 @@ const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens, polishChatReply } = require('./_helpers');
 const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
-<<<<<<< HEAD
-// AI 模块桶：图片通道（/ocr）与预测闭环（/transactions/parse）都要用。
-=======
 // AI v0.2 模块桶：图片通道（/ocr）与预测闭环（/transactions/parse）都要用。
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 // ⚠️ 必须在顶部 require —— 图片通道位于文件中段，const 的 TDZ 会让「写在下面」直接 ReferenceError。
 // ⛔ 路由层【只能】依赖这个桶文件。原先直接 require 的 extraction/category-matcher
 //    已随 legacy 解析器一并移除（它是那 253 行的唯一使用者）。
@@ -284,11 +280,6 @@ router.post('/insight', async (req, res) => {
         '/ai/insight 已废弃，请改用 POST /ai/advice（同时返回 insights + advice）。',
         { deprecated: true, replacement: '/ai/advice' }
     ));
-<<<<<<< HEAD
-
-    // 以下是临时假数据，前端切完即删。最终让 /insight 直接调
-=======
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 });
 
 // OCR 配置
@@ -409,10 +400,7 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         provider: provider && !provider._decryptFailed ? provider : null,
         force,
     });
-<<<<<<< HEAD
-=======
     console.log(`[图片记账] user=${req.userId} force=${force || '-'} ok=${tr.ok} source=${tr.source || '-'} textLen=${(tr.text || '').length} attempts=${JSON.stringify(tr.attempts)}`);
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 
     if (!tr.ok) {
         // ⚠️ fail(msg, code) 的第二参数是【错误码】不是附加数据（_helpers.js:16）。
@@ -450,15 +438,10 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
                 ⛔ 否则记的是【上传当天】而不是【消费当天】：用户周一补记上周五的
                    小票，日期会全部错成周一，而且完全不报错 —— 只能靠人肉核对发现。 */
             receiptDate = pre.items.map(i => i.date).filter(Boolean).sort()[0] || null;
-<<<<<<< HEAD
-        } else {
-            // 判定像票据但一条策略都没命中 → 退回原文，交给主链路尽力而为
-=======
             console.log(`[图片记账] user=${req.userId} 票据预处理命中 strategy=${pre.strategy} → ${pre.items.length} 行 日期=${receiptDate || '-'}`);
         } else {
             // 判定像票据但一条策略都没命中 → 退回原文，交给主链路尽力而为
             console.log(`[图片记账] user=${req.userId} 判定为票据但无策略命中，退回原文解析`);
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
         }
     }
 
@@ -1061,11 +1044,7 @@ router.post('/transcribe', async (req, res) => {
 });
 
 /* ============================================
-<<<<<<< HEAD
-   预测闭环
-=======
    AI v0.2 · 预测闭环（Phase 1）
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
    ------------------------------------------------
    核心原则：AI 输出【永不直接写账本】。
    链路：parse（产出不可变预测快照）→ 用户确认/修正 → commit（事务内原子落账）
@@ -1122,11 +1101,7 @@ router.post('/transactions/parse', async (req, res) => {
             transactions,
             validation,
             decisionTrace: decision_trace,
-<<<<<<< HEAD
-            // 记忆证据 / 模型原始请求响应 / 实际路由快照
-=======
             // Phase 3/4 新增快照：记忆证据 / 模型原始请求响应 / 实际路由
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
             // 落库是「事后可复盘」的前提：没有它，线上一条错判永远查不出是记忆错还是模型错。
             memorySnapshot: parsed.memory_snapshot,
             modelRequest: parsed.model_request,
@@ -1239,11 +1214,7 @@ router.post('/predictions/:id/discard', async (req, res) => {
 });
 
 /* ============================================
-<<<<<<< HEAD
-   规则演化与记忆治理
-=======
    AI v0.2 · 规则演化与记忆治理（Phase 3 · 方案 §4）
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
    ------------------------------------------------
    为什么必须暴露这组接口：
      方案 §4 的验收标准要求「错误习惯可 disabled」「证据可审计」。
@@ -1415,11 +1386,7 @@ router.get('/learning/stats', async (req, res) => {
 });
 
 /* ============================================
-<<<<<<< HEAD
-   评测系统
-=======
    AI v0.2 · 评测系统（Phase 5 · 方案 §12）
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
    ------------------------------------------------
    方案原文：「任何版本发布前都必须比较基线」。
    ⇒ 跑批接口默认自动取最近一次跑批作基线，并在响应里直出 regressions。
@@ -1491,408 +1458,6 @@ router.get('/evaluation/runs', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
-// ============================================
-// AI 模块扩展端点
-// ============================================
-
-/* ---------- Insight 端点 ---------- */
-
-// POST /ai/insights/analyze  手动触发全量洞察分析
-router.post('/insights/analyze', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const bookId = req.body.book_id || null;
-        const generated = await aiModule.runFullAnalysis(userId, bookId);
-        res.json({ ok: true, generated: generated.length, items: generated });
-    } catch (err) {
-        handleServerError(res, err, '洞察分析');
-    }
-});
-
-// GET /ai/insights  获取洞察列表
-router.get('/insights', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { status, insight_type, importance_ge, limit = 20, offset = 0 } = req.query;
-        const rows = await aiModule.getInsights(userId, {
-            status,
-            insightType: insight_type,
-            importanceGE: importance_ge ? parseInt(importance_ge, 10) : null,
-            limit: parseInt(limit, 10),
-            offset: parseInt(offset, 10),
-        });
-        res.json({ ok: true, insights: rows });
-    } catch (err) {
-        handleServerError(res, err, '获取洞察列表');
-    }
-});
-
-// GET /ai/insights/ranked  获取已排序去重的洞察列表（供前端 Radar 使用）
-router.get('/insights/ranked', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { min_importance = 3, limit = 20, offset = 0 } = req.query;
-        const rows = await aiModule.getRankedInsights(userId, {
-            minImportance: parseInt(min_importance, 10),
-            limit: parseInt(limit, 10),
-            offset: parseInt(offset, 10),
-        });
-        res.json({ ok: true, insights: rows });
-    } catch (err) {
-        handleServerError(res, err, '获取排序洞察');
-    }
-});
-
-// GET /ai/insights/stats  获取洞察摘要统计
-router.get('/insights/stats', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const stats = await aiModule.getInsightStats(userId);
-        res.json({ ok: true, stats });
-    } catch (err) {
-        handleServerError(res, err, '获取洞察统计');
-    }
-});
-
-// DELETE /ai/insights/type/:type  批量忽略某类型的所有洞察
-router.delete('/insights/type/:type', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { type } = req.params;
-        await aiModule.dismissAllOfType(userId, type);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '批量忽略洞察');
-    }
-});
-
-// PATCH /ai/insights/:id/read  标记已读
-router.patch('/insights/:id/read', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const id = parseInt(req.params.id, 10);
-        await aiModule.markRead(userId, id);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '标记已读');
-    }
-});
-
-// DELETE /ai/insights/:id  忽略/驳回洞察
-router.delete('/insights/:id', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const id = parseInt(req.params.id, 10);
-        await aiModule.dismissInsight(userId, id);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '忽略洞察');
-    }
-});
-
-/* ---------- Conversation 端点 ---------- */
-
-// GET /ai/conversations  获取对话列表
-router.get('/conversations', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { status = 'active', limit = 20, offset = 0 } = req.query;
-        const rows = await aiModule.conversationService.getConversations(userId, {
-            status,
-            limit: parseInt(limit, 10),
-            offset: parseInt(offset, 10),
-        });
-        res.json({ ok: true, conversations: rows });
-    } catch (err) {
-        handleServerError(res, err, '获取对话列表');
-    }
-});
-
-// POST /ai/conversations  创建新对话
-router.post('/conversations', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { book_id, title, model_used } = req.body;
-        const conv = await aiModule.conversationService.createConversation(userId, {
-            bookId: book_id,
-            title: title || '新对话',
-            modelUsed: model_used || null,
-        });
-        res.status(201).json({ ok: true, conversation: conv });
-    } catch (err) {
-        handleServerError(res, err, '创建对话');
-    }
-});
-
-// GET /ai/conversations/:id  获取单个对话
-router.get('/conversations/:id', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const id = parseInt(req.params.id, 10);
-        const conv = await aiModule.conversationService.getConversation(userId, id);
-        if (!conv) return res.status(404).json({ ok: false, error: '对话不存在' });
-        res.json({ ok: true, conversation: conv });
-    } catch (err) {
-        handleServerError(res, err, '获取对话');
-    }
-});
-
-// PATCH /ai/conversations/:id  更新对话标题
-router.patch('/conversations/:id', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const id = parseInt(req.params.id, 10);
-        const { title } = req.body;
-        if (!title) return res.status(400).json({ ok: false, error: 'title 必填' });
-        await aiModule.conversationService.updateTitle(userId, id, title);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '更新对话标题');
-    }
-});
-
-// DELETE /ai/conversations/:id  删除对话（级联删除消息）
-router.delete('/conversations/:id', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const id = parseInt(req.params.id, 10);
-        await aiModule.conversationService.deleteConversation(userId, id);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '删除对话');
-    }
-});
-
-/* ---------- Message 端点 ---------- */
-
-// GET /ai/conversations/:id/messages  获取对话消息历史
-router.get('/conversations/:id/messages', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const conversationId = parseInt(req.params.id, 10);
-        const { limit = 50, before_id } = req.query;
-        const rows = await aiModule.messageService.getMessages(userId, conversationId, {
-            limit: parseInt(limit, 10),
-            beforeId: before_id ? parseInt(before_id, 10) : null,
-        });
-        res.json({ ok: true, messages: rows });
-    } catch (err) {
-        handleServerError(res, err, '获取消息历史');
-    }
-});
-
-/* ---------- Profile 端点 ---------- */
-
-// GET /ai/profile  获取用户 AI Profile
-router.get('/profile', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const profile = await aiModule.profileService.getOrCreateProfile(userId);
-        res.json({ ok: true, profile });
-    } catch (err) {
-        handleServerError(res, err, '获取 Profile');
-    }
-});
-
-// PATCH /ai/profile  更新用户 AI Profile
-router.patch('/profile', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { interaction_style, notification_enabled, insight_frequency,
-                insight_rank_threshold, preferences } = req.body;
-        const updates = {};
-        if (interaction_style !== undefined) updates.interaction_style = interaction_style;
-        if (notification_enabled !== undefined) updates.notification_enabled = notification_enabled;
-        if (insight_frequency !== undefined) updates.insight_frequency = insight_frequency;
-        if (insight_rank_threshold !== undefined) updates.insight_rank_threshold = insight_rank_threshold;
-        if (preferences !== undefined) updates.preferences = preferences;
-
-        await aiModule.profileService.updateProfile(userId, updates);
-        res.json({ ok: true });
-    } catch (err) {
-        handleServerError(res, err, '更新 Profile');
-    }
-});
-
-/* ---------- Event Bus 端点 ---------- */
-
-// POST /ai/events/emit  触发 AI 事件（供内部/外部调用）
-router.post('/events/emit', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { event_type, payload } = req.body;
-        const allowedEvents = ['transaction.created', 'transaction.updated', 'transaction.deleted',
-                               'budget.exceeded', 'balance.anomaly'];
-        if (!event_type || !allowedEvents.includes(event_type)) {
-            return res.status(400).json({ ok: false, error: `event_type 必填且可为：${allowedEvents.join(', ')}` });
-        }
-
-        const eventPayload = { userId, ...(payload || {}) };
-        const { emit } = require('../modules/ai/events/event-bus');
-        const event = emit(event_type, eventPayload);
-        res.json({ ok: true, event });
-    } catch (err) {
-        handleServerError(res, err, '事件触发');
-    }
-});
-
-// GET /ai/events/stats  查看 Event Bus 状态（调试用）
-router.get('/events/stats', async (req, res) => {
-    try {
-        const { getStats, getHistory } = require('../modules/ai/events/event-bus');
-        res.json({ ok: true, stats: getStats(), history: getHistory({ limit: 20 }) });
-    } catch (err) {
-        handleServerError(res, err, 'Event Bus 状态');
-    }
-});
-
-// ============================================
-// Forecast & Simulation API
-// ============================================
-
-// GET /ai/forecast/cashflow  现金流预测
-router.get('/forecast/cashflow', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { months = 6 } = req.query;
-        const result = await aiModule.forecastService.forecastCashflow(userId, {
-            months: parseInt(months, 10),
-        });
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '现金流预测');
-    }
-});
-
-// POST /ai/simulate/budget  预算调整模拟
-router.post('/simulate/budget', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { category_id, new_budget, months = 3 } = req.body;
-        if (!category_id || new_budget == null) {
-            return res.status(400).json({ ok: false, error: 'category_id 和 new_budget 必填' });
-        }
-        const result = await aiModule.forecastService.simulateBudget(userId, category_id, new_budget, {
-            months: parseInt(months, 10),
-        });
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '预算模拟');
-    }
-});
-
-// POST /ai/simulate/savings-goal  储蓄目标模拟
-router.post('/simulate/savings-goal', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { target_amount, months = 12, monthly_save } = req.body;
-        if (!target_amount || target_amount <= 0) {
-            return res.status(400).json({ ok: false, error: 'target_amount 必填且 > 0' });
-        }
-        const result = await aiModule.forecastService.simulateSavingsGoal(userId, target_amount, {
-            months: parseInt(months, 10),
-            monthlySave: monthly_save ? parseFloat(monthly_save) : null,
-        });
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '储蓄目标模拟');
-    }
-});
-
-// POST /ai/simulate/debt-payoff  债务还款模拟
-router.post('/simulate/debt-payoff', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { debt_id, extra_monthly_payment = 0 } = req.body;
-        const result = await aiModule.forecastService.simulateDebtPayoff(userId, {
-            debtId: debt_id ? parseInt(debt_id, 10) : null,
-            extraMonthlyPayment: parseFloat(extra_monthly_payment) || 0,
-        });
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '债务还款模拟');
-    }
-});
-
-// ============================================
-// Metrics & Cleanup API
-// ============================================
-
-// GET /ai/v2/features  查看用户可用的 v2 功能开关状态
-router.get('/v2/features', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const { debug } = req.query;
-        if (debug === '1') {
-            return res.json({ ok: true, all_flags: aiModule.getAllFlags() });
-        }
-        res.json({ ok: true, features: aiModule.getUserFeatures(userId) });
-    } catch (err) {
-        handleServerError(res, err, '获取功能开关');
-    }
-});
-
-// GET /ai/v2/metrics  健康指标
-router.get('/v2/metrics', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const [health, cost] = await Promise.all([
-            aiModule.metricsCleanup.getHealthMetrics(),
-            aiModule.metricsCleanup.getCostBreakdown({ days: 7 }),
-        ]);
-        res.json({ ok: true, health, cost });
-    } catch (err) {
-        handleServerError(res, err, '获取指标');
-    }
-});
-
-// GET /ai/v2/metrics/cost  成本追踪
-router.get('/v2/metrics/cost', async (req, res) => {
-    try {
-        const { days = 7 } = req.query;
-        const result = await aiModule.metricsCleanup.getCostBreakdown({ days: parseInt(days, 10) });
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '获取成本');
-    }
-});
-
-// POST /ai/v2/cleanup  运行清理任务
-router.post('/v2/cleanup', async (req, res) => {
-    try {
-        const userId = req.userId;
-        const result = await aiModule.metricsCleanup.runFullCleanup(userId);
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        handleServerError(res, err, '运行清理');
-    }
-});
-
-// GET /ai/v2/status  整体状态（健康检查）
-router.get('/v2/status', async (req, res) => {
-    try {
-        const { getStats } = require('../modules/ai/events/event-bus');
-        const { pendingFeedbackCount } = require('../modules/ai');
-        const pending = await pendingFeedbackCount().catch(() => 0);
-        res.json({
-            ok: true,
-            event_bus: getStats(),
-            pending_feedback: pending,
-            version: 'current',
-            timestamp: new Date().toISOString(),
-        });
-    } catch (err) {
-        handleServerError(res, err, 'v2 状态');
-    }
-});
-
-// ============================================
-// 通用工具函数
-// ============================================
-
-=======
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 // PG 的 JSONB 列驱动已自动反序列化，MySQL 的 JSON 列回来是字符串 —— 这里统一兜底。
 function safeJson(v, dflt) {
     if (v === null || v === undefined) return dflt;

@@ -1,24 +1,4 @@
 /* ============================================
-<<<<<<< HEAD
-  鑫钱包 · Database Connection Pool（PostgreSQL）
-  ============================================ */
-
-// 提升到模块作用域，供 initDatabase() 中建库用的 adminPool 复用（避免块级作用域导致 Pool is not defined）
-const { Pool } = require('pg');
-const pool = new Pool({
-  host: process.env.DB_HOST || '127.0.0.1',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'xinwallet',
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  // 显式指定客户端编码为 UTF-8，避免在 Windows / Git Bash 中文 locale 环境下
-  // pg 驱动读取 LC_* / LANG 环境变量导致中文被错误地按 GBK 编码往返。
-  options: '-c client_encoding=UTF8',
-});
-=======
    鑫钱包 · Database Connection Pool（双数据库：PostgreSQL / MySQL）
    ============================================ */
 
@@ -59,7 +39,6 @@ if (IS_PG) {
     timezone: 'Z',
   });
 }
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 
 // 按分号切分 SQL 语句；跳过 $$ ... $$ 美元引号块（PL/pgSQL 函数体），避免块内分号被误切。
 function splitSqlStatements(sql) {
@@ -139,11 +118,6 @@ function toPgPlaceholders(sql) {
   return out;
 }
 
-<<<<<<< HEAD
-// 归一化：把业务 SQL 中的 ? 占位符转换为 PostgreSQL 的 $N 占位符，并自动补 RETURNING。
-function prepare(sql) {
-  return autoReturning(toPgPlaceholders(sql));
-=======
 /**
  * MySQL 占位符归一化：将静态 `$N` 风格占位符转回 `?`（MySQL 原生占位符），保留已有 `?`。
  * 仅处理引号外的 `$N`，避免误伤字符串内容。
@@ -218,7 +192,6 @@ function translatePgFunctionsToMysql(sql) {
 function prepare(sql) {
   if (IS_PG) return autoReturning(toPgPlaceholders(sql));
   return translateConflict(toMysqlPlaceholders(translatePgFunctionsToMysql(sql)));
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 }
 
 function attachInsertId(rows) {
@@ -230,10 +203,6 @@ function attachInsertId(rows) {
 
 async function query(sql, params = []) {
   const text = prepare(sql);
-<<<<<<< HEAD
-  const res = await pool.query(text, params);
-  return attachInsertId(res.rows);
-=======
   if (IS_PG) {
     const res = await pool.query(text, params);
     return attachInsertId(res.rows);
@@ -241,7 +210,6 @@ async function query(sql, params = []) {
   // mysql2/promise 返回 [rows, fields]；INSERT 时 rows(ResultSetHeader) 自带 insertId。
   const [rows] = await pool.query(text, params);
   return rows;
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 }
 
 async function queryOne(sql, params = []) {
@@ -250,36 +218,6 @@ async function queryOne(sql, params = []) {
 }
 
 /**
-<<<<<<< HEAD
- * 事务封装：传入的 fn 接收一个 PG client，内部执行 SQL。
- * 覆盖的 client.query 同样应用占位符归一化 + RETURNING 翻译。
- */
-async function transaction(fn) {
-  const client = await pool.connect();
-  const origQuery = client.query.bind(client);
-  client.query = async (sql, params = []) => {
-    const res = await origQuery(autoReturning(toPgPlaceholders(sql)), params);
-    return attachInsertId(res.rows);
-  };
-  // 事务连接对齐顶层 db 的能力：补齐 queryOne，供 ensureDefaultBook 等
-  // 在事务内调用（否则报 client.queryOne is not a function）
-  client.queryOne = async (sql, params = []) => {
-    const rows = await client.query(sql, params);
-    return rows[0] || null;
-  };
-  try {
-    await origQuery('BEGIN');
-    const result = await fn(client);
-    await origQuery('COMMIT');
-    return result;
-  } catch (err) {
-    await origQuery('ROLLBACK');
-    throw err;
-  } finally {
-    client.query = origQuery; // 还原原生 query，避免污染连接池
-    delete client.queryOne;
-    client.release();
-=======
  * 事务封装：传入的 fn 接收一个 client（PG）/ conn（MySQL），内部执行 SQL。
  * 覆盖的 client.query / conn.query 同样应用方言归一化（占位符 + RETURNING / UPSERT 翻译）。
  */
@@ -333,17 +271,12 @@ async function transaction(fn) {
       delete conn.queryOne;
       conn.release();
     }
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
   }
 }
 
 /**
-<<<<<<< HEAD
- * 初始化数据库：确保目标库存在，并执行 schema 文件（建表 / 索引 / 约束 / 种子数据）。
-=======
  * 初始化数据库：确保目标库存在，并执行对应方言的 schema 文件（建表 / 索引 / 约束 / 种子数据）。
  * PostgreSQL -> schema.sql；MySQL / MariaDB -> schema.mysql.sql。
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
  */
 function warnUnlessAlreadyExists(label, err) {
   if (!err) return;
@@ -359,14 +292,10 @@ function warnUnlessAlreadyExists(label, err) {
  * 导致系统分类 餐饮/交通/购物(id 1/2/3) 被 ON CONFLICT DO NOTHING 静默跳过而缺失。
  *
  * 完全幂等：在已健康（全新）库上执行均为 no-op；在损坏库上自动纠正。
-<<<<<<< HEAD
- * 每次启动由 initDatabase() 调用，无需人工干预。
-=======
  * 每次启动由 initDatabase() 调用，无需人工干预。双方言兼容：
  *   - 占位符统一用 ?（query 会按方言转 $N 或保持 ?）；
  *   - 幂等写入用 ON CONFLICT (id) DO NOTHING（MySQL 端自动转 INSERT IGNORE）。
  *   - 仅序列/AUTO_INCREMENT 重置需按方言分支。
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
  */
 async function healCategoryData() {
   // 1) 交易表跟随迁移：把指向错位投资分类的交易改到目标 id（避免悬空 / 误分类）
@@ -400,9 +329,6 @@ async function healCategoryData() {
   // 5) 重置自增序列：schema.sql 末尾的 setval 早于本函数执行，
   //    本函数改动分类 id 后 MAX(id) 变化，必须在此重新校正，
   //    否则新分类可能撞到被腾出前的低位 id 之外的空隙。
-<<<<<<< HEAD
-  await query("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories), 1), true)");
-=======
   if (IS_PG) {
     await query("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories), 1), true)");
   } else {
@@ -410,7 +336,6 @@ async function healCategoryData() {
     const next = maxRow[0] && maxRow[0].next != null ? maxRow[0].next : 1;
     await query('ALTER TABLE categories AUTO_INCREMENT = ?', [next]);
   }
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
 }
 
 /**
@@ -468,11 +393,7 @@ async function ensureColumn(table, column, definition) {
     await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     console.log(`✅ 已补齐列 ${table}.${column}`);
   } catch (err) {
-<<<<<<< HEAD
-    // 列已存在（Postgres 42701）属预期，忽略
-=======
     // 列已存在（Postgres 42701 / MySQL Duplicate column name）属预期，忽略
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
     if (/already exists|duplicate column|42701/i.test(err.message)) return;
     console.warn(`⚠️ 补列 ${table}.${column} 失败（不影响启动，下次启动重试）:`, err.message);
   }
@@ -487,16 +408,12 @@ async function ensureColumn(table, column, definition) {
  */
 async function ensureIndex(name, table, columns) {
   try {
-<<<<<<< HEAD
-    await query(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns})`);
-=======
     if (IS_PG) {
       await query(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns})`);
     } else {
       // MySQL 8 不支持 CREATE INDEX IF NOT EXISTS，靠捕获 1061 幂等
       await query(`CREATE INDEX ${name} ON ${table} (${columns})`);
     }
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
   } catch (err) {
     if (/already exists|duplicate key name|1061|42P07/i.test(err.message)) return;
     console.warn(`⚠️ 建索引 ${name} 失败（不影响启动，下次启动重试）:`, err.message);
@@ -516,11 +433,7 @@ async function healSchemaColumns() {
   // AI v0.2 Phase 3/4：预测快照的三个新增维度 + 路由记录。
   // ⚠️ 老库的 ai_predictions 由 Phase 1 建成，CREATE TABLE IF NOT EXISTS 不会补列，
   //    缺列会让 prediction-store 的 INSERT 直接 500。
-<<<<<<< HEAD
-  const jsonType = 'JSONB';
-=======
   const jsonType = IS_PG ? 'JSONB' : 'JSON';
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
   await ensureColumn('ai_predictions', 'memory_snapshot', `${jsonType} DEFAULT NULL`);
   await ensureColumn('ai_predictions', 'model_request', `${jsonType} DEFAULT NULL`);
   await ensureColumn('ai_predictions', 'model_response', `${jsonType} DEFAULT NULL`);
@@ -546,15 +459,10 @@ async function healSchemaColumns() {
  *    Phase 3 的 Evidence Engine 会写入 consistent_reuse / negative_signal，
  *    在老库上会撞 23514（check constraint violation）—— 而 CREATE TABLE IF NOT EXISTS
  *    对已存在的表完全跳过，约束永远不会更新。故此处显式 DROP + ADD 重建。
-<<<<<<< HEAD
- */
-async function healAiConstraints() {
-=======
  * MySQL 的 CHECK 名称由系统生成且 8.0.16 前直接忽略 CHECK，故跳过（不影响写入）。
  */
 async function healAiConstraints() {
   if (!IS_PG) return;
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
   const allowed = [
     'explicit_confirmation', 'explicit_correction', 'discard',
     'manual_rule_creation', 'contradiction', 'rule_disabled',
@@ -579,32 +487,6 @@ async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
     const dbName = process.env.DB_NAME || 'xinwallet';
-<<<<<<< HEAD
-    const schemaFile = 'schema.sql';
-
-    // 1) 连接到默认 postgres 库，确保目标数据库存在
-    const adminPool = new Pool({
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      database: 'postgres',
-      max: 2,
-    });
-    try {
-      const check = await adminPool.query(
-        'SELECT 1 FROM pg_database WHERE datname = $1', [dbName]
-      );
-      if (check.rowCount === 0) {
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
-          throw new Error(`非法数据库名: ${dbName}`);
-        }
-        await adminPool.query(`CREATE DATABASE "${dbName}" ENCODING 'UTF8'`);
-        console.log(`✅ 数据库 ${dbName} 已创建`);
-      }
-    } finally {
-      await adminPool.end();
-=======
     const schemaFile = IS_PG ? 'schema.sql' : 'schema.mysql.sql';
 
     if (IS_PG) {
@@ -654,7 +536,6 @@ async function initDatabase() {
       } finally {
         await adminPool.end();
       }
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
     }
 
     // 2) 读取并执行对应方言的 schema 文件
@@ -718,8 +599,4 @@ async function initDatabase() {
   }
 }
 
-<<<<<<< HEAD
-module.exports = { pool, query, queryOne, transaction, initDatabase, healBooks, ensureDefaultBookId };
-=======
 module.exports = { pool, query, queryOne, transaction, initDatabase, IS_PG, healBooks, ensureDefaultBookId };
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0

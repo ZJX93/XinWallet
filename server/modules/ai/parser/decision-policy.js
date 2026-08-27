@@ -1,9 +1,5 @@
 /* ============================================
-<<<<<<< HEAD
-   Decision Policy
-=======
    AI v0.2 · §9 Decision Policy
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
    ------------------------------------------------
    把「字段级置信度」翻译成三态裁决 ready / needs_confirmation / invalid。
 

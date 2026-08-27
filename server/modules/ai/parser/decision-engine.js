@@ -1,13 +1,7 @@
 /* ============================================
-<<<<<<< HEAD
-   Decision Engine
-   ------------------------------------------------
-   统一决策接口：
-=======
    AI v0.2 · §9 Decision Engine
    ------------------------------------------------
    方案原文的统一决策接口：
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
      decide({ extraction, memory, rules, context })
        → { transactions, field_confidence, evidence, route, decision }
 

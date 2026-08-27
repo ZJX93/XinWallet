@@ -1,9 +1,5 @@
 /* ============================================
-<<<<<<< HEAD
-   Semantic Memory + Negative Memory
-=======
    AI v0.2 · §3.3 Semantic Memory + §3.5 Negative Memory
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
    ------------------------------------------------
    Semantic：从历史归纳的【习惯假设】，例如「京东 + 耳机 通常属于 数码电器」。
    Negative：被反复证伪的错误假设，例如「京东并不总是 数码电器」。

@@ -59,8 +59,6 @@ const AIAdvice = {
         this.lastError = '';
         try {
             const r = await api('/ai/advice', 'POST', {});
-<<<<<<< HEAD
-=======
             // ⛔ 铁律 1：r 可能是 {success,advice,...} 包装，或直接 {advice,...}，都不能信字段名盲读
             // ai-advice 页是 /ai/advice 直读（不开 api() 解包）。看 utils.js 的 api()：
             //   return res.ok ? await res.json() : { success:false, message }
@@ -68,7 +66,6 @@ const AIAdvice = {
             // 旧版 ai-advice.js 直接 r.advice（不开包装），说明这条调用走的是非包装 api。
             // 而 insight 端点是普通 api('/ai/insight', 'POST', body) → 自动解包为 res.data
             // 这里的 api('/ai/advice', 'POST', {}) 用的是 GET 路径的解包 → r 实际是 data 本体
->>>>>>> d1bc26ad4a8e4ace5968e3c651ba9e0742fd1fb0
             const advice = Array.isArray(r && r.advice) ? r.advice : [];
             const insights = Array.isArray(r && r.insights) ? r.insights : [];
             if (!advice.length && !insights.length) {
