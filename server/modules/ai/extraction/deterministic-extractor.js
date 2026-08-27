@@ -15,6 +15,9 @@ const { extractType } = require('./type-extractor');
 const { extractMerchant, extractCurrency } = require('./merchant-extractor');
 const { matchCategory } = require('./category-matcher');
 const { splitTransactions } = require('./transaction-splitter');
+// 账户解析：基于 OCR 文本里的「支付宝/微信/银行/现金」关键词，覆盖客户端默认账户。
+// 用户投诉「账户识别错误·固定账户」时新增（Phase 1）。
+const { resolveAccount } = require('./account-resolver');
 // 备注规范化：「场景-对象」格式在服务端确定性生成，不靠 prompt 求模型听话。
 // ⛔ 唯一真相在 note-composer.js —— 别在路由层或 prompt 里再写第二套。
 const { composeNote } = require('./note-composer');
@@ -34,6 +37,7 @@ const { composeNote } = require('./note-composer');
 function extractTransactions(text, ctx = {}) {
     const {
         categories = [], account_id = null, refDate = new Date(), userMerchants = [],
+        accounts = [],
     } = ctx;
 
     const { segments, source: splitSource, multi } = splitTransactions(text);
@@ -59,6 +63,14 @@ function extractTransactions(text, ctx = {}) {
         const catText = merchant ? `${seg} ${merchant.value}` : seg;
         const category = matchCategory(catText, type.value, categories);
 
+        // 账户解析：用 OCR/原文里出现的「支付宝/微信/银行/现金」关键词，
+        // 优先于请求体里的默认账户（解决「账户像被锁死」的用户投诉）。
+        // 文本里完全没线索时才回退到默认账户。
+        const accountResolved = resolveAccount(seg, {
+            accounts,
+            account_id,
+        });
+
         return {
             seq: idx + 1,
             type: type.value,
@@ -67,7 +79,9 @@ function extractTransactions(text, ctx = {}) {
             merchant: merchant ? merchant.value : null,
             category_id: category.category_id,
             category_name: category.value,
-            account_id,
+            account_id: accountResolved.account_id,
+            account_match_source: accountResolved.source,
+            account_match_confidence: accountResolved.confidence,
             date: date.value,
             /*  备注：服务端确定性生成「场景-对象」（如 `早午晚餐-老乡鸡`）。
                 ⛔ 曾经这里是 `note: seg`（原始片段）并注释「commit 时经 resolveNote

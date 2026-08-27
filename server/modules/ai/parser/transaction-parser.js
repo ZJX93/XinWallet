@@ -75,6 +75,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     //      此处还没有历史商家词典，但 merchant_hints 是确定值，第一遍就该用上。
     const firstPass = extractTransactions(text, {
         categories: ctx.categories,
+        accounts: ctx.accounts,
         account_id: ctx.wm.accountId,
         book_id: ctx.wm.bookId,
         refDate: ctx.wm.refDate,
@@ -102,6 +103,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     const extraction = mergedMerchants.length
         ? extractTransactions(text, {
             categories: ctx.categories,
+            accounts: ctx.accounts,
             account_id: ctx.wm.accountId,
             book_id: ctx.wm.bookId,
             refDate: ctx.wm.refDate,

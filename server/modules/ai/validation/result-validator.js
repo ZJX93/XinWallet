@@ -59,7 +59,15 @@ function validateTransaction(txn, thresholds = FIELD_THRESHOLDS) {
         structurallyInvalid = true;
     }
 
-    if (!txn.date || !/^\d{4}-\d{2}-\d{2}$/.test(txn.date)) {
+    // 日期允许两种格式：YYYY-MM-DD（仅有日期）或 YYYY-MM-DD HH:mm:ss（含时分秒）。
+    // 后者用于 OCR/收据场景下保留交易时刻，与 DB TIMESTAMP 列对齐。
+    if (
+        !txn.date ||
+        !(
+            /^\d{4}-\d{2}-\d{2}$/.test(txn.date) ||
+            /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(txn.date)
+        )
+    ) {
         reasons.push(`日期格式非法（${txn.date}）`);
         structurallyInvalid = true;
     }
