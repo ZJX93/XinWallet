@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS books (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_books_user ON books (user_id);
+CREATE INDEX idx_books_user ON books (user_id);
 
 -- 账户表
 -- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id);
+CREATE INDEX idx_accounts_user ON accounts (user_id);
 -- 注意：accounts 的 (user_id, book_id) 复合索引不在此处创建——旧库 accounts 尚无 book_id 列，
 -- 创建阶段建该索引会抛错并中断后续 schema 执行。统一放到末尾「多账本迁移」块（ADD COLUMN 之后）幂等创建。
 CREATE UNIQUE INDEX idx_accounts_code ON accounts (code);
@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS categories (
   is_system BOOLEAN DEFAULT 1,                     -- 是否系统预设
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
-CREATE INDEX IF NOT EXISTS idx_categories_user ON categories (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_code ON categories (code);
+CREATE INDEX idx_categories_parent ON categories (parent_id);
+CREATE INDEX idx_categories_user ON categories (user_id);
+CREATE UNIQUE INDEX idx_categories_code ON categories (code);
 -- categories.code 允许为 NULL：用户自建分类无需结构化编码，唯一索引允许 NULL。
 
 
@@ -112,20 +112,20 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions (user_id, date);
-CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions (account_id);
-CREATE INDEX IF NOT EXISTS idx_account_date ON transactions (account_id, date);
-CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions (category_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
-CREATE INDEX IF NOT EXISTS idx_transactions_budget ON transactions (budget_id);
-CREATE INDEX IF NOT EXISTS idx_tx_source ON transactions (source_account_id);
-CREATE INDEX IF NOT EXISTS idx_tx_dest ON transactions (destination_account_id);
+CREATE INDEX idx_transactions_user_date ON transactions (user_id, date);
+CREATE INDEX idx_transactions_account ON transactions (account_id);
+CREATE INDEX idx_account_date ON transactions (account_id, date);
+CREATE INDEX idx_transactions_category ON transactions (category_id);
+CREATE INDEX idx_transactions_type ON transactions (type);
+CREATE INDEX idx_transactions_budget ON transactions (budget_id);
+CREATE INDEX idx_tx_source ON transactions (source_account_id);
+CREATE INDEX idx_tx_dest ON transactions (destination_account_id);
 -- 兼容已部署库：新增列与索引（幂等，列已存在则无操作）
 ALTER TABLE transactions ADD COLUMN investment_txn_id INT DEFAULT NULL;
 ALTER TABLE transactions ADD COLUMN location VARCHAR(100) DEFAULT NULL;
 ALTER TABLE transactions ADD COLUMN link_type VARCHAR(20) DEFAULT NULL;
 ALTER TABLE transactions ADD COLUMN link_id INT DEFAULT NULL;
-CREATE INDEX IF NOT EXISTS idx_transactions_inv_txn ON transactions (investment_txn_id);
+CREATE INDEX idx_transactions_inv_txn ON transactions (investment_txn_id);
 
 -- 内部转账记录表
 CREATE TABLE IF NOT EXISTS transfers (
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS transfers (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_transfers_user ON transfers (user_id);
-CREATE INDEX IF NOT EXISTS idx_transfers_from ON transfers (from_account_id);
-CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers (to_account_id);
+CREATE INDEX idx_transfers_user ON transfers (user_id);
+CREATE INDEX idx_transfers_from ON transfers (from_account_id);
+CREATE INDEX idx_transfers_to ON transfers (to_account_id);
 
 -- 预算表
 CREATE TABLE IF NOT EXISTS budgets (
@@ -218,9 +218,9 @@ CREATE TABLE IF NOT EXISTS investments (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_investments_user ON investments (user_id);
-CREATE INDEX IF NOT EXISTS idx_investments_type ON investments (investment_type_id);
-CREATE INDEX IF NOT EXISTS idx_investments_status ON investments (status);
+CREATE INDEX idx_investments_user ON investments (user_id);
+CREATE INDEX idx_investments_type ON investments (investment_type_id);
+CREATE INDEX idx_investments_status ON investments (status);
 
 -- 理财交易记录
 CREATE TABLE IF NOT EXISTS investment_transactions (
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS investment_transactions (
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_inv_tx_investment ON investment_transactions (investment_id);
+CREATE INDEX idx_inv_tx_investment ON investment_transactions (investment_id);
 
 -- 理财净值快照
 CREATE TABLE IF NOT EXISTS investment_snapshots (
@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS investment_snapshots (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (investment_id, nav_date)
 );
-CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON investment_snapshots (user_id, nav_date);
+CREATE INDEX idx_snapshots_user_date ON investment_snapshots (user_id, nav_date);
 
 -- ============================================
 -- 插入默认数据
@@ -438,7 +438,7 @@ CREATE TABLE IF NOT EXISTS tags (
   icon VARCHAR(10) DEFAULT '🏷️',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_tags_user ON tags (user_id);
+CREATE INDEX idx_tags_user ON tags (user_id);
 
 -- 交易-标签关联表
 CREATE TABLE IF NOT EXISTS transaction_tags (
@@ -446,7 +446,7 @@ CREATE TABLE IF NOT EXISTS transaction_tags (
   tag_id INT NOT NULL,
   PRIMARY KEY (transaction_id, tag_id)
 );
-CREATE INDEX IF NOT EXISTS idx_tt_tag ON transaction_tags (tag_id);
+CREATE INDEX idx_tt_tag ON transaction_tags (tag_id);
 
 -- 储蓄目标表
 CREATE TABLE IF NOT EXISTS savings_goals (
@@ -463,9 +463,9 @@ CREATE TABLE IF NOT EXISTS savings_goals (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_savings_user ON savings_goals (user_id);
+CREATE INDEX idx_savings_user ON savings_goals (user_id);
 -- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的储蓄目标不重复）
-CREATE UNIQUE INDEX IF NOT EXISTS idx_savings_user_book_name ON savings_goals (user_id, book_id, name);
+CREATE UNIQUE INDEX idx_savings_user_book_name ON savings_goals (user_id, book_id, name);
 
 -- AI 服务商配置表
 CREATE TABLE IF NOT EXISTS ai_providers (
@@ -474,7 +474,7 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   name VARCHAR(100) NOT NULL,
   api_type VARCHAR(10) NOT NULL DEFAULT 'openai' CHECK (api_type IN ('openai','anthropic')),
   base_url VARCHAR(255) NOT NULL,
-  api_key TEXT DEFAULT NULL,                          -- AES-256-GCM 加密存储
+  api_key TEXT NULL,                                  -- AES-256-GCM 加密存储
   model VARCHAR(100) NOT NULL,
   is_active BOOLEAN DEFAULT 0,
   -- 图片理解能力：unknown=未验证（乐观尝试一次）/ yes / no。
@@ -484,8 +484,8 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_user ON ai_providers (user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_user_active ON ai_providers (user_id, is_active);
+CREATE INDEX idx_ai_user ON ai_providers (user_id);
+CREATE INDEX idx_ai_user_active ON ai_providers (user_id, is_active);
 
 -- 默认标签种子
 INSERT INTO tags (id, user_id, name, color, icon) VALUES
@@ -537,11 +537,11 @@ CREATE TABLE IF NOT EXISTS debts (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
-CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction);
-CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id);
+CREATE INDEX idx_debts_user ON debts (user_id);
+CREATE INDEX idx_debts_user_direction ON debts (user_id, direction);
+CREATE INDEX idx_debts_user_account ON debts (user_id, account_id);
 -- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的债务不重复）
-CREATE UNIQUE INDEX IF NOT EXISTS idx_debts_user_book_name ON debts (user_id, book_id, name);
+CREATE UNIQUE INDEX idx_debts_user_book_name ON debts (user_id, book_id, name);
 
 -- 债务还款流水
 CREATE TABLE IF NOT EXISTS debt_repayments (
@@ -557,8 +557,8 @@ CREATE TABLE IF NOT EXISTS debt_repayments (
   transaction_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_repay_user ON debt_repayments (user_id);
-CREATE INDEX IF NOT EXISTS idx_repay_debt ON debt_repayments (debt_id);
+CREATE INDEX idx_repay_user ON debt_repayments (user_id);
+CREATE INDEX idx_repay_debt ON debt_repayments (debt_id);
 
 -- 储蓄流水
 CREATE TABLE IF NOT EXISTS savings_transactions (
@@ -572,9 +572,9 @@ CREATE TABLE IF NOT EXISTS savings_transactions (
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_sav_tx_user ON savings_transactions (user_id);
-CREATE INDEX IF NOT EXISTS idx_sav_tx_goal ON savings_transactions (goal_id);
-CREATE INDEX IF NOT EXISTS idx_sav_tx_date ON savings_transactions (date);
+CREATE INDEX idx_sav_tx_user ON savings_transactions (user_id);
+CREATE INDEX idx_sav_tx_goal ON savings_transactions (goal_id);
+CREATE INDEX idx_sav_tx_date ON savings_transactions (date);
 
 
 -- ============================================
@@ -598,19 +598,19 @@ ALTER TABLE investment_transactions ADD COLUMN book_id INT DEFAULT NULL;
 ALTER TABLE savings_transactions    ADD COLUMN book_id INT DEFAULT NULL;
 ALTER TABLE investment_snapshots    ADD COLUMN book_id INT DEFAULT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_accounts_user_book        ON accounts (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_book    ON transactions (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_transfers_user_book       ON transfers (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_budgets_user_book         ON budgets (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_tags_user_book            ON tags (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_savings_user_book         ON savings_goals (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_debts_user_book           ON debts (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_repay_user_book           ON debt_repayments (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_investments_user_book     ON investments (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
-CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
+CREATE INDEX idx_accounts_user_book        ON accounts (user_id, book_id);
+CREATE INDEX idx_categories_user_book      ON categories (user_id, book_id);
+CREATE INDEX idx_transactions_user_book    ON transactions (user_id, book_id);
+CREATE INDEX idx_transfers_user_book       ON transfers (user_id, book_id);
+CREATE INDEX idx_budgets_user_book         ON budgets (user_id, book_id);
+CREATE INDEX idx_tags_user_book            ON tags (user_id, book_id);
+CREATE INDEX idx_savings_user_book         ON savings_goals (user_id, book_id);
+CREATE INDEX idx_debts_user_book           ON debts (user_id, book_id);
+CREATE INDEX idx_repay_user_book           ON debt_repayments (user_id, book_id);
+CREATE INDEX idx_investments_user_book     ON investments (user_id, book_id);
+CREATE INDEX idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
+CREATE INDEX idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
+CREATE INDEX idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
 
 -- ============================================
 -- 预测闭环
@@ -647,9 +647,9 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_pred_user         ON ai_predictions (user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_pred_status       ON ai_predictions (status);
-CREATE INDEX IF NOT EXISTS idx_ai_pred_user_created ON ai_predictions (user_id, created_at DESC);
+CREATE INDEX idx_ai_pred_user         ON ai_predictions (user_id);
+CREATE INDEX idx_ai_pred_status       ON ai_predictions (status);
+CREATE INDEX idx_ai_pred_user_created ON ai_predictions (user_id, created_at DESC);
 -- 部分唯一索引：NULL 不参与冲突判定，未提交的预测彼此互不影响；
 （见 modules/ai/prediction/prediction-store.js）。
 CREATE UNIQUE INDEX idx_ai_pred_idem ON ai_predictions (idempotency_key);
@@ -663,8 +663,8 @@ CREATE TABLE IF NOT EXISTS ai_prediction_transactions (
   seq INT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_ptxn_pred ON ai_prediction_transactions (prediction_id);
-CREATE INDEX IF NOT EXISTS idx_ai_ptxn_txn  ON ai_prediction_transactions (transaction_id);
+CREATE INDEX idx_ai_ptxn_pred ON ai_prediction_transactions (prediction_id);
+CREATE INDEX idx_ai_ptxn_txn  ON ai_prediction_transactions (transaction_id);
 
 -- 证据事件（学习信号来源）
 -- ⚠️ event_type 的 CHECK 白名单已扩充，
@@ -684,10 +684,10 @@ CREATE TABLE IF NOT EXISTS ai_feedback_events (
   payload JSON NOT NULL DEFAULT '{}',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_fb_user ON ai_feedback_events (user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_fb_pred ON ai_feedback_events (prediction_id);
-CREATE INDEX IF NOT EXISTS idx_ai_fb_type ON ai_feedback_events (event_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_fb_rule ON ai_feedback_events (rule_id);
+CREATE INDEX idx_ai_fb_user ON ai_feedback_events (user_id);
+CREATE INDEX idx_ai_fb_pred ON ai_feedback_events (prediction_id);
+CREATE INDEX idx_ai_fb_type ON ai_feedback_events (event_type, created_at DESC);
+CREATE INDEX idx_ai_fb_rule ON ai_feedback_events (rule_id);
 
 -- ============================================
 -- 记忆与规则演化
@@ -732,12 +732,12 @@ CREATE TABLE IF NOT EXISTS ai_rules (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- 同一用户 + 账本 + 类型 + 匹配键 唯一：证据累积到同一行，不产生重复规则
-CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_rule_key
+CREATE UNIQUE INDEX uk_ai_rule_key
   ON ai_rules (user_id, book_id, rule_type, match_key);
-CREATE INDEX IF NOT EXISTS idx_ai_rule_user_status ON ai_rules (user_id, status);
-CREATE INDEX IF NOT EXISTS idx_ai_rule_lookup      ON ai_rules (user_id, rule_type, match_key);
-CREATE INDEX IF NOT EXISTS idx_ai_rule_category    ON ai_rules (target_category_id);
-CREATE INDEX IF NOT EXISTS idx_ai_rule_created     ON ai_rules (user_id, created_at DESC);
+CREATE INDEX idx_ai_rule_user_status ON ai_rules (user_id, status);
+CREATE INDEX idx_ai_rule_lookup      ON ai_rules (user_id, rule_type, match_key);
+CREATE INDEX idx_ai_rule_category    ON ai_rules (target_category_id);
+CREATE INDEX idx_ai_rule_created     ON ai_rules (user_id, created_at DESC);
 -- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 规则证据流水（可审计：每一分 evidence_score 都能溯源到具体事件）
@@ -754,9 +754,9 @@ CREATE TABLE IF NOT EXISTS ai_rule_evidence (
   payload JSON NOT NULL DEFAULT '{}',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_rev_rule ON ai_rule_evidence (rule_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_rev_user ON ai_rule_evidence (user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_rev_pred ON ai_rule_evidence (prediction_id);
+CREATE INDEX idx_ai_rev_rule ON ai_rule_evidence (rule_id, created_at DESC);
+CREATE INDEX idx_ai_rev_user ON ai_rule_evidence (user_id);
+CREATE INDEX idx_ai_rev_pred ON ai_rule_evidence (prediction_id);
 
 -- Semantic / Negative Memory 持久化（方案 §3.3 / §3.5）
 -- kind='semantic' → 归纳出的习惯假设；kind='negative' → 被反复证伪的假设
@@ -777,9 +777,9 @@ CREATE TABLE IF NOT EXISTS ai_memory_items (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uk_ai_mem_item
+CREATE UNIQUE INDEX uk_ai_mem_item
   ON ai_memory_items (user_id, book_id, kind, subject, predicate, object_value);
-CREATE INDEX IF NOT EXISTS idx_ai_mem_lookup ON ai_memory_items (user_id, kind, subject);
+CREATE INDEX idx_ai_mem_lookup ON ai_memory_items (user_id, kind, subject);
 -- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- ============================================
@@ -799,7 +799,7 @@ CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
   regression JSON NOT NULL DEFAULT '{}', -- 与基线的逐指标差值
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_eval_run_created ON ai_evaluation_runs (created_at DESC);
+CREATE INDEX idx_ai_eval_run_created ON ai_evaluation_runs (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -807,14 +807,14 @@ CREATE TABLE IF NOT EXISTS ai_evaluation_cases (
   case_id VARCHAR(64) NOT NULL,
   scenario VARCHAR(32) NOT NULL DEFAULT '',   -- single/multi/income/transfer/fuzzy/...
   input_text TEXT NOT NULL,
-  expected JSON NOT NULL DEFAULT '{}',
-  actual JSON NOT NULL DEFAULT '{}',
-  field_results JSON NOT NULL DEFAULT '{}',  -- 各字段是否命中
+  expected JSON NOT NULL,
+  actual JSON NOT NULL,
+  field_results JSON NOT NULL,                -- 各字段是否命中
   passed BOOLEAN NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_eval_case_run ON ai_evaluation_cases (run_id);
-CREATE INDEX IF NOT EXISTS idx_ai_eval_case_pass ON ai_evaluation_cases (run_id, passed);
+CREATE INDEX idx_ai_eval_case_run ON ai_evaluation_cases (run_id);
+CREATE INDEX idx_ai_eval_case_pass ON ai_evaluation_cases (run_id, passed);
 
 -- Provider 用量与成本
 CREATE TABLE IF NOT EXISTS ai_provider_usage (
@@ -833,9 +833,9 @@ CREATE TABLE IF NOT EXISTS ai_provider_usage (
     CHECK (outcome IN ('success','timeout','error','circuit_open','skipped')),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_provider_usage (user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_route   ON ai_provider_usage (route, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_pred    ON ai_provider_usage (prediction_id);
+CREATE INDEX idx_ai_usage_user    ON ai_provider_usage (user_id, created_at DESC);
+CREATE INDEX idx_ai_usage_route   ON ai_provider_usage (route, created_at DESC);
+CREATE INDEX idx_ai_usage_pred    ON ai_provider_usage (prediction_id);
 
 -- ============================================
 -- AI 模块扩展表
@@ -856,8 +856,8 @@ CREATE TABLE IF NOT EXISTS ai_conversations (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_conv_user      ON ai_conversations (user_id);
-CREATE INDEX IF NOT EXISTS idx_ai_conv_user_stat ON ai_conversations (user_id, status, last_message_at DESC);
+CREATE INDEX idx_ai_conv_user      ON ai_conversations (user_id);
+CREATE INDEX idx_ai_conv_user_stat ON ai_conversations (user_id, status, last_message_at DESC);
 -- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
 -- 对话消息（Chat 历史）
@@ -878,8 +878,8 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   error VARCHAR(200) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_msg_conv   ON ai_messages (conversation_id, created_at ASC);
-CREATE INDEX IF NOT EXISTS idx_ai_msg_user   ON ai_messages (user_id, created_at DESC);
+CREATE INDEX idx_ai_msg_conv   ON ai_messages (conversation_id, created_at ASC);
+CREATE INDEX idx_ai_msg_user   ON ai_messages (user_id, created_at DESC);
 
 -- 用户 AI Profile（偏好/交互风格/通知设置）
 CREATE TABLE IF NOT EXISTS ai_user_profiles (
@@ -935,9 +935,9 @@ CREATE TABLE IF NOT EXISTS ai_insights (
   dedupe_key VARCHAR(120) DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_ai_insight_user     ON ai_insights (user_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_insight_type     ON ai_insights (insight_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_insight_importance ON ai_insights (importance, created_at DESC);
+CREATE INDEX idx_ai_insight_user     ON ai_insights (user_id, status, created_at DESC);
+CREATE INDEX idx_ai_insight_type     ON ai_insights (insight_type, created_at DESC);
+CREATE INDEX idx_ai_insight_importance ON ai_insights (importance, created_at DESC);
 -- cooldown 去重索引（cooldown_until IS NOT NULL 时才激活）
 CREATE INDEX idx_ai_insight_dedupe ON ai_insights (user_id, insight_type, dedupe_key);
 -- updated_at 由 db.js autoUpdatedAt() 应用层兜底
