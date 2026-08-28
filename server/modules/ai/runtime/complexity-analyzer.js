@@ -35,6 +35,8 @@ function analyzeComplexity({ text, extraction, memory = {}, validation }) {
                         && /上[个周]|前几天|之前|最近|某天/.test(raw),
         transfer_detection: txns.some(t => t.type === 'transfer'),
         merchant_unknown: txns.some(t => !t.merchant),
+        // 本地抽不出类目（兜底 other / 缺 id）→ 这是 AI 最该补的语义缺口
+        category_unknown: txns.some(t => !t.category_id || (t.evidence && t.evidence.category === 'fallback_other')),
         conflicting_signals: hasConflictingSignals(raw, txns),
         long_input: raw.length > LONG_INPUT_CHARS,
         historical_conflict: (memory.negated || []).length > 0,
@@ -44,12 +46,14 @@ function analyzeComplexity({ text, extraction, memory = {}, validation }) {
         .filter(([, v]) => v)
         .map(([k]) => k);
 
-    // 加权打分：拆分错误与方向冲突后果最重，商家未知最轻
+    // 加权打分：拆分错误与方向冲突后果最重；类目/商家缺失（语义缺口）抬权重，
+    // 让"本地抽得出来但没灵魂"的口语化输入也能进模型做语义补全。
     const WEIGHTS = {
         multiple_amounts: 3,
         conflicting_signals: 3,
         historical_conflict: 2,
         ambiguous_date: 2,
+        category_unknown: 2,
         multiple_transactions: 1,
         transfer_detection: 1,
         long_input: 1,
@@ -62,7 +66,9 @@ function analyzeComplexity({ text, extraction, memory = {}, validation }) {
     if (validation && validation.verdict === 'invalid') score += 4;
     else if (validation && validation.verdict === 'needs_confirmation') score += 1;
 
-    const level = score >= 6 ? 'complex' : (score >= 3 ? 'medium' : 'simple');
+    // 阈值下调：原先 score>=3 才 medium，导致单笔口语化（仅 merchant/category 缺失）
+    // 长期卡在 simple 走本地。现 score>=2 即进模型，让 AI 补全真正生效。
+    const level = score >= 6 ? 'complex' : (score >= 2 ? 'medium' : 'simple');
 
     return { level, features, score, reasons };
 }

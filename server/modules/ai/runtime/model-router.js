@@ -42,7 +42,8 @@ function route({ complexity, provider = null, allowModel = false }) {
         return { route: 'local', level, provider_id: null, model: null, reason: 'simple_local_sufficient' };
     }
 
-    // 未开启模型路由（默认关闭）→ 保持本地，由 policy 维持 needs_confirmation
+    // 显式关闭模型路由（AI_ALLOW_MODEL_ROUTE=false/0）→ 保持本地，由 policy 维持 needs_confirmation。
+    // 注意：未设置该变量时 isModelRouteAllowed() 已乐观返回 true，故默认会启用模型。
     if (!allowModel) {
         return { route: 'local', level, provider_id: null, model: null, reason: 'model_route_disabled' };
     }

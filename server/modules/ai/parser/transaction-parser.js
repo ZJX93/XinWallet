@@ -143,26 +143,37 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         if (review.ok) {
             modelResponse = review.response;
             modelUsage = review.usage;
-            // 合并模型修正：只接受它明确给出的字段，其余保留本地结果
+            // 合并模型结果：模型既可能【修正】本地抽错字段，也可能【补全】本地空字段。
+            // 授信模型：它给的 conf 原样写入 confidence（不再一律压到 0.86），
+            // 但仍要过 Result Validator 字段阈值 + Decision Policy 冲突/负面记忆降级，
+            // 安全铁律（金额最严、类目 id 合法、方向不静默污染）不受影响。
             const merged = decision.transactions.map((t) => {
                 const fix = review.transactions.find(r => r.seq === t.seq);
                 if (!fix) return t;
                 const out = { ...t };
                 const applied = [];
-                for (const f of ['type', 'amount', 'category_id', 'date', 'merchant']) {
+                const conf = fix.conf || {};
+                for (const f of ['type', 'amount', 'category_id', 'date', 'merchant', 'note']) {
                     if (fix[f] !== undefined && fix[f] !== t[f]) {
                         out[f] = fix[f];
                         applied.push(f);
                     }
                 }
                 if (applied.length) {
-                    // 模型修正的字段给 0.86：高于兜底但低于确定性关键词（0.90）。
-                    // 模型是「理解器不是账本」—— 它的修正仍需用户确认。
                     out.confidence = { ...out.confidence };
                     out.evidence = { ...out.evidence };
                     for (const f of applied) {
                         const key = f === 'category_id' ? 'category' : f;
-                        if (out.confidence[key] !== undefined) out.confidence[key] = 0.86;
+                        // 金额/类型属于"错了污染账本"的字段：模型给的 conf 低于本地时保留本地分数，
+                        // 其余字段用模型自报 conf（拿不准模型会自报低分 → 自然落到 needs_confirmation）。
+                        if (conf[key] !== undefined) {
+                            const localScore = out.confidence[key];
+                            if ((f === 'amount' || f === 'type') && typeof localScore === 'number') {
+                                out.confidence[key] = Math.max(localScore, conf[key]);
+                            } else {
+                                out.confidence[key] = conf[key];
+                            }
+                        }
                         out.evidence[key] = `model_${routing.route}`;
                     }
                 }
