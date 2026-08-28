@@ -175,18 +175,38 @@ test('空类目表时不得凭空造 id（降级为 null + 低置信度强制确
 test('类目词表唯一真相：v0.2 抽取器复用它，路由层不得自建', () => {
     /*  2026-08-25：legacy OCR 解析器（含 118 行独立词表）已删除。
         词表唯一真相 = extraction/category-matcher.js，由 v0.2 抽取器消费。
-        路由层只依赖模块桶 `modules/ai`，不再直接 require 任何 extraction 子模块。 */
-    const aiSrc = fs.readFileSync(path.join(__dirname, '..', 'server', 'routes', 'ai.js'), 'utf8');
+        路由层只依赖模块桶 `modules/ai`，不再直接 require 任何 extraction 子模块。
 
-    // 路由层走桶文件
-    assert.match(aiSrc, /require\('\.\.\/modules\/ai'\)/);
-    assert.doesNotMatch(aiSrc, /require\('\.\.\/modules\/ai\/extraction\//,
-        '⛔ 路由层不得直接 require extraction 子模块');
+        2026-08-28：routes/ai.js（1567 行上帝文件）已拆分为 routes/ai/ 目录。
+        ⛔ 守卫范围必须【覆盖整个目录】而非单个文件 —— 否则有人把自建词表
+           塞进 ai/ocr.js 这类新文件就能绕过检查。 */
+    const aiDir = path.join(__dirname, '..', 'server', 'routes', 'ai');
+    assert.ok(fs.existsSync(aiDir), 'routes/ai/ 目录应存在（ai.js 已拆分为目录）');
 
-    // 原 fallbackExtractItems 内的 118 行独立词表不得回归
-    assert.doesNotMatch(aiSrc, /const level1 = \[/);
-    assert.doesNotMatch(aiSrc, /const level2 = \[/);
-    assert.doesNotMatch(aiSrc, /function fallbackExtractItems/);
+    const files = fs.readdirSync(aiDir).filter(f => f.endsWith('.js'));
+    assert.ok(files.length > 1, `routes/ai/ 下应有多个子模块，实际 ${files.length} 个`);
+
+    // 公共依赖必须走桶文件（_shared.js 是唯一允许 require modules/ai 的地方）
+    const sharedSrc = fs.readFileSync(path.join(aiDir, '_shared.js'), 'utf8');
+    assert.match(sharedSrc, /require\('\.\.\/\.\.\/modules\/ai'\)/,
+        '_shared.js 应 require 模块桶 modules/ai');
+
+    for (const f of files) {
+        const aiSrc = fs.readFileSync(path.join(aiDir, f), 'utf8');
+
+        // 除 _shared.js 外，任何子模块都不得直接 require modules/ai 及其子目录
+        if (f !== '_shared.js') {
+            assert.doesNotMatch(aiSrc, /require\(['"][^'"]*modules\/ai['"]\)/,
+                `⛔ ${f} 不得直接 require modules/ai，请从 ./_shared 取 aiModule`);
+        }
+        assert.doesNotMatch(aiSrc, /require\([^)]*modules\/ai\/extraction\//,
+            `⛔ ${f} 不得直接 require extraction 子模块`);
+
+        // 原 fallbackExtractItems 内的 118 行独立词表不得回归到任何子模块
+        assert.doesNotMatch(aiSrc, /const level1 = \[/, `⛔ ${f} 不得自建 level1 词表`);
+        assert.doesNotMatch(aiSrc, /const level2 = \[/, `⛔ ${f} 不得自建 level2 词表`);
+        assert.doesNotMatch(aiSrc, /function fallbackExtractItems/, `⛔ ${f} 不得回归 fallbackExtractItems`);
+    }
 
     // 抽取器确实在用这份词表（否则词表成了孤岛，图片/文字通道又会各行其是）
     const extractorSrc = fs.readFileSync(

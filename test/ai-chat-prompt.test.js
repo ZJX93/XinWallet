@@ -19,7 +19,9 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'routes', 'ai.js'), 'utf8');
+// 2026-08-28：routes/ai.js（1567 行上帝文件）已拆分为 routes/ai/ 目录，
+// chat 相关逻辑迁至 routes/ai/chat.js。本测试随之改为读取新位置。
+const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'routes', 'ai', 'chat.js'), 'utf8');
 
 test('chat prompt：可用工具共 6 个（含 list_accounts / list_categories），均不新建交易', () => {
     assert.match(src, /可用工具（共\s*6\s*个，均不新建交易）/);
@@ -151,10 +153,19 @@ test('⛔ legacy OCR prompt 与正则解析器已彻底移除，不得回归', (
 test('⛔ 图片通道的类目推断必须复用 v0.2 链路（路由层不得自建词表/抽取）', () => {
     /*  路由层【只能】依赖模块桶 `modules/ai`（见 modules/ai/index.js 头部约定）。
         原先直接 require 的 extraction/category-matcher 已随 legacy 解析器一并移除
-        —— 它是那 253 行的唯一使用者。 */
-    assert.match(src, /require\('\.\.\/modules\/ai'\)/, '路由层必须走模块桶');
-    assert.doesNotMatch(src, /require\('\.\.\/modules\/ai\/extraction\//,
+        —— 它是那 253 行的唯一使用者。
+
+        2026-08-28：ai.js 拆分后，子路由不再各自 require 模块桶，
+        而是统一从 ./_shared.js 取 aiModule。故「走桶文件」的检查对象
+        从 chat.js 改为 _shared.js（真正的唯一入口）。 */
+    const sharedSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'routes', 'ai', '_shared.js'), 'utf8');
+    assert.match(sharedSrc, /require\('\.\.\/\.\.\/modules\/ai'\)/, '路由层的公共依赖必须走模块桶');
+    assert.doesNotMatch(sharedSrc, /require\([^)]*modules\/ai\/extraction\//,
         '⛔ 路由层不得直接 require extraction 子模块（绕过桶文件 = 分层白做）');
+
+    // chat.js 自身也不得绕桶
+    assert.doesNotMatch(src, /require\([^)]*modules\/ai/, '⛔ chat.js 不得直接 require modules/ai，请走 ./_shared');
 
     // 类目词表的唯一真相仍在 category-matcher，且被 v0.2 抽取器使用
     const extractorSrc = fs.readFileSync(
