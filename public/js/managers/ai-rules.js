@@ -10,7 +10,7 @@
  *
  * 设计要点：
  *   - 状态过滤用顶部 chip（全部 / 已生效 verified / 高可信 trusted / 候选 candidate / 已禁用 disabled）
- *   - 行内操作：启用 ⇄ 禁用 switch + 查看证据（弹窗/抽屉） + 删除（暂禁用）
+ *   - 行内操作：启用 ⇄ 禁用 switch + 查看证据（弹窗/抽屉） + 删除（仅已禁用）
  *   - disable 不可逆：弹窗二次确认 + 红字警告文案（"关联样本不会复活"）
  *   - threshold 从服务端拿，不在前端硬编码 —— v0.2 验收铁律
  *   - 用户可手动新增规则：弹窗输入 match_key + rule_type + target_id（任一即可）
@@ -73,6 +73,7 @@ const AIRules = {
             if (action === 'disable') this.disable(id);
             else if (action === 'enable') this.enable(id);
             else if (action === 'evidence') this.openEvidence(id);
+            else if (action === 'delete') this.deleteRule(id);
         });
     },
 
@@ -124,6 +125,22 @@ const AIRules = {
             const r = await api(`/ai/rules/${id}/enable`, 'POST', {});
             if (r && r.success) { this.toast = '已启用，从候选重新攒证据'; }
             else this.errorMsg = (r && r.message) || '启用失败';
+        } catch (e) {
+            this.errorMsg = e.message || '网络异常';
+        } finally {
+            this.pendingId = -1;
+            await this.load();
+        }
+    },
+
+    async deleteRule(id) {
+        if (this.pendingId !== -1) return;
+        if (!confirm('确定要永久删除这条规则吗？删除后不可恢复。')) return;
+        this.pendingId = id;
+        try {
+            const r = await api(`/ai/rules/${id}`, 'DELETE', {});
+            if (r && r.success) { this.toast = '规则已删除'; }
+            else this.errorMsg = (r && r.message) || '删除失败';
         } catch (e) {
             this.errorMsg = e.message || '网络异常';
         } finally {
@@ -313,7 +330,8 @@ const AIRules = {
             <div class="ai-rules-actions">
                 <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">📜 查看证据</button>
                 ${isDisabled
-                    ? `<button class="btn btn-primary btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✓ 启用'}</button>`
+                    ? `<button class="btn btn-primary btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✓ 启用'}</button>
+                        <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>🗑 删除</button>`
                     : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✕ 禁用'}</button>`
                 }
             </div>

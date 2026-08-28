@@ -127,6 +127,33 @@ router.post('/rules/:id/enable', async (req, res) => {
     }
 });
 
+// ---- DELETE /api/ai/rules/:id ----
+// 删除规则（仅允许删除已禁用规则，防止误删活跃规则导致不可逆损失）
+router.delete('/rules/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!id) return res.status(400).json(fail('无效的规则 ID'));
+
+        // 安全约束：只允许删除已禁用的规则
+        const rule = await db.queryOne(
+            'SELECT id, status FROM ai_rules WHERE id = ? AND user_id = ?',
+            [id, req.userId]
+        );
+        if (!rule) return res.status(404).json(fail('规则不存在'));
+        if (String(rule.status || '').toLowerCase() !== 'disabled') {
+            return res.status(400).json(fail('只能删除已禁用的规则，请先禁用再删除'));
+        }
+
+        // 级联删除关联证据
+        await db.query('DELETE FROM ai_rule_evidence WHERE rule_id = ? AND user_id = ?', [id, req.userId]);
+        await db.query('DELETE FROM ai_rules WHERE id = ? AND user_id = ?', [id, req.userId]);
+
+        res.json(success({ message: '规则已删除' }));
+    } catch (err) {
+        handleServerError(res, err, '删除 AI 规则');
+    }
+});
+
 // ---- GET /api/ai/rules/:id/evidence ----
 // 证据流水：这条规则的每一分从哪来
 router.get('/rules/:id/evidence', async (req, res) => {

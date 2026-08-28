@@ -1668,8 +1668,8 @@
 .ai-advice-item.pr-high { border-left: 3px solid var(--expense); }
 .insight-item.lv-warning { border-left: 3px solid var(--error-500); }
 
-/* 洞察/建议列表内容区：自适应高度（避免短条目被滚动裁掉） */
-#insightList, #aiAdviceList {
+/* 洞察/建议/规则列表内容区：自适应高度（避免短条目被滚动裁掉） */
+#insightList, #aiAdviceList, #aiRulesList {
   margin: var(--space-3) 0;
   padding-right: 2px;
 }
@@ -2227,6 +2227,17 @@
 .ai-page-loading { padding: 16px; }
 .ai-page-loading-text { margin-top: 8px; font-size: 12px; color: var(--text-secondary, #666); text-align: center; }
 
+/* AI 页面内分区标题（消费洞察 / 财务建议 / 规则列表 等区块标题统一） */
+.ai-section-title {
+  margin: 20px 0 12px 0;
+  padding-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+  border-bottom: 1px solid var(--border-subtle, #eceef3);
+}
+.ai-section-title:first-child { margin-top: 8px; }
+
 /* AI 洞察页：Tab 切换（AI 建议 / 学习统计） */
 .ai-insights-tabs {
   display: inline-flex; gap: 4px; padding: 4px;
@@ -2248,6 +2259,7 @@
 }
 
 /* AI Advice：三级 priority 配色 */
+.ai-insight-section, .ai-advice-section { margin-top: 8px; }
 .ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
 .ai-advice-card {
   position: relative;
@@ -2329,6 +2341,8 @@
 .ai-rules-actions .btn { flex: 1; font-size: 13px; }
 .btn-danger { border: 1px solid #fca5a5; color: #b91c1c; background: #fef2f2; }
 .btn-danger:hover { background: #fee2e2; }
+.btn-danger-outline { border: 1px solid #fca5a5; color: #b91c1c; background: transparent; }
+.btn-danger-outline:hover { background: #fef2f2; }
 
 /* 新增对话框 / 证据抽屉 */
 .ai-rules-dialog, .ai-rules-drawer {
