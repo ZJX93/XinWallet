@@ -85,7 +85,10 @@ jobs:
           exit 1
 
       - name: Run test suite
-        run: npm test
+        # 逐文件 + 单文件超时（npm test 跑在一起时，任一用例挂起就会静默拖到 6 小时 job 超时）
+        # 单文件默认超时 120s，可用 CI_FILE_TIMEOUT_MS 覆盖
+        timeout-minutes: 45
+        run: npm run test:ci
 
       - name: Verify routes mounted
         # 静态校验：所有 routes/*.js 定义的路由都已在 routes.js 挂载，防止漏挂
@@ -158,4 +161,5 @@ jobs:
         run: npm run mysql:init
 
       - name: Run test suite (mysql)
-        run: npm test
+        timeout-minutes: 45
+        run: npm run test:ci
