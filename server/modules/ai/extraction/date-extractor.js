@@ -18,6 +18,24 @@ const CN_NUM = { '〇': 0, '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '�
 function pad(n) { return String(n).padStart(2, '0'); }
 
 /**
+ * 校验 年/月/日 是否构成一个真实存在的日期。
+ * 用于拦截 OCR 把订单号等长串误切出的非法日期（如 1002-81-93：月 81 日 93）。
+ * @param {number} y
+ * @param {number} mo 1-12
+ * @param {number} d 1-31
+ * @returns {boolean}
+ */
+function isValidYmd(y, mo, d) {
+    if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return false;
+    if (mo < 1 || mo > 12) return false;
+    if (d < 1 || d > 31) return false;
+    // 年落在合理区间（避免把任意 4 位数字当下标年）
+    if (y < 2000 || y > 2100) return false;
+    const dt = new Date(y, mo - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+}
+
+/**
  * 把常见中文数字串转成阿拉伯数字（用于「上午九点零五分」「八时三十分」）。
  * @param {string} s
  * @returns {string} 原样返回阿拉伯数字段；中文数字段尽量展开。
@@ -127,34 +145,41 @@ function extractDate(text, refDate = new Date()) {
     const full = text.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
     if (full) {
         const [, y, mo, d] = full;
-        const iso = `${y}-${pad(mo)}-${pad(d)}`;
-        const time = extractTime(text);
-        if (time) {
-            return {
-                value: `${iso} ${time.value}`,
-                confidence: 0.98,
-                source: time.source === 'time_hh_mm_ss' ? 'full_with_seconds' : 'full_with_time',
-                hasTime: true, time,
-            };
+        // 月/日合法性校验：OCR 常把订单号等长串误切出非法日期（如 1002-81-93）。
+        // 非法则跳过本分支，让后续更合理的规则或兜底接管，避免脏日期污染卡片。
+        if (isValidYmd(Number(y), Number(mo), Number(d))) {
+            const iso = `${y}-${pad(mo)}-${pad(d)}`;
+            const time = extractTime(text);
+            if (time) {
+                return {
+                    value: `${iso} ${time.value}`,
+                    confidence: 0.98,
+                    source: time.source === 'time_hh_mm_ss' ? 'full_with_seconds' : 'full_with_time',
+                    hasTime: true, time,
+                };
+            }
+            return { value: iso, confidence: 0.95, source: 'full_date', hasTime: false, time: null };
         }
-        return { value: iso, confidence: 0.95, source: 'full_date', hasTime: false, time: null };
     }
 
     const compact = text.match(/(\d{4})(\d{2})(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
     if (compact) {
         const [, y, mo, d, h, mi, s] = compact;
-        const iso = `${y}-${mo}-${d}`;
-        if (h != null && mi != null) {
-            const sec = s != null ? s : '00';
-            return {
-                value: `${iso} ${pad(h)}:${pad(mi)}:${pad(sec)}`,
-                confidence: 0.95,
-                source: s != null ? 'compact_with_seconds' : 'compact_with_time',
-                hasTime: true,
-                time: { hour: Number(h), minute: Number(mi), second: Number(sec), value: `${pad(h)}:${pad(mi)}:${pad(sec)}` },
-            };
+        // 同上：compact_date 必须月/日合法，否则视为订单号等长串误识别，直接跳过。
+        if (isValidYmd(Number(y), Number(mo), Number(d))) {
+            const iso = `${y}-${mo}-${d}`;
+            if (h != null && mi != null) {
+                const sec = s != null ? s : '00';
+                return {
+                    value: `${iso} ${pad(h)}:${pad(mi)}:${pad(sec)}`,
+                    confidence: 0.95,
+                    source: s != null ? 'compact_with_seconds' : 'compact_with_time',
+                    hasTime: true,
+                    time: { hour: Number(h), minute: Number(mi), second: Number(sec), value: `${pad(h)}:${pad(mi)}:${pad(sec)}` },
+                };
+            }
+            return { value: iso, confidence: 0.9, source: 'compact_date', hasTime: false, time: null };
         }
-        return { value: iso, confidence: 0.9, source: 'compact_date', hasTime: false, time: null };
     }
 
     /* ── 4. 中文日期：2026年8月25日 / 2026年08月25日 08:12:33 ── */

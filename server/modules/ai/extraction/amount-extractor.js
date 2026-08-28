@@ -101,13 +101,18 @@ function extractAmount(text) {
         }
     }
 
-    // 4) 孤立裸数字 —— 最不可靠：可能是数量（3个）、日期（25号）、编号。
-    //    过滤掉紧邻量词/日期单位的数字，剩余仍给低置信度，强制用户确认。
+    // 4) 孤立裸数字 —— 最不可靠：可能是数量（3个）、日期（25号）、编号、订单号。
+    //    过滤掉紧邻量词/日期单位的数字；同时排除长串（>10 位）与紧邻「订单/单号/编号/no」
+    //    的数字，它们几乎都是小票订单号而非金额（OCR 场景尤其常见）。
     const bare = text.match(/(?<![\d.])(\d+(?:\.\d{1,2})?)(?![\d.])(?!\s*(?:个|件|张|杯|份|号|日|月|年|点|%|折|人|次|台|斤|克|kg|g|ml|L))/i);
     if (bare) {
-        const value = parseFloat(bare[1]);
-        if (Number.isFinite(value) && value > 0) {
-            return { value, source: 'bare_number', confidence: 0.60, raw: bare[1] };
+        const rawDigits = bare[1].replace('.', '');
+        const looksLikeId = /(?:订单|单号|编号|交易号|流水|NO|No|no)\D*\d*$/i.test(text.slice(0, text.indexOf(bare[1])));
+        if (rawDigits.length <= 10 && !looksLikeId) {
+            const value = parseFloat(bare[1]);
+            if (Number.isFinite(value) && value > 0 && value <= 1_000_000) {
+                return { value, source: 'bare_number', confidence: 0.60, raw: bare[1] };
+            }
         }
     }
 
