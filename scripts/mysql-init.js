@@ -49,10 +49,13 @@ async function init() {
   console.log(`执行 ${schemaPath}...`);
 
   // 3. 分块执行（每条语句独立执行，避免一次执行太多）
-  const statements = schemaSql
+  // 先剔除整行注释：否则"注释行 + 语句"的片段会以 -- 开头，被下方过滤器误删，
+  // 导致 CREATE TABLE 全部丢失、后续语句 ER_NO_SUCH_TABLE。
+  const noComments = schemaSql.replace(/^\s*--.*$/gm, '');
+  const statements = noComments
     .split(/;\s*\n/)
     .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith('--'));
+    .filter(s => s.length > 0);
 
   let success = 0;
   let failed = 0;
