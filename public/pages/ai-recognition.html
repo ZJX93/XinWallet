@@ -2,7 +2,7 @@
                 <!-- ===== AI v0.2 智能记账：一句话 → 预测快照 → 确认 → 原子落账 ===== -->
                 <div class="glass-card ai-smart-card">
                     <h3 class="card-title">✨ 一句话记账</h3>
-                    <p class="card-desc">用自然语言描述，AI 解析后需你确认才会入账，不会直接改动账本</p>
+                    <p class="card-desc">自然语言描述 → 本地规则快速匹配 → 模型语义理解 → 记账习惯兜底；确认后才入账，时间精确到秒</p>
                     <textarea id="aiSmartText" class="ai-smart-input" rows="2"
                               placeholder="例如：今天星巴克咖啡 35.5，午饭 28&#10;支持多笔，一行或用逗号分隔（Ctrl + Enter 解析）"></textarea>
                     <div class="ai-smart-examples" id="aiSmartExamples">
@@ -40,7 +40,7 @@
                 <div class="ai-scan-top">
                     <div class="glass-card">
                         <h3 class="card-title">🖼️ 上传账单截图</h3>
-                        <p class="card-desc">腾讯云 OCR 提取文字后由 AI 自动解析为交易记录</p>
+                        <p class="card-desc">OCR 提取文字后由 AI 解析为交易记录，日期按原文时刻精确到秒</p>
                         <div class="ocr-upload-area" id="ocrUploadArea">
                             <input type="file" id="ocrImageInput" accept="image/*" style="display:none">
                             <div class="ocr-upload-placeholder" id="ocrUploadPlaceholder">

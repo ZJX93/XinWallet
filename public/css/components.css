@@ -2227,6 +2227,26 @@
 .ai-page-loading { padding: 16px; }
 .ai-page-loading-text { margin-top: 8px; font-size: 12px; color: var(--text-secondary, #666); text-align: center; }
 
+/* AI 洞察页：Tab 切换（AI 建议 / 学习统计） */
+.ai-insights-tabs {
+  display: inline-flex; gap: 4px; padding: 4px;
+  margin: 4px 0 16px 0;
+  background: var(--bg-elevated, rgba(0,0,0,0.04));
+  border-radius: 10px;
+}
+.ai-insights-tab {
+  padding: 8px 16px; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-secondary, #666);
+  background: transparent; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ai-insights-tab:hover { color: var(--text-primary, #222); }
+.ai-insights-tab.active {
+  background: var(--interactive-default, #4f46e5);
+  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18);
+}
+
 /* AI Advice：三级 priority 配色 */
 .ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
 .ai-advice-card {

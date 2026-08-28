@@ -44,7 +44,8 @@ import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.theme.Brown500
 
 /**
- * AI 工具聚合页 — 收纳「我的」页宫格里所有 AI 子模块，集中跳转入口。
+ * 实验室 — AI 智能记账实验功能聚合页（v0.2.3 由「AI 工具」更名），
+ * 收纳「我的」页宫格里所有 AI 子模块，集中跳转入口。
  *
  * 5 个子项（v0.2.2 起：截图记账与 AI 对话记账的「发图片」路径重复，整页删除；
  *                  AI 洞察已合并进 AI 建议）：
@@ -58,12 +59,12 @@ import com.xinwallet.app.ui.theme.Brown500
  * v0.2.1 已让 Chat 通道命中 v0.2 OCR → AiConfirmCard 弹确认卡片 → 用户点确认落账。
  *
  * 设计：参照 SettingsScreen 的 TopBar + Card + SettingsRow 模式，
- * 与「我的」页 row1 第 1 位「AI 工具」宫格相配套，点击跳转对应 AI 子页。
+ * 与「我的」页 row1 第 1 位「实验室」宫格相配套，点击跳转对应 AI 子页。
  */
 @Composable
 fun AiToolsScreen(navController: NavHostController) {
     Scaffold(
-        topBar = { TopBar("AI 工具", onBack = { navController.popBackStack() }) },
+        topBar = { TopBar("实验室", onBack = { navController.popBackStack() }) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
@@ -72,7 +73,7 @@ fun AiToolsScreen(navController: NavHostController) {
             Spacer(Modifier.height(8.dp))
             // 顶部说明：与 SettingsScreen 顶部留白风格保持一致
             Text(
-                "智能记账相关功能集中入口",
+                "智能记账 · 实验功能集中入口",
                 modifier = Modifier.padding(horizontal = 20.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

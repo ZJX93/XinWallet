@@ -242,10 +242,9 @@ const PAGE_META = {
     investments: { title: '理财管理', subtitle: '资产配置与收益追踪' },
     debts: { title: '债务管理', subtitle: '贷款·信用卡·借贷跟踪' },
     'ai-recognition': { title: 'AI 识别', subtitle: '智能识别，轻松记账' },
-    'ai-advice': { title: 'AI 建议', subtitle: '月度财务建议' },
-    'ai-rules': { title: 'AI 规则管理', subtitle: '查看/启用/禁用规则' },
-    'ai-learning': { title: 'AI 学习统计', subtitle: '越用越聪明' },
-    'ai-evaluation': { title: 'AI 评测', subtitle: '离线跑批验证' },
+    'ai-insights': { title: 'AI 洞察', subtitle: 'AI 建议与学习统计' },
+    'ai-rules': { title: 'AI 规则管理', subtitle: '自动化记账规则' },
+    'ai-evaluation': { title: '模型评测', subtitle: '离线跑批验证' },
     reports: { title: '报表中心', subtitle: '专业报表，深度回顾' },
     tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
     'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
@@ -281,7 +280,7 @@ const initBottomNav = () => {
     });
 
     // 给每个分组标签映射图标
-    const groupIcons = { '总览': '📊', '账本': '💰', '分析': '🔍', '设置': '⚙️' };
+    const groupIcons = { '总览': '📊', '账本': '💰', '设置': '⚙️', '实验室': '🧪' };
 
     // 更新分组标签显示为图标+文字，保存原始名称到 data-group
     labels.forEach(label => {
@@ -424,9 +423,8 @@ async function refreshPage(page) {
         if (M.AIRecognition) await M.AIRecognition.refresh();
         if (M.AISmartEntry) M.AISmartEntry.refresh();
     }
-    if (page === 'ai-advice' && M.AIAdvice) await M.AIAdvice.refresh();
+    if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
     if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
-    if (page === 'ai-learning' && M.AILearning) await M.AILearning.refresh();
     if (page === 'ai-evaluation' && M.AIEvaluation) await M.AIEvaluation.refresh();
     if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } }
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
@@ -513,6 +511,7 @@ async function boot() {
     safeInit('AIAdvice', () => AIAdvice.init());
     safeInit('AIRules', () => AIRules.init());
     safeInit('AILearning', () => AILearning.init());
+    safeInit('AIInsights', () => AIInsights.init());
     safeInit('AIEvaluation', () => AIEvaluation.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
     safeInit('ReportManager', () => ReportManager.init());

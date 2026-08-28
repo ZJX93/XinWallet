@@ -1,0 +1,17 @@
+<!--
+  ===== AI 洞察（原「AI 建议」+「学习统计」合并页）=====
+  两个子页仍是各自独立的懒加载片段，这里只做 Tab 容器：
+  子容器沿用原 id（page-ai-advice / page-ai-learning）并带 data-lazy，
+  由 AIInsights manager 调 PageLoader.ensureLoaded 注入 —— 复用原页面 HTML 与
+  原 Manager（AIAdvice / AILearning），不复制一份 DOM，避免双份逻辑漂移。
+-->
+<section class="page" id="page-ai-insights" data-lazy="pages/ai-insights.html">
+    <div class="ai-insights-tabs" id="aiInsightsTabs" role="tablist">
+        <button class="ai-insights-tab active" data-tab="advice" role="tab" aria-selected="true">💡 AI 建议</button>
+        <button class="ai-insights-tab" data-tab="learning" role="tab" aria-selected="false">📈 学习统计</button>
+    </div>
+
+    <!-- 子页面容器：data-lazy 由 AIInsights manager 触发加载 -->
+    <div id="page-ai-advice" data-lazy="pages/ai-advice.html"></div>
+    <div id="page-ai-learning" data-lazy="pages/ai-learning.html" style="display:none"></div>
+</section>

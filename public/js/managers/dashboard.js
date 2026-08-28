@@ -529,8 +529,8 @@ const DashboardManager = {
                     <div class="dash-ai-desc">${escapeHtml(first.description)}${insights.length > 1 ? `<br><span style="color:var(--text-tertiary);font-size:var(--text-xs)">等 ${insights.length} 条洞察</span>` : ''}</div>
                 </div>`;
             } else {
-                ie.innerHTML = `<div class="empty-hint"><div class="empty-icon">🧠</div><p>尚未生成 AI 洞察</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 建议</button></div>`;
-                ie.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-advice'));
+                ie.innerHTML = `<div class="empty-hint"><div class="empty-icon">🧠</div><p>尚未生成 AI 洞察</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 洞察</button></div>`;
+                ie.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-insights'));
             }
         }
 
@@ -544,8 +544,8 @@ const DashboardManager = {
                     <div class="dash-ai-desc">${escapeHtml(first.content)}${advice.length > 1 ? `<br><span style="color:var(--text-tertiary);font-size:var(--text-xs)">等 ${advice.length} 条建议</span>` : ''}</div>
                 </div>`;
             } else {
-                ae.innerHTML = `<div class="empty-hint"><div class="empty-icon">💡</div><p>尚未生成 AI 建议</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 建议</button></div>`;
-                ae.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-advice'));
+                ae.innerHTML = `<div class="empty-hint"><div class="empty-icon">💡</div><p>尚未生成 AI 建议</p><button class="btn btn-sm btn-primary go-ai-advice-btn" style="margin-top:8px">前往 AI 洞察</button></div>`;
+                ae.querySelector('.go-ai-advice-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-insights'));
             }
         }
     }

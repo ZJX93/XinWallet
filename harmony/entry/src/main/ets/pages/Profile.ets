@@ -19,6 +19,7 @@ interface Iface1 {
 /**
  * 宫格项 —— 必须与安卓 ProfileScreen.kt 的 row1/row2/row3 逐项一致（项目、顺序、文案）。
  * 图标语义对照（安卓用 Material Icons，鸿蒙用同名 SVG 资源，图形须表达同一含义）：
+ *   实验室 Science=烧瓶（聚合 5 个 AI 子模块，v0.2.3 由「AI 工具」更名）
  *   分类管理 Sell=价签 / 标签管理 LocalOffer=标签
  *   资产账户 Wallet=钱包 / 理财管理 ShowChart=走势折线 / 储蓄目标 Savings=存钱罐
  *   预算管理 Receipt=票据 / 债务管理 SwapHoriz=双向箭头 / 数据管理 Storage=存储层
@@ -27,11 +28,7 @@ interface Iface1 {
  * 「截图记账」已删（与 AI 对话记账发图路径重复）：用户改走 Chat 页发图。
  */
 const GRID: Iface1[] = [
-  { iconRes: 'ic_cloud', label: 'AI 服务商', url: 'pages/ProviderList' },
-  { iconRes: 'ic_advice', label: 'AI 建议', url: 'pages/Advice' },
-  { iconRes: 'ic_rule', label: 'AI 规则', url: 'pages/RuleList' },
-  { iconRes: 'ic_learn', label: '学习统计', url: 'pages/LearningStats' },
-  { iconRes: 'ic_evaluate', label: '模型评测', url: 'pages/Evaluation' },
+  { iconRes: 'ic_lab', label: '实验室', url: 'pages/Lab' },
   { iconRes: 'ic_tag', label: '分类管理', url: 'pages/Category' },
   { iconRes: 'ic_tags', label: '标签管理', url: 'pages/Tags' },
   { iconRes: 'ic_wallet', label: '资产账户', url: 'pages/Accounts' },

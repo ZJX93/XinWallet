@@ -152,7 +152,7 @@ sealed class Screen(val route: String) {
     }
     /** AI 财务建议（POST /ai/advice） */
     object AiAdvice : Screen("ai-advice")
-    /** AI 工具聚合页（收纳 7 个 AI 子模块入口，与 ProfileScreen 宫格配套） */
+    /** 实验室聚合页（v0.2.3 由「AI 工具」更名，收纳 AI 子模块入口，与 ProfileScreen 宫格配套） */
     object AiTools : Screen("ai-tools")
     /** AI 学习统计（GET /ai/learning/stats） */
     object LearningStats : Screen("learning-stats")
@@ -239,8 +239,7 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("account") -> Screen.Profile.route
     route.startsWith("reports") -> Screen.Reports.route
     route.startsWith("edit") -> Screen.Transactions.route
-    route == Screen.AiTools.route -> Screen.Profile.route  // AI 工具聚合页从「我的」宫格进
-    route == Screen.AiTools.route -> Screen.Profile.route  // AI 工具聚合页从「我的」宫格进
+    route == Screen.AiTools.route -> Screen.Profile.route  // 实验室聚合页从「我的」宫格进
     route.startsWith("ai") -> Screen.Transactions.route
     route.startsWith("add") -> Screen.AddTransaction.route  // 记账独立 tab
     route.startsWith("chat") -> Screen.Profile.route       // 对话下沉到「我的」

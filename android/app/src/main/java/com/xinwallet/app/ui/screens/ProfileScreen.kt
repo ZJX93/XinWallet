@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
@@ -175,9 +176,9 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             //
             // 2026-08-26 调整：原 row1 含 7 个 AI 平铺入口（截图记账 / AI 洞察 / AI 建议 /
             // AI 服务商 / AI 规则 / 学习统计 / 模型评测），全部收敛进新建的 AiToolsScreen
-            // 聚合页（点「AI 工具」宫格 → AiToolsScreen）。原 row1 第 1 位改成 AI 工具
-            // 聚合入口；后续 3 位挪到 row1 后段（分类/标签/账户）。其他 6 项非 AI 功能
-            // （理财/储蓄/预算/债务/数据管理/应用锁/设置）保持原状。
+            // 聚合页（点「实验室」宫格 → AiToolsScreen，v0.2.3 由「AI 工具」更名）。
+            // 原 row1 第 1 位改成实验室聚合入口；后续 3 位挪到 row1 后段（分类/标签/账户）。
+            // 其他 6 项非 AI 功能（理财/储蓄/预算/债务/数据管理/应用锁/设置）保持原状。
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = MaterialTheme.shapes.large,
@@ -186,12 +187,13 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val row1 = listOf(
-                        // 第一格 AI 工具聚合入口（2026-08-26 新增，2026-08-27 减 2 项）——
+                        // 第一格实验室聚合入口（2026-08-26 新增，2026-08-27 减 2 项，
+                        //                 v0.2.3 由「AI 工具」更名）——
                         // 收纳 AI 建议（含洞察）/ AI 服务商 / AI 规则 / 学习统计 / 模型评测
                         // 共 5 项（AI 洞察 v0.2.1 已合并进 AI 建议；截图记账 v0.2.2 整页删除，
                         // 图片通道仍由底栏 FAB → AI 记账对话 → 发图片触达）。
                         // 原 row1 的 7 个 AI 平铺入口已全部迁移到聚合页，避免重复入口冗余。
-                        QuickAction("AI 工具", Icons.Filled.AutoAwesome, QuickActionKind.Nav) { navController.navigate(Screen.AiTools.route) },
+                        QuickAction("实验室", Icons.Filled.Science, QuickActionKind.Nav) { navController.navigate(Screen.AiTools.route) },
                         QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
                         QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
                         QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) }
