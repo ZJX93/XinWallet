@@ -137,6 +137,10 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         const review = await reviewWithModel({
             provider, model: routing.model, text,
             candidates: decision.transactions, categories: ctx.categories,
+            // 把第 3 步已检索好的记忆（规则/习惯/历史分布/否证）交给模型，
+            // 让它的"修正与补全"有据可依，而不是凭常识盲猜用户习惯。
+            accounts: ctx.accounts,
+            memory,
         });
         modelRequest = review.request || null;
 

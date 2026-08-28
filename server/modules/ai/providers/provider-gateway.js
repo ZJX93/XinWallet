@@ -14,6 +14,7 @@
    ============================================ */
 
 const { recordFailure, recordSuccess } = require('../runtime/model-router');
+const { buildMemoryHints } = require('./prompt-builder');
 
 // 全局开关：
 //   - 显式设为 false / 0 → 强制关闭（保留给想省成本的部署）。
@@ -76,36 +77,52 @@ async function resolveProvider(userId) {
  * @param {string} params.text          用户原文
  * @param {Array}  params.candidates    本地抽取的候选（作为提示，让模型只做修正）
  * @param {Array}  params.categories    真实类目表（模型只能从中选，不得臆造）
+ * @param {Array}  [params.accounts]    真实账户表（供习惯提示引用账户名称）
+ * @param {object} [params.memory]      Memory Retrieval 结果 —— 用户记账习惯的数据来源
+ * @param {number} [params.timeoutMs]   超时毫秒
  */
-async function reviewWithModel({ provider, model, text, candidates, categories, timeoutMs = 12000 }) {
+async function reviewWithModel({
+    provider, model, text, candidates, categories,
+    accounts = [], memory = null, timeoutMs = 12000,
+}) {
     const catList = categories
         .filter(c => c.type === 'income' || c.type === 'expense')
         .map(c => `${c.id}:${c.name}(${c.type})`)
         .join(', ');
 
+    // 用户记账习惯：把本地已检索到的规则 / 习惯假设 / 历史分布 / 否证
+    // 翻译成自然语言喂给模型。此前模型只拿到「原文 + 本地候选 + 类目表」，
+    // 等于让它凭常识盲猜 —— 这是"AI 识别差强人意"的根因之一。
+    // ⛔ 无历史的新用户 / 记忆层故障时返回空串，prompt 与旧行为完全一致。
+    const memoryHints = buildMemoryHints({ memory, categories, accounts });
+
     // 系统提示升级：从"只修明显错误的复核器"升级为"理解+补全的解析器"。
     // 本地规则引擎擅长精确数字，但拿不准口语化类目、语义商家、隐含备注——
     // 把这些交给模型，而不是让模型只当打补丁的。
+    const systemParts = [
+        '你是记账助手的 AI 解析器。任务：基于用户原文，对本地规则引擎给出的候选交易做【语义理解与补全】。',
+        '你可以且应当：',
+        '1. 修正本地抽错的类型/金额/类目/日期/商家；',
+        '2. 补全本地没抽出来的字段（例如把"中午吃了碗面"归到餐饮类目、给出商家名、写入语义备注 note）；',
+        '3. 对口语化、模糊表述做合理推断（如"发了工资"→income、"还了信用卡"→transfer/expense）。',
+        '严格约束：',
+        '1. category_id 必须从下面给出的类目清单里选，不得臆造 id；拿不准时填 null。',
+        '2. 每个字段都要给 conf（0~1 置信度）：有把握≥0.9，推测 0.7~0.89，不确定填 0 或省略。',
+        '3. 金额/类型这种错了会污染账本的字段，没把握就保留本地值（不要乱改）。',
+        '4. 只输出 JSON，禁止额外文本。格式：',
+        '{"transactions":[{"seq":1,"type":"expense","amount":12.5,"category_id":33,',
+        '"date":"2026-08-25","merchant":"星巴克","note":"午餐","conf":{"type":0.95,"amount":0.98,"category_id":0.9,"date":0.95,"merchant":0.7}}]}',
+        '备注 note 用于记录消费目的/场景，便于后续洞察。',
+        `可用类目：${catList}`,
+    ];
+    // 用户习惯追加在最后：它是"最高优先级补充证据"，放在约束之后
+    // 可避免模型把它误当成又一次格式说明。
+    // ⚠️ 刻意用条件 push 而非在数组里填 memoryHints || ''：
+    //    后者在无习惯时会多拼一个 '\n'，导致 prompt 与旧版不一致。
+    if (memoryHints) systemParts.push(memoryHints);
+
     const messages = [
-        {
-            role: 'system',
-            content: [
-                '你是记账助手的 AI 解析器。任务：基于用户原文，对本地规则引擎给出的候选交易做【语义理解与补全】。',
-                '你可以且应当：',
-                '1. 修正本地抽错的类型/金额/类目/日期/商家；',
-                '2. 补全本地没抽出来的字段（例如把"中午吃了碗面"归到餐饮类目、给出商家名、写入语义备注 note）；',
-                '3. 对口语化、模糊表述做合理推断（如"发了工资"→income、"还了信用卡"→transfer/expense）。',
-                '严格约束：',
-                '1. category_id 必须从下面给出的类目清单里选，不得臆造 id；拿不准时填 null。',
-                '2. 每个字段都要给 conf（0~1 置信度）：有把握≥0.9，推测 0.7~0.89，不确定填 0 或省略。',
-                '3. 金额/类型这种错了会污染账本的字段，没把握就保留本地值（不要乱改）。',
-                '4. 只输出 JSON，禁止额外文本。格式：',
-                '{"transactions":[{"seq":1,"type":"expense","amount":12.5,"category_id":33,',
-                '"date":"2026-08-25","merchant":"星巴克","note":"午餐","conf":{"type":0.95,"amount":0.98,"category_id":0.9,"date":0.95,"merchant":0.7}}]}',
-                '备注 note 用于记录消费目的/场景，便于后续洞察。',
-                `可用类目：${catList}`,
-            ].join('\n'),
-        },
+        { role: 'system', content: systemParts.join('\n') },
         {
             role: 'user',
             content: `原文：${text}\n本地候选：${JSON.stringify(candidates.map(c => ({
@@ -116,7 +133,15 @@ async function reviewWithModel({ provider, model, text, candidates, categories, 
         },
     ];
 
-    const request = { model, messages_count: messages.length, text_length: text.length };
+    const request = {
+        model,
+        messages_count: messages.length,
+        text_length: text.length,
+        // 审计用：本条 prompt 是否注入了用户习惯、注入了多长。
+        // 便于事后判断"模型猜错"到底是没喂到习惯，还是喂了也没听。
+        memory_hints_injected: Boolean(memoryHints),
+        memory_hints_length: memoryHints ? memoryHints.length : 0,
+    };
     const started = Date.now();
 
     try {
