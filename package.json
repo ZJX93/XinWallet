@@ -14,7 +14,7 @@
     "test:integration": "node scripts/smoke-test.js",
     "test:routes": "node scripts/verify-routes.js",
     "test:full": "node scripts/full-verify.js",
-    "mysql:init": "node -e \"require('./scripts/mysql-init.js')()\"",
+    "mysql:init": "node scripts/mysql-init.js",
     "schema:convert": "node scripts/convert-pg-schema-to-mysql.js",
     "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run"
   },
