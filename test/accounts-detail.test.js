@@ -59,7 +59,14 @@ test.before(async () => {
 test.after(async () => {
     try { await db.query('DELETE FROM accounts WHERE user_id = ?', [TEST_USER_ID]); } catch (_) {}
     try { await db.query('DELETE FROM books WHERE user_id = ?', [TEST_USER_ID]); } catch (_) {}
-    if (server) server.close();
+    if (server) {
+        // fetch 默认 keep-alive，close() 只停止接收新连接，必须先断开存量连接
+        if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+        server.close();
+    }
+    // 关闭连接池：MySQL 方言下空闲连接会留到 idleTimeout（60s）才回收，
+    // 进程因此无法自行退出，node --test 会把整个文件判为顶层超时。
+    try { await db.pool.end(); } catch (_) { /* 也许已关闭 */ }
 });
 
 test('账户资金明细接口返回 200（回归 column d.icon does not exist 500）', async () => {

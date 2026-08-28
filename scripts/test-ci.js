@@ -97,18 +97,21 @@ function parseTap(output) {
 
     const notOk = line.match(/^\s*not ok\s+(\d+)\s*-\s*(.*)$/);
     if (notOk) {
-      // 往下扫 YAML 诊断块，取第一行人类可读的错误描述
+      // 往下扫 YAML 诊断块，取断言错误正文（跳过 location/duration_ms 等元信息）
       let err = '';
-      for (let j = i + 1; j < Math.min(i + 25, lines.length); j++) {
+      let inErrorBlock = false;
+      for (let j = i + 1; j < Math.min(i + 40, lines.length); j++) {
         const l = lines[j];
         if (/^\s*(\.\.\.|---)\s*$/.test(l)) continue;
         const m = l.match(/^\s{2,}(.*\S)\s*$/);
-        if (!m) continue;
+        if (!m) { if (inErrorBlock && err) break; continue; }
         const text = m[1].trim();
         if (!text) continue;
-        if (/^(duration_ms|type|code|failureType|cause|stack|at:)/i.test(text)) continue;
-        err = text;
-        break;
+        if (/^(duration_ms|type|code|failureType|cause|stack|at:|location)/i.test(text)) continue;
+        if (/^error:\s*\|?\s*$/.test(text)) { inErrorBlock = true; continue; }
+        if (/^error:\s*\S/.test(text)) { err = text.replace(/^error:\s*/, ''); break; }
+        err = err ? err + ' / ' + text : text;
+        if (err.length > 400) break;
       }
       failures.push({ name: notOk[2].trim(), err });
     }
@@ -154,8 +157,9 @@ async function main() {
     const { stats, failures: cases } = parseTap(res.output);
     const statText = formatStats(stats);
 
-    // 没有任何失败/取消用例却没能自行退出 —— 典型的句柄泄漏（连接池未关闭）
-    const leak = res.killed && (stats.fail || 0) === 0 && (stats.cancelled || 0) === 0;
+    // 一条用例都没失败，却要么被文件级超时 kill、要么被 --test-timeout 取消 ——
+    // 说明卡点不在断言，而在「进程跑完用不退出」，即句柄泄漏（连接池/定时器/server 未关闭）
+    const leak = (stats.fail || 0) === 0 && (res.killed || (stats.cancelled || 0) > 0);
     const kind = leak ? 'HANDLE-LEAK' : (res.killed ? 'TIMEOUT' : 'FAILED');
 
     console.log(`[test-ci] !!! ${file} ${kind} (${cost}ms): ${res.reason} | ${statText || 'no TAP stats'}`);

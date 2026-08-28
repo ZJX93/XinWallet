@@ -186,10 +186,13 @@ async function reviewWithModel({
 }
 
 function withTimeout(promise, ms) {
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`model timeout after ${ms}ms`)), ms)),
-    ]);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`model timeout after ${ms}ms`)), ms);
+    });
+    // 竞态结束后必须清掉定时器：残留的 timer 会一直挂在事件循环上，
+    // 表现为「用例全部通过，但进程要等满 ms 才退出」——CI 里被 node --test 判为顶层超时。
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**

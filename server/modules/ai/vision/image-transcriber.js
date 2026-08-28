@@ -247,10 +247,12 @@ function buildBothFailedMessage(attempts) {
 }
 
 function withTimeout(promise, ms) {
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`vision timeout after ${ms}ms`)), ms)),
-    ]);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`vision timeout after ${ms}ms`)), ms);
+    });
+    // 同 provider-gateway：不清定时器会让进程多挂 ms 毫秒才退出
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 module.exports = {

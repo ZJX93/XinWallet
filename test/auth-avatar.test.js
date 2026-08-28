@@ -47,7 +47,13 @@ test.before(async () => { await listen(); });
 
 test.after(async () => {
     try { await db.query('DELETE FROM users WHERE username = ?', [USERNAME]); } catch (_) {}
-    if (server) server.close();
+    if (server) {
+        // fetch 默认 keep-alive，close() 只停止接收新连接，必须先断开存量连接
+        if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+        server.close();
+    }
+    // 关闭连接池，否则 MySQL 方言下空闲连接会让进程一直不退出
+    try { await db.pool.end(); } catch (_) { /* 也许已关闭 */ }
 });
 
 test('注册响应必须返回默认头像', async () => {

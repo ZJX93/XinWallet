@@ -73,3 +73,9 @@ test('parseTransactions: last_account_name 透传到 evidence.account_match_deta
         'account_match_details 应含「上次使用：支付宝 花呗」'
     );
 });
+
+test.after(async () => {
+    // 本文件用 dbStub 不直接连库，但 server/modules/ai 链路会引用真实 db 模块，
+    // MySQL 方言下其连接池会留下活跃句柄，导致用例全过后进程仍不退出。
+    try { await require('../server/db').pool.end(); } catch (_) { /* ignore */ }
+});
