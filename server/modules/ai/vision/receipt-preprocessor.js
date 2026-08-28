@@ -140,10 +140,10 @@ function preprocessReceipt(text, opts = {}) {
 
 /* ── 版式策略 ───────────────────────────────────────────── */
 
-/** 策略1：微信支付单笔 —「商户名」行 +「支付金额 ¥18.00」行 */
+/** 策略1：微信支付单笔 —「商户名」行 +「支付金额 ¥18.00」行（支持 -8.00） */
 function runStrategy1(lines, ctx, add) {
     for (let i = 1; i < lines.length; i++) {
-        const m = lines[i].match(/支付金额\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/);
+        const m = lines[i].match(/支付金额\s*[-+]?\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/);
         if (!m) continue;
         const amount = parseFloat(m[1]);
 
@@ -212,9 +212,9 @@ function runStrategy2(lines, ctx, add) {
     }
 }
 
-/** 策略3：通用同行 —「老乡鸡 ¥18.00」 */
+/** 策略3：通用同行 —「老乡鸡 ¥18.00」（支持 -18.00） */
 function runStrategy3(lines, ctx, add) {
-    const re = /^(.{1,50}?)\s+[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元)?\s*$/;
+    const re = /^(.{1,50}?)\s+[-+]?\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元)?\s*$/;
     for (const line of lines) {
         if (isNoiseLine(line) || line.length > 100) continue;
         if (/(?:消费|收款|支出|收入)/.test(line)) continue;   // 留给策略4
@@ -224,9 +224,9 @@ function runStrategy3(lines, ctx, add) {
     }
 }
 
-/** 策略4：同行带类型 —「老乡鸡 消费 ¥18.00」 */
+/** 策略4：同行带类型 —「老乡鸡 消费 ¥18.00」（支持 -18.00） */
 function runStrategy4(lines, ctx, add) {
-    const re = /^(.{1,40}?)\s+(?:消费|收款|支出|收入)\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/;
+    const re = /^(.{1,40}?)\s+(?:消费|收款|支出|收入)\s*[-+]?\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)/;
     for (const line of lines) {
         if (SKIP_KEYWORDS.test(line) || line.length > 100) continue;
         const m = line.match(re);
@@ -276,12 +276,16 @@ function runStrategy5(lines, ctx, add) {
  * ⛔ 这是整个模块的防线：v0.2 抽取器被单号/时间戳骗到 4.2e27 元，
  *    就是因为没有这一层。任何新增版式策略都必须先过它。
  */
+/** 常见 UI 控件/系统标签：账单截图里经常混进来，必须当噪声丢弃 */
+const UI_NOISE = /^(?:Top status bar|Bottom navigation bar|Navigation bar|Status bar|Action bar|Toolbar|标题栏|状态栏|导航栏|底部导航|Button|按钮|Label|标签|Icon|图标|Menu|菜单|Back|返回|More|更多|Share|分享|Like|点赞|Comment|留言|评论|Reply|回复|Close|关闭|Cancel|取消|Confirm|确认|Submit|提交|Search|搜索|Home|首页|Profile|我的|Message|消息|Discovery|发现|Settings|设置)$|\bbutton\b|\bstatus\s+bar\b|\bnavigation\s+bar\b|\baction\s+bar\b|\btoolbar\b|\bicon\b|\bmenu\b/i;
+
 function isNoiseLine(line) {
     const l = String(line || '').trim();
     if (!l) return true;
     if (l.length > 60) return true;
     if (SKIP_KEYWORDS.test(l)) return true;
     if (NOISE_KEYWORDS.test(l)) return true;
+    if (UI_NOISE.test(l)) return true;
     if (isDateLine(l)) return true;
     if (/^\d{2}:\d{2}/.test(l)) return true;          // 时间行
     if (/^\d{10,}$/.test(l)) return true;             // 纯长数字 = 单号
@@ -294,7 +298,7 @@ function isDateLine(line) {
     return /^\d{4}[-/]\d{2}[-/]\d{2}/.test(l) || /^\d{4}年\d{1,2}月/.test(l) || /^\d{1,2}月\d{1,2}日/.test(l);
 }
 
-/** 商户名清洗：剥掉前后的标签与标点，太短/纯数字一律丢弃 */
+/** 商户名清洗：剥掉前后的标签与标点，太短/纯数字/UI 噪声一律丢弃 */
 function sanitizeName(name) {
     let n = String(name || '').trim();
     if (!n) return null;
@@ -306,6 +310,8 @@ function sanitizeName(name) {
     if (/^\d+[a-zA-Z]$/.test(n) || /^[a-zA-Z]\d+$/.test(n)) return null;
     if (/^\d{2}:\d{2}/.test(n)) return null;
     if (SKIP_KEYWORDS.test(n)) return null;
+    // 过滤常见的英文 UI 标签/系统控件名（如 Top status bar、button、留言等）
+    if (UI_NOISE.test(n)) return null;
     return n.slice(0, 50);
 }
 

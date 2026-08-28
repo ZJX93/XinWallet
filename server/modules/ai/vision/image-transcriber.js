@@ -36,12 +36,13 @@ const { resolveVisionSupport, looksLikeVisionUnsupported } = require('./vision-c
     ⛔ 别在这里让模型直接输出 JSON 交易 —— 那会把抽取逻辑分叉到两处
        （见文件头注释）。转录层的产物必须是纯文本。 */
 const TRANSCRIBE_PROMPT = [
-    '请把这张账单/收据/支付截图里的文字【原样】逐行读出来。',
+    '请把这张账单/收据/支付截图里的【交易相关信息】逐行读出来。',
     '要求：',
-    '1. 只输出图片里的文字本身，不要任何解释、总结或分析。',
-    '2. 保持原有的行顺序；同一行内的内容用空格分隔。',
-    '3. 金额、日期、时间、商户名必须完整保留，不要改写或推测。',
-    '4. 图片里没有的信息绝对不要补充。',
+    '1. 只输出图片里的文字本身，一行一条，不要任何解释、总结或分析。',
+    '2. 金额、日期、时间、商户名/商品名、支付方式必须完整保留，不要改写或推测。',
+    '3. 【忽略以下内容，不要输出】：手机状态栏（时间、电量、信号、运营商等）、底部导航栏、截图控件文字（如 button、状态栏、导航栏）、社交媒体按钮（留言、评论、点赞、分享）、系统 UI 文字（Top status bar、Navigation bar 等）。',
+    '4. 如果图片里没有交易信息，只输出「无交易信息」。',
+    '5. 图片里没有的信息绝对不要补充。',
 ].join('\n');
 
 /** 腾讯云 OCR 单次调用上限（腾讯侧限制约 7MB base64，留余量） */
@@ -76,7 +77,9 @@ async function transcribeImage({ db, userId, imageBase64, mime = 'image/jpeg', p
         if (support === 'no') {
             attempts.push({ source: 'model', ok: false, skipped: true, reason: 'vision_unsupported' });
         } else {
-            const r = await transcribeByModel({ provider, imageBase64, mime });
+            // 已知支持：给 10s；未知模型只给 6s 探针，避免用户空等 30s。
+            const timeoutMs = support === 'yes' ? 10000 : 6000;
+            const r = await transcribeByModel({ provider, imageBase64, mime, timeoutMs });
             attempts.push({
                 source: 'model', ok: r.ok, reason: r.ok ? undefined : r.error,
                 vision_unsupported: r.visionUnsupported || undefined,
@@ -113,7 +116,7 @@ async function transcribeImage({ db, userId, imageBase64, mime = 'image/jpeg', p
 }
 
 /** 通道 A 实现：大模型读图 */
-async function transcribeByModel({ provider, imageBase64, mime, timeoutMs = 30000 }) {
+async function transcribeByModel({ provider, imageBase64, mime, timeoutMs = 12000 }) {
     try {
         // 懒加载：与 provider-gateway 同一纪律，避免离线单测拉起网络依赖
         const { callProvider } = require('../../../services/ai');

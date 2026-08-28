@@ -47,7 +47,7 @@ function hasStandaloneTxnSemantics(seg) {
  */
 function isSystemNoiseSegment(seg) {
     if (!seg) return false;
-    const noisePattern = /(?:K\s*\/\s*s|KB\s*\/\s*s|KBs|MB\s*\/\s*s|MBs|Kbps|Mbps|Gbps|流量|网速|上行|下行|实时|平均|峰值|剩余|已用)/i;
+    const noisePattern = /(?:K\s*\/\s*s|KB\s*\/\s*s|KBs|MB\s*\/\s*s|MBs|Kbps|Mbps|Gbps|流量|网速|上行|下行|实时|平均|峰值|剩余|已用|Top\s+status\s+bar|Bottom\s+navigation\s+bar|Navigation\s+bar|Status\s+bar|Action\s+bar|Toolbar|状态栏|导航栏|底部导航|button|按钮|label|标签|icon|图标|menu|菜单|back|返回|more|更多|share|分享|like|点赞|comment|留言|评论|reply|回复|close|关闭|cancel|取消|confirm|确认|submit|提交|search|搜索|home|首页|profile|我的|message|消息|discovery|发现|settings|设置)/i;
     return noisePattern.test(seg);
 }
 
