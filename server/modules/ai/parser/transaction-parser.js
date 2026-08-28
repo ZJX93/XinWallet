@@ -25,6 +25,7 @@ const { validateResult } = require('../validation/result-validator');
 const { buildContext, snapshotContext } = require('./context-builder');
 const { decide } = require('./decision-engine');
 const { retrieveMemory, snapshotMemory, emptyMemory } = require('../memory/memory-retrieval');
+const { selectFewShotExamples, isFewShotEnabled } = require('../memory/few-shot-selector');
 const { analyzeComplexity } = require('../runtime/complexity-analyzer');
 const { route, isSimpleModelRouteAllowed } = require('../runtime/model-router');
 const { resolveProvider, reviewWithModel, isModelRouteAllowed } = require('../providers/provider-gateway');
@@ -139,6 +140,21 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     let modelUsage = null;
 
     if ((routing.route === 'cheap_model' || routing.route === 'strong_model') && provider) {
+        // Few-shot 先例：从历史交易里挑出与本次输入最相似的几条真实归类。
+        // ⛔ 仅在开关打开时才检索（它会把历史消费明细发给第三方模型）。
+        //    检索失败一律降级为「无先例」，绝不让记账链路挂掉。
+        let fewShot = null;
+        if (isFewShotEnabled()) {
+            try {
+                fewShot = await selectFewShotExamples(db, ctx.wm, {
+                    text,
+                    merchants: extraction.transactions.map(t => t.merchant).filter(Boolean),
+                });
+            } catch (_) {
+                fewShot = null;
+            }
+        }
+
         const review = await reviewWithModel({
             provider, model: routing.model, text,
             candidates: decision.transactions, categories: ctx.categories,
@@ -146,6 +162,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             // 让它的"修正与补全"有据可依，而不是凭常识盲猜用户习惯。
             accounts: ctx.accounts,
             memory,
+            fewShot,
         });
         modelRequest = review.request || null;
 

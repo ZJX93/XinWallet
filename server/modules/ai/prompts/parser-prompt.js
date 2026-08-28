@@ -39,16 +39,19 @@ function getParserPromptVersion() {
  * @param {Array}  params.categories    类目表
  * @param {Array}  params.accounts      账户表
  * @param {string} [params.memoryHints] 已格式化的用户习惯（由 prompt-builder 产出）
+ * @param {Array}  [params.fewShot]     用户历史相似样例（由 few-shot-selector 产出）
  * @param {string} [params.version]     指定版本（默认取环境变量）
  * @returns {{messages:Array, version:string}}
  */
 function buildParserMessages({
     text, candidates, categories = [], accounts = [],
-    memoryHints = '', version = null,
+    memoryHints = '', fewShot = null, version = null,
 }) {
     const v = version && VERSIONS[version] ? version : getParserPromptVersion();
     return {
-        messages: VERSIONS[v].build({ text, candidates, categories, accounts, memoryHints }),
+        messages: VERSIONS[v].build({
+            text, candidates, categories, accounts, memoryHints, fewShot,
+        }),
         version: v,
     };
 }
@@ -163,16 +166,63 @@ function buildV2({ text, candidates, categories = [], accounts = [], memoryHints
     ];
 }
 
+/* ════════════════════════════════════════════════════════════
+   v3 —— v2 + Few-shot 动态先例
+   ════════════════════════════════════════════════════════════ */
+/**
+ * v3 = v2 + 「该用户过往的真实记账先例」。
+ *
+ * 为什么单独开版本而不是直接改 v2：
+ *   few-shot 会把用户历史消费明细发给第三方模型（隐私权衡），
+ *   必须能独立开关与独立回滚，不能和常规增强绑在一起。
+ */
+function buildV3(params) {
+    const messages = buildV2(params);
+    const block = formatFewShot(params.fewShot);
+    if (block) {
+        // 追加在末尾：紧挨输出格式要求之后，模型最不容易忽略
+        messages[0].content = `${messages[0].content}\n\n${block}`;
+    }
+    return messages;
+}
+
+/**
+ * 把历史样例格式化成 prompt 片段。
+ * ⛔ 只输出备注/金额/类目名/账户名 —— 不泄漏交易 id 等标识符。
+ */
+function formatFewShot(examples) {
+    if (!Array.isArray(examples) || examples.length === 0) return '';
+
+    const lines = examples.map((e, i) => {
+        const amount = (e.amount != null) ? `${e.amount}元` : '';
+        const parts = [];
+        if (e.category_name) parts.push(`类目「${e.category_name}」`);
+        if (e.account_name) parts.push(`账户「${e.account_name}」`);
+        const target = parts.length ? parts.join('、') : '未记类目';
+        return `${i + 1}. 备注「${e.note}」${amount} → ${target}`;
+    });
+
+    return [
+        '【该用户过往的真实记账先例】以下他此前对相似消费的实际归类，优先级高于你的常识：',
+        ...lines,
+    ].join('\n');
+}
+
 const VERSIONS = {
     v1: { build: buildV1, description: '基线版：字节级冻结，与 prompt 外置前完全一致' },
     v2: {
         build: buildV2,
         description: '增强版：OCR 噪音剔除 + 输出 account_id + 秒级日期 + 语义备注',
     },
+    v3: {
+        build: buildV3,
+        description: 'v2 + Few-shot 先例：注入该用户历史中相似消费的实际归类（需 AI_FEWSHOT_ENABLED=true）',
+    },
 };
 
 module.exports = {
     buildParserMessages,
     getParserPromptVersion,
+    formatFewShot,
     VERSIONS,
 };

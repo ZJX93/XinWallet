@@ -80,11 +80,12 @@ async function resolveProvider(userId) {
  * @param {Array}  params.categories    真实类目表（模型只能从中选，不得臆造）
  * @param {Array}  [params.accounts]    真实账户表（供习惯提示引用账户名称）
  * @param {object} [params.memory]      Memory Retrieval 结果 —— 用户记账习惯的数据来源
+ * @param {Array}  [params.fewShot]     用户历史相似样例（Few-shot 先例）
  * @param {number} [params.timeoutMs]   超时毫秒
  */
 async function reviewWithModel({
     provider, model, text, candidates, categories,
-    accounts = [], memory = null, timeoutMs = 12000,
+    accounts = [], memory = null, fewShot = null, timeoutMs = 12000,
 }) {
     // 用户记账习惯：把本地已检索到的规则 / 习惯假设 / 历史分布 / 否证
     // 翻译成自然语言喂给模型。此前模型只拿到「原文 + 本地候选 + 类目表」，
@@ -93,9 +94,9 @@ async function reviewWithModel({
     const memoryHints = buildMemoryHints({ memory, categories, accounts });
 
     // prompt 已外置到 ../prompts/parser-prompt.js 并版本化。
-    // 默认 v1（字节级冻结的基线），环境变量 AI_PARSER_PROMPT_VERSION=v2 切到增强版。
+    // 默认 v1（字节级冻结的基线）；v2 增强；v3 = v2 + Few-shot 先例。
     const { messages, version: promptVersion } = buildParserMessages({
-        text, candidates, categories, accounts, memoryHints,
+        text, candidates, categories, accounts, memoryHints, fewShot,
     });
 
     const request = {
@@ -106,6 +107,9 @@ async function reviewWithModel({
         // 便于事后判断"模型猜错"到底是没喂到习惯，还是喂了也没听。
         memory_hints_injected: Boolean(memoryHints),
         memory_hints_length: memoryHints ? memoryHints.length : 0,
+        // Few-shot 审计：注入了几条历史先例。
+        // ⚠️ 只记条数不记内容 —— 历史消费明细属于敏感数据，不应落进日志/快照。
+        few_shot_count: Array.isArray(fewShot) ? fewShot.length : 0,
         // prompt 版本落库：事后可回溯"哪次错判用的是哪一版 prompt"，
         // 也是 A/B 对比与一键回退的依据。
         prompt_version: promptVersion,
