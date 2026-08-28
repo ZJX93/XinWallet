@@ -109,13 +109,25 @@ test('清洗：秒级日期 YYYY-MM-DD HH:MM:SS → 保留', async () => {
     assert.equal(r.transactions[0].date, '2026-08-25 10:30:45');
 });
 
-test('清洗：纯日期 YYYY-MM-DD → 仍保留（兼容旧模型输出）', async () => {
+test('清洗：纯日期 YYYY-MM-DD → 补齐到秒（后端兜底，避免缺时分秒）', async () => {
+    // 模型常常只给日期不听话。与其让前端显示「2026-08-26」这种不带时分秒的脏值，
+    // 不如后端直接补齐：历史日期补 12:00:00（不把晚餐变凌晨），今天补当前时刻。
     nextModelReply = replyWith([{ seq: 1, amount: 638.4, date: '2026-08-25' }]);
     const r = await reviewWithModel({
         provider: PROVIDER, model: 'm', text: '物业维修 638.4元',
         candidates: CANDIDATES, categories: CATEGORIES,
     });
-    assert.equal(r.transactions[0].date, '2026-08-25');
+    assert.equal(r.transactions[0].date, '2026-08-25 12:00:00');
+});
+
+test('清洗：今天的日期 → 补当前时刻（而非 12:00:00）', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    nextModelReply = replyWith([{ seq: 1, amount: 20, date: today }]);
+    const r = await reviewWithModel({
+        provider: PROVIDER, model: 'm', text: '买咖啡 20',
+        candidates: CANDIDATES, categories: CATEGORIES,
+    });
+    assert.match(r.transactions[0].date, new RegExp(`^${today} \\d{2}:\\d{2}:\\d{2}$`));
 });
 
 test('清洗：非法日期 → 丢弃', async () => {

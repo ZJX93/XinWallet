@@ -134,7 +134,7 @@ function buildV2({ text, candidates, categories = [], accounts = [], memoryHints
         '   ② 【用户记账习惯】中该商家的历史账户；',
         '   ③ 都判断不出 → 填 null，不要猜。',
         '- category_id：必须从【可用类目】中选，严禁臆造 id；拿不准填 null。',
-        '- date：YYYY-MM-DD，原文有具体时刻就补上 HH:MM:SS；只有日期则补当前时刻；都没有才用今天。',
+        '- date：必须输出 YYYY-MM-DD HH:MM:SS。若原文只有日期，请自动补上合理的时分秒（中午 12:00:00 即可）；不要只输出日期。',
         '- amount：一律正数。若原文出现负数金额（如微信的 -8.00），那是退款或收入，请据此判断 type。',
         '- 每个字段都要给 conf（0~1）：有把握≥0.9，推测 0.7~0.89，不确定填 0（填 0 等于保留本地值）。',
         '',

@@ -9,10 +9,10 @@ const { extractDate, extractTime } = require('../server/modules/ai/extraction/da
 
 const REF = new Date('2026-08-28T10:00:00Z');
 
-test('extractDate: 仅日期 YYYY-MM-DD 不带时间', () => {
+test('extractDate: 仅日期 YYYY-MM-DD 补齐到 12:00:00', () => {
     const r = extractDate('今天午餐花了30元', REF);
     assert.equal(r.hasTime, false);
-    assert.match(r.value, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(r.value, '2026-08-28 12:00:00');
     assert.equal(r.source, 'relative_day');
 });
 
@@ -48,17 +48,17 @@ test('extractDate: 中文时间「上午九点零五分」', () => {
     assert.equal(r.hasTime, true);
 });
 
-test('extractDate: 相对日（昨天/前天）只回退到日', () => {
+test('extractDate: 相对日（昨天/前天）回退到日并补齐 12:00:00', () => {
     const y = extractDate('昨天买咖啡 28', REF);
-    assert.equal(y.value, '2026-08-27');
+    assert.equal(y.value, '2026-08-27 12:00:00');
     assert.equal(y.hasTime, false);
     const q = extractDate('前天晚餐 80', REF);
-    assert.equal(q.value, '2026-08-26');
+    assert.equal(q.value, '2026-08-26 12:00:00');
 });
 
-test('extractDate: 「3天前」回退到日', () => {
+test('extractDate: 「3天前」回退到日并补齐 12:00:00', () => {
     const r = extractDate('3天前买书 45', REF);
-    assert.equal(r.value, '2026-08-25');
+    assert.equal(r.value, '2026-08-25 12:00:00');
 });
 
 test('extractDate: 完全无法识别 → 默认今天（带秒级时间戳）', () => {
@@ -101,4 +101,29 @@ test('extractDate: 小票典型格式（OCR 输出）— 时间精确到秒', ()
     const r = extractDate('永升物业管理处\n交易时间 2026-08-25 08:12:33\n金额 638.40', REF);
     assert.equal(r.value, '2026-08-25 08:12:33');
     assert.equal(r.hasTime, true);
+});
+
+test('extractDate: 任何路径都必须输出秒级日期（记账规则铁律）', () => {
+    // 用户投诉「识别时间没有精确到秒，与记账规则不匹配」。
+    // 缺时分秒会导致：同日多笔排序不稳、幂等键冲突、前端只显示到日。
+    // 曾经只有「原文含 HH:mm」的路径带秒，其余（相对日/纯日期）只到日 —— 已修。
+    const cases = [
+        '午饭25元',                          // 无日期 → 兜底今天
+        '昨天买咖啡 28',                      // relative_day
+        '前天晚餐 80',                        // relative_day
+        '3天前买书 45',                       // days_ago
+        '2026-08-20 房租 2500',               // full_date（无时刻）
+        '20260820 房租 2500',                 // compact_date（无时刻）
+        '2026年8月20日 房租 2500',            // cn_full_date（无时刻）
+        '8月20日房租2500',                    // cn_short_date（无时刻）
+        '支付时间 2026-08-25 08:12:33 物业费',  // 带秒
+    ];
+    for (const text of cases) {
+        const r = extractDate(text, REF);
+        assert.match(
+            r.value,
+            /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
+            `「${text}」的日期未精确到秒：${r.value}`
+        );
+    }
 });

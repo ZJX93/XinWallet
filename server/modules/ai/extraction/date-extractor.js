@@ -131,14 +131,16 @@ function extractDate(text, refDate = new Date()) {
         const map = { 今天: 0, 今儿: 0, 今: 0, 昨天: -1, 昨日: -1, 昨: -1, 前天: -2, 前日: -2, 前儿: -2, 明天: 1, 明儿: 1, 后天: 2, 大后天: 3 };
         const offset = map[rel[1]];
         const d = new Date(refDate.getTime() + offset * 86400000);
-        return { value: isoDate(d), confidence: 0.95, source: 'relative_day', hasTime: false, time: null };
+        // v0.4 升级：所有日期统一补齐到秒，与项目记账规则对齐。
+        // hasTime 仍为 false，表示秒是补齐的而非原文识别出来的。
+        return { value: `${isoDate(d)} 12:00:00`, confidence: 0.95, source: 'relative_day', hasTime: false, time: null };
     }
 
     /* ── 2. X天前 / X小时前 ── */
     const daysAgo = text.match(/(\d+)\s*天前/);
     if (daysAgo) {
         const d = new Date(refDate.getTime() - Number(daysAgo[1]) * 86400000);
-        return { value: isoDate(d), confidence: 0.9, source: 'days_ago', hasTime: false, time: null };
+        return { value: `${isoDate(d)} 12:00:00`, confidence: 0.9, source: 'days_ago', hasTime: false, time: null };
     }
 
     /* ── 3. 完整日期：YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD / YYYYMMDD ── */
@@ -158,7 +160,7 @@ function extractDate(text, refDate = new Date()) {
                     hasTime: true, time,
                 };
             }
-            return { value: iso, confidence: 0.95, source: 'full_date', hasTime: false, time: null };
+            return { value: `${iso} 12:00:00`, confidence: 0.95, source: 'full_date', hasTime: false, time: null };
         }
     }
 
@@ -178,7 +180,7 @@ function extractDate(text, refDate = new Date()) {
                     time: { hour: Number(h), minute: Number(mi), second: Number(sec), value: `${pad(h)}:${pad(mi)}:${pad(sec)}` },
                 };
             }
-            return { value: iso, confidence: 0.9, source: 'compact_date', hasTime: false, time: null };
+            return { value: `${iso} 12:00:00`, confidence: 0.9, source: 'compact_date', hasTime: false, time: null };
         }
     }
 
@@ -197,7 +199,7 @@ function extractDate(text, refDate = new Date()) {
                 hasTime: true, time,
             };
         }
-        return { value: iso, confidence: 0.9, source: 'cn_full_date', hasTime: false, time: null };
+        return { value: `${iso} 12:00:00`, confidence: 0.9, source: 'cn_full_date', hasTime: false, time: null };
     }
 
     /* ── 5. M月D日（缺年 → 用 refDate 的年）── */
@@ -214,7 +216,7 @@ function extractDate(text, refDate = new Date()) {
                 hasTime: true, time,
             };
         }
-        return { value: iso, confidence: 0.65, source: 'cn_short_date', hasTime: false, time: null };
+        return { value: `${iso} 12:00:00`, confidence: 0.65, source: 'cn_short_date', hasTime: false, time: null };
     }
 
     /* ── 6. 兜底：今天（带秒级时间戳，避免两笔同秒提交时混淆） ── */

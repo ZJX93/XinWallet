@@ -142,8 +142,9 @@ async function reviewWithModel({
                 // 账户错了不会污染金额，但会污染余额，所以校验与类目同等严格。
                 account_id: validAccountIds.has(t.account_id) ? t.account_id : undefined,
                 // 日期允许到秒：v2 要求模型尽量补出 HH:MM:SS。
-                // 同时兼容纯日期（旧模型/保守输出），不做强制升级。
-                date: isValidModelDate(t.date) ? t.date : undefined,
+                // 后端兜底：模型若只给日期（常见不听话），自动补齐到秒，
+                // 避免前端/记账规则因缺少时分秒而报错。
+                date: normalizeModelDate(t.date),
                 merchant: typeof t.merchant === 'string' && t.merchant.trim() ? t.merchant.trim() : undefined,
                 note: typeof t.note === 'string' && t.note.trim() ? t.note.trim() : undefined,
                 // 模型自报置信度，原样带回（授信模型）。调用方仍过 Result Validator 阈值 + 冲突降级。
@@ -217,6 +218,45 @@ function isValidModelDate(s) {
         if (parts[2] !== undefined && parts[2] > 59) return false;
     }
     return true;
+}
+
+/**
+ * 把模型返回的日期归一化为 `YYYY-MM-DD HH:MM:SS`。
+ *
+ * - 已带时分秒：保留（空格统一为普通空格）
+ * - 只有日期：补齐默认时间
+ *   · 日期为今天 → 当前时刻（用户此刻在记这笔账）
+ *   · 历史日期 → 12:00:00（避免把晚餐变成凌晨）
+ *   · 未来日期 → 00:00:00（极罕见，保守处理）
+ * - 非法日期：返回 undefined（保留本地值）
+ */
+function normalizeModelDate(s) {
+    const str = String(s || '').trim();
+    if (!isValidModelDate(str)) return undefined;
+
+    const datePart = str.slice(0, 10);
+    const timePart = str.slice(11).replace('T', ' ');
+
+    if (timePart) {
+        const [hh, mi, ss = '00'] = timePart.split(':').map(Number);
+        const h = String(hh).padStart(2, '0');
+        const m = String(mi).padStart(2, '0');
+        const sc = String(ss).padStart(2, '0');
+        return `${datePart} ${h}:${m}:${sc}`;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (datePart === today) {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const sc = String(now.getSeconds()).padStart(2, '0');
+        return `${datePart} ${h}:${m}:${sc}`;
+    }
+    if (datePart < today) {
+        return `${datePart} 12:00:00`;
+    }
+    return `${datePart} 00:00:00`;
 }
 
 /** 模型常把 JSON 包在 ```json 围栏里 */

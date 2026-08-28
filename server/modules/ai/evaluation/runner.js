@@ -38,6 +38,8 @@ function runOfflineEvaluation(opts = {}) {
         type_total: 0, type_hit: 0,
         category_total: 0, category_hit: 0,
         date_total: 0, date_hit: 0,
+        // 秒级完备性：分母=所有声明了日期期望的交易
+        date_precision_total: 0, date_precision_hit: 0,
         verdict_total: 0, verdict_hit: 0,
     };
 
@@ -108,9 +110,21 @@ function runOfflineEvaluation(opts = {}) {
             }
             if (exp.date !== undefined) {
                 counters.date_total += 1;
-                const ok = act.date === exp.date;
+                // 日期按「期望值声明的精度」比较：
+                // 期望写到日（'2026-08-25'）→ 只校验到日。这样「没有具体时刻时补
+                // 12:00:00 还是当前时刻」这类实现细节不会被固化进黄金标准 ——
+                // 以后调整补齐策略不会把评测打红。
+                // 若某个用例就是要卡秒级精度，把期望写全（19 字符）即可自动升级为全等比较。
+                const ok = String(act.date ?? '').slice(0, String(exp.date).length) === exp.date;
                 row.date = { expected: exp.date, actual: act.date, ok };
                 if (ok) counters.date_hit += 1; else passed = false;
+
+                // 秒级完备性：项目记账规则要求交易时间精确到秒，
+                // 缺时分秒会导致同日多笔排序不稳、幂等键冲突。
+                counters.date_precision_total += 1;
+                if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(act.date ?? ''))) {
+                    counters.date_precision_hit += 1;
+                }
             }
             if (exp.merchant !== undefined) {
                 const ok = act.merchant === exp.merchant;
@@ -151,6 +165,7 @@ function runOfflineEvaluation(opts = {}) {
         type_accuracy: rate(counters.type_hit, counters.type_total),
         category_accuracy: rate(counters.category_hit, counters.category_total),
         date_accuracy: rate(counters.date_hit, counters.date_total),
+        date_precision_rate: rate(counters.date_precision_hit, counters.date_precision_total),
         verdict_accuracy: rate(counters.verdict_hit, counters.verdict_total),
         case_pass_rate: rate(results.filter(r => r.passed).length, results.length),
     };
