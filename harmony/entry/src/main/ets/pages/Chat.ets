@@ -20,8 +20,8 @@ import { AppBackground, DropdownField, DropdownOption } from '../common/componen
 import { startRecord, stopRecord } from '../common/audio';
 import { TransactionItem } from '../common/models';
 import {
-  Account, AccountsResponse, Category, AiCandidateTxn, AiTxnValidation, AiFieldVerdict,
-  AiPerFieldMap, AiConfidenceMap, AiEvidenceMap
+  Account, AccountsResponse, Book, BooksResponse, Category, AiCandidateTxn, AiTxnValidation,
+  AiFieldVerdict, AiPerFieldMap, AiConfidenceMap, AiEvidenceMap
 } from '../common/models';
 
 interface ChatMsg {
@@ -132,6 +132,15 @@ struct Chat {
   @State accounts: Account[] = [];
   @State categories: Category[] = [];
   @State defaultAccountId: number = 0;
+  // 底部上下文 chip 联动用：当前选中的账户/账本会同步到所有候选卡片
+  @State selectedAccountId: number = 0;
+  @State books: Book[] = [];
+  @State currentBookId: number = 0;
+  @State currentBookName: string = '个人账本';
+  @State showBookSheet: boolean = false;
+  @State showAccountSheet: boolean = false;
+  @State showLocationDialog: boolean = false;
+  @State locationDraft: string = '';
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private timer: number = 0;
@@ -143,17 +152,26 @@ struct Chat {
     }];
     // 确认卡片需要账户/分类做下拉；失败不阻塞对话主流程
     try {
-      const rs = await Promise.all([Api.getAccounts(), Api.getCategories()]);
+      const rs = await Promise.all([Api.getAccounts(), Api.getCategories(), Api.getBooks()]);
       const ar = rs[0];
       const cr = rs[1];
+      const br = rs[2];
       if (ar.success && ar.data) {
         const d = ar.data as AccountsResponse;
         // 已销户账户不该出现在下拉里，否则用户能把钱记到一个关闭的账户上
         this.accounts = (d.accounts || []).filter((a: Account) => (a.status ?? 'active') !== 'closed');
         const def = this.accounts.find((a: Account) => a.is_default === true);
         this.defaultAccountId = def ? def.id : (this.accounts.length > 0 ? this.accounts[0].id : 0);
+        this.selectedAccountId = this.defaultAccountId;
       }
       if (cr.success && cr.data) this.categories = cr.data as Category[];
+      if (br.success && br.data) {
+        const d = br.data as BooksResponse;
+        this.books = d.books || [];
+        this.currentBookId = d.currentBookId;
+        const cur = this.books.find((b: Book) => b.id === d.currentBookId);
+        this.currentBookName = cur ? cur.name : (this.books.length > 0 ? this.books[0].name : '个人账本');
+      }
     } catch (e) { /* 静默降级：确认卡片仍可展示，只是下拉为空 */ }
   }
 
@@ -277,6 +295,7 @@ struct Chat {
         this.predictionId = pid;
         this.originalCandidates = cloneTxns(txns);
         this.candidates = cloneTxns(txns);
+        this.ensureCandidateAccounts();
         this.aiVerdict = d.verdict ? d.verdict : 'needs_confirmation';
         this.aiReasons = d.reasons ? d.reasons : [];
         this.aiOverall = d.overall_confidence === undefined ? -1 : d.overall_confidence;
@@ -331,6 +350,7 @@ struct Chat {
       this.predictionId = d.prediction_id;
       this.originalCandidates = cloneTxns(d.transactions);
       this.candidates = cloneTxns(d.transactions);
+      this.ensureCandidateAccounts();
       this.aiVerdict = d.verdict;
       this.aiReasons = d.reasons ? d.reasons : [];
       this.aiOverall = d.overall_confidence === undefined ? -1 : d.overall_confidence;
@@ -451,6 +471,85 @@ struct Chat {
 
   setTransferTo(seq: number, a: Account): void {
     this.applyEdit(seq, (t: AiCandidateTxn) => { t.to_account_id = a.id; });
+  }
+
+  /** 候选交易进入确认态时，自动把当前选中的默认账户填充到缺账户的交易上 */
+  ensureCandidateAccounts(): void {
+    if (this.selectedAccountId <= 0 || this.candidates.length === 0) return;
+    const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
+      if (t.type === 'transfer' || t.account_id) return t;
+      const copy = cloneTxn(t);
+      copy.account_id = this.selectedAccountId;
+      return copy;
+    });
+    this.candidates = next;
+  }
+
+  /** 底部账户 chip：把当前选中账户同步到所有非转账候选卡片 */
+  applyAccountToAll(id: number): void {
+    if (id <= 0 || this.candidates.length === 0) return;
+    this.selectedAccountId = id;
+    const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
+      if (t.type === 'transfer' || t.account_id === id) return t;
+      const copy = cloneTxn(t);
+      copy.account_id = id;
+      return copy;
+    });
+    this.candidates = next;
+  }
+
+  /** 不关联：清空所有非转账候选卡片的账户 */
+  unlinkAccounts(): void {
+    this.selectedAccountId = 0;
+    const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
+      if (t.type === 'transfer') return t;
+      const copy = cloneTxn(t);
+      copy.account_id = undefined;
+      return copy;
+    });
+    this.candidates = next;
+  }
+
+  /** 添加地点：把地点追加到所有候选备注里 */
+  applyLocationToAll(): void {
+    const loc = this.locationDraft.trim();
+    if (!loc || this.candidates.length === 0) return;
+    const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
+      const copy = cloneTxn(t);
+      const prefix = copy.note ? `${copy.note} · ` : '';
+      copy.note = `${prefix}${loc}`;
+      return copy;
+    });
+    this.candidates = next;
+    this.locationDraft = '';
+    this.showLocationDialog = false;
+  }
+
+  /** 切换当前账本，成功后刷新页面默认账户 */
+  async switchBookAndReload(id: number): Promise<void> {
+    if (id === this.currentBookId) {
+      this.showBookSheet = false;
+      return;
+    }
+    try {
+      const r = await Api.switchBook(id);
+      if (r.success && r.data) {
+        this.currentBookId = id;
+        const cur = this.books.find((b: Book) => b.id === id);
+        this.currentBookName = cur ? cur.name : '个人账本';
+        // 切换账本后账户列表会变化，刷新并重新选默认账户
+        const ar = await Api.getAccounts();
+        if (ar.success && ar.data) {
+          const d = ar.data as AccountsResponse;
+          this.accounts = (d.accounts || []).filter((a: Account) => (a.status ?? 'active') !== 'closed');
+          const def = this.accounts.find((a: Account) => a.is_default === true);
+          this.defaultAccountId = def ? def.id : (this.accounts.length > 0 ? this.accounts[0].id : 0);
+          this.selectedAccountId = this.defaultAccountId;
+          this.applyAccountToAll(this.selectedAccountId);
+        }
+      }
+    } catch (e) { /* 失败静默，不打扰 */ }
+    this.showBookSheet = false;
   }
 
   removeCandidate(seq: number): void {
@@ -622,62 +721,81 @@ struct Chat {
     .padding({ top: 20, bottom: 8, left: 8, right: 8 })
   }
 
-  /** 字段标签 + 置信度徽标；数据源为服务端 validation，此处不做阈值判断 */
-  @Builder FieldLabel(text: string, seq: number, field: string) {
-    Row({ space: 4 }) {
-      Text(text).fontSize(11).fontColor(COLORS.textSecondary)
-      if (this.fieldVerdict(seq, field) !== undefined) {
-        Text(`${Math.round((this.fieldVerdict(seq, field)!.score) * 100)}%`)
-          .fontSize(9).fontWeight(FontWeight.Bold)
-          .fontColor(this.fieldVerdict(seq, field)!.ok ? OK_GREEN : WARN_AMBER)
-          .backgroundColor(this.fieldVerdict(seq, field)!.ok ? OK_GREEN_BG : WARN_AMBER_BG)
-          .padding({ left: 4, right: 4, top: 1, bottom: 1 })
-          .borderRadius(6)
-      }
-    }
-  }
-
-  /** 单笔候选交易的编辑行 */
+  /** 单笔候选交易的编辑行（新版）：收据式卡片 + 字段网格 + 底部联动感知 */
   @Builder CandidateRow(t: AiCandidateTxn) {
-    Column({ space: 6 }) {
-      // 行头：序号 + 商户 + 原文 + 移除
-      Row({ space: 6 }) {
-        Text(`第 ${t.seq} 笔`).fontSize(11).fontWeight(FontWeight.Bold).fontColor(COLORS.brand)
-        if (t.merchant) {
-          Text(t.merchant).fontSize(12).fontColor(COLORS.textPrimary).maxLines(1)
+    Column({ space: 0 }) {
+      // 头部：类型图标 + 标题（商户 / 备注 / 原文） + 大金额 + 移除
+      Row({ space: 10 }) {
+        // 类型色环
+        Column() {
+          Text(t.type === 'income' ? '↓' : (t.type === 'transfer' ? '⇄' : '↑'))
+            .fontSize(16).fontColor('#FFFFFF').textAlign(TextAlign.Center)
         }
-        if (t.raw_segment) {
-          Text(`「${t.raw_segment}」`).fontSize(11).fontColor(COLORS.textSecondary)
-            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-        } else {
-          Blank()
-        }
-        Text('移除').fontSize(12).fontColor(COLORS.danger)
+        .width(36).height(36).borderRadius(18)
+        .backgroundColor(t.type === 'income' ? '#1B7F4B' : (t.type === 'transfer' ? '#4A6FA5' : '#C55A1E'))
+        .justifyContent(FlexAlign.Center)
+
+        Column({ space: 2 }) {
+          Text(t.merchant || t.note || t.raw_segment || '交易')
+            .fontSize(15).fontWeight(FontWeight.Medium)
+            .fontColor(COLORS.textPrimary).maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Row({ space: 6 }) {
+            Text(`${t.seq}`).fontSize(10).fontColor(COLORS.brand)
+              .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+              .backgroundColor(withAlpha(COLORS.brandBgLight, 0.5)).borderRadius(4)
+            if (t.raw_segment && t.raw_segment !== (t.merchant || t.note || '')) {
+              Text(`「${t.raw_segment}」`).fontSize(11).fontColor(COLORS.textSecondary)
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+            }
+          }.width('100%')
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+
+        Column({ space: 2 }) {
+          Text(`${t.type === 'income' ? '+' : '-'}${fmtMoney(t.amount)}`)
+            .fontSize(22).fontWeight(FontWeight.Bold)
+            .fontColor(t.type === 'income' ? '#1B7F4B' : (t.type === 'transfer' ? '#4A6FA5' : COLORS.textPrimary))
+          this.FieldBadge(t.seq, 'amount')
+        }.alignItems(HorizontalAlign.End)
+
+        Text('✕').fontSize(16).fontColor(COLORS.textSecondary)
+          .width(28).height(28).textAlign(TextAlign.Center)
           .onClick(() => this.removeCandidate(t.seq))
-      }.width('100%')
+      }.width('100%').alignItems(VerticalAlign.Center)
 
-      // 类型 + 金额
-      Row({ space: 8 }) {
+      // 字段编辑网格：类型 + 金额
+      Row({ space: 10 }) {
+        // 类型
         Column({ space: 2 }) {
-          this.FieldLabel('类型', t.seq, 'type')
-          Text(typeLabelOf(t.type)).fontSize(13).fontColor(COLORS.textPrimary)
-            .width('100%').padding({ left: 8, right: 8, top: 8, bottom: 8 })
-            .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(8)
-            .onClick(() => this.cycleType(t.seq, t.type))
+          Row({ space: 4 }) {
+            this.FieldLabel('类型')
+            this.FieldBadge(t.seq, 'type')
+          }.width('100%')
+          Row() {
+            Text(typeLabelOf(t.type)).fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
+            Text('›').fontSize(16).fontColor(COLORS.textSecondary)
+          }.width('100%').padding({ left: 10, right: 10, top: 10, bottom: 10 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
+          .onClick(() => this.cycleType(t.seq, t.type))
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
 
+        // 金额
         Column({ space: 2 }) {
-          this.FieldLabel('金额', t.seq, 'amount')
-          TextInput({ text: trimAmount(t.amount) })
-            .type(InputType.NUMBER_DECIMAL).fontSize(13).height(36)
-            .onChange((v: string) => this.setAmount(t.seq, v))
+          this.FieldLabel('金额')
+          Row() {
+            TextInput({ text: trimAmount(t.amount) })
+              .type(InputType.NUMBER_DECIMAL).fontSize(15).height(40).layoutWeight(1)
+              .onChange((v: string) => this.setAmount(t.seq, v))
+          }.width('100%').padding({ left: 10, right: 10, top: 6, bottom: 6 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-      }.width('100%').alignItems(VerticalAlign.Top)
+      }.width('100%').margin({ top: 14 })
 
-      // 账户 / 转账双账户 + 分类。选择器复用项目既有 DropdownField，
-      // 而非自造 bindMenu —— 视觉与 AddTransaction 页保持一致
       if (t.type === 'transfer') {
-        Column({ space: 8 }) {
+        Column({ space: 10 }) {
           DropdownField({
             label: '转出账户',
             value: this.accountName(t.from_account_id),
@@ -692,95 +810,154 @@ struct Chat {
             emptyHint: '选择转入账户',
             onSelected: (id: number) => this.setTransferSlot(t.seq, 'to', id)
           })
-        }.width('100%').alignItems(HorizontalAlign.Start)
+        }.width('100%').margin({ top: 10 }).alignItems(HorizontalAlign.Start)
       } else {
-        Column({ space: 8 }) {
+        Row({ space: 10 }) {
           DropdownField({
             label: '账户',
             value: this.accountName(t.account_id),
             options: this.accountOptions(),
             emptyHint: '选择账户',
             onSelected: (id: number) => this.setAccountById(t.seq, id)
-          })
-          Column({ space: 2 }) {
-            this.FieldLabel('分类', t.seq, 'category')
-            DropdownField({
-              label: '',
-              value: t.category_name ? t.category_name : '',
-              options: this.categoryOptions(t.type),
-              emptyHint: '选择分类',
-              onSelected: (id: number) => this.setCategoryById(t.seq, id)
-            })
-          }.width('100%').alignItems(HorizontalAlign.Start)
-        }.width('100%').alignItems(HorizontalAlign.Start)
+          }).layoutWeight(1)
+          DropdownField({
+            label: '分类',
+            value: t.category_name ? t.category_name : '',
+            options: this.categoryOptions(t.type),
+            emptyHint: '选择分类',
+            onSelected: (id: number) => this.setCategoryById(t.seq, id)
+          }).layoutWeight(1)
+        }.width('100%').margin({ top: 10 }).alignItems(VerticalAlign.Top)
       }
 
-      // 日期（只读展示）+ 备注
-      Row({ space: 8 }) {
+      Row({ space: 10 }) {
+        // 日期
         Column({ space: 2 }) {
-          this.FieldLabel('日期', t.seq, 'date')
-          Text(t.date || '—').fontSize(12).fontColor(COLORS.textPrimary).margin({ top: 6 })
+          Row({ space: 4 }) {
+            this.FieldLabel('日期')
+            this.FieldBadge(t.seq, 'date')
+          }.width('100%')
+          Row() {
+            Text(t.date || '—').fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
+          }.width('100%').padding({ left: 10, right: 10, top: 10, bottom: 10 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        Column({ space: 2 }) {
-          Text('备注').fontSize(11).fontColor(COLORS.textSecondary)
-          TextInput({ text: t.note || '', placeholder: '备注' })
-            .fontSize(12).height(36).onChange((v: string) => this.setNote(t.seq, v))
-        }.layoutWeight(2).alignItems(HorizontalAlign.Start)
-      }.width('100%').alignItems(VerticalAlign.Top)
 
-      // 证据链：解释「为什么这么判」
+        // 备注
+        Column({ space: 2 }) {
+          this.FieldLabel('备注')
+          Row() {
+            TextInput({ text: t.note || '', placeholder: '备注' })
+              .fontSize(14).height(40).layoutWeight(1)
+              .onChange((v: string) => this.setNote(t.seq, v))
+          }.width('100%').padding({ left: 10, right: 10, top: 6, bottom: 6 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+      }.width('100%').margin({ top: 10 })
+
+      // 证据链：弱化为浅灰小字，不抢视觉重心
       if (this.evidenceText(t)) {
         Text(this.evidenceText(t)).fontSize(10).fontColor(COLORS.textSecondary)
-          .width('100%').margin({ top: 2 })
+          .width('100%').margin({ top: 10 })
       }
     }
-    .width('100%').padding(10).borderRadius(10)
-    .backgroundColor(withAlpha(COLORS.surface, 0.6))
+    .width('100%').padding(14).borderRadius(14)
+    .backgroundColor(COLORS.card)
+    .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 
-  /** AI v0.2 确认卡片：落账唯一入口，未确认前账本不会被改动 */
+  /** 字段标签：精简版 */
+  @Builder FieldLabel(text: string) {
+    Text(text).fontSize(11).fontColor(COLORS.textSecondary)
+  }
+
+  /** 字段级置信度徽标 */
+  @Builder FieldBadge(seq: number, field: string) {
+    const v = this.fieldVerdict(seq, field);
+    if (v !== undefined) {
+      Text(`${Math.round(v.score * 100)}%`)
+        .fontSize(9).fontWeight(FontWeight.Bold)
+        .fontColor(v.ok ? OK_GREEN : WARN_AMBER)
+        .backgroundColor(v.ok ? OK_GREEN_BG : WARN_AMBER_BG)
+        .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+        .borderRadius(6)
+    }
+  }
+
+  /** AI v0.2 确认卡片（新版）：收据式汇总头部 + 候选卡片 + 底部动作 */
   @Builder ConfirmCard() {
-    Column({ space: 10 }) {
-      // 裁决横幅：以服务端 verdict 为唯一依据
-      Column({ space: 2 }) {
-        Text(this.aiVerdict === 'ready'
-          ? `✅ 各字段置信度达标，仍建议核对后入账${this.overallText()}`
-          : `⚠️ 有字段置信度偏低，请核对后入账${this.overallText()}`)
-          .fontSize(12).fontWeight(FontWeight.Medium)
-          .fontColor(this.aiVerdict === 'ready' ? OK_GREEN : WARN_AMBER)
-        ForEach(this.aiReasons.slice(0, 4), (r: string) => {
-          Text(`· ${r}`).fontSize(10)
-            .fontColor(this.aiVerdict === 'ready' ? OK_GREEN : WARN_AMBER)
-        }, (r: string) => r)
+    Column({ space: 12 }) {
+      // 裁决头部：左侧状态圆点 + 主文案 + 置信度
+      Row({ space: 10 }) {
+        Column() {
+          Text(this.aiVerdict === 'ready' ? '✓' : '!')
+            .fontSize(14).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
+            .textAlign(TextAlign.Center)
+        }
+        .width(28).height(28).borderRadius(14)
+        .backgroundColor(this.aiVerdict === 'ready' ? OK_GREEN : WARN_AMBER)
+        .justifyContent(FlexAlign.Center)
+
+        Column({ space: 2 }) {
+          Text(this.aiVerdict === 'ready'
+            ? `各字段置信度达标，核对后入账${this.overallText()}`
+            : `有字段置信度偏低，请核对后入账${this.overallText()}`)
+            .fontSize(14).fontWeight(FontWeight.Medium)
+            .fontColor(COLORS.textPrimary)
+          if (this.aiReasons.length > 0) {
+            Text(this.aiReasons.slice(0, 3).join(' · '))
+              .fontSize(11).fontColor(COLORS.textSecondary)
+              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       }
-      .width('100%').padding(10).borderRadius(10)
+      .width('100%').padding(14).borderRadius(14)
       .backgroundColor(this.aiVerdict === 'ready' ? OK_GREEN_BG : WARN_AMBER_BG)
-      .alignItems(HorizontalAlign.Start)
+      .alignItems(VerticalAlign.Center)
 
       ForEach(this.candidates, (t: AiCandidateTxn) => {
         this.CandidateRow(t)
       }, (t: AiCandidateTxn) => t.seq.toString())
 
-      Row({ space: 8 }) {
-        Text(this.committing
+      // 汇总金额
+      Row({ space: 4 }) {
+        Text('合计').fontSize(13).fontColor(COLORS.textSecondary)
+        Text(`${fmtMoney(this.totalAmount())}`).fontSize(16).fontWeight(FontWeight.Bold)
+          .fontColor(COLORS.textPrimary)
+        Text(`(${this.candidates.length} 笔)`).fontSize(12).fontColor(COLORS.textSecondary)
+      }.width('100%').justifyContent(FlexAlign.End)
+
+      Row({ space: 10 }) {
+        Button(this.committing
           ? '提交中…'
           : (this.isDirty()
-              ? `✅ 按修正后入账（${this.candidates.length} 笔）`
-              : `✅ 确认入账（${this.candidates.length} 笔）`))
-          .fontSize(14).fontColor('#FFFFFF').textAlign(TextAlign.Center)
-          .layoutWeight(1).padding({ top: 10, bottom: 10 })
+              ? `按修正后入账（${this.candidates.length} 笔）`
+              : `确认入账（${this.candidates.length} 笔）`))
+          .fontSize(15).fontColor('#FFFFFF')
+          .layoutWeight(1).height(46)
           .backgroundColor(this.committing ? COLORS.textSecondary : COLORS.brand)
-          .borderRadius(10)
+          .borderRadius(12)
           .onClick(() => { if (!this.committing) this.commitPrediction(); })
-        Text('弃置').fontSize(14).fontColor(COLORS.danger)
-          .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
+        Button('弃置')
+          .fontSize(15).fontColor(COLORS.danger)
+          .height(46).padding({ left: 20, right: 20 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(12)
           .onClick(() => { if (!this.committing) this.discardPrediction(); })
       }.width('100%')
     }
-    .width('100%').padding(12).borderRadius(14)
-    .backgroundColor(withAlpha(COLORS.card, 0.95))
+    .width('100%').padding(14).borderRadius(16)
+    .backgroundColor(withAlpha(COLORS.card, 0.98))
     .border({ width: 0.5, color: COLORS.outlineVariant })
+  }
+
+  /** 候选交易总金额 */
+  totalAmount(): number {
+    let sum = 0;
+    for (const t of this.candidates) sum += (t.amount || 0);
+    return sum;
   }
 
   overallText(): string {
@@ -835,6 +1012,140 @@ struct Chat {
     if (c) this.setCategory(seq, c);
   }
 
+  /** 底部上下文 chip 条：账本 / 账户 / 不关联 / 添加地点，联动确认卡片 */
+  @Builder ContextChipBar() {
+    Row({ space: 8 }) {
+      // 账本
+      this.ContextChip(
+        '📒', this.currentBookName,
+        () => { this.showBookSheet = true; },
+        false
+      )
+      // 账户：显示当前选中账户，点一下弹出账户选择（名称过长截断，避免挤出其他 chip）
+      this.ContextChip(
+        '💳',
+        this.selectedAccountId > 0 ? this.accountName(this.selectedAccountId) : '选择账户',
+        () => { this.showAccountSheet = true; },
+        this.selectedAccountId > 0,
+        120
+      )
+      // 不关联
+      this.ContextChip(
+        '🔗', '不关联',
+        () => { this.unlinkAccounts(); },
+        this.selectedAccountId === 0
+      )
+      // 添加地点
+      this.ContextChip(
+        '📍', '添加地点',
+        () => { this.locationDraft = ''; this.showLocationDialog = true; },
+        false
+      )
+    }
+    .width('100%').padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .backgroundColor(withAlpha(COLORS.surface, 0.95))
+    .border({ width: { top: 0.5 }, color: COLORS.outlineVariant })
+    .justifyContent(FlexAlign.Start)
+  }
+
+  @Builder ContextChip(icon: string, label: string, onClick: () => void, active: boolean, maxLabelWidth: number = 0) {
+    Row({ space: 4 }) {
+      Text(icon).fontSize(13)
+      if (maxLabelWidth > 0) {
+        Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .fontColor(active ? COLORS.brand : COLORS.textPrimary)
+          .fontWeight(active ? FontWeight.Medium : FontWeight.Normal)
+          .maxWidth(maxLabelWidth)
+      } else {
+        Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .fontColor(active ? COLORS.brand : COLORS.textPrimary)
+          .fontWeight(active ? FontWeight.Medium : FontWeight.Normal)
+      }
+    }
+    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+    .backgroundColor(active ? COLORS.brandBgLight : withAlpha(COLORS.surface, 0.6))
+    .border({ width: 0.5, color: active ? COLORS.brand : COLORS.outlineVariant })
+    .borderRadius(16)
+    .flexShrink(0)
+    .onClick(onClick)
+  }
+
+  /** 账本选择 sheet */
+  @Builder BookSheet() {
+    Column({ space: 0 }) {
+      Row({ space: 8 }) {
+        Text('切换账本').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
+        Text('✕').fontSize(18).fontColor(COLORS.textSecondary)
+          .onClick(() => this.showBookSheet = false)
+      }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+
+      ForEach(this.books, (b: Book) => {
+        Row({ space: 10 }) {
+          Text(b.id === this.currentBookId ? '✓' : '').fontSize(14).fontColor(COLORS.brand).width(20)
+          Text(b.name).fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
+        }
+        .width('100%').padding({ top: 14, bottom: 14 })
+        .backgroundColor(b.id === this.currentBookId ? COLORS.brandBgLight : COLORS.surface)
+        .borderRadius(10)
+        .onClick(() => this.switchBookAndReload(b.id))
+      }, (b: Book) => b.id.toString())
+    }
+    .width('100%').padding(16).borderRadius({ topLeft: 16, topRight: 16 })
+    .backgroundColor(COLORS.card)
+  }
+
+  /** 账户选择 sheet */
+  @Builder AccountSheet() {
+    Column({ space: 0 }) {
+      Row({ space: 8 }) {
+        Text('选择账户').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
+        Text('✕').fontSize(18).fontColor(COLORS.textSecondary)
+          .onClick(() => this.showAccountSheet = false)
+      }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+
+      ForEach(this.accounts, (a: Account) => {
+        Row({ space: 10 }) {
+          Text(a.id === this.selectedAccountId ? '✓' : '').fontSize(14).fontColor(COLORS.brand).width(20)
+          Text(a.name).fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
+        }
+        .width('100%').padding({ top: 14, bottom: 14 })
+        .backgroundColor(a.id === this.selectedAccountId ? COLORS.brandBgLight : COLORS.surface)
+        .borderRadius(10)
+        .onClick(() => {
+          this.applyAccountToAll(a.id);
+          this.showAccountSheet = false;
+        })
+      }, (a: Account) => a.id.toString())
+    }
+    .width('100%').padding(16).borderRadius({ topLeft: 16, topRight: 16 })
+    .backgroundColor(COLORS.card)
+  }
+
+  /** 地点输入弹窗 */
+  @Builder LocationDialog() {
+    Column({ space: 14 }) {
+      Text('添加地点').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
+      TextInput({ placeholder: '例如：公司楼下便利店', text: this.locationDraft })
+        .fontSize(14).height(44)
+        .onChange((v: string) => this.locationDraft = v)
+      Row({ space: 10 }) {
+        Button('取消')
+          .fontSize(14).fontColor(COLORS.textSecondary)
+          .height(40).padding({ left: 20, right: 20 })
+          .backgroundColor(withAlpha(COLORS.surface, 0.6))
+          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
+          .onClick(() => { this.showLocationDialog = false; this.locationDraft = ''; })
+        Button('确认')
+          .fontSize(14).fontColor('#FFFFFF')
+          .height(40).padding({ left: 20, right: 20 })
+          .backgroundColor(COLORS.brand).borderRadius(10)
+          .onClick(() => this.applyLocationToAll())
+      }.width('100%').justifyContent(FlexAlign.End)
+    }
+    .width('100%').padding(16).borderRadius(16)
+    .backgroundColor(COLORS.card)
+  }
+
   build() {
     // 页面背景三层结构（见 docs/harmony-style-guide.md 第 15 节）：
     // 根节点必须是原生 Stack（@Entry 不接受自定义组件做根，会报 10905210）
@@ -876,6 +1187,11 @@ struct Chat {
         }.padding(12)
       }.layoutWeight(1)
 
+      // 上下文 chip 条：仅在有 AI 确认卡片时显示（账户/不关联/地点都是给候选交易用的）
+      if (this.predictionId > 0) {
+        this.ContextChipBar()
+      }
+
       // 输入栏
       Column({ space: 6 }) {
         if (this.pendingImage) {
@@ -909,6 +1225,29 @@ struct Chat {
           .border({ width: { top: 0.5 }, color: COLORS.outlineVariant })
       }.width('100%')
       }.width('100%').height('100%')
+
+      // 浮层：底部 sheet / 居中 dialog，放在 Stack 最上层
+      if (this.showBookSheet) {
+        Column() {
+          this.BookSheet()
+        }.width('100%').height('100%')
+        .justifyContent(FlexAlign.End)
+        .backgroundColor('rgba(0,0,0,0.35)')
+      }
+      if (this.showAccountSheet) {
+        Column() {
+          this.AccountSheet()
+        }.width('100%').height('100%')
+        .justifyContent(FlexAlign.End)
+        .backgroundColor('rgba(0,0,0,0.35)')
+      }
+      if (this.showLocationDialog) {
+        Column() {
+          this.LocationDialog()
+        }.width('100%').height('100%')
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor('rgba(0,0,0,0.35)')
+      }
     }.width('100%').height('100%')
   }
 }
