@@ -34,6 +34,10 @@ harmony/.idea/
 harmony/*_layout.json
 # 本地交接/工作笔记（不入库）
 .handover/
+# 浏览器自动化（playwright-cli）日志产物，不入库
+.playwright-cli/
+# UI 布局调试临时页，不入库
+public/debug-rect.html
 
 # 鸿蒙签名材料（CI 注入的临时目录 / 本地 base64 中间文件，严禁入库）
 harmony/.sign/
