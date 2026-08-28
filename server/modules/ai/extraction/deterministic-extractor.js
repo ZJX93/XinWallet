@@ -38,6 +38,11 @@ function extractTransactions(text, ctx = {}) {
     const {
         categories = [], account_id = null, refDate = new Date(), userMerchants = [],
         accounts = [],
+        // 客户端透传的「上次使用账户」名：OCR 文本无渠道关键词时
+        // resolveAccount 走 fallback_default 路径会用到，让识别依据可显示「上次使用：XXX」。
+        // 这里直接读 ctx，不再依赖 working-memory（extractTransactions 在路由层直接被调，
+        // 不一定走 buildContext 路径，wm 不一定有 lastAccountName 字段）。
+        last_account_name = null,
     } = ctx;
 
     const { segments, source: splitSource, multi } = splitTransactions(text);
@@ -69,7 +74,7 @@ function extractTransactions(text, ctx = {}) {
         const accountResolved = resolveAccount(seg, {
             accounts,
             account_id,
-            last_account_name: wm && wm.lastAccountName ? wm.lastAccountName : null,
+            last_account_name: last_account_name || null,
         });
 
         return {

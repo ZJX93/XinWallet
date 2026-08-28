@@ -80,6 +80,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         book_id: ctx.wm.bookId,
         refDate: ctx.wm.refDate,
         userMerchants: merchantHints,
+        last_account_name: ctx.wm.lastAccountName || null,
     });
 
     // ---- 3) Memory Retrieval ----
@@ -108,6 +109,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             book_id: ctx.wm.bookId,
             refDate: ctx.wm.refDate,
             userMerchants: mergedMerchants,
+            last_account_name: ctx.wm.lastAccountName || null,
         })
         : firstPass;
 

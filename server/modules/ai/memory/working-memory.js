@@ -51,6 +51,7 @@ function snapshotWorkingMemory(wm) {
     return {
         book_id: wm.bookId,
         account_id: wm.accountId,
+        last_account_name: wm.lastAccountName || null,
         timezone: wm.timezone,
         ref_date: wm.refDateStr,
         platform: wm.platform,
