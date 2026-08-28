@@ -26,7 +26,7 @@ const { buildContext, snapshotContext } = require('./context-builder');
 const { decide } = require('./decision-engine');
 const { retrieveMemory, snapshotMemory, emptyMemory } = require('../memory/memory-retrieval');
 const { analyzeComplexity } = require('../runtime/complexity-analyzer');
-const { route } = require('../runtime/model-router');
+const { route, isSimpleModelRouteAllowed } = require('../runtime/model-router');
 const { resolveProvider, reviewWithModel, isModelRouteAllowed } = require('../providers/provider-gateway');
 
 const PREDICTION_VERSION = 2;   // Phase 3/4 接入后快照结构升级
@@ -122,11 +122,16 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     });
 
     const modelAllowed = allowModel === null ? isModelRouteAllowed() : allowModel;
+    // simple 默认不去查 provider（省一次 SQL + 省一次模型调用）；
+    // 只有当部署方开启 AI_MODEL_ROUTE_SIMPLE 时才为 simple 也解析 provider。
+    const simpleToModel = isSimpleModelRouteAllowed();
     let provider = null;
-    if (modelAllowed && complexity.level !== 'simple') {
+    if (modelAllowed && (complexity.level !== 'simple' || simpleToModel)) {
         provider = await resolveProvider(userId);
     }
-    const routing = route({ complexity, provider, allowModel: modelAllowed });
+    const routing = route({
+        complexity, provider, allowModel: modelAllowed, allowSimpleModel: simpleToModel,
+    });
 
     // ---- 7) 可选：Provider 复核（仅在真正路由到模型时）----
     let modelRequest = null;
@@ -157,25 +162,44 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
                 const out = { ...t };
                 const applied = [];
                 const conf = fix.conf || {};
-                for (const f of ['type', 'amount', 'category_id', 'date', 'merchant', 'note']) {
-                    if (fix[f] !== undefined && fix[f] !== t[f]) {
-                        out[f] = fix[f];
-                        applied.push(f);
+                // account_id 也在合并范围内：v2 prompt 起模型可建议账户
+                // （此前模型即便想给，清洗层也会直接丢弃 —— 账户永远只能本地猜）。
+                for (const f of ['type', 'amount', 'category_id', 'account_id', 'date', 'merchant', 'note']) {
+                    if (fix[f] === undefined || fix[f] === t[f]) continue;
+
+                    // 账户保守合并：只在模型【比本地更有把握】时才覆盖。
+                    // 理由：账户判错会污染余额；而本地一旦经渠道关键词命中
+                    // （原文出现"支付宝""花呗"）就是硬证据，不该被模型的软推测推翻。
+                    if (f === 'account_id') {
+                        const localScore = Number(out.confidence.account) || 0;
+                        const modelScore = Number(conf.account_id) || 0;
+                        if (modelScore <= localScore) continue;
                     }
+
+                    out[f] = fix[f];
+                    applied.push(f);
                 }
                 if (applied.length) {
                     out.confidence = { ...out.confidence };
                     out.evidence = { ...out.evidence };
                     for (const f of applied) {
-                        const key = f === 'category_id' ? 'category' : f;
+                        // confidence / evidence 用的归一化 key
+                        const key = f === 'category_id' ? 'category'
+                            : f === 'account_id' ? 'account'
+                                : f;
+                        // ⚠️ 模型自报 conf 用的是 prompt 里的【原始字段名】
+                        //    （category_id / account_id），必须按 f 取，不能按 key 取 ——
+                        //    此前用 conf[key] 恒为 undefined，导致模型的类目
+                        //    置信度被静默丢弃，永远落不到 confidence 上。
+                        const modelScore = conf[f];
                         // 金额/类型属于"错了污染账本"的字段：模型给的 conf 低于本地时保留本地分数，
                         // 其余字段用模型自报 conf（拿不准模型会自报低分 → 自然落到 needs_confirmation）。
-                        if (conf[key] !== undefined) {
+                        if (typeof modelScore === 'number') {
                             const localScore = out.confidence[key];
                             if ((f === 'amount' || f === 'type') && typeof localScore === 'number') {
-                                out.confidence[key] = Math.max(localScore, conf[key]);
+                                out.confidence[key] = Math.max(localScore, modelScore);
                             } else {
-                                out.confidence[key] = conf[key];
+                                out.confidence[key] = modelScore;
                             }
                         }
                         out.evidence[key] = `model_${routing.route}`;

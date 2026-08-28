@@ -109,6 +109,10 @@ function extractTransactions(text, ctx = {}) {
                 date: date.confidence,
                 currency: currency.confidence,
                 merchant: merchant ? merchant.confidence : 0,
+                // 账户置信度：本地路径由 resolveAccount 给出（渠道命中高、兜底低）。
+                // ⚠️ account 不在 DECISIVE_FIELDS 里 —— 账户判错不阻塞落账，
+                //    但模型建议账户时（v2 prompt）需要一个分数来做"取高者"的比较。
+                account: accountResolved.confidence,
             },
             // 抽取来源（可解释性：告诉用户「为什么这么判」）
             evidence: {

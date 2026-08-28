@@ -15,6 +15,7 @@
 
 const { recordFailure, recordSuccess } = require('../runtime/model-router');
 const { buildMemoryHints } = require('./prompt-builder');
+const { buildParserMessages } = require('../prompts/parser-prompt');
 
 // 全局开关：
 //   - 显式设为 false / 0 → 强制关闭（保留给想省成本的部署）。
@@ -85,53 +86,17 @@ async function reviewWithModel({
     provider, model, text, candidates, categories,
     accounts = [], memory = null, timeoutMs = 12000,
 }) {
-    const catList = categories
-        .filter(c => c.type === 'income' || c.type === 'expense')
-        .map(c => `${c.id}:${c.name}(${c.type})`)
-        .join(', ');
-
     // 用户记账习惯：把本地已检索到的规则 / 习惯假设 / 历史分布 / 否证
     // 翻译成自然语言喂给模型。此前模型只拿到「原文 + 本地候选 + 类目表」，
     // 等于让它凭常识盲猜 —— 这是"AI 识别差强人意"的根因之一。
-    // ⛔ 无历史的新用户 / 记忆层故障时返回空串，prompt 与旧行为完全一致。
+    // ⛔ 无历史的新用户 / 记忆层故障时返回空串，不注入任何内容。
     const memoryHints = buildMemoryHints({ memory, categories, accounts });
 
-    // 系统提示升级：从"只修明显错误的复核器"升级为"理解+补全的解析器"。
-    // 本地规则引擎擅长精确数字，但拿不准口语化类目、语义商家、隐含备注——
-    // 把这些交给模型，而不是让模型只当打补丁的。
-    const systemParts = [
-        '你是记账助手的 AI 解析器。任务：基于用户原文，对本地规则引擎给出的候选交易做【语义理解与补全】。',
-        '你可以且应当：',
-        '1. 修正本地抽错的类型/金额/类目/日期/商家；',
-        '2. 补全本地没抽出来的字段（例如把"中午吃了碗面"归到餐饮类目、给出商家名、写入语义备注 note）；',
-        '3. 对口语化、模糊表述做合理推断（如"发了工资"→income、"还了信用卡"→transfer/expense）。',
-        '严格约束：',
-        '1. category_id 必须从下面给出的类目清单里选，不得臆造 id；拿不准时填 null。',
-        '2. 每个字段都要给 conf（0~1 置信度）：有把握≥0.9，推测 0.7~0.89，不确定填 0 或省略。',
-        '3. 金额/类型这种错了会污染账本的字段，没把握就保留本地值（不要乱改）。',
-        '4. 只输出 JSON，禁止额外文本。格式：',
-        '{"transactions":[{"seq":1,"type":"expense","amount":12.5,"category_id":33,',
-        '"date":"2026-08-25","merchant":"星巴克","note":"午餐","conf":{"type":0.95,"amount":0.98,"category_id":0.9,"date":0.95,"merchant":0.7}}]}',
-        '备注 note 用于记录消费目的/场景，便于后续洞察。',
-        `可用类目：${catList}`,
-    ];
-    // 用户习惯追加在最后：它是"最高优先级补充证据"，放在约束之后
-    // 可避免模型把它误当成又一次格式说明。
-    // ⚠️ 刻意用条件 push 而非在数组里填 memoryHints || ''：
-    //    后者在无习惯时会多拼一个 '\n'，导致 prompt 与旧版不一致。
-    if (memoryHints) systemParts.push(memoryHints);
-
-    const messages = [
-        { role: 'system', content: systemParts.join('\n') },
-        {
-            role: 'user',
-            content: `原文：${text}\n本地候选：${JSON.stringify(candidates.map(c => ({
-                seq: c.seq, type: c.type, amount: c.amount, category_id: c.category_id,
-                category_name: c.category_name, date: c.date, merchant: c.merchant,
-                note: c.note || '',
-            })))}`,
-        },
-    ];
+    // prompt 已外置到 ../prompts/parser-prompt.js 并版本化。
+    // 默认 v1（字节级冻结的基线），环境变量 AI_PARSER_PROMPT_VERSION=v2 切到增强版。
+    const { messages, version: promptVersion } = buildParserMessages({
+        text, candidates, categories, accounts, memoryHints,
+    });
 
     const request = {
         model,
@@ -141,6 +106,9 @@ async function reviewWithModel({
         // 便于事后判断"模型猜错"到底是没喂到习惯，还是喂了也没听。
         memory_hints_injected: Boolean(memoryHints),
         memory_hints_length: memoryHints ? memoryHints.length : 0,
+        // prompt 版本落库：事后可回溯"哪次错判用的是哪一版 prompt"，
+        // 也是 A/B 对比与一键回退的依据。
+        prompt_version: promptVersion,
     };
     const started = Date.now();
 
@@ -156,8 +124,9 @@ async function reviewWithModel({
             return { ok: false, error: '模型返回格式不合法', request, latency_ms: Date.now() - started };
         }
 
-        // 只接受合法类目 id 与合法字段；模型臆造 id / 非法值一律丢弃该字段（保留本地值）
+        // 只接受合法 id 与合法字段；模型臆造 id / 非法值一律丢弃该字段（保留本地值）
         const validIds = new Set(categories.map(c => c.id));
+        const validAccountIds = new Set(accounts.map(a => a.id));
         const cleaned = parsed.transactions.map(t => {
             const conf = (t.conf && typeof t.conf === 'object') ? t.conf : {};
             return {
@@ -165,7 +134,12 @@ async function reviewWithModel({
                 type: ['income', 'expense', 'transfer'].includes(t.type) ? t.type : undefined,
                 amount: typeof t.amount === 'number' && t.amount > 0 ? t.amount : undefined,
                 category_id: validIds.has(t.category_id) ? t.category_id : undefined,
-                date: /^\d{4}-\d{2}-\d{2}$/.test(t.date || '') ? t.date : undefined,
+                // v2 起模型可建议账户：同样只认白名单里的 id，臆造一律丢弃。
+                // 账户错了不会污染金额，但会污染余额，所以校验与类目同等严格。
+                account_id: validAccountIds.has(t.account_id) ? t.account_id : undefined,
+                // 日期允许到秒：v2 要求模型尽量补出 HH:MM:SS。
+                // 同时兼容纯日期（旧模型/保守输出），不做强制升级。
+                date: isValidModelDate(t.date) ? t.date : undefined,
                 merchant: typeof t.merchant === 'string' && t.merchant.trim() ? t.merchant.trim() : undefined,
                 note: typeof t.note === 'string' && t.note.trim() ? t.note.trim() : undefined,
                 // 模型自报置信度，原样带回（授信模型）。调用方仍过 Result Validator 阈值 + 冲突降级。
@@ -173,6 +147,7 @@ async function reviewWithModel({
                     type: typeof conf.type === 'number' ? conf.type : undefined,
                     amount: typeof conf.amount === 'number' ? conf.amount : undefined,
                     category_id: typeof conf.category_id === 'number' ? conf.category_id : undefined,
+                    account_id: typeof conf.account_id === 'number' ? conf.account_id : undefined,
                     date: typeof conf.date === 'number' ? conf.date : undefined,
                     merchant: typeof conf.merchant === 'number' ? conf.merchant : undefined,
                 },
@@ -209,6 +184,35 @@ function withTimeout(promise, ms) {
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error(`model timeout after ${ms}ms`)), ms)),
     ]);
+}
+
+/**
+ * 校验模型给出的日期字符串。
+ *
+ * ⚠️ 光靠正则只校验【格式】：「1002-81-93」完全符合 \d{4}-\d{2}-\d{2}，
+ *    却是 OCR 把订单号/单号误认成日期的产物 —— 直接落库会写出脏数据。
+ *    故必须再做一层【语义】校验：月份 1~12、日 1~31、时分秒在合理区间。
+ *
+ * @param {string} s
+ * @returns {boolean}
+ */
+function isValidModelDate(s) {
+    const str = String(s || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(str)) return false;
+
+    const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+    if (y < 1970 || y > 2200) return false;
+    if (m < 1 || m > 12) return false;
+    if (d < 1 || d > 31) return false;
+
+    const time = str.slice(11);
+    if (time) {
+        const parts = time.split(':').map(Number);
+        if (parts[0] > 23) return false;
+        if (parts[1] > 59) return false;
+        if (parts[2] !== undefined && parts[2] > 59) return false;
+    }
+    return true;
 }
 
 /** 模型常把 JSON 包在 ```json 围栏里 */

@@ -34,11 +34,18 @@ const breakers = new Map();
  * @param {boolean} [params.allowModel] 全局开关（环境变量 AI_ALLOW_MODEL_ROUTE）
  * @returns {{route:string, level:string, provider_id:number|null, model:string|null, reason:string}}
  */
-function route({ complexity, provider = null, allowModel = false }) {
+function route({ complexity, provider = null, allowModel = false, allowSimpleModel = null }) {
     const level = complexity.level;
 
-    // simple 一律本地：方案允许，且本地准确率已足够
-    if (level === 'simple') {
+    // simple 默认走 local：省钱省延迟，且本地正则对"金额+明确类目词"已足够准。
+    // ⚠️ 但本地正则【不懂语义】——口语化类目、隐含备注、商户别名它都拿不准。
+    //    部署方若更看重准确率（例如本地没有可用算力、或用户表述普遍口语化），
+    //    可用 AI_MODEL_ROUTE_SIMPLE=true 让简单场景也过一遍模型。
+    const simpleToModel = allowSimpleModel === null
+        ? isSimpleModelRouteAllowed()
+        : allowSimpleModel;
+
+    if (level === 'simple' && !simpleToModel) {
         return { route: 'local', level, provider_id: null, model: null, reason: 'simple_local_sufficient' };
     }
 
@@ -73,6 +80,18 @@ function route({ complexity, provider = null, allowModel = false }) {
         model: provider.cheap_model || provider.model || null,
         reason: 'medium_uses_cheap',
     };
+}
+
+/**
+ * simple 场景是否也允许走模型。
+ *
+ * 默认 false —— 保持"simple → local"的省钱策略不变。
+ * 置为 true 后，简单输入也会过一遍 cheap model，用 token 成本换语义准确率。
+ * 适用于：本地正则效果不佳、或用户输入普遍口语化的部署。
+ */
+function isSimpleModelRouteAllowed() {
+    const raw = String(process.env.AI_MODEL_ROUTE_SIMPLE || '').toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes';
 }
 
 /** 熔断器是否打开 */
@@ -114,6 +133,7 @@ function breakerStates() {
 function resetBreakers() { breakers.clear(); }
 
 module.exports = {
-    route, isOpen, recordFailure, recordSuccess, breakerStates, resetBreakers,
+    route, isOpen, isSimpleModelRouteAllowed,
+    recordFailure, recordSuccess, breakerStates, resetBreakers,
     FAILURE_THRESHOLD, OPEN_DURATION_MS,
 };
