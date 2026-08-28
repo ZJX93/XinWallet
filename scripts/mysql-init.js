@@ -65,8 +65,12 @@ async function init() {
       await conn.query(stmt);
       success++;
     } catch (err) {
-      // 忽略 "索引已存在" 等警告
-      if (err.code === 'ER_DUP_KEYNAME' || err.code === 'ER_TABLE_EXISTS_ERROR') {
+      // 忽略 "索引/列/表已存在" 等幂等场景（旧库升级重复执行时）
+      if (
+        err.code === 'ER_DUP_KEYNAME' ||
+        err.code === 'ER_TABLE_EXISTS_ERROR' ||
+        err.code === 'ER_DUP_FIELDNAME'
+      ) {
         console.log(`  [跳过] ${err.message.split('\n')[0]}`);
       } else {
         console.error(`  [错误] ${err.code}: ${stmt.slice(0, 80)}...`);

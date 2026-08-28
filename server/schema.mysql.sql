@@ -464,8 +464,7 @@ CREATE TABLE IF NOT EXISTS savings_goals (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_savings_user ON savings_goals (user_id);
--- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的储蓄目标不重复）
-CREATE UNIQUE INDEX idx_savings_user_book_name ON savings_goals (user_id, book_id, name);
+-- 唯一索引 idx_savings_user_book_name 依赖 book_id 列，移至下方"多账本 ALTER"之后创建
 
 -- AI 服务商配置表
 CREATE TABLE IF NOT EXISTS ai_providers (
@@ -540,8 +539,7 @@ CREATE TABLE IF NOT EXISTS debts (
 CREATE INDEX idx_debts_user ON debts (user_id);
 CREATE INDEX idx_debts_user_direction ON debts (user_id, direction);
 CREATE INDEX idx_debts_user_account ON debts (user_id, account_id);
--- 确保 backup.js 的 INSERT IGNORE 幂等（同一用户/账本/名称的债务不重复）
-CREATE UNIQUE INDEX idx_debts_user_book_name ON debts (user_id, book_id, name);
+-- 唯一索引 idx_debts_user_book_name 依赖 book_id 列，移至下方"多账本 ALTER"之后创建
 
 -- 债务还款流水
 CREATE TABLE IF NOT EXISTS debt_repayments (
@@ -581,7 +579,6 @@ CREATE INDEX idx_sav_tx_date ON savings_transactions (date);
 -- 多账本（账套）支持：为历史表追加 book_id 列 + 复合索引（幂等，新增库亦执行，结果一致）
 -- 每条用户财务数据归属某个 book_id；book_id IS NULL 表示「用户级共享」（如系统辅助分类、遗留未归属数据）。
 -- 具体归属与回填由 server/db.js 的 healBooks() 在启动时自愈完成（为每位用户建默认账本并回填 NULL 行）。
-，需在此幂等补齐
 -- （否则旧库 CREATE TABLE IF NOT EXISTS 跳过重建，accounts 永远缺 book_id，接口 500）。
 -- ============================================
 ALTER TABLE accounts                 ADD COLUMN book_id INT DEFAULT NULL;
@@ -611,6 +608,9 @@ CREATE INDEX idx_investments_user_book     ON investments (user_id, book_id);
 CREATE INDEX idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
 CREATE INDEX idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
 CREATE INDEX idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
+-- 确保 backup.js 的 INSERT IGNORE 幂等（book_id 由上方 ALTER 补齐，故唯一索引放此处创建）
+CREATE UNIQUE INDEX idx_savings_user_book_name ON savings_goals (user_id, book_id, name);
+CREATE UNIQUE INDEX idx_debts_user_book_name   ON debts (user_id, book_id, name);
 
 -- ============================================
 -- 预测闭环
@@ -634,8 +634,8 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
   request JSON NOT NULL,                              -- { text, context:{ book_id?, account_id?, date?, timezone? } }
   candidate_txns JSON NOT NULL,                       -- [{ seq,type,amount,...,confidence:{} }]
   validation JSON NOT NULL,                           -- { per_field:{}, overall, reasons:[] }
-  decision_trace JSON NOT NULL DEFAULT '{}',   -- 证据链（仅属主可见）
-  memory_snapshot JSON NOT NULL DEFAULT '{}',  -- Memory Retrieval 当时给出的 evidence candidates
+  decision_trace JSON NULL,   -- 证据链（仅属主可见）
+  memory_snapshot JSON NULL,  -- Memory Retrieval 当时给出的 evidence candidates
   model_request JSON DEFAULT NULL,                    -- 升级到模型时的请求（脱敏后）
   model_response JSON DEFAULT NULL,                   -- 模型原始响应
   route VARCHAR(20) NOT NULL DEFAULT 'local'
@@ -651,7 +651,7 @@ CREATE INDEX idx_ai_pred_user         ON ai_predictions (user_id);
 CREATE INDEX idx_ai_pred_status       ON ai_predictions (status);
 CREATE INDEX idx_ai_pred_user_created ON ai_predictions (user_id, created_at DESC);
 -- 部分唯一索引：NULL 不参与冲突判定，未提交的预测彼此互不影响；
-（见 modules/ai/prediction/prediction-store.js）。
+-- （见 modules/ai/prediction/prediction-store.js）。
 CREATE UNIQUE INDEX idx_ai_pred_idem ON ai_predictions (idempotency_key);
 -- updated_at 由 db.js autoUpdatedAt() 应用层兜底
 
@@ -681,7 +681,7 @@ CREATE TABLE IF NOT EXISTS ai_feedback_events (
                           'manual_rule_creation','contradiction','rule_disabled',
                           'consistent_reuse','negative_signal')),
   evidence_score INT NOT NULL DEFAULT 0,
-  payload JSON NOT NULL DEFAULT '{}',
+  payload JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_ai_fb_user ON ai_feedback_events (user_id);
@@ -751,7 +751,7 @@ CREATE TABLE IF NOT EXISTS ai_rule_evidence (
   delta INT NOT NULL DEFAULT 0,
   score_after INT NOT NULL DEFAULT 0,
   status_after VARCHAR(16) DEFAULT NULL,
-  payload JSON NOT NULL DEFAULT '{}',
+  payload JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_ai_rev_rule ON ai_rule_evidence (rule_id, created_at DESC);
@@ -794,9 +794,9 @@ CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
   engine_version VARCHAR(32) NOT NULL DEFAULT '',
   total_cases INT NOT NULL DEFAULT 0,
   passed_cases INT NOT NULL DEFAULT 0,
-  metrics JSON NOT NULL DEFAULT '{}',   -- 11 项指标
+  metrics JSON NULL,   -- 11 项指标
   baseline_run_id INT DEFAULT NULL,
-  regression JSON NOT NULL DEFAULT '{}', -- 与基线的逐指标差值
+  regression JSON NULL, -- 与基线的逐指标差值
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_ai_eval_run_created ON ai_evaluation_runs (created_at DESC);
@@ -872,7 +872,7 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   completion_tokens INT NOT NULL DEFAULT 0,
   latency_ms INT NOT NULL DEFAULT 0,
   -- attachments: [{type:'image'|'file', url/content}]
-  attachments JSON NOT NULL DEFAULT '[]',
+  attachments JSON NULL,
   tool_calls JSON DEFAULT NULL,           -- 模型 tool_call 调用记录
   tool_results JSON DEFAULT NULL,         -- tool 输出结果
   error VARCHAR(200) DEFAULT NULL,
@@ -887,7 +887,7 @@ CREATE TABLE IF NOT EXISTS ai_user_profiles (
   user_id INT NOT NULL UNIQUE,
   book_id INT DEFAULT NULL,
   -- preferences: {language, currency, timezone, density, ...}
-  preferences JSON NOT NULL DEFAULT '{}',
+  preferences JSON NULL,
   -- interaction_style: concise / detailed / expert
   interaction_style VARCHAR(16) NOT NULL DEFAULT 'detailed'
     CHECK (interaction_style IN ('concise','detailed','expert')),
@@ -898,7 +898,7 @@ CREATE TABLE IF NOT EXISTS ai_user_profiles (
   -- insight_rank_threshold: importance >= 此值才推送
   insight_rank_threshold INT NOT NULL DEFAULT 3,
   -- 统计摘要（供 Radar 使用，定期刷新）
-  stats_summary JSON NOT NULL DEFAULT '{}',
+  stats_summary JSON NULL,
   last_insight_at TIMESTAMP DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -922,7 +922,7 @@ CREATE TABLE IF NOT EXISTS ai_insights (
   title VARCHAR(200) NOT NULL,
   content TEXT NOT NULL,                          -- 洞察正文（可显示给用户）
   -- evidence: {transactions:[], stats:{before:{}, after:{}}, ...}
-  evidence JSON NOT NULL DEFAULT '{}',
+  evidence JSON NULL,
   -- 推荐动作（可选）
   action_suggestion VARCHAR(200) DEFAULT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'generated'
