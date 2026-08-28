@@ -94,6 +94,23 @@ function isSimpleModelRouteAllowed() {
     return raw === 'true' || raw === '1' || raw === 'yes';
 }
 
+/**
+ * 是否启用 LLM-first（模型主抽取）。
+ *
+ * 默认 false —— 保持「本地主抽取 + 模型复核」的既有架构。
+ * 置为 true 后，不再把本地候选喂给模型，让它独立从原文抽取；
+ * 模型结果作为主结果，本地结果仅作回退。
+ *
+ * ⛔ 这不是「推翻重来」：安全铁律完全不变（类目/账户白名单、金额校验、
+ *    Result Validator 阈值、Decision Policy 降级），且模型失败或返回空时
+ *    自动回落到传统链路。适用于本地正则明显不够用的部署
+ *    （口语化输入多、版式杂、本地无算力跑模型）。
+ */
+function isLlmFirstEnabled() {
+    const raw = String(process.env.AI_LLM_FIRST || '').toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes';
+}
+
 /** 熔断器是否打开 */
 function isOpen(providerId) {
     const b = breakers.get(providerId);
@@ -133,7 +150,7 @@ function breakerStates() {
 function resetBreakers() { breakers.clear(); }
 
 module.exports = {
-    route, isOpen, isSimpleModelRouteAllowed,
+    route, isOpen, isSimpleModelRouteAllowed, isLlmFirstEnabled,
     recordFailure, recordSuccess, breakerStates, resetBreakers,
     FAILURE_THRESHOLD, OPEN_DURATION_MS,
 };

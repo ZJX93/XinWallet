@@ -27,7 +27,7 @@ const { decide } = require('./decision-engine');
 const { retrieveMemory, snapshotMemory, emptyMemory } = require('../memory/memory-retrieval');
 const { selectFewShotExamples, isFewShotEnabled } = require('../memory/few-shot-selector');
 const { analyzeComplexity } = require('../runtime/complexity-analyzer');
-const { route, isSimpleModelRouteAllowed } = require('../runtime/model-router');
+const { route, isSimpleModelRouteAllowed, isLlmFirstEnabled } = require('../runtime/model-router');
 const { resolveProvider, reviewWithModel, isModelRouteAllowed } = require('../providers/provider-gateway');
 
 const PREDICTION_VERSION = 2;   // Phase 3/4 接入后快照结构升级
@@ -155,9 +155,15 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             }
         }
 
+        // LLM-first：不把本地候选喂给模型，让它独立从原文抽取。
+        //   理由：本地正则一旦漏拆或错拆，候选就成了错误锚点，会带偏模型。
+        //   独立抽取后模型能给出本地压根没识别出的笔数与语义。
+        const llmFirst = isLlmFirstEnabled();
+
         const review = await reviewWithModel({
             provider, model: routing.model, text,
-            candidates: decision.transactions, categories: ctx.categories,
+            candidates: llmFirst ? [] : decision.transactions,
+            categories: ctx.categories,
             // 把第 3 步已检索好的记忆（规则/习惯/历史分布/否证）交给模型，
             // 让它的"修正与补全"有据可依，而不是凭常识盲猜用户习惯。
             accounts: ctx.accounts,
@@ -169,11 +175,27 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         if (review.ok) {
             modelResponse = review.response;
             modelUsage = review.usage;
+
+            // LLM-first：以模型结果为主，本地仅作兜底。
+            //   模型一条都没给出时不置位，让下面走传统「复核合并」——
+            //   绝不因为开了开关就丢掉可记账的结果。
+            let llmFirstApplied = false;
+            if (llmFirst) {
+                const firstPass = mergeLlmFirst(review.transactions, decision.transactions, text, routing);
+                if (firstPass && firstPass.length) {
+                    decision = decide({
+                        extraction: { ...extraction, transactions: firstPass }, memory, context: ctx, routing,
+                    });
+                    llmFirstApplied = true;
+                }
+            }
+
             // 合并模型结果：模型既可能【修正】本地抽错字段，也可能【补全】本地空字段。
             // 授信模型：它给的 conf 原样写入 confidence（不再一律压到 0.86），
             // 但仍要过 Result Validator 字段阈值 + Decision Policy 冲突/负面记忆降级，
             // 安全铁律（金额最严、类目 id 合法、方向不静默污染）不受影响。
-            const merged = decision.transactions.map((t) => {
+            // LLM-first 已产出结果时跳过：此时本地结果只是回退，不参与修补。
+            const merged = llmFirstApplied ? decision.transactions : decision.transactions.map((t) => {
                 const fix = review.transactions.find(r => r.seq === t.seq);
                 if (!fix) return t;
                 const out = { ...t };
@@ -224,9 +246,12 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
                 }
                 return out;
             });
-            decision = decide({
-                extraction: { ...extraction, transactions: merged }, memory, context: ctx, routing,
-            });
+            // LLM-first 已在上方 decide 过，此处无需重复融合
+            if (!llmFirstApplied) {
+                decision = decide({
+                    extraction: { ...extraction, transactions: merged }, memory, context: ctx, routing,
+                });
+            }
         } else {
             // 模型失败 → 降级为 fallback，让 policy 强制 needs_confirmation
             modelResponse = { error: review.error, timeout: !!review.timeout };
@@ -286,6 +311,82 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     };
 }
 
+/* ════════════════════════════════════════════════════════════
+   LLM-first 合并
+   ════════════════════════════════════════════════════════════ */
+
+/**
+ * LLM-first 合并：以【模型抽取结果】为主，本地结果仅用于补齐模型没给的字段。
+ *
+ * 与传统「复核合并」的区别：
+ *   - 传统：以本地结果为基准逐条打补丁，笔数由本地决定（本地漏拆就永远漏了）
+ *   - LLM-first：笔数与语义都由模型决定，本地只兜底缺失字段
+ *
+ * ⛔ 安全铁律不受本函数影响：
+ *    类目/账户 id 的白名单校验、金额 > 0、日期格式校验，
+ *    都已在 provider-gateway 的清洗层完成；此处只做结构转换。
+ *    模型返回空 → 调用方回退传统链路。
+ *
+ * @param {Array} modelTxns  模型抽取结果（已清洗）
+ * @param {Array} localTxns  本地抽取结果（兜底用）
+ * @param {string} text      用户原文
+ * @param {object} routing   路由结果（用于标记 evidence 来源）
+ * @returns {Array} 标准 candidate 结构
+ */
+function mergeLlmFirst(modelTxns, localTxns, text, routing) {
+    if (!Array.isArray(modelTxns) || modelTxns.length === 0) return [];
+
+    const localBySeq = new Map((localTxns || []).map(t => [t.seq, t]));
+
+    return modelTxns.map((m, idx) => {
+        const seq = Number.isInteger(m.seq) ? m.seq : idx + 1;
+        const local = localBySeq.get(seq);
+        const conf = m.conf || {};
+        const baseConf = (local && local.confidence) || {};
+
+        const out = {
+            ...(local || {}),
+            seq,
+            // 模型给什么用什么；模型没给的才回退本地值
+            type: m.type || (local && local.type) || 'expense',
+            amount: m.amount != null ? m.amount : (local ? local.amount : null),
+            currency: (local && local.currency) || 'CNY',
+            merchant: m.merchant != null ? m.merchant : (local ? local.merchant : null),
+            category_id: m.category_id !== undefined ? m.category_id : (local ? local.category_id : null),
+            account_id: m.account_id !== undefined ? m.account_id : (local ? local.account_id : null),
+            date: m.date || (local ? local.date : null),
+            note: m.note != null ? m.note : (local ? local.note : ''),
+            raw_segment: (local && local.raw_segment) || text,
+        };
+
+        // 置信度：模型自报为准，缺失时沿用本地（本地也没有则 0，让 validator 判 invalid）
+        out.confidence = {
+            ...baseConf,
+            amount: numOr(conf.amount, baseConf.amount),
+            type: numOr(conf.type, baseConf.type),
+            category: numOr(conf.category_id, baseConf.category),
+            account: numOr(conf.account_id, baseConf.account),
+            date: numOr(conf.date, baseConf.date),
+            merchant: numOr(conf.merchant, baseConf.merchant),
+        };
+
+        // 整笔来源标记为模型主抽取（供「识别依据」展示与事后审计）
+        out.evidence = {};
+        for (const k of ['amount', 'type', 'category', 'account', 'date', 'merchant']) {
+            out.evidence[k] = `model_first_${routing.route}`;
+        }
+        return out;
+    });
+}
+
+/** 取第一个数字，都没有则 0 */
+function numOr(...vals) {
+    for (const v of vals) {
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+    }
+    return 0;
+}
+
 /**
  * 纯离线解析（评测系统用）：不查库、不调模型，只跑确定性抽取 + 校验。
  * 传入 categories 即可，无需数据库连接 —— 保证评测可在 CI 里无 PG 运行。
@@ -298,4 +399,6 @@ function parseOffline({ text, categories = [], refDate = new Date(), accountId =
     return { transactions: extraction.transactions, validation, extraction };
 }
 
-module.exports = { parseTransactions, loadContext, parseOffline, PREDICTION_VERSION };
+module.exports = {
+    parseTransactions, loadContext, parseOffline, mergeLlmFirst, PREDICTION_VERSION,
+};
