@@ -1054,7 +1054,7 @@ struct Chat {
         Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .fontColor(active ? COLORS.brand : COLORS.textPrimary)
           .fontWeight(active ? FontWeight.Medium : FontWeight.Normal)
-          .constraintWidth({ maxWidth: maxLabelWidth })
+          .constraintSize({ maxWidth: maxLabelWidth })
       } else {
         Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .fontColor(active ? COLORS.brand : COLORS.textPrimary)
