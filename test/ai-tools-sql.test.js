@@ -80,7 +80,7 @@ test('list_accounts SQL：仅返回当前用户当前账本的 active 账户（�
         // 与 server/routes/ai.js list_accounts 分支 SQL 完全一致
         const rows = await db.query(
             `SELECT id, name FROM accounts
-             WHERE user_id = $1 AND book_id = $2 AND status = 'active'
+             WHERE user_id = ? AND book_id = ? AND status = 'active'
              ORDER BY sort_order, id`,
             [userA.id, userA.bookId]
         );
@@ -103,14 +103,14 @@ test('list_accounts SQL：query 模糊匹配——"零钱" 命中 "微信 零钱
         await ensureAccount(user.id, user.bookId, '招行储蓄卡');
 
         const matched = await db.query(
-            `SELECT name FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = 'active' AND name LIKE $3`,
+            `SELECT name FROM accounts WHERE user_id = ? AND book_id = ? AND status = 'active' AND name LIKE ?`,
             [user.id, user.bookId, '%零钱%']
         );
         assert.strictEqual(matched.length, 1);
         assert.strictEqual(matched[0].name, '微信 零钱通');
 
         const notMatched = await db.query(
-            `SELECT name FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = 'active' AND name LIKE $3`,
+            `SELECT name FROM accounts WHERE user_id = ? AND book_id = ? AND status = 'active' AND name LIKE ?`,
             [user.id, user.bookId, '%随便不存在的账户%']
         );
         assert.strictEqual(notMatched.length, 0);
@@ -131,7 +131,7 @@ test('list_categories SQL：返回用户私有 + 全局公共，类型过滤正�
 
         const expenseRows = await db.query(
             `SELECT name FROM categories
-             WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))
+             WHERE (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))
                AND type = 'expense'`,
             [user.id, user.bookId]
         );
@@ -145,7 +145,7 @@ test('list_categories SQL：返回用户私有 + 全局公共，类型过滤正�
 
         const incomeRows = await db.query(
             `SELECT name FROM categories
-             WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))
+             WHERE (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))
                AND type = 'income'`,
             [user.id, user.bookId]
         );
@@ -157,7 +157,7 @@ test('list_categories SQL：返回用户私有 + 全局公共，类型过滤正�
 
         // 跨用户隔离
         const allUserCat = await db.query(
-            `SELECT name FROM categories WHERE user_id = $1`,
+            `SELECT name FROM categories WHERE user_id = ?`,
             [user.id]
         );
         assert.ok(!allUserCat.map(r => r.name).includes('别人的私密类目-测试'),
