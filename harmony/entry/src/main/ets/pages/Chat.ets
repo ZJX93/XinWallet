@@ -875,12 +875,11 @@ struct Chat {
 
   /** 字段级置信度徽标 */
   @Builder FieldBadge(seq: number, field: string) {
-    const v = this.fieldVerdict(seq, field);
-    if (v !== undefined) {
-      Text(`${Math.round(v.score * 100)}%`)
+    if (this.fieldVerdict(seq, field) !== undefined) {
+      Text(`${Math.round((this.fieldVerdict(seq, field)!.score) * 100)}%`)
         .fontSize(9).fontWeight(FontWeight.Bold)
-        .fontColor(v.ok ? OK_GREEN : WARN_AMBER)
-        .backgroundColor(v.ok ? OK_GREEN_BG : WARN_AMBER_BG)
+        .fontColor(this.fieldVerdict(seq, field)!.ok ? OK_GREEN : WARN_AMBER)
+        .backgroundColor(this.fieldVerdict(seq, field)!.ok ? OK_GREEN_BG : WARN_AMBER_BG)
         .padding({ left: 4, right: 4, top: 1, bottom: 1 })
         .borderRadius(6)
     }
@@ -1055,7 +1054,7 @@ struct Chat {
         Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .fontColor(active ? COLORS.brand : COLORS.textPrimary)
           .fontWeight(active ? FontWeight.Medium : FontWeight.Normal)
-          .maxWidth(maxLabelWidth)
+          .constraintWidth({ maxWidth: maxLabelWidth })
       } else {
         Text(label).fontSize(13).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .fontColor(active ? COLORS.brand : COLORS.textPrimary)
