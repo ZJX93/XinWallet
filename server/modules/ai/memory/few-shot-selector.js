@@ -41,8 +41,8 @@ const MIN_SIMILARITY = 0.12;
 async function selectFewShotExamples(db, wm, { text = '', merchants = [], limit = DEFAULT_LIMIT } = {}) {
     if (!db || !wm || wm.userId == null) return [];
 
-    // 总开关：默认关闭。few-shot 会把用户历史消费明细发给第三方模型，
-    // 属于需要显式知情同意的能力，不能偷偷启用。
+    // 总开关：默认开启（见 isFewShotEnabled 的隐私权衡说明）。
+    // 关闭时不查库 —— 让"不发送历史消费"成为零成本、可验证的行为。
     if (!isFewShotEnabled()) return [];
 
     const rows = await fetchCandidates(db, wm, merchants);
@@ -209,9 +209,29 @@ function cutoffDate(refDate) {
     return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Few-shot 先例是否启用。
+ *
+ * 默认【开启】—— 它是【类目】匹配准确率的主要增量：
+ *   账单文本通常只写商家名，不会写明"这笔该记到哪个类目"，
+ *   而用户过往对同一商家的真实归类正是这个缺失的信号。
+ *
+ * ⚠️ 它【不是】账户的可靠依据 —— 商家与账户之间没有稳定映射：
+ *    同一个商家今天用支付宝、明天用微信、下次刷信用卡，
+ *    历史归类根本无法说明本次用的是哪张卡。
+ *    账户必须来自本次账单原文写明的支付渠道；先例只作弱参考，
+ *    其措辞已在 prompts/parser-prompt.js 的 formatFewShot 中显式降权。
+ *
+ * 隐私权衡：会把最多 DEFAULT_LIMIT(4) 条历史消费发给第三方模型。
+ *   已做脱敏 —— 只输出 备注/金额/类目名/账户名，不输出交易 id、book_id 等标识符
+ *   （见 prompts/parser-prompt.js 的 formatFewShot）。
+ *   若部署方不接受，设 AI_FEWSHOT_ENABLED=false 关闭；
+ *   关闭后 v3 prompt 自动退化为 v2（先例区块为空串），不影响其余能力。
+ */
 function isFewShotEnabled() {
     const raw = String(process.env.AI_FEWSHOT_ENABLED || '').toLowerCase();
-    return raw === 'true' || raw === '1' || raw === 'yes';
+    // 未配置时默认开启；只认显式关闭
+    return !(raw === 'false' || raw === '0' || raw === 'no');
 }
 
 module.exports = {

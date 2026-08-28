@@ -435,6 +435,7 @@ fun ChatScreen(navController: NavHostController) {
                                 onSetCategory = { seq, id, name -> vm.setCandidateCategory(seq, id, name) },
                                 onSetAccount = { seq, id -> vm.setCandidateAccount(seq, id) },
                                 onSetTransferAccounts = { seq, f, t -> vm.setCandidateTransferAccounts(seq, f, t) },
+                                onSetDate = { seq, d -> vm.setCandidateDate(seq, d) },
                                 onSetNote = { seq, n -> vm.setCandidateNote(seq, n) },
                                 onRemove = { seq -> vm.removeCandidate(seq) },
                                 onCommit = { vm.commitPrediction() },

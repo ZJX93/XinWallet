@@ -37,6 +37,16 @@ const {
 } = require('./evaluation/runner');
 const { DATASET_VERSION } = require('./evaluation/dataset');
 
+// 事件总线：路由层 /ai/events/* 要触发事件并查看统计/历史。
+// 此前桶未导出这些符号，routes/ai/_shared.js 与 routes/ai/events.js 只好
+// 各自直连 ./events/event-bus，破坏了「路由只依赖桶」的约束。
+// 收归到桶后该约束可以无例外执行（由 test/ai-architecture.test.js 静态守护）。
+const {
+    emit: emitEvent,
+    getStats: getEventBusStats,
+    getHistory: getEventBusHistory,
+} = require('./events/event-bus');
+
 // ============================================
 // AI 模块扩展服务
 // ============================================
@@ -56,23 +66,21 @@ const messageService = require('./services/message-service');
 // 用户 Profile
 const profileService = require('./services/profile-service');
 
-// Tool Registry
-const { getToolDefinitions, executeTool, executeTools } = require('./tools/tool-registry');
-
-// Intent Router
-const { routeIntent, INTENTS, intentToRoute } = require('./intent/intent-router');
-
-// Context Planner
-const { buildLLMessages, buildMessageHistory, buildDefaultContext } = require('./context/context-planner');
-
-// Memory Retrieval 增强
-const { retrieveForChat } = require('./memory/memory-retrieval-chat');
-
+// ============================================
+// 运行时代理：规则证据批量学习定时器（server/index.js 启动，24h 一次）
+// 2026-08-29：同批预留的 tool-registry / intent-router / context-planner /
+// memory-retrieval-chat 已确认零消费（消费链为空）并删除，见 git 历史。
+// ============================================
 // Evidence Scheduler
 const { runBatchLearning, startScheduler, pendingFeedbackCount } = require('./learning/evidence-scheduler');
 
 // Forecast & Simulation
 const forecastService = require('./services/forecast-service');
+
+// 财务分析工具（只读）：让对话式 AI 能查询账本全量数据（交易/债务/预算/理财/储蓄）
+// 并据此分析、给出决策建议。与 tools/tool-registry.js 的区别见该文件头注释 ——
+// 这套是字段与 schema 对齐、带 book_id 隔离、真正被 /ai/chat 调用的实现。
+const financeTools = require('./tools/finance-tools');
 
 // Feature Flags & Metrics
 const { isEnabled, areEnabled, getAllFlags, getUserFeatures } = require('./features/feature-flags');
@@ -112,6 +120,11 @@ module.exports = {
     resetBreakers,
     usageMetrics,
     analyzeComplexity,
+
+    // ---- 事件总线（路由层 /ai/events/* 依赖，统一走桶）----
+    emitEvent,
+    getEventBusStats,
+    getEventBusHistory,
 
     // ---- 评测（§12）----
     runOfflineEvaluation,
@@ -153,24 +166,6 @@ module.exports = {
     // 用户 Profile
     profileService,
 
-    // ---- Tool Registry ----
-    getToolDefinitions,
-    executeTool,
-    executeTools,
-
-    // ---- Intent Router ----
-    routeIntent,
-    INTENTS,
-    intentToRoute,
-
-    // ---- Context Planner ----
-    buildLLMessages,
-    buildMessageHistory,
-    buildDefaultContext,
-
-    // ---- Memory Retrieval 增强 ----
-    retrieveForChat,
-
     // ---- Evidence Scheduler ----
     runBatchLearning,
     startScheduler,
@@ -178,6 +173,9 @@ module.exports = {
 
     // ---- Forecast & Simulation ----
     forecastService,
+
+    // ---- 财务分析工具（只读，供 /ai/chat 调用）----
+    financeTools,
 
     // ---- Feature Flags & Metrics ----
     isEnabled,

@@ -32,6 +32,12 @@ require.cache[aiServicePath] = {
     },
 };
 
+// ⚠️ 本文件固定用 v1 作为比对基线：它守护的是「用户记账习惯注入」这一功能，
+//    与 prompt 版本演进是正交的两件事。LEGACY_SYSTEM_PROMPT 是 v1 的字节级快照，
+//    不锁版本的话，一旦默认版本抬到 v2/v3，这些无关测试就会因 prompt 文本变化而红。
+//    关注点隔离：prompt 版本由 ai-parser-prompt.test.js 守护。
+process.env.AI_PARSER_PROMPT_VERSION = 'v1';
+
 const { reviewWithModel } = require('../server/modules/ai/providers/provider-gateway');
 
 const PROVIDER = { id: 1, api_type: 'openai', base_url: 'http://x', api_key: 'k', model: 'm' };

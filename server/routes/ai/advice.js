@@ -127,8 +127,6 @@ router.post('/insight', async (req, res) => {
         '/ai/insight 已废弃，请改用 POST /ai/advice（同时返回 insights + advice）。',
         { deprecated: true, replacement: '/ai/advice' }
     ));
-
-    // 以下是临时假数据，前端切完即删。最终让 /insight 直接调
 });
 
 module.exports = router;

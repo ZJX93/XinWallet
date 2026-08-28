@@ -23,10 +23,54 @@ const path = require('path');
 // chat 相关逻辑迁至 routes/ai/chat.js。本测试随之改为读取新位置。
 const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'routes', 'ai', 'chat.js'), 'utf8');
 
-test('chat prompt：可用工具共 6 个（含 list_accounts / list_categories），均不新建交易', () => {
-    assert.match(src, /可用工具（共\s*6\s*个，均不新建交易）/);
+test('chat prompt：可用工具共 11 个（6 个记账 + 5 个财务分析），均不新建交易', () => {
+    assert.match(src, /可用工具（共\s*11\s*个，除 update\/delete 外均为只读）/);
     assert.match(src, /list_accounts（查账户）/);
     assert.match(src, /list_categories（查类目）/);
+    // 财务分析工具（让 AI 能查账本全量数据并给出决策）
+    assert.match(src, /get_financial_overview/);
+    assert.match(src, /list_debts/);
+    assert.match(src, /list_budgets/);
+    assert.match(src, /list_investments/);
+    assert.match(src, /list_savings_goals/);
+});
+
+test('chat prompt：分析与决策指引（先取数、结论落数字、建议可量化、只读不代劳）', () => {
+    /*  2026-08-29：为 AI 增加「查询账本全量数据 → 分析 → 给出决策」能力。
+        这 5 个工具全是【只读】，故 prompt 必须明确：
+        模型是分析师而非执行者，不得声称已替用户调整了预算/还了款 ——
+        否则就是欺骗用户（账本不会因为一句话而改变）。 */
+    assert.match(src, /【分析与决策】/);
+    assert.match(src, /先取数再说话/);
+    assert.match(src, /绝不凭常识推断用户的资产负债状况/);
+    assert.match(src, /所有数字必须来自工具返回，不得估算或编造/);
+    assert.match(src, /建议要\*\*可量化、可执行\*\*/);
+    assert.match(src, /禁止「建议合理规划」「注意节制」这类空话/);
+    // 风险阈值与主动提示
+    assert.match(src, /负债率 >50% 警戒/);
+    assert.match(src, /存在逾期债务时必须第一时间提示/);
+    // ⛔ 只读工具不得声称已改动账本
+    assert.match(src, /你是财务分析，不是财务指令/);
+    assert.match(src, /账本不会因为你说了一句话而改变/);
+});
+
+test('⛔ 财务分析工具必须只读：不得出现任何写操作', () => {
+    const toolsSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'modules', 'ai', 'tools', 'finance-tools.js'), 'utf8');
+    assert.doesNotMatch(toolsSrc, /[`'"]\s*INSERT INTO/i, '分析工具不得 INSERT');
+    assert.doesNotMatch(toolsSrc, /[`'"]\s*UPDATE\s/i, '分析工具不得 UPDATE');
+    assert.doesNotMatch(toolsSrc, /[`'"]\s*DELETE FROM/i, '分析工具不得 DELETE');
+    assert.doesNotMatch(toolsSrc, /db\.transaction/, '分析工具不得开启事务（只读查询无需事务）');
+});
+
+test('财务分析工具经 modules/ai 桶文件调用（路由层不直接依赖内部模块）', () => {
+    assert.match(src, /const financeTools = aiModule\.financeTools/,
+        'chat.js 应从 _shared 的 aiModule 取财务工具，而非直接 require');
+    // 桶文件必须真的导出它，否则接线断裂
+    const indexSrc = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'modules', 'ai', 'index.js'), 'utf8');
+    assert.match(indexSrc, /financeTools/, 'modules/ai 桶文件必须导出 financeTools');
+    assert.match(indexSrc, /require\('\.\/tools\/finance-tools'\)/);
 });
 
 test('⛔ 回归防线：create_transaction / create_transfer 工具定义不得回归', () => {

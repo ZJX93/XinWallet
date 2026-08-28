@@ -94,7 +94,8 @@ async function reviewWithModel({
     const memoryHints = buildMemoryHints({ memory, categories, accounts });
 
     // prompt 已外置到 ../prompts/parser-prompt.js 并版本化。
-    // 默认 v1（字节级冻结的基线）；v2 增强；v3 = v2 + Few-shot 先例。
+    // 默认 v2（见 DEFAULT_PROMPT_VERSION）：v1 不接收 accounts，
+    //   模型拿不到账户列表就无法从账单内容匹配账户。v3 = v2 + Few-shot 先例。
     const { messages, version: promptVersion } = buildParserMessages({
         text, candidates, categories, accounts, memoryHints, fewShot,
     });

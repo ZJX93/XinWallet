@@ -42,7 +42,14 @@ test('diceSimilarity: 对中文无需分词即可工作', () => {
 beforeEach(() => { delete process.env.AI_FEWSHOT_ENABLED; });
 afterEach(() => { delete process.env.AI_FEWSHOT_ENABLED; });
 
-test('默认关闭：不查库、返回空（历史消费明细不发给第三方）', async () => {
+test('默认开启（能力全集的一部分）', () => {
+    // 默认即最佳：Few-shot 是账户/类目匹配准确率的主要增量。
+    // 隐私权衡见 few-shot-selector.js:isFewShotEnabled 的注释。
+    assert.equal(isFewShotEnabled(), true);
+});
+
+test('显式关闭时不启用：不查库、返回空（历史消费明细不发给第三方）', async () => {
+    process.env.AI_FEWSHOT_ENABLED = 'false';
     let queried = false;
     const db = { query: async () => { queried = true; return []; } };
     const r = await selectFewShotExamples(db, mkWm(), { text: '物业维修 638元' });
@@ -51,9 +58,16 @@ test('默认关闭：不查库、返回空（历史消费明细不发给第三�
     assert.equal(isFewShotEnabled(), false);
 });
 
-test('AI_FEWSHOT_ENABLED=true 才启用', () => {
+test('AI_FEWSHOT_ENABLED=true 显式开启', () => {
     process.env.AI_FEWSHOT_ENABLED = 'true';
     assert.equal(isFewShotEnabled(), true);
+});
+
+test('AI_FEWSHOT_ENABLED=0 / no 均视为关闭', () => {
+    for (const v of ['0', 'no', 'false']) {
+        process.env.AI_FEWSHOT_ENABLED = v;
+        assert.equal(isFewShotEnabled(), false, `${v} 应视为关闭`);
+    }
 });
 
 /* ─────────── 挑选逻辑 ─────────── */

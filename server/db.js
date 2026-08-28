@@ -11,9 +11,7 @@
 // 当前数据库方言：'pg' | 'mysql'。默认 PostgreSQL，保持向后兼容。
 const DB_DIALECT = (process.env.DB_DIALECT || 'pg').toLowerCase() === 'mysql' ? 'mysql' : 'pg';
 
-// 提升到模块作用域，供 initDatabase() 中建库用的 adminPool 复用（避免块级作用域导致 Pool is not defined）
 let pool;
-let adminPool = null; // 仅在 pg 下用于建库（连 postgres 库）
 if (DB_DIALECT === 'mysql') {
   const mysql = require('mysql2/promise');
   pool = mysql.createPool({
@@ -161,18 +159,6 @@ function prepare(sql) {
 function attachInsertId(rows) {
   if (rows.length > 0 && rows[0].id !== undefined) {
     rows.insertId = rows[0].id;
-  }
-  return rows;
-}
-
-// MySQL 结果归一化：mysql2 返回 [rows, fields]，INSERT 的 insertId/affectedRows 在结果包上。
-function normalizeMyResult(res) {
-  const rows = Array.isArray(res) ? res[0] : res;
-  if (rows && !Array.isArray(rows)) {
-    const arr = [rows];
-    if ('insertId' in rows) arr.insertId = rows.insertId;
-    if ('affectedRows' in rows) arr.affectedRows = rows.affectedRows;
-    return arr;
   }
   return rows;
 }
@@ -630,8 +616,35 @@ function buildInClause(ids) {
   return { sql: '= ANY(?)', params: [cleaned] };
 }
 
+/**
+ * 双方言「幂等插入」构造器：冲突时静默跳过，不报错。
+ *
+ * ⛔ 为什么必须封装：此前业务代码直接写死 MySQL 的 `INSERT IGNORE`，
+ *    而 PostgreSQL 没有该语法（`prepare()` 只做占位符转换，不做方言改写），
+ *    一旦走到带标签建交易 / 备份导入路径即在 PG（默认方言）下 syntax error。
+ *    两端语义对齐：MySQL `INSERT IGNORE` ≡ PG `ON CONFLICT DO NOTHING`。
+ *
+ * 注意：裸 `ON CONFLICT DO NOTHING` 不带冲突目标，故不要求表上存在唯一索引；
+ *      同时它会被 autoReturning 识别，不会追加 RETURNING id（关联表无 id 列）。
+ *
+ * @param {string} table - 表名
+ * @param {string[]} cols - 插入列（顺序与调用方传入的 params 一致）
+ * @returns {string} 方言适配的单行 INSERT 语句（占位符为 ?，由 prepare() 转换）
+ *
+ * 用法：
+ *   await query(db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']), [txId, tagId]);
+ */
+function insertIgnoreSql(table, cols) {
+  const colList = cols.join(', ');
+  const placeholders = cols.map(() => '?').join(', ');
+  if (DB_DIALECT === 'mysql') {
+    return `INSERT IGNORE INTO ${table} (${colList}) VALUES (${placeholders})`;
+  }
+  return `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
+}
+
 module.exports = {
   pool, query, queryOne, transaction, initDatabase,
   healBooks, ensureDefaultBookId, DB_DIALECT, upsertSql,
-  buildInClause,
+  buildInClause, insertIgnoreSql,
 };

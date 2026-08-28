@@ -415,15 +415,15 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         if (ex.length) {
                             newId = ex[0].id;
                         } else {
+                            // code/is_system 原为 SQL 字面量，改走绑定参数以保持全参数化
                             const ins = await conn.query(
-                                `INSERT IGNORE INTO categories (user_id, book_id, code, name, type, icon, color, is_system, parent_id, sort_order)
-                                 VALUES (?, ?, NULL, ?, ?, ?, ?, FALSE, ?, ?)`,
+                                db.insertIgnoreSql('categories', ['user_id', 'book_id', 'code', 'name', 'type', 'icon', 'color', 'is_system', 'parent_id', 'sort_order']),
                                 [
-                                    userId, bookId, name,
+                                    userId, bookId, null, name,
                                     ['expense', 'income', 'transfer'].includes(c['类型']) ? c['类型'] : 'expense',
                                     typeof c['图标'] === 'string' && c['图标'] ? c['图标'] : '📌',
                                     typeof c['颜色'] === 'string' && c['颜色'] ? c['颜色'] : '#6366f1',
-                                    parentId, 0
+                                    false, parentId, 0
                                 ]
                             );
                             const got = await conn.query(existSql, existParams);
@@ -549,8 +549,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
             for (const b of (config['预算'] || [])) {
                 if (!b || !String(b['名称'] || '').trim()) continue;
                 await conn.query(
-                    `INSERT IGNORE INTO budgets (user_id, book_id, name, period_type, amount, start_date, end_date)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    db.insertIgnoreSql('budgets', ['user_id', 'book_id', 'name', 'period_type', 'amount', 'start_date', 'end_date']),
                     [userId, bookId, b['名称'], ['month', 'quarter', 'half', 'year'].includes(b['周期']) ? b['周期'] : 'month', cellNum(b['金额']) || 0, fmtDate(b['开始日期']), fmtDate(b['结束日期']) || fmtDate(b['开始日期'])]
                 );
                 imported.budgets++;
@@ -561,8 +560,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (!d || !String(d['名称'] || '').trim()) continue;
                 const aid = d['关联账户'] ? acMap[d['关联账户']] : null;
                 await conn.query(
-                    `INSERT IGNORE INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, status, note)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    db.insertIgnoreSql('debts', ['user_id', 'book_id', 'account_id', 'name', 'type', 'direction', 'creditor', 'principal', 'remaining', 'interest_rate', 'term_months', 'method', 'monthly_payment', 'start_date', 'due_date', 'billing_day', 'payment_day', 'min_payment', 'status', 'note']),
                     [
                         userId, bookId, aid, d['名称'],
                         ['credit_card', 'loan', 'personal', 'other'].includes(d['类型']) ? d['类型'] : 'loan',
@@ -587,8 +585,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (!g || !String(g['名称'] || '').trim()) continue;
                 const aid = g['关联账户'] ? acMap[g['关联账户']] : null;
                 await conn.query(
-                    `INSERT IGNORE INTO savings_goals (user_id, book_id, name, target_amount, current_amount, account_id, icon, note, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    db.insertIgnoreSql('savings_goals', ['user_id', 'book_id', 'name', 'target_amount', 'current_amount', 'account_id', 'icon', 'note', 'status']),
                     [
                         userId, bookId, g['名称'],
                         cellNum(g['目标金额']) || 0, cellNum(g['当前金额']) || 0, aid,

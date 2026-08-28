@@ -90,3 +90,72 @@ jobs:
       - name: Verify routes mounted
         # 静态校验：所有 routes/*.js 定义的路由都已在 routes.js 挂载，防止漏挂
         run: npm run test:routes
+
+  # ------------------------------------------------------------------
+  # MySQL 方言回归：与上面的 PostgreSQL job 并行，覆盖 DB_DIALECT=mysql 分支。
+  #
+  # ⛔ 为什么必须有：项目对外提供 4 个 compose 变体，其中 2 个是 MySQL，
+  #    但 CI 此前只跑 PostgreSQL，等于 MySQL 路径零自动化验证。
+  #    历史上业务代码里硬编码 MySQL 专有语法（INSERT IGNORE）与
+  #    PG 专有函数（TO_CHAR）互相踩踏，正是缺少这类回归网的直接后果。
+  # ------------------------------------------------------------------
+  test-mysql:
+    name: Test (MySQL dialect)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: xinwallet
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_DIALECT: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: xinwallet
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot --silent 2>/dev/null; then
+              echo "MySQL is ready"
+              exit 0
+            fi
+            echo "Waiting for MySQL ($i/30)..."
+            sleep 2
+          done
+          echo "MySQL did not become ready in time"
+          exit 1
+
+      - name: Initialize MySQL schema
+        # 用项目自带脚本（自动建库 + 分块执行 schema.mysql.sql），
+        # 与 db.js 的运行时自愈路径保持一致，避免 CI 另起一套建表逻辑。
+        run: npm run mysql:init
+
+      - name: Run test suite (mysql)
+        run: npm test

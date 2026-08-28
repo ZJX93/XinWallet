@@ -28,10 +28,11 @@ const aiModule = require('../../modules/ai');
 const {
     getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw,
 } = require('../../services/ai');
-// 事件总线统计：桶文件 modules/ai 未导出 getStats，只能从子模块取。
-// ⚠️ 收归到本文件是为了让「子路由不直接 require modules/ai 子目录」这条
-//    架构约束能被执行（有测试守着），避免每个子路由各自绕桶。
-const { getStats: getEventBusStats } = require('../../modules/ai/events/event-bus');
+// 事件总线统计：统一由桶文件 modules/ai 导出。
+// 此前桶未导出 getStats，本文件被迫直连 ../../modules/ai/events/event-bus，
+// 与上面「路由层不得直接 require modules/ai 子目录」的约束自相矛盾。
+// 现已补进桶导出，该约束可无例外执行，并由 test/ai-architecture.test.js 静态守护。
+const { getEventBusStats } = aiModule;
 
 /**
  * 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，

@@ -407,7 +407,10 @@ router.post('/', async (req, res) => {
             // 写入交易标签
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [insertResult.insertId, tid]);
+                await conn.query(
+                    db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']),
+                    [insertResult.insertId, tid]
+                );
             }
 
             return insertResult.insertId;
@@ -453,7 +456,10 @@ router.put('/:id', async (req, res) => {
             await conn.query('DELETE FROM transaction_tags WHERE transaction_id = ?', [id]);
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [id, tid]);
+                await conn.query(
+                    db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']),
+                    [id, tid]
+                );
             }
 
             // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移

@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,6 +26,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.AiCandidateTxn
 import com.xinwallet.app.data.model.Category
@@ -75,6 +81,7 @@ fun AiConfirmCard(
     onSetCategory: (Int, Int?, String?) -> Unit,
     onSetAccount: (Int, Int?) -> Unit,
     onSetTransferAccounts: (Int, Int?, Int?) -> Unit,
+    onSetDate: (Int, String) -> Unit,
     onSetNote: (Int, String) -> Unit,
     onRemove: (Int) -> Unit,
     onCommit: () -> Unit,
@@ -134,6 +141,7 @@ fun AiConfirmCard(
                     onSetCategory = onSetCategory,
                     onSetAccount = onSetAccount,
                     onSetTransferAccounts = onSetTransferAccounts,
+                    onSetDate = onSetDate,
                     onSetNote = onSetNote,
                     onRemove = onRemove
                 )
@@ -177,6 +185,7 @@ private fun AiCandidateRow(
     onSetCategory: (Int, Int?, String?) -> Unit,
     onSetAccount: (Int, Int?) -> Unit,
     onSetTransferAccounts: (Int, Int?, Int?) -> Unit,
+    onSetDate: (Int, String) -> Unit,
     onSetNote: (Int, String) -> Unit,
     onRemove: (Int) -> Unit
 ) {
@@ -275,8 +284,21 @@ private fun AiCandidateRow(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     FieldLabel("账户", confirm, item.seq, null)
+                    // 账户来源区分：后端 evidence["account"] 标识了识别路径。
+                    // fallback_default / channel_no_match 表示「AI 未从账单中识别出账户，
+                    //   用的是客户端传入的默认账户兜底」——此时不应自动填入默认户名，
+                    //   否则用户会误以为 AI 从账单里认出了该账户（实际是顶部 chip 的值）。
+                    // channel:alipay / channel:wechat 等才是真正的文本命中，可以放心显示。
+                    val accSource = item.evidence["account"] ?: ""
+                    val isFallback = accSource.startsWith("fallback") || accSource.startsWith("channel_no_match")
+                    val displayAccount = if (isFallback && item.accountId != null) {
+                        // 兜底场景：显示为"未识别"，让用户主动选
+                        null
+                    } else {
+                        accounts.firstOrNull { it.id == item.accountId }
+                    }
                     PickerField(
-                        text = accounts.firstOrNull { it.id == item.accountId }?.name ?: "选择账户",
+                        text = displayAccount?.name ?: "选择账户",
                         options = accounts.map { it.name to it.id.toString() },
                         onPick = { onSetAccount(item.seq, it.toIntOrNull()) }
                     )
@@ -306,12 +328,47 @@ private fun AiCandidateRow(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 FieldLabel("日期", confirm, item.seq, "date")
-                // 日期为后端给出的 yyyy-MM-dd；此处只展示，改期请到交易详情
-                Text(
-                    item.date ?: "—",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+                // 日期可编辑：后端只给 yyyy-MM-dd（无时间），用户经常需要修正。
+                // 点击弹出 DatePicker，选择后通过 onSetDate 回写候选快照。
+                var showDatePicker by remember { mutableStateOf(false) }
+                val displayDate = item.date ?: "—"
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true }
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        displayDate,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (showDatePicker) {
+                    val initialDate = try {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(item.date ?: "")
+                    } catch (_: Exception) { null } ?: Date()
+                    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialDate.time)
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                datePickerState.selectedDateMillis?.let { millis ->
+                                    val formatted = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                        .format(Date(millis))
+                                    onSetDate(item.seq, formatted)
+                                }
+                                showDatePicker = false
+                            }) { Text("确定") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                        }
+                    ) {
+                        DatePicker(state = datePickerState)
+                    }
+                }
             }
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(2f)) {
@@ -330,10 +387,17 @@ private fun AiCandidateRow(
         val evidence = DECISIVE_FIELDS
             .filter { f -> item.evidence[f] != null && item.evidence[f] != "missing" }
             .joinToString("  ·  ") { f -> "${FIELD_LABEL[f]}=${item.evidence[f]}" }
-        if (evidence.isNotBlank()) {
+        // 账户识别路径（不在 DECISIVE_FIELDS 中，单独展示以区分「AI 识别」与「默认兜底」）
+        val accEvidence = item.evidence["account"]?.takeIf { it != "missing" }
+        val accLabel = if (accEvidence != null) {
+            val isFallback = accEvidence.startsWith("fallback") || accEvidence.startsWith("channel_no_match")
+            if (isFallback) "账户=默认账户(未从账单识别)" else "账户=$accEvidence"
+        } else null
+        val fullEvidence = listOfNotNull(evidence, accLabel).joinToString("  ·  ")
+        if (fullEvidence.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "识别依据：$evidence",
+                "识别依据：$fullEvidence",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

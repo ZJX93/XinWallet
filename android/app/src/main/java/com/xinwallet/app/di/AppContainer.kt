@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonWriter
+import com.xinwallet.app.BuildConfig
 import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.Book
 import com.xinwallet.app.data.model.BookIdResponse
@@ -118,7 +119,11 @@ object AppContainer {
             .registerTypeAdapter(Double::class.java, DoubleTypeAdapter)
             .registerTypeAdapter(Double::class.javaPrimitiveType!!, DoubleTypeAdapter)
             .create()
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
+        // release 包必须关请求行日志：BASIC 会打印每条请求的 URL 与状态码，
+        // 在日志采集/投屏等场景下等于外泄用户的接口访问轨迹。
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+        }
         val interceptor = AuthInterceptor(session, authExpired) { if (::api.isInitialized) api else null }
         okHttpClient = OkHttpClient.Builder()
             .addInterceptor(interceptor)

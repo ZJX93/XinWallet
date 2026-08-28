@@ -46,7 +46,7 @@ interface ApiService {
     suspend fun deleteAccount(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
     /** 记利息：入账一笔利息，返回最新余额与计息日期 */
-    @POST("accounts/accounts/{id}/interest")
+    @POST("accounts/{id}/interest")
     suspend fun addAccountInterest(@Path("id") id: Int, @Body req: AddAccountInterestRequest): Response<ApiResponse<AddAccountInterestResult>>
 
     /* 交易 */

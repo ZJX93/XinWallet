@@ -40,7 +40,11 @@ const CATEGORIES = [
     { id: 35, name: '居家', type: 'expense' },
     { id: 12, name: '餐饮', type: 'expense' },
 ];
-const ACCOUNTS = [{ id: 7, name: '支付宝 花呗' }, { id: 8, name: '现金' }];
+// 与 context-builder.js 的 SELECT id, name, type 保持一致
+const ACCOUNTS = [
+    { id: 7, name: '支付宝 花呗', type: 'credit' },
+    { id: 8, name: '现金', type: 'cash' },
+];
 const CANDIDATES = [{
     seq: 1, type: 'expense', amount: 638.4, category_id: null,
     category_name: null, date: '2026-08-25', merchant: '永升物业', note: '',
@@ -167,5 +171,38 @@ test('request 记录 prompt_version，便于事后回溯与 A/B', async () => {
         candidates: CANDIDATES, categories: CATEGORIES,
     });
     assert.ok(r.request.prompt_version, 'request 应含 prompt_version');
-    assert.equal(r.request.prompt_version, 'v1', '未配置环境变量时默认 v1');
+    assert.equal(r.request.prompt_version, 'v3', '未配置环境变量时默认 v3（能力全集）');
+});
+
+/* ─────────── 默认版本必须能匹配账户 ─────────── */
+
+test('默认版本发给模型的 prompt 含【可用账户】白名单', async () => {
+    // ⚠️ 这是「模型能匹配账单账户」的根因守护：
+    //    默认版本若退回 v1，buildV1 会丢弃 accounts，模型无从匹配账户，
+    //    账户只能靠本地关键词兜底 —— 用户看到的就是"顶部选中的默认账户"。
+    const saved = process.env.AI_PARSER_PROMPT_VERSION;
+    delete process.env.AI_PARSER_PROMPT_VERSION;
+    try {
+        nextModelReply = replyWith([{ seq: 1, amount: 638.4 }]);
+        await reviewWithModel({
+            provider: PROVIDER, model: 'm', text: '物业维修 638.4元',
+            candidates: CANDIDATES, categories: CATEGORIES, accounts: ACCOUNTS,
+        });
+        const sys = capturedMessages[0].content;
+        assert.match(sys, /可用账户：/, '默认版本必须注入账户列表');
+        assert.match(sys, /7:支付宝 花呗/, '账户白名单须含 id 与名称');
+        assert.match(sys, /account_id/, '须要求模型输出 account_id');
+    } finally {
+        if (saved !== undefined) process.env.AI_PARSER_PROMPT_VERSION = saved;
+    }
+});
+
+test('模型建议的 account_id 经白名单校验后透出', async () => {
+    nextModelReply = replyWith([{ seq: 1, amount: 638.4, account_id: 7, conf: { account_id: 0.8 } }]);
+    const r = await reviewWithModel({
+        provider: PROVIDER, model: 'm', text: '物业维修 638.4元',
+        candidates: CANDIDATES, categories: CATEGORIES, accounts: ACCOUNTS,
+    });
+    assert.equal(r.transactions[0].account_id, 7, '合法账户 id 应保留');
+    assert.equal(r.transactions[0].conf.account_id, 0.8);
 });

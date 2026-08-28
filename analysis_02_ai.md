@@ -71,12 +71,12 @@ L8-16 优先级链：**手工规则 > trusted 学习规则 > verified 习惯证�
 
 ## 7. Services / Tools / Vision / Evaluation / Events / Features / Context
 - `services/`：`insight-engine.js`(18KB 洞察) `forecast-service.js`(14.57KB 预测) `conversation/message/profile-service`。
-- `tools/tool-registry.js`(16.85KB)：`getToolDefinitions/executeTool/executeTools`。
+- `tools/finance-tools.js`：AI 对话只读分析工具（债务/预算/理财/储蓄/财务全景，带 user_id+book_id 隔离，经桶文件导出供 chat.js 调用）。
+  （2026-08-29 已删除零消费的 `tool-registry.js` / `intent-router.js` / `context-planner.js` / `memory-retrieval-chat.js` —— 它们与 schema 不符、require 路径错误、从未被任何路由调用。）
 - `vision/`：`receipt-preprocessor.js`(17.33KB 票据版式预处理，产出 `merchant_hints` 喂给 parser) `image-transcriber.js`(12.38KB 图像转写) `vision-capability.js`(能力探测降级)。
 - `evaluation/`：`dataset.js`(16.56KB) `runner.js`(12.83KB，`runOfflineEvaluation/compareWithBaseline`)。
 - `events/`：`event-bus.js` `event-handlers.js`（内部事件解耦）。
 - `features/`：`feature-flags.js` `metrics-cleanup.js`。
-- `context/context-planner.js`。
 
 ## 8. 完整调用链
 ```

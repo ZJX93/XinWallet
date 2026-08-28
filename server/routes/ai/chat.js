@@ -7,6 +7,10 @@
 
 const { express, db, success, fail, handleServerError, aiModule, getActiveProvider, checkProvider, chatWithTools, fmtDateTime, stripThinkingTokens, polishChatReply, toAmount, syncCreditCardDebt, computeAccountBalance, enforceBalanceLimit } = require('./_shared');
 const router = express.Router();
+
+// 财务分析工具（只读）：经 modules/ai 桶文件导出 —— 路由层不直接依赖 AI 内部模块
+const financeTools = aiModule.financeTools;
+
 router.post('/chat', async (req, res) => {
     try {
         const { messages, image, mime } = req.body;
@@ -57,11 +61,14 @@ router.post('/chat', async (req, res) => {
    （输入框旁的记账按钮），那里会先展示识别结果、由用户确认后才落账。
    **绝不可**说「已记一笔 / 已入账 / 记好了」——你根本写不进账本，那是欺骗用户。
    （产品原则：AI 识别结果必须经用户确认才写账本，杜绝静默记错。）
-4. 可用工具（共 6 个，均不新建交易）：
+4. 可用工具（共 11 个，除 update/delete 外均为只读）：
    - list_accounts（查账户）、list_categories（查类目）：**实时从数据库拿**，永远是最新的；遇到「用户说的账户/类目名我不确定」「以前看到的列表可能过期」「预投喂为空」时，第一选择是先调它们查到再决策
    - list_transactions（查交易，用于定位修改/删除目标）
    - update_transaction / delete_transaction（修改/删除**已存在**的交易）
    - query_stats（查账问答：余额、月度、排行等）
+   - 【财务分析·只读】get_financial_overview / list_debts / list_budgets / list_investments / list_savings_goals
+     这 5 个工具让你可以查询账本全量数据（交易汇总以外，还有债务、预算、理财、储蓄），
+     用于分析现状并给出决策建议。用法见下方「分析与决策」。
 5. 用户说"把 XX 改成 YY""这笔记错了""删了这笔"时，先调 list_transactions 拿到 transaction_id，再调 update / delete。
 6. **不知道账户/类目 id 时不要瞎猜、不要做软匹配**，先调 list_accounts / list_categories 拿到全量再选。
    - 若工具返回的列表里没有用户提到的名字，**立刻在回复里如实告诉用户**「没找到账户『XX』，现有账户：…；要用 YY 吗？」并请用户确认——不要自作主张用名字相近的项顶替。
@@ -73,6 +80,24 @@ router.post('/chat', async (req, res) => {
     **只有** update_transaction / delete_transaction 真实返回了 {"ok": true, ...}，你才可以说"已更新/已删除"。
     若你只调了 list_* / query_stats 等**只读**工具、或根本没调任何写工具，就**绝不可**声称账本已变更。
 12. 对话风格：像真人在微信/小爱里陪用户记账一样自然。**禁止**在回复中暴露后端工具名（list_accounts / query_stats 等）、函数调用 JSON 块、调试占位符、思考过程。回复尽量 1-2 句、简洁有温度；如有多个工具并行执行**只总结结果**，不写"我已经为您调用了 xxx 工具"之类机械化开场白。
+
+【分析与决策】—— 用户问「财务健康吗 / 该不该提前还贷 / 钱都花哪了 / 还差多少能达成目标」时：
+1. 先取数再说话：用财务分析工具拿真实数据，**绝不凭常识推断用户的资产负债状况**。
+   - 整体健康度、净资产、储蓄率、偿债压力 → get_financial_overview（一次拿全，优先起手）
+   - 负债、月供、逾期                   → list_debts
+   - 预算花了多少、是否超支              → list_budgets
+   - 理财赚了多少、持仓盈亏              → list_investments
+   - 攒钱进度、还差多少                 → list_savings_goals
+   这几个工具互不依赖，可**并行调用**一次性取全，再综合分析。
+2. 结论必须落到具体数字：说「餐饮占本月支出 42%，比上月多 380 元」，
+   不要说「花得有点多」。所有数字必须来自工具返回，不得估算或编造。
+3. 建议要**可量化、可执行**：如「把餐饮预算从 2000 降到 1600，每月多还 400，
+   可在 14 个月内还清」。禁止「建议合理规划」「注意节制」这类空话。
+4. 主动提示风险，阈值参考：负债率 >50% 警戒、月供占收入 >40% 高压、
+   储蓄率 <10% 偏紧、预算执行率 >100% 已超支。**存在逾期债务时必须第一时间提示**。
+5. ⛔ 你是财务分析，不是财务指令：只给判断与建议，不替用户做决定；
+   也不要声称已帮他调了预算、还了款 —— 这些工具全是只读的，
+   账本不会因为你说了一句话而改变（声称已改动 = 欺骗用户）。
 补充：
 - 下方「可用类目」「可用账户」两节是**预投喂**的快速参考（凭 system prompt 即可见），足以应对多数简单场景。但当用户提的账户名与预投喂列表不完全一致、或预投喂为空、或你对此前的列表没把握时，**必须**调 list_accounts / list_categories 实时确认——凭印象编一个 id 会导致记账失败。
 - 用户那张截图中「我的工具集里没有列出账户和分类的接口」这句话是**错的**，从 v0.0.44 起本系统确实提供了 list_accounts / list_categories 工具，AI 可以调用它们直接拿到 id。
@@ -178,6 +203,37 @@ ${accRef}`;
                     },
                     required: ['metric']
                 }
+            },
+            /* ── 财务分析工具（只读）：让 AI 能查询账本全量数据并给出决策建议 ── */
+            {
+                name: 'get_financial_overview',
+                description: '财务全景：资产（账户余额+理财市值）、负债、净资产、本月收支与储蓄率、偿债压力（负债率/月供占收入比）。回答「财务健康吗」「我有多少钱」「负债压力大吗」等整体性问题时的首选工具，一次拿全，避免多次查询。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        month: { type: 'string', description: 'YYYY-MM，可省略表示当前月（仅影响本月收支统计，资产/负债始终是当前值）' }
+                    }
+                }
+            },
+            {
+                name: 'list_debts',
+                description: '查询未结清债务明细：每笔的剩余本金、利率、月供、到期日、是否逾期，并汇总剩余总额、本月应还金额与逾期金额。回答「我欠多少钱」「本月要还多少」「有逾期吗」「该先还哪笔」时使用。',
+                parameters: { type: 'object', properties: {} }
+            },
+            {
+                name: 'list_budgets',
+                description: '查询预算执行情况：每个预算的额度、已用、剩余、执行率、是否超支。回答「预算花完了吗」「还剩多少预算」「哪个预算超了」时使用。',
+                parameters: { type: 'object', properties: {} }
+            },
+            {
+                name: 'list_investments',
+                description: '查询理财持仓：每笔的成本、市值、盈亏、收益率、买入日，并汇总总成本/市值/总盈亏/组合年化。回答「理财赚了多少」「持仓情况」「收益率怎样」时使用。',
+                parameters: { type: 'object', properties: {} }
+            },
+            {
+                name: 'list_savings_goals',
+                description: '查询储蓄目标进度：目标额、当前额、缺口、完成百分比。回答「攒钱进度」「还差多少能达成」「存款目标完成没」时使用。',
+                parameters: { type: 'object', properties: {} }
             }
         ];
 
@@ -234,6 +290,27 @@ ${accRef}`;
                 }
                 return { ok: false, error: '不支持的查询类型' };
             }
+
+            /* ── 财务分析工具（只读）：实现在 modules/ai/tools/finance-tools.js ──
+               统一在此注入 userId + bookId，保证任何查询都不会跨用户/跨账本。 */
+            if (name === 'get_financial_overview') {
+                return await financeTools.getFinancialOverview(db, {
+                    userId: req.userId, bookId: req.bookId, month: args.month,
+                });
+            }
+            if (name === 'list_debts') {
+                return await financeTools.listDebts(db, { userId: req.userId, bookId: req.bookId });
+            }
+            if (name === 'list_budgets') {
+                return await financeTools.listBudgets(db, { userId: req.userId, bookId: req.bookId });
+            }
+            if (name === 'list_investments') {
+                return await financeTools.listInvestments(db, { userId: req.userId, bookId: req.bookId });
+            }
+            if (name === 'list_savings_goals') {
+                return await financeTools.listSavingsGoals(db, { userId: req.userId, bookId: req.bookId });
+            }
+
             if (name === 'list_accounts') {
                 const query = args.query ? `%${args.query}%` : null;
                 const limit = Math.min(Math.max(parseInt(args.limit) || 50, 1), 100);

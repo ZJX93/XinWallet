@@ -6,6 +6,9 @@
    ============================================ */
 
 const { express, success, fail, handleServerError, aiModule } = require('./_shared');
+// 事件总线能力统一由桶导出：路由层不得直连 modules/ai 子目录，
+// 该约束由 test/ai-architecture.test.js 静态守护。
+const { emitEvent, getEventBusStats, getEventBusHistory } = aiModule;
 const router = express.Router();
 router.post('/events/emit', async (req, res) => {
     try {
@@ -18,8 +21,8 @@ router.post('/events/emit', async (req, res) => {
         }
 
         const eventPayload = { userId, ...(payload || {}) };
-        const { emit } = require('../../modules/ai/events/event-bus');
-        const event = emit(event_type, eventPayload);
+        // emit 为 async（内部逐个 await 订阅者），不 await 会把 Promise 序列化成 {} 返回
+        const event = await emitEvent(event_type, eventPayload);
         res.json({ ok: true, event });
     } catch (err) {
         handleServerError(res, err, '事件触发');
@@ -29,8 +32,7 @@ router.post('/events/emit', async (req, res) => {
 // GET /ai/events/stats  查看 Event Bus 状态（调试用）
 router.get('/events/stats', async (req, res) => {
     try {
-        const { getStats, getHistory } = require('../../modules/ai/events/event-bus');
-        res.json({ ok: true, stats: getStats(), history: getHistory({ limit: 20 }) });
+        res.json({ ok: true, stats: getEventBusStats(), history: getEventBusHistory({ limit: 20 }) });
     } catch (err) {
         handleServerError(res, err, 'Event Bus 状态');
     }

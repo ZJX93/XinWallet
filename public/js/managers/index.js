@@ -66,7 +66,9 @@ async function safeBoot() {
         await boot();
     } catch (e) {
         console.error('❌ 启动失败:', e.message, e.stack);
-        document.body.innerHTML = '<div style=\"padding:40px;text-align:center;font-size:18px\">⚠️ 应用启动失败<br><small>' + escapeHtml(e.message) + '</small><br><br><button onclick=\"location.reload()\">刷新重试</button></div>';
+        // CSP scriptSrcAttr 'none' 会拦截内联 onclick，必须事后用 addEventListener 绑定
+        document.body.innerHTML = '<div style=\"padding:40px;text-align:center;font-size:18px\">⚠️ 应用启动失败<br><small>' + escapeHtml(e.message) + '</small><br><br><button id=\"btnBootReload\">刷新重试</button></div>';
+        document.getElementById('btnBootReload')?.addEventListener('click', () => location.reload());
     }
 }
 

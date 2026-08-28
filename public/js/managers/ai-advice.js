@@ -172,8 +172,10 @@ const AIAdvice = {
         adviceList.innerHTML = `<div class="empty-state">
             <p class="empty-title">💡 请先配置对话服务商</p>
             <p class="empty-desc">AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）</p>
-            <button class="btn btn-primary" onclick="showPage('ai-config')">前往配置</button>
+            <button class="btn btn-primary" id="btnGoAiConfig">前往配置</button>
         </div>`;
+        // CSP scriptSrcAttr 'none' 会拦截内联 onclick，必须事后用 addEventListener 绑定
+        document.getElementById('btnGoAiConfig')?.addEventListener('click', () => window.showPage('ai-config'));
     }
 };
 

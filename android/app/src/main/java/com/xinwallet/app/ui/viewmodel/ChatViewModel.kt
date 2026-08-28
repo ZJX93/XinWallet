@@ -246,8 +246,22 @@ class ChatViewModel(
     fun setCandidateAccount(seq: Int, accountId: Int?) =
         editCandidate(seq, { it.copy(accountId = accountId) })
 
+    /**
+     * 改日期：只替换「年月日」，保留账单上识别到的时分秒。
+     *
+     * 时间是账单上写明的一次性事实。用户改的是"记错的那一天"，
+     *    不该连带把账单上明明写着的时间抹成 00:00:00 ——
+     *    那会让同一天内的多笔交易丢失先后顺序。
+     * @param date 形如 yyyy-MM-dd 的日期部分（DatePicker 只选到天）
+     */
     fun setCandidateDate(seq: Int, date: String) =
-        editCandidate(seq, { it.copy(date = date) }, "date")
+        editCandidate(seq, { txn ->
+            val time = txn.date?.let { TIME_IN_DATE.find(it)?.value }
+            txn.copy(date = if (time != null) "$date $time" else date)
+        }, "date")
+
+    /** 从 "yyyy-MM-dd HH:mm[:ss]" 中取出时间部分 */
+    private val TIME_IN_DATE = Regex("""\d{2}:\d{2}(:\d{2})?""")
 
     fun setCandidateNote(seq: Int, note: String) =
         editCandidate(seq, { it.copy(note = note) })
