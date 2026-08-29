@@ -1965,11 +1965,6 @@
 /* 必填星号 */
 .req { color: var(--error-500); margin-left: 2px; }
 
-/* 旧版本残留样式名兼容（避免与新选择器冲突，保留以防其它页面引用） */
-.debt-dir-tabs, .debt-dir-tab, .debt-dir-badge, .debt-summary-item, .debt-summary-label, .debt-summary-value {
-  /* 新版已替换为 .debt-type-tabs 等，无需规则 */
-}
-
 @media (max-width: 960px) {
   .debt-kpi { grid-template-columns: repeat(3, 1fr); }
 }

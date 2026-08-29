@@ -76,29 +76,6 @@
 .kpi-change.income { color: var(--income); }
 .kpi-change.expense { color: var(--expense); }
 
-/* ===== 风险预警条 ===== */
-.dash-alert-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--warning-500) 10%, transparent), color-mix(in srgb, var(--error-500) 5%, transparent));
-  border: 1px solid color-mix(in srgb, var(--warning-500) 30%, transparent);
-  border-left: 4px solid var(--warning-500);
-  border-radius: var(--radius-md);
-}
-.dash-alert-bar .alert-icon { font-size: 18px; flex-shrink: 0; }
-.dash-alert-bar .alert-content { display: flex; flex-wrap: wrap; gap: var(--space-3); flex: 1; }
-.alert-item {
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: var(--surface-subtle);
-}
-.alert-item.bad { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); }
-.alert-item.warn { color: var(--warning-500); background: color-mix(in srgb, var(--warning-500) 10%, transparent); }
-
 /* ===== 资产负债概览（与图表卡片统一节奏） ===== */
 .balance-overview {
   display: flex;
@@ -187,7 +164,6 @@
 
 @media (max-width: 720px) {
   .bo-stats { grid-template-columns: 1fr; }
-  .dash-alert-bar { flex-direction: column; align-items: flex-start; }
   .dash-grid { grid-template-columns: 1fr; }   /* 窄屏单列（覆盖 styles.css 同规则被后加载压过的问题） */
 }
 

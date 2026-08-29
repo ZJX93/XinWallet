@@ -497,8 +497,6 @@ async function boot() {
     safeInit('TransMonthFilter', () => initTransMonthFilter());
     safeInit('ThemeManager', () => ThemeManager.init());
     safeInit('AccountManager', () => AccountManager.init());
-    // TransferManager 的独立转账表单已并入 TransactionManager，不再单独初始化
-    // safeInit('TransferManager', () => TransferManager.init());
     safeInit('TransactionManager', () => TransactionManager.init());
     safeInit('BudgetManager', () => BudgetManager.init());
     safeInit('InvestmentManager', () => InvestmentManager.init());

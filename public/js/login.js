@@ -244,32 +244,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('authForm');
     if (form) form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        console.log('[login] 表单提交, mode='+mode);
         const username = document.getElementById('authUser').value.trim();
         const password = document.getElementById('authPass').value;
         const nickname = document.getElementById('authNick').value.trim();
-        console.log('[login] 用户名='+username, '密码长度='+password.length);
         if (!username || !password) { setHint('请输入用户名和密码', true); return; }
         if (submitBtn) submitBtn.disabled = true;
 
         try {
             let data;
-            console.log('[login] 开始 API 调用...');
             if (mode === 'login') {
                 data = await loginApi('/auth/login', 'POST', { username, password });
-                console.log('[login] 登录响应:', data);
                 setHint('登录成功，正在进入...');
             } else {
                 data = await loginApi('/auth/register', 'POST', { username, password, nickname });
                 setHint('注册成功，正在进入...');
             }
-            console.log('[login] setSession token='+data.token+' user='+data.user?.username);
             setSession(data.token, data.refreshToken, data.user);
             // 记住密码：⛔ 必须在成功之后才保存，否则会把错密码存下来。
             //    未勾选则清（覆盖"上次勾了这次取消"）。await 保证跳转前写盘完成。
             if (rememberBox && rememberBox.checked) await credSave(password, username);
             else await credClear();
-            console.log('[login] 跳转到 /');
             location.href = '/';
         } catch (err) {
             console.error('[login] 失败:', err.message, err);
