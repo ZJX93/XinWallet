@@ -32,7 +32,7 @@ const {
 // 此前桶未导出 getStats，本文件被迫直连 ../../modules/ai/events/event-bus，
 // 与上面「路由层不得直接 require modules/ai 子目录」的约束自相矛盾。
 // 现已补进桶导出，该约束可无例外执行，并由 test/ai-architecture.test.js 静态守护。
-const { getEventBusStats } = aiModule;
+const { getEventBusStats, getAiSettings, updateAiSettings } = aiModule;
 
 /**
  * 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
@@ -84,6 +84,7 @@ module.exports = {
     // AI 能力
     aiModule, getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw,
     getEventBusStats,
+    aiSettingsSvc: { getAiSettings, updateAiSettings },
     // 本文件定义的共用件
     checkProvider, upload,
 };

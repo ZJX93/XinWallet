@@ -5,8 +5,7 @@
      本文件只负责一组内聚的路由，公共依赖统一从 ./_shared.js 取。
    ============================================ */
 
-const { express, db, success, fail, handleServerError, aiModule, getActiveProvider, checkProvider, chatWithTools, fmtDateTime, stripThinkingTokens, polishChatReply, toAmount, syncCreditCardDebt, computeAccountBalance, enforceBalanceLimit } = require('./_shared');
-const aiSettingsSvc = require('../../modules/ai/services/ai-settings-service');
+const { express, db, success, fail, handleServerError, aiModule, getActiveProvider, checkProvider, chatWithTools, fmtDateTime, stripThinkingTokens, polishChatReply, toAmount, syncCreditCardDebt, computeAccountBalance, enforceBalanceLimit, aiSettingsSvc } = require('./_shared');
 const router = express.Router();
 
 // 财务分析工具（只读）：经 modules/ai 桶文件导出 —— 路由层不直接依赖 AI 内部模块
