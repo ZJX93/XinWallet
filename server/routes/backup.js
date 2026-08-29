@@ -359,18 +359,19 @@ router.post('/import', upload.single('file'), async (req, res) => {
             await conn.query('DELETE FROM budgets WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM tags WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM accounts WHERE user_id = ? AND book_id = ?', [userId, bookId]);
-            // 分类：逐级清空本账本用户自建分类（子分类先于父分类删除），系统预设保留
-            let catCleared = true;
-            while (catCleared) {
-                const rc = await conn.query(
-                    `DELETE FROM categories
-                      WHERE user_id = ? AND book_id = ?
-                        AND parent_id IS NOT NULL
-                        AND parent_id IN (SELECT id FROM categories WHERE user_id = ? AND book_id = ?)`,
-                    [userId, bookId]
-                );
-                catCleared = rc.rowCount > 0;
-            }
+            // 分类：清空本账本用户自建分类（系统预设保留）。
+            // 用派生表包一层子查询，规避 MySQL「不能在 DELETE 子查询中引用同表」的限制，跨方言兼容。
+            await conn.query(
+                `DELETE FROM categories
+                  WHERE user_id = ? AND book_id = ?
+                    AND parent_id IS NOT NULL
+                    AND parent_id IN (
+                        SELECT id FROM (
+                            SELECT id FROM categories WHERE user_id = ? AND book_id = ?
+                        ) AS _t
+                    )`,
+                [userId, bookId, userId, bookId]
+            );
             await conn.query('DELETE FROM categories WHERE user_id = ? AND book_id = ?', [userId, bookId]);
 
             // 1) 标签
@@ -496,7 +497,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 const it = await conn.query('SELECT id FROM investment_types WHERE name = ?', [String(i['类型'] || '其他')]);
                 const ins = await conn.query(
                     `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userId, bookId, aid, it && it.length ? it[0].id : 1,
                         i['名称'], String(i['代码'] || ''),
@@ -508,7 +509,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         String(i['备注'] || '')
                     ]
                 );
-                const newInvId = ins && ins[0] && ins[0].id;
+                const newInvId = ins ? (ins.insertId != null ? ins.insertId : (ins[0] && ins[0].id)) : null;
                 imported.investments++;
                 // 系统持仓的唯一真相来自 investment_transactions（recomputeInvestmentPosition 仅按流水重算）。
                 // 优先复现原始流水：逐笔写入后按净本金口径重算，得到与线上一致的持仓（含做T/负成本）；
