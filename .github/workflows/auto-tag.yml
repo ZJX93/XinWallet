@@ -1,6 +1,7 @@
 # ============================================
 # 鑫钱包 · 自动版本标签（统一版本线）
-# 触发条件：push 到 main 分支（合并 PR / 直接 push）即触发
+# 触发条件：「PR Test Gate」在 main 分支上【成功完成】后触发；测试不通过则不打标、不发版
+#          （另保留 workflow_dispatch 作为事件丢失时的手动兜底）
 # 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 vX.Y.Z tag
 #       （整个仓库——Web/后端 + 安卓客户端——共用这一套版本号，保证镜像与 APK 版本对齐）
 # 连锁效果：tag 创建后，以下三个 workflow 均监听 push: tags，会被自动触发：
@@ -16,11 +17,69 @@
 name: Auto Tag
 
 on:
-  push:
+  # 关键：用 workflow_run 监听测试门禁，而不是 push:branches:[main]。
+  # push 触发时测试还没跑完，存在「测试失败但 tag 已推出、下游镜像/APK 跟着发布」的窗口；
+  # workflow_run 保证「PR Test Gate 全绿」是打标签的前置条件，
+  # 且 tag 落在【通过测试的那个 commit】上（见 checkout 的 ref）。
+  workflow_run:
+    workflows: ["PR Test Gate"]
+    types: [completed]
     branches: [main]
+  # 兜底：门禁事件丢失 / 需要补发标签时手动触发
+  workflow_dispatch:
 
 jobs:
+  # ---------------------------------------------------------------
+  # 门禁闸门：把「测试有没有过」变成 Actions 上一目了然的绿勾/红叉，
+  # 而不是让 auto-tag 静默跳过、事后查不出这一版为什么没发出来。
+  # 同时解出两个下游要用的值：是否放行 + 待打标的 commit。
+  # ---------------------------------------------------------------
+  gate:
+    name: PR Test Gate 结果
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - name: 校验门禁结论
+        id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # 手动派发：门禁不适用，直接以默认分支 HEAD 打标
+          if [ "$EVENT" != "workflow_run" ]; then
+            echo "::notice::手动派发，跳过门禁校验"
+            echo "proceed=true" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "门禁 run: ${RUN_URL:-（无链接）}"
+
+          # PR 源分支上的测试不参与自动打标（branches 已过滤，这里是双保险）
+          if [ "$HEAD_BRANCH" != "main" ]; then
+            echo "::notice::触发本次测试的是 ${HEAD_BRANCH} 分支，非 main，不打标"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            echo "sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::PR Test Gate 未通过（conclusion=${CONCLUSION}），已中止自动打标: ${RUN_URL}"
+            exit 1
+          fi
+
+          echo "::notice::PR Test Gate 通过: ${RUN_URL}"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+
   auto-tag:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,6 +90,8 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
+          # 打标对象 = 通过测试的那个 commit，而非默认分支的最新 HEAD
+          ref: ${{ needs.gate.outputs.sha }}
           fetch-tags: true
           fetch-depth: 0
 
