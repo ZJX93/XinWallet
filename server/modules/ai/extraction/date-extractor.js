@@ -97,6 +97,27 @@ function extractTime(text) {
         };
     }
 
+    // 2b) 中文口语「三点半 / 三点一刻 / 三点（仅小时）」：补充 2) 未覆盖的形式。
+    //     账单常写「下午3点半消费…」，漏识别会让时间落到 0。
+    const cn2 = cnToArabicDigit(text);
+    const m2 = cn2.match(/(凌晨|早上|上午|中午|下午|晚上)?\s*([0-1]?\d|2[0-3])\s*点\s*(半|一刻|三刻|两刻)?/);
+    if (m2) {
+        let hour = Number(m2[2]);
+        let minute = 0;
+        const qual = m2[3];
+        if (qual === '半') minute = 30;
+        else if (qual === '一刻') minute = 15;
+        else if (qual === '三刻' || qual === '两刻') minute = 45;
+        const mod = m2[1];
+        // 下午 / 晚上 +12；凌晨/早上/上午/中午 不变
+        if ((mod === '下午' || mod === '晚上') && hour < 12) hour += 12;
+        return {
+            hour, minute, second: 0,
+            source: qual ? 'time_cn_qual' : 'time_cn_hour',
+            value: `${pad(hour)}:${pad(minute)}:00`,
+        };
+    }
+
     return null;
 }
 

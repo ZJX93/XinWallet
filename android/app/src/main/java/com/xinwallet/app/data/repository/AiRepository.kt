@@ -14,6 +14,7 @@ import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.model.TranscribeRequest
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
+import com.xinwallet.app.BuildConfig
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -39,6 +40,9 @@ class AiRepository(private val apiProvider: () -> ApiService) {
     /** AI 对话记账：把完整对话历史发给后端，后端用 function calling 建账/查账 */
     suspend fun chat(req: ChatRequest) = safeApiCall { apiProvider().chat(req) }
 
+    /** 读取 AI 设置（含 web 端起的 ai_name，用于安卓端标题动态显示） */
+    suspend fun getSettings() = safeApiCall { apiProvider().getAiSettings() }
+
     /** 云端语音转写：audio 为 base64 */
     suspend fun transcribe(audio: String, mime: String? = null) =
         safeApiCall { apiProvider().transcribe(TranscribeRequest(audio, mime)) }
@@ -55,12 +59,15 @@ class AiRepository(private val apiProvider: () -> ApiService) {
         date: String? = null,
         source: String = "parse"
     ) = safeApiCall {
+        // dev-only: dev build 自动给服务端带 mock=1，跳过 AI provider 调用，便于本地 UI 自测
+        val mockFlag = if (BuildConfig.DEBUG) "1" else null
         apiProvider().parseTransactions(
             AiParseRequest(
                 text = text,
                 context = AiParseContext(accountId = accountId, date = date),
                 source = source
-            )
+            ),
+            mock = mockFlag
         )
     }
 

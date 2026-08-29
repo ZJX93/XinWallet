@@ -105,7 +105,9 @@ function preprocessReceipt(text, opts = {}) {
         if (seen.has(key)) return;
         seen.add(key);
         used.add(strategy);
-        items.push({ name: cleanName, amount, date: date || ctx.date });
+        // ⛔ 时间从全局上下文取：一张票据只有一个「转账时间」，
+        //    各版式策略不必各自再找一遍（金额行与时间行常不在同一行）。
+        items.push({ name: cleanName, amount, date: date || ctx.date, time: ctx.time || null });
     };
 
     runStrategy1(lines, ctx, add);
@@ -126,7 +128,10 @@ function preprocessReceipt(text, opts = {}) {
            `2026-08-20` 这种连字符日期会把 `08` 也当候选金额（就是本模块要修的 bug）。 */
     const sentences = items.map(it => {
         const d = formatDateForNL(it.date, ctx.date);
-        return `${d}${it.name} ${it.amount}元`;
+        const t = it.time ? ` ${it.time}` : '';
+        // ⛔ 时间必须随句子一起进 parseText：下游 v0.2 抽取器不读时间，
+        //    唯一能把时间喂给模型的就是这行自然语言，丢了就回退 00:00:00。
+        return `${d}${t} ${it.name} ${it.amount}元`;
     });
 
     return {
@@ -315,20 +320,39 @@ function sanitizeName(name) {
     return n.slice(0, 50);
 }
 
-/** 提取整张票据的上下文日期（含时间，若有） */
+/*  提取整张票据的上下文日期【与时间】。
+    ⛔ 必须同时抓「转账时间/支付时间」后面的时分秒：
+       微信账单详情页写的是「转账时间 2026年8月28日 08:56:32」，
+       老实现只认「支付/创建/交易时间」且只取日期，于是时间永远丢，
+       最终交易时间被回退成 00:00:00、卡片显示 0:0:0（2026-08-29 复现）。 */
 function extractContextDate(raw, defaultDate) {
-    // 「支付时间 2026年8月20日 08:12:33」优先级最高
-    const m1 = raw.match(/(?:支付时间|创建时间|交易时间)\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
-    if (m1) return { date: `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`, explicit: true };
-    const m2 = raw.match(/(?:支付时间|创建时间|交易时间)\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-    if (m2) return { date: `${m2[1]}-${pad(m2[2])}-${pad(m2[3])}`, explicit: true };
+    // 时间标签：微信账单用「转账时间」，其它平台用支付/创建/交易时间
+    const L = '(?:转账时间|付款时间|支付时间|创建时间|交易时间|成交时间)';
 
+    // ① 标签 + 日期 + 时间（最完整，优先）
+    const mT1 = raw.match(new RegExp(L + '\\s*(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日\\s*(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
+    if (mT1) return mkDateTime(mT1, 1, 2, 3, 4, 5, 6, true);
+    const mT2 = raw.match(new RegExp(L + '\\s*(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
+    if (mT2) return mkDateTime(mT2, 1, 2, 3, 4, 5, 6, true);
+
+    // ② 仅有日期（无时间）：仍优先带标签的，避免把单号/时间戳误当日期
+    const m1 = raw.match(new RegExp(L + '\\s*(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日'));
+    if (m1) return { date: `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`, time: null, explicit: true };
+    const m2 = raw.match(new RegExp(L + '\\s*(\\d{4})[-/](\\d{1,2})[-/](\d{1,2})'));
+    if (m2) return { date: `${m2[1]}-${pad(m2[2])}-${pad(m2[3])}`, time: null, explicit: true };
+
+    // ③ 游离的日期（无标签）：兜底
     const m3 = raw.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
-    if (m3) return { date: `${m3[1]}-${pad(m3[2])}-${pad(m3[3])}`, explicit: true };
+    if (m3) return { date: `${m3[1]}-${pad(m3[2])}-${pad(m3[3])}`, time: null, explicit: true };
     const m4 = raw.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
-    if (m4) return { date: `${m4[1]}-${m4[2]}-${m4[3]}`, explicit: true };
+    if (m4) return { date: `${m4[1]}-${m4[2]}-${m4[3]}`, time: null, explicit: false };
 
-    return { date: defaultDate, explicit: false };
+    return { date: defaultDate, time: null, explicit: false };
+}
+
+function mkDateTime(m, yi, mi, di, hi, mi2, si, explicit) {
+    const time = `${pad(m[hi])}:${pad(m[mi2])}:${pad(m[si] || '00')}`;
+    return { date: `${m[yi]}-${pad(m[mi])}-${pad(m[di])}`, time, explicit };
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.xinwallet.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
@@ -29,6 +30,17 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+
+// 对话历史本地持久化（DataStore Preferences）：重启 App 后仍在，仅用户主动「删除记录」才清空
+private val Context.chatHistoryStore by preferencesDataStore(name = "chat_history")
+private val CHAT_HISTORY_KEY = stringPreferencesKey("messages")
 
 /**
  * AI v0.2 预测确认态。
@@ -65,7 +77,8 @@ data class AiConfirmState(
                     a.fromAccountId != b.fromAccountId ||
                     a.toAccountId != b.toAccountId ||
                     a.date != b.date ||
-                    (a.note ?: "") != (b.note ?: "")
+                    (a.note ?: "") != (b.note ?: "") ||
+                    (a.location ?: "") != (b.location ?: "")
             }
         }
 
@@ -84,7 +97,9 @@ data class ChatUiState(
     val error: String? = null,
     val toast: String? = null,
     /** 非 null 时展示 v0.2 确认卡片 */
-    val aiConfirm: AiConfirmState? = null
+    val aiConfirm: AiConfirmState? = null,
+    /** 顶部标题：web 端给 AI 起的名字；空时回退「AI助手」 */
+    val aiName: String = "AI助手"
 )
 
 class ChatViewModel(
@@ -95,6 +110,58 @@ class ChatViewModel(
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
+
+    private val gson = Gson()
+    private var historyLoaded = false
+
+    init {
+        // 启动时恢复本地对话记录（图片 base64 不落盘，避免体积膨胀）
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val prefs = app.applicationContext.chatHistoryStore.data.first()
+                val json = prefs[CHAT_HISTORY_KEY]
+                if (!json.isNullOrBlank()) {
+                    val arr = gson.fromJson<Array<ChatMessage>>(json, Array<ChatMessage>::class.java)
+                    val list = arr?.mapNotNull { msg ->
+                        // 图片消息不落盘（base64 已剥离），恢复后既无图也无文会成空白气泡，直接丢弃
+                        if (msg.role == "user" && msg.imageBase64 == null && msg.content.isBlank()) return@mapNotNull null
+                        // 过滤失效交易卡片：仅保留 id>0 的真实交易（重启后 pending/临时 id 无效）
+                        if (msg.transactions.isEmpty()) msg
+                        else msg.copy(transactions = msg.transactions.filter { it.id > 0 })
+                    } ?: emptyList()
+                    _state.value = _state.value.copy(messages = list)
+                }
+            }
+            historyLoaded = true
+        }
+        // 拉取 AI 设置：web 端给 AI 起的名字用于顶部标题动态显示（失败静默，回退「AI助手」）
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                when (val r = aiRepo.getSettings()) {
+                    is ApiResult.Success -> {
+                        val name = r.data.settings.aiName.takeIf { it.isNotBlank() }
+                        if (name != null) _state.value = _state.value.copy(aiName = name)
+                    }
+                    else -> Unit
+                }
+            }
+        }
+        // 对话内容变化即落盘；historyLoaded 置位前不写，避免用空列表覆盖已有记录
+        viewModelScope.launch {
+            _state.map { it.messages }.distinctUntilChanged().collect { msgs ->
+                if (historyLoaded) saveHistory(msgs)
+            }
+        }
+    }
+
+    private fun saveHistory(msgs: List<ChatMessage>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val toSave = msgs.map { if (it.imageBase64 != null) it.copy(imageBase64 = null) else it }
+            runCatching {
+                app.applicationContext.chatHistoryStore.edit { prefs -> prefs[CHAT_HISTORY_KEY] = gson.toJson(toSave) }
+            }
+        }
+    }
 
     private var inputBeforeVoice: String = ""
 
@@ -266,6 +333,22 @@ class ChatViewModel(
     fun setCandidateNote(seq: Int, note: String) =
         editCandidate(seq, { it.copy(note = note) })
 
+    /** 设置某笔候选的地点（写入 transactions.location）；空串视为清空 */
+    fun setCandidateLocation(seq: Int, location: String?) =
+        editCandidate(seq, { it.copy(location = location?.takeIf { l -> l.isNotBlank() }) })
+
+    /**
+     * 单独改时间（HH:mm:ss）。与 setCandidateDate 互不覆盖：
+     *   - setCandidateDate: 保留原时间，替换日期部分
+     *   - setCandidateTime: 保留原日期（null 时用 1900-01-01 占位，依赖 commitPrediction 的 date 兜底），替换时间部分
+     * 时间不在 DECISIVE_FIELDS 内，不触发 user_corrected 标记。
+     */
+    fun setCandidateTime(seq: Int, time: String) =
+        editCandidate(seq, { txn ->
+            val date = txn.date?.split(" ")?.firstOrNull() ?: "1900-01-01"
+            txn.copy(date = "$date $time")
+        })
+
     /** 切换类型：类目候选集随之改变，旧类目必然失效需清空 */
     fun setCandidateType(seq: Int, type: String) =
         editCandidate(seq, { it.copy(type = type, categoryId = null, categoryName = null) }, "type")
@@ -339,6 +422,67 @@ class ChatViewModel(
                         _state.value = _state.value.copy(error = r.message)
                     }
                 }
+            }
+        }
+    }
+
+    /* ---------------- 上下文 chip 联动 ---------------- */
+
+    /**
+     * 把当前选中账户同步到所有非转账候选卡片。对齐 Harmony `applyAccountToAll`：
+     *   - id == null：清空所有非转账候选的 account_id（与 Harmony 端「不关联」chip 等价）
+     *   - 否则：跳过转账、跳过已是该账户的，其余候选改为该账户
+     *
+     * 不打 user_corrected —— 账户字段不在 DECISIVE_FIELDS（与 Harmony 一致）。
+     */
+    fun applyAccountToAll(id: Int?) {
+        val c = _state.value.aiConfirm ?: return
+        val next = c.items.map { item ->
+            if (item.type == "transfer") return@map item
+            when {
+                id == null -> item.copy(accountId = null)
+                item.accountId == id -> item
+                else -> item.copy(accountId = id)
+            }
+        }
+        _state.value = _state.value.copy(aiConfirm = c.copy(items = next))
+    }
+
+    /** 定位中标记：UI 据此把地点 chip 显示为「定位中…」并禁用点击 */
+    private val _locating = MutableStateFlow(false)
+    val locating: StateFlow<Boolean> = _locating
+
+    /**
+     * 一键 GPS 定位：拿到经纬度后写入指定候选的 location 字段（对齐手动记账）。
+     * 失败静默 —— 与 Harmony `requestLocation` 一致（手动记账定位失败也不打扰用户）。
+     * 用 LocationManager.getLastKnownLocation 而非 FusedLocationProvider，
+     * 避免拉 Google Play Services 依赖（部分国行 ROM 没有 GMS）。
+     */
+    fun requestGpsForSeq(context: Context, seq: Int) {
+        if (_locating.value) return
+        _locating.value = true
+        viewModelScope.launch {
+            try {
+                val coords = withContext(Dispatchers.IO) {
+                    try {
+                        val lm = context.getSystemService(Context.LOCATION_SERVICE)
+                            as android.location.LocationManager
+                        listOf(
+                            android.location.LocationManager.GPS_PROVIDER,
+                            android.location.LocationManager.NETWORK_PROVIDER,
+                            android.location.LocationManager.PASSIVE_PROVIDER
+                        ).asSequence()
+                            .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+                            .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+                            .firstOrNull()
+                    } catch (_: SecurityException) { null }
+                }
+                if (coords != null) {
+                    val txt = "%.4f,%.4f".format(coords.latitude, coords.longitude)
+                    setCandidateLocation(seq, txt)
+                }
+            } finally {
+                _locating.value = false
             }
         }
     }

@@ -27,6 +27,78 @@ router.post('/transactions/parse', async (req, res) => {
             return res.status(400).json(fail(`source 必须是 ${AI_PREDICTION_SOURCES.join(' / ')} 之一`));
         }
 
+        /* ---- dev-only mock 短路 ----
+         * 用途：本地/UI 自测 —— 没配 AI provider 时，让 chip 化卡片/确认链路跑通。
+         *   启用：?mock=1 query 或 body.mock === true
+         *   ⚠️ 当前不加 NODE_ENV 门禁（docker-compose 默认 production，但本地测试时不一定能改）。
+         *      线上误带 query 几乎不可能（普通用户不会写 ?mock=1），保留简短判定。
+         *   ⚠️ mock 数据含低置信字段以触发 needs_confirmation，UI 才能展示「高亮低置信」横幅。
+         */
+        if (req.query.mock === '1' || (req.body && req.body.mock === true)) {
+            const now = new Date();
+            const ymd = now.toISOString().slice(0, 10);
+            const transactions = [
+                {
+                    seq: 1, type: 'expense', amount: 28.0, currency: 'CNY',
+                    merchant: '老王牛肉面',
+                    category_id: null, category_name: '餐饮',
+                    account_id: null,
+                    date: `${ymd} 12:15:00`, note: '中午吃牛肉面',
+                    raw_segment: text,
+                    confidence: { amount: 0.92, type: 0.88, category: 0.55, date: 0.95, merchant: 0.7 },
+                    evidence: { amount: 'regex:28', type: 'regex:吃', category: 'fallback_default', date: 'now', account: 'fallback_default' },
+                },
+                {
+                    seq: 2, type: 'expense', amount: 6.5, currency: 'CNY',
+                    merchant: '瑞幸咖啡',
+                    category_id: null, category_name: '餐饮',
+                    account_id: null,
+                    date: `${ymd} 09:30:00`, note: '早上咖啡',
+                    raw_segment: text,
+                    confidence: { amount: 0.96, type: 0.9, category: 0.85, date: 0.93 },
+                    evidence: { amount: 'regex:6.5', type: 'regex:咖啡', category: 'keyword:咖啡', date: 'now' },
+                },
+            ];
+            const validation = {
+                verdict: 'needs_confirmation',
+                overall: 0.72,
+                reasons: ['category 字段置信度偏低（0.55）', 'account 字段未识别'],
+                per_txn: [
+                    { seq: 1, verdict: 'needs_confirmation', per_field: {
+                        amount: { score: 0.92, threshold: 0.85, ok: true },
+                        type: { score: 0.88, threshold: 0.8, ok: true },
+                        category: { score: 0.55, threshold: 0.75, ok: false },
+                        date: { score: 0.95, threshold: 0.8, ok: true },
+                    }},
+                    { seq: 2, verdict: 'ready', per_field: {
+                        amount: { score: 0.96, threshold: 0.85, ok: true },
+                        type: { score: 0.9, threshold: 0.8, ok: true },
+                        category: { score: 0.85, threshold: 0.75, ok: true },
+                        date: { score: 0.93, threshold: 0.8, ok: true },
+                    }},
+                ],
+                thresholds: { amount: 0.85, type: 0.8, category: 0.75, date: 0.8 },
+            };
+            const decision_trace = { prediction_version: 2, complexity: { level: 'simple' }, memory: { matched_rule_ids: [] } };
+            const predictionId = await aiModule.createPrediction({
+                userId: req.userId, bookId: req.bookId, source, text,
+                context: (req.body && req.body.context) || {},
+                transactions, validation, decisionTrace: decision_trace,
+                route: 'local',
+            });
+            return res.json(success({
+                prediction_id: predictionId,
+                transactions,
+                verdict: validation.verdict,
+                overall_confidence: validation.overall,
+                reasons: validation.reasons,
+                needs_confirmation: validation.verdict !== 'ready',
+                route: 'local',
+                complexity: 'simple',
+                memory_applied: [],
+            }));
+        }
+
         const context = (req.body && req.body.context) || {};
         const parsed = await aiModule.parseTransactions(db, {
             userId: req.userId,

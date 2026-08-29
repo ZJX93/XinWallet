@@ -12,7 +12,7 @@ import {
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
   TranscribeRequest, TranscribeResponse, IdResponse,
   AiParseRequest, AiParseResponse, AiPredictionSnapshot,
-  AiCommitRequest, AiCommitResponse, AiDiscardRequest, AiSimpleMessage
+  AiCommitRequest, AiCommitResponse, AiDiscardRequest, AiSimpleMessage, AiSettingsResponse
 } from '../models';
 
 /* 鉴权 */
@@ -167,6 +167,11 @@ export async function chat(req: ChatRequest): Promise<ApiResponse<ChatResponse>>
 }
 export async function transcribe(req: TranscribeRequest): Promise<ApiResponse<TranscribeResponse>> {
   return post<TranscribeResponse>('ai/transcribe', req);
+}
+
+/** GET /ai/settings —— 读取当前生效设置（含 web 端给 AI 起的名字，后端字段 ai_name） */
+export async function getAiSettings(): Promise<ApiResponse<AiSettingsResponse>> {
+  return get<AiSettingsResponse>('ai/settings');
 }
 
 /* AI v0.2 预测闭环：parse → 用户确认 → commit（AI 输出永不直接写账本） */

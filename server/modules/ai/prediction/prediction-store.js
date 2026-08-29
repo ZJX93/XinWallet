@@ -232,9 +232,9 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 }
 
                 const ins = await conn.query(
-                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [userId, bookId, accountId, categoryId, txn.type, amount, note, date,
+                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, location, source_account_id, destination_account_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [userId, bookId, accountId, categoryId, txn.type, amount, note, date, txn.location || null,
                      txn.type === 'expense' ? accountId : null,
                      txn.type === 'income' ? accountId : null]
                 );
@@ -319,7 +319,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
             // 计算 diff（供学习使用）
             if (orig) {
                 const diff = {};
-                for (const key of ['type', 'amount', 'category_id', 'account_id', 'date', 'merchant', 'note']) {
+                for (const key of ['type', 'amount', 'category_id', 'account_id', 'date', 'merchant', 'note', 'location']) {
                     if (String(orig[key] ?? '') !== String(txn[key] ?? '')) {
                         diff[key] = { from: orig[key], to: txn[key] };
                     }

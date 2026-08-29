@@ -467,6 +467,15 @@ data class ChatResponse(
     val transactions: List<ChatTxn> = emptyList()
 )
 
+/** AI 设置（GET /ai/settings 返回 settings 对象，ai_name 即 web 端给 AI 起的名字） */
+data class AiSettingsResponse(
+    val settings: AiSettingsDto = AiSettingsDto()
+)
+
+data class AiSettingsDto(
+    @SerializedName("ai_name") val aiName: String = ""
+)
+
 data class TranscribeRequest(
     val audio: String,
     val mime: String? = null
@@ -530,6 +539,8 @@ data class AiCandidateTxn(
     @SerializedName("to_account_id") val toAccountId: Int? = null,
     val date: String? = null,
     val note: String? = null,
+    /** 地点：用户可在 AI 卡片内编辑，落账时写入 transactions.location（对齐手动记账） */
+    val location: String? = null,
     @SerializedName("raw_segment") val rawSegment: String? = null,
     /** 字段级置信度：amount/type/category/date/currency/merchant */
     val confidence: Map<String, Double> = emptyMap(),

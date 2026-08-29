@@ -135,8 +135,9 @@ object AppContainer {
             .build()
 
         // 首次未配置地址时使用占位符，避免 Retrofit baseUrl 为空崩溃；UI 会强制用户填写真实地址。
+        // 本地开发默认指向 adb reverse 后的本机后端（18888 是 docker-compose 暴露的端口）。
         val saved = normalizeBaseUrl(runBlocking { session.baseUrl() })
-        val baseUrl = saved.ifBlank { "http://localhost/api/" }
+        val baseUrl = saved.ifBlank { "http://localhost:18888/api/" }
         retrofit = buildRetrofit(baseUrl, gson)
         api = retrofit.create(ApiService::class.java)
 

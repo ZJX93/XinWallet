@@ -248,7 +248,20 @@ function normalizeModelDate(s) {
     const timePart = str.slice(11).replace('T', ' ');
 
     if (timePart) {
-        const [hh, mi, ss = '00'] = timePart.split(':').map(Number);
+        let hh = Number(timePart.split(':')[0]);
+        let mi = Number(timePart.split(':')[1]);
+        let ss = timePart.split(':')[2] != null ? Number(timePart.split(':')[2]) : 0;
+        // 模型常把「未识别到时间」写成 00:00:00（午夜占位）。
+        // 这种占位必须回填当前时刻，否则卡片永远显示 0:0:0。
+        if (hh === 0 && mi === 0 && ss === 0) {
+            const now = new Date();
+            hh = now.getHours(); mi = now.getMinutes(); ss = now.getSeconds();
+        }
+        // 时间不合法（如带时区尾巴 '00:00:00Z'）→ 回退当前时刻
+        if (Number.isNaN(hh) || Number.isNaN(mi) || Number.isNaN(ss)) {
+            const now = new Date();
+            hh = now.getHours(); mi = now.getMinutes(); ss = now.getSeconds();
+        }
         const h = String(hh).padStart(2, '0');
         const m = String(mi).padStart(2, '0');
         const sc = String(ss).padStart(2, '0');

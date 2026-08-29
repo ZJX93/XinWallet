@@ -41,6 +41,7 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         force,
     });
 
+    console.log('[OCR-DEBUG] transcribe_source=', tr.source, '\n[OCR-DEBUG] transcribe_text=', tr.text);
     if (!tr.ok) {
         // ⚠️ fail(msg, code) 的第二参数是【错误码】不是附加数据（_helpers.js:16）。
         //    附加信息只能挂在返回对象上，不能塞进 fail()。
@@ -65,8 +66,9 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
     let receiptInfo = null;
     let merchantHints = [];
     let receiptDate = null;
+    let pre = null;   // 票据版式预处理结果（含精确时分秒），供下方时间兜底复用
     if (aiModule.looksLikeReceipt(tr.text)) {
-        const pre = aiModule.preprocessReceipt(tr.text, { defaultDate: new Date().toISOString().slice(0, 10) });
+        pre = aiModule.preprocessReceipt(tr.text, { defaultDate: new Date().toISOString().slice(0, 10) });
         if (pre.ok) {
             parseText = pre.text;
             receiptInfo = { strategy: pre.strategy, item_count: pre.items.length };
@@ -81,6 +83,7 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
             // 判定像票据但一条策略都没命中 → 退回原文，交给主链路尽力而为
         }
     }
+    console.log('[OCR-DEBUG] parseText=', parseText, ' receiptDate=', receiptDate, ' merchantHints=', JSON.stringify(merchantHints));
 
     // ── 第三步：文字 → v0.2 主链路（与手打文字完全同路）──────────
     /*  ⚠️ account_id 必须由客户端在上传时一并给出。
@@ -107,6 +110,23 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         context: imageContext,
     });
     const { transactions, validation, decision_trace } = parsed;
+
+    // 时间兜底：票据预处理器已从「转账时间/支付时间」读到精确时分秒，
+    // 但模型复核可能仍填 00:00:00（v0.2 抽取器本身不读时间）→
+    // 用预处理的精确时间覆盖，避免卡片永久显示 0:0:0。
+    // 仅在预处理成功、且笔数 1:1 能对上时启用，避免错配污染多笔账单。
+    if (pre && pre.ok && Array.isArray(pre.items) && pre.items.length &&
+        transactions.length === pre.items.length) {
+        pre.items.forEach((src, idx) => {
+            const t = transactions[idx];
+            if (src && src.time && t && t.date && / 00:00:00$/.test(t.date)) {
+                t.date = `${t.date.slice(0, 10)} ${src.time}`;
+                if (t.evidence) t.evidence.date = 'receipt_preprocess_time';
+            }
+        });
+    }
+
+    console.log('[OCR-DEBUG] transactions=', JSON.stringify(transactions.map(t => ({ date: t.date, amount: t.amount, merchant: t.merchant, date_source: t.evidence && t.evidence.date }))));
 
     // 转录成功但抽不出交易：把转录文字回给前端，用户可以手工改文字再解析
     if (!transactions.length) {

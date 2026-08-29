@@ -38,8 +38,11 @@ import com.xinwallet.app.ui.viewmodel.LoginViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import kotlinx.coroutines.launch
 
+// 占位判断：只挡"完全没值"与精确等于旧默认占位的两种情况。
+// 带端口的 localhost/127.0.0.1（如 http://localhost:18888/api/）是真实地址，不算占位，
+// 否则本地开发每次启动都强制弹服务器输入框会很烦。
 private fun isPlaceholderUrl(url: String): Boolean =
-    url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
+    url.isBlank() || url == "http://localhost/api/" || url == "http://127.0.0.1/api/"
 
 // UI 上隐藏 baseUrl 末尾的 /api 后缀（内部 Retrofit baseUrl 仍保留 /api 以正确拼接口路径）
 private fun stripApiSuffix(url: String): String = url.replace(Regex("/api/?$"), "")

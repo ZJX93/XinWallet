@@ -321,6 +321,14 @@ export interface ChatResponse {
   [key: string]: Object;
 }
 
+export interface AiSettingsResponse {
+  settings: {
+    /** web 端给 AI 起的名字（后端字段名 ai_name，下划线）；空串表示未起名（客户端回退「小鑫」/「AI」） */
+    ai_name: string;
+    [key: string]: Object;
+  };
+}
+
 export interface OcrResponse {
   /* v0.2 预测闭环字段（/ai/ocr 识别出交易时返回；识别不出时缺失 → undefined） */
   prediction_id?: number;

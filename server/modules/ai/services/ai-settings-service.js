@@ -16,7 +16,7 @@
    幂等：表不存在 / 解析失败一律回退默认，绝不阻塞记账链路。
    ============================================ */
 
-const SETTING_KEYS = ['model_route', 'model_route_simple', 'llm_first', 'few_shot', 'prompt_version'];
+const SETTING_KEYS = ['model_route', 'model_route_simple', 'llm_first', 'few_shot', 'prompt_version', 'ai_name'];
 const PROMPT_VERSIONS = ['v1', 'v2', 'v3'];
 
 /** env 布尔读取：仅识别 false/0/no 为关；否则返回 fallback */
@@ -38,6 +38,8 @@ function envDefaults() {
             const raw = String(process.env.AI_PARSER_PROMPT_VERSION || '').trim().toLowerCase();
             return PROMPT_VERSIONS.includes(raw) ? raw : 'v3';
         })(),
+        // AI 助手自定义名称（Web 设置页可改）；空字符串表示使用默认「小鑫」
+        ai_name: '',
     };
 }
 
@@ -82,6 +84,11 @@ function sanitize(settings) {
     }
     if (PROMPT_VERSIONS.includes(String(src.prompt_version || '').toLowerCase())) {
         out.prompt_version = String(src.prompt_version).toLowerCase();
+    }
+    // ai_name：用户自定义的 AI 助手名称（纯展示，前端/对话自称使用）。
+    // 限制长度与空白，避免超长或控制字符污染 prompt / UI。
+    if (typeof src.ai_name === 'string') {
+        out.ai_name = src.ai_name.trim().replace(/\s+/g, ' ').slice(0, 20);
     }
     return out;
 }

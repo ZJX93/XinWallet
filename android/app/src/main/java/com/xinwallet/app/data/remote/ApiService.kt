@@ -204,7 +204,11 @@ interface ApiService {
 
     /** 自然语言 → 候选交易 + 字段级置信度裁决 + 不可变预测快照；不落账 */
     @POST("ai/transactions/parse")
-    suspend fun parseTransactions(@Body req: AiParseRequest): Response<ApiResponse<AiParseResponse>>
+    suspend fun parseTransactions(
+        @Body req: AiParseRequest,
+        /** dev-only mock 短路：传 "1" 让服务端返回固定样例（无需 AI provider），用于 UI 自测 chip 化卡片 */
+        @Query("mock") mock: String? = null
+    ): Response<ApiResponse<AiParseResponse>>
 
     /** 读取预测快照（含 validation 字段级裁决明细，用于确认界面高亮） */
     @GET("ai/predictions/{id}")
@@ -351,6 +355,10 @@ interface ApiService {
     /* ---------- AI 消费洞察（v0.2.1 起合并进 /ai/advice，insights 字段随之返回）----------
      * ⚠️ 原 /ai/insight 端点已废弃（服务端返回 410 + replacement 提示）。
      *   此处移除 aiInsight 端点声明；调用方改用 aiAdvice() 拿 AiAdviceResponse.insights。 */
+
+    /** 读取 AI 设置（含 web 端给 AI 起的名字 ai_name，安卓端标题展示用） */
+    @GET("ai/settings")
+    suspend fun getAiSettings(): Response<ApiResponse<AiSettingsResponse>>
 
     /* ---------- AI 服务商配置（/ai/providers 系列）----------
      * 端点路径不带前导斜杠（Retrofit 规范，与项目其他端点保持一致）。

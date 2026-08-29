@@ -10,11 +10,13 @@ import router from '@ohos.router';
 import { ChatMessage, OcrResponse } from '../common/models';
 import common from '@ohos.app.ability.common';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
+import geoLocationManager from '@ohos.geoLocationManager';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import buffer from '@ohos.buffer';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
+import dataPreferences from '@ohos.data.preferences';
 import { COLORS, fmtMoney, withAlpha } from '../common/theme';
 import { AppBackground, DropdownField, DropdownOption } from '../common/components/Components';
 import { startRecord, stopRecord } from '../common/audio';
@@ -110,7 +112,9 @@ function cloneTxns(list: AiCandidateTxn[]): AiCandidateTxn[] {
 @Component
 struct Chat {
   @StorageProp('themeMode') themeMode: string = 'system';
-  @State messages: ChatMsg[] = [];
+  @State @Watch('saveHistory') messages: ChatMsg[] = [];
+  /** 顶部标题固定「AI助手」；对话里 AI 署名 / 欢迎语昵称取 web 端起的名字，未起名回退「AI」/「小鑫」 */
+  @State aiName: string = 'AI助手';
   @State input: string = '';
   @State recording: boolean = false;
   @State recSeconds: number = 0;
@@ -139,18 +143,35 @@ struct Chat {
   @State currentBookName: string = '个人账本';
   @State showBookSheet: boolean = false;
   @State showAccountSheet: boolean = false;
-  @State showLocationDialog: boolean = false;
-  @State locationDraft: string = '';
+  @State showClearConfirm: boolean = false;
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private timer: number = 0;
+  /** 对话持久化：重启 App 后仍在，仅用户主动「删除记录」才清空 */
+  private historyLoaded: boolean = false;
+  private chatPrefs: dataPreferences.Preferences | null = null;
 
   async aboutToAppear(): Promise<void> {
-    this.messages = [{
-      role: 'assistant',
-      content: '你好，我是小鑫。你可以直接说「今天午饭花了28元」，或发一张小票截图，我来帮你记账～'
-    }];
-    // 确认卡片需要账户/分类做下拉；失败不阻塞对话主流程
+    // 1. 初始化对话持久化存储 + 拉取 web 端 AI 名字（用于署名 / 欢迎语昵称）
+    try {
+      this.chatPrefs = await dataPreferences.getPreferences(this.ctx, 'chat_history');
+    } catch (e) { /* 持久化不可用则降级为仅内存会话 */ }
+    try {
+      const s = await Api.getAiSettings();
+      if (s.success && s.data && s.data.settings && s.data.settings.ai_name) {
+        this.aiName = s.data.settings.ai_name;
+      }
+    } catch (e) { /* 静默回退「AI助手」 */ }
+
+    // 2. 恢复本地对话记录（图片 base64 本就未进 messages；过滤失效交易卡片）
+    await this.loadHistory();
+
+    // 3. 恢复后为空才显示欢迎语（动态昵称，未起名回退「小鑫」）
+    if (this.messages.length === 0) {
+      this.pushWelcome();
+    }
+
+    // 4. 确认卡片需要账户/分类做下拉；失败不阻塞对话主流程
     try {
       const rs = await Promise.all([Api.getAccounts(), Api.getCategories(), Api.getBooks()]);
       const ar = rs[0];
@@ -173,6 +194,51 @@ struct Chat {
         this.currentBookName = cur ? cur.name : (this.books.length > 0 ? this.books[0].name : '个人账本');
       }
     } catch (e) { /* 静默降级：确认卡片仍可展示，只是下拉为空 */ }
+  }
+
+  /** 对话里 AI 的显示名：web 端起的名字，未起名回退「AI」 */
+  private aiDisplayName(): string {
+    return this.aiName === 'AI助手' ? 'AI' : this.aiName;
+  }
+
+  /** 推动态欢迎语（昵称取 web 起的名字，未起名回退「小鑫」） */
+  private pushWelcome(): void {
+    const name = this.aiName === 'AI助手' ? '小鑫' : this.aiName;
+    this.messages = [{
+      role: 'assistant',
+      content: `你好，我是${name}。你可以直接说「今天午饭花了28元」，或发一张小票截图，我来帮你记账～`
+    }];
+  }
+
+  /** 从本地存储恢复对话记录 */
+  private async loadHistory(): Promise<void> {
+    if (this.chatPrefs) {
+      try {
+        const json = await this.chatPrefs.get('chat_messages', '') as string;
+        if (json && json.length > 0) {
+          const arr = JSON.parse(json) as ChatMsg[];
+          // 过滤失效交易卡片：仅保留 id>0 的真实交易（重启后临时/无效 id 丢弃）
+          const filtered = arr.map((m: ChatMsg): ChatMsg => {
+            if (m.txs && m.txs.length > 0) {
+              const valid = m.txs.filter((t: TransactionItem) => (t.id ?? 0) > 0);
+              return { role: m.role, content: m.content, txs: valid };
+            }
+            return m;
+          });
+          this.messages = filtered;
+        }
+      } catch (e) { /* 损坏则忽略，回到空会话 */ }
+    }
+    this.historyLoaded = true;
+  }
+
+  /** messages 变化即落盘（@Watch 触发；historyLoaded 置位前不写，避免空列表覆盖历史） */
+  private saveHistory(): void {
+    if (!this.historyLoaded || !this.chatPrefs) return;
+    try {
+      this.chatPrefs.put('chat_messages', JSON.stringify(this.messages));
+      this.chatPrefs.flush();
+    } catch (e) { /* 持久化失败不阻塞对话 */ }
   }
 
   async requestMic(): Promise<boolean> {
@@ -498,34 +564,40 @@ struct Chat {
     this.candidates = next;
   }
 
-  /** 不关联：清空所有非转账候选卡片的账户 */
-  unlinkAccounts(): void {
-    this.selectedAccountId = 0;
-    const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
-      if (t.type === 'transfer') return t;
-      const copy = cloneTxn(t);
-      copy.account_id = undefined;
-      return copy;
-    });
-    this.candidates = next;
+  /** 切换账本 chip：同步前端全局账本状态。账本是后端 commit 时的 req.bookId，不需 candidate 字段承载 */
+  applyBookToAll(id: number): void {
+    if (id <= 0) return;
+    this.currentBookId = id;
+    const cur = this.books.find((b: Book) => b.id === id);
+    this.currentBookName = cur ? cur.name : '个人账本';
   }
 
-  /** 添加地点：把地点追加到所有候选备注里 */
-  applyLocationToAll(): void {
-    const loc = this.locationDraft.trim();
-    if (!loc || this.candidates.length === 0) return;
+  /** 地点 chip：调起 GPS 定位，拿到经纬度后批量追加到候选卡片备注 */
+  async requestLocation(): Promise<void> {
+    try {
+      const at = abilityAccessCtrl.createAtManager();
+      const res = await at.requestPermissionsFromUser(this.ctx,
+        ['ohos.permission.LOCATION', 'ohos.permission.APPROXIMATELY_LOCATION']);
+      if (!res.authResults.every((r: number) => r === 0)) return;
+      const loc = await geoLocationManager.getCurrentLocation({ scenario: 0x301 });
+      this.applyLocationToAll(`${loc.latitude.toFixed(4)},${loc.longitude.toFixed(4)}`);
+    } catch (e) { /* 定位失败静默 —— 与手动记账一致 */ }
+  }
+
+  /** 把定位/地点字符串追加到所有候选卡片备注（GPS 直接传经纬度，文本输入也已兼容） */
+  applyLocationToAll(loc: string): void {
+    const trimmed = loc.trim();
+    if (!trimmed || this.candidates.length === 0) return;
     const next = this.candidates.map((t: AiCandidateTxn): AiCandidateTxn => {
       const copy = cloneTxn(t);
       const prefix = copy.note ? `${copy.note} · ` : '';
-      copy.note = `${prefix}${loc}`;
+      copy.note = `${prefix}${trimmed}`;
       return copy;
     });
     this.candidates = next;
-    this.locationDraft = '';
-    this.showLocationDialog = false;
   }
 
-  /** 切换当前账本，成功后刷新页面默认账户 */
+  /** 切换当前账本，成功后刷新页面默认账户；同时把账本同步到所有候选 */
   async switchBookAndReload(id: number): Promise<void> {
     if (id === this.currentBookId) {
       this.showBookSheet = false;
@@ -534,9 +606,7 @@ struct Chat {
     try {
       const r = await Api.switchBook(id);
       if (r.success && r.data) {
-        this.currentBookId = id;
-        const cur = this.books.find((b: Book) => b.id === id);
-        this.currentBookName = cur ? cur.name : '个人账本';
+        this.applyBookToAll(id);
         // 切换账本后账户列表会变化，刷新并重新选默认账户
         const ar = await Api.getAccounts();
         if (ar.success && ar.data) {
@@ -655,11 +725,16 @@ struct Chat {
         // 清空是本地动作，弃置失败不该拦住用户
       }
     }
-    this.messages = [this.messages[0]];
+    this.pushWelcome();
   }
 
   @Builder Bubble(m: ChatMsg) {
     Column({ space: 6 }) {
+      // 署名：用户「我」/ AI 动态昵称（未起名回退「AI」）
+      Text(m.role === 'user' ? '我' : this.aiDisplayName())
+        .fontSize(11).fontColor(COLORS.textSecondary)
+        .alignSelf(m.role === 'user' ? ItemAlign.End : ItemAlign.Start)
+        .margin({ bottom: 2 })
       if (m.role === 'user') {
         Text(m.content).fontSize(15).fontColor('#FFFFFF')
           .backgroundColor(COLORS.brand).padding(12).borderRadius(12)
@@ -1011,7 +1086,7 @@ struct Chat {
     if (c) this.setCategory(seq, c);
   }
 
-  /** 底部上下文 chip 条：账本 / 账户 / 不关联 / 添加地点，联动确认卡片 */
+  /** 底部上下文 chip 条：账本 / 账户 / 地点，对齐手动记账字段，联动 AI 候选卡片 */
   @Builder ContextChipBar() {
     Row({ space: 8 }) {
       // 账本
@@ -1028,16 +1103,10 @@ struct Chat {
         this.selectedAccountId > 0,
         120
       )
-      // 不关联
+      // 地点：直接调 GPS 定位，拿到经纬度后追加到所有候选卡片备注
       this.ContextChip(
-        '🔗', '不关联',
-        () => { this.unlinkAccounts(); },
-        this.selectedAccountId === 0
-      )
-      // 添加地点
-      this.ContextChip(
-        '📍', '添加地点',
-        () => { this.locationDraft = ''; this.showLocationDialog = true; },
+        '📍', '地点',
+        () => { this.requestLocation(); },
         false
       )
     }
@@ -1120,31 +1189,6 @@ struct Chat {
     .backgroundColor(COLORS.card)
   }
 
-  /** 地点输入弹窗 */
-  @Builder LocationDialog() {
-    Column({ space: 14 }) {
-      Text('添加地点').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
-      TextInput({ placeholder: '例如：公司楼下便利店', text: this.locationDraft })
-        .fontSize(14).height(44)
-        .onChange((v: string) => this.locationDraft = v)
-      Row({ space: 10 }) {
-        Button('取消')
-          .fontSize(14).fontColor(COLORS.textSecondary)
-          .height(40).padding({ left: 20, right: 20 })
-          .backgroundColor(withAlpha(COLORS.surface, 0.6))
-          .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(10)
-          .onClick(() => { this.showLocationDialog = false; this.locationDraft = ''; })
-        Button('确认')
-          .fontSize(14).fontColor('#FFFFFF')
-          .height(40).padding({ left: 20, right: 20 })
-          .backgroundColor(COLORS.brand).borderRadius(10)
-          .onClick(() => this.applyLocationToAll())
-      }.width('100%').justifyContent(FlexAlign.End)
-    }
-    .width('100%').padding(16).borderRadius(16)
-    .backgroundColor(COLORS.card)
-  }
-
   build() {
     // 页面背景三层结构（见 docs/harmony-style-guide.md 第 15 节）：
     // 根节点必须是原生 Stack（@Entry 不接受自定义组件做根，会报 10905210）
@@ -1156,10 +1200,10 @@ struct Chat {
       Row() {
         Text('‹').fontSize(28).fontColor(COLORS.textPrimary).width(32).textAlign(TextAlign.Center)
           .onClick(() => router.back())
-        Text('AI 记账').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+        Text('AI助手').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
           .margin({ left: 4 })
         Text('🗑').fontSize(20).fontColor(COLORS.textSecondary).width(40).textAlign(TextAlign.Center)
-          .onClick(() => this.clearMessages())
+          .onClick(() => { this.showClearConfirm = true; })
       }.width('100%').height(52).padding({ left: 12, right: 16 })
         .backgroundColor(withAlpha(COLORS.surface, 0.9))
         .border({ width: { bottom: 0.5 }, color: COLORS.outlineVariant })
@@ -1240,11 +1284,26 @@ struct Chat {
         .justifyContent(FlexAlign.End)
         .backgroundColor('rgba(0,0,0,0.35)')
       }
-      if (this.showLocationDialog) {
+      // 清空对话确认：「删除记录」语义，对齐安卓（不可撤销）
+      if (this.showClearConfirm) {
         Column() {
-          this.LocationDialog()
-        }.width('100%').height('100%')
-        .justifyContent(FlexAlign.Center)
+          Column({ space: 14 }) {
+            Text('删除记录').fontSize(18).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
+            Text('确认删除全部对话记录吗？该操作不可撤销，删除后无法恢复。')
+              .fontSize(14).fontColor(COLORS.textSecondary).width('100%')
+            Row({ space: 12 }) {
+              Button('取消', { type: ButtonType.Normal })
+                .fontSize(15).height(44).layoutWeight(1)
+                .backgroundColor(withAlpha(COLORS.surface, 0.6))
+                .border({ width: 0.5, color: COLORS.outlineVariant }).borderRadius(12)
+                .onClick(() => { this.showClearConfirm = false; })
+              Button('删除', { type: ButtonType.Normal })
+                .fontSize(15).fontColor('#FFFFFF').height(44).layoutWeight(1)
+                .backgroundColor(COLORS.danger).borderRadius(12)
+                .onClick(() => { this.showClearConfirm = false; this.clearMessages(); })
+            }.width('100%')
+          }.padding(20).width('88%').backgroundColor(COLORS.card).borderRadius(16)
+        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
         .backgroundColor('rgba(0,0,0,0.35)')
       }
     }.width('100%').height('100%')

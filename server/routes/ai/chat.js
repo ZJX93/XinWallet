@@ -6,6 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, aiModule, getActiveProvider, checkProvider, chatWithTools, fmtDateTime, stripThinkingTokens, polishChatReply, toAmount, syncCreditCardDebt, computeAccountBalance, enforceBalanceLimit } = require('./_shared');
+const aiSettingsSvc = require('../../modules/ai/services/ai-settings-service');
 const router = express.Router();
 
 // 财务分析工具（只读）：经 modules/ai 桶文件导出 —— 路由层不直接依赖 AI 内部模块
@@ -52,7 +53,10 @@ router.post('/chat', async (req, res) => {
             }
         }
 
-        const system = `你是「小鑫」，「鑫钱包」App 的 AI 记账助手，帮助用户查账、改账、答疑。
+        // AI 助手自定义名称：来自用户设置（Web 设置页可改），未设置时使用默认「小鑫」
+        const aiSettings = await aiSettingsSvc.getAiSettings(db, req.userId);
+        const aiName = (aiSettings && aiSettings.ai_name) ? aiSettings.ai_name : '小鑫';
+        const system = `你是「${aiName}」，「鑫钱包」App 的 AI 记账助手，帮助用户查账、改账、答疑。
 规则：
 1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
 2. 信息不全（金额或收支方向）时用一句中文追问，不要臆造。

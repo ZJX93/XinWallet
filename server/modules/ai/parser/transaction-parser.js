@@ -232,6 +232,19 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
                     out[f] = fix[f];
                     applied.push(f);
                 }
+                // 时间增强：账单原文通常带真实交易时间，但模型常把「未识别到的时间」
+                // 填成 00:00:00 或只给日期。此时若本地抽取已从 raw_segment 识别出具体时间，
+                // 优先采用本地时间，避免卡片永远显示 0:0:0（对用户而言账单一定有时间）。
+                const localFull = t.date || '';
+                const localT = (localFull.match(/ (\d{2}:\d{2}:\d{2})$/) || [])[1];
+                const finalT = (String(out.date || '').match(/ (\d{2}:\d{2}:\d{2})$/) || [])[1];
+                if (localT && localT !== '00:00:00' && (!finalT || finalT === '00:00:00')) {
+                    out.date = localFull;
+                    if (!applied.includes('date')) applied.push('date');
+                    out.confidence = { ...out.confidence, date: Math.max(Number(out.confidence.date) || 0, 0.9) };
+                    out.evidence = { ...out.evidence, date: `local_time_patched_${routing.route}` };
+                }
+
                 if (applied.length) {
                     out.confidence = { ...out.confidence };
                     out.evidence = { ...out.evidence };
@@ -368,7 +381,15 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
             merchant: m.merchant != null ? m.merchant : (local ? local.merchant : null),
             category_id: m.category_id !== undefined ? m.category_id : (local ? local.category_id : null),
             account_id: m.account_id !== undefined ? m.account_id : (local ? local.account_id : null),
-            date: m.date || (local ? local.date : null),
+            // 时间增强：模型未识别时间（00:00:00 占位或缺失）时，回退本地抽取到的真实时间
+            date: (() => {
+                const md = m.date, ld = local ? local.date : null;
+                const mt = (typeof md === 'string' && (md.match(/ (\d{2}:\d{2}:\d{2})$/) || [])[1]) || '';
+                const lt = (typeof ld === 'string' && (ld.match(/ (\d{2}:\d{2}:\d{2})$/) || [])[1]) || '';
+                if (md && mt && mt !== '00:00:00') return md;       // 模型给到真实时间 → 用模型
+                if (lt && lt !== '00:00:00') return ld;             // 本地有真实时间 → 用本地
+                return md || ld || null;
+            })(),
             note: m.note != null ? m.note : (local ? local.note : ''),
             raw_segment: (local && local.raw_segment) || text,
         };

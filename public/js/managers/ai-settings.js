@@ -40,6 +40,8 @@ const AISettings = {
         this.setChecked('aiSettingFewShot', s.few_shot);
         const v = document.getElementById('aiSettingPromptVersion');
         if (v && s.prompt_version) v.value = s.prompt_version;
+        const n = document.getElementById('aiSettingAiName');
+        if (n) n.value = s.ai_name || '';
     },
 
     setChecked(id, val) {
@@ -48,12 +50,14 @@ const AISettings = {
     },
 
     collect() {
+        const nameEl = document.getElementById('aiSettingAiName');
         return {
             model_route: !!document.getElementById('aiSettingModelRoute').checked,
             model_route_simple: !!document.getElementById('aiSettingModelRouteSimple').checked,
             llm_first: !!document.getElementById('aiSettingLlmFirst').checked,
             few_shot: !!document.getElementById('aiSettingFewShot').checked,
             prompt_version: document.getElementById('aiSettingPromptVersion').value,
+            ai_name: (nameEl && nameEl.value) ? nameEl.value.trim() : '',
         };
     },
 

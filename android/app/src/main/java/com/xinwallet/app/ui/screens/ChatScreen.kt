@@ -14,7 +14,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.text.BasicTextField
@@ -35,7 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,11 +46,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -146,39 +141,11 @@ fun ChatScreen(navController: NavHostController) {
 
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    // 上下文 chips 状态
     val books by AppContainer.books.collectAsState()
     val currentBookId by AppContainer.currentBookId.collectAsState()
-    var notReimbursable by remember { mutableStateOf(false) }
-    var chatLocation by remember { mutableStateOf("") }
-    var showBookSheet by remember { mutableStateOf(false) }
-    var showLocationDialog by remember { mutableStateOf(false) }
-    var locationDraft by remember { mutableStateOf("") }
-
-    // 地点定位：权限 + 定位中状态
-    var isLocating by remember { mutableStateOf(false) }
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { perms ->
-        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
-            isLocating = true
-            scope.launch {
-                val addr = getCurrentLocation(context)
-                if (addr != null) locationDraft = addr
-                isLocating = false
-                if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
-            }
-        } else {
-            isLocating = false
-            scope.launch { snackbar.showSnackbar("未授予定位权限") }
-        }
-    }
+    val isLocating by vm.locating.collectAsState()
 
     var accounts by remember { mutableStateOf<List<com.xinwallet.app.data.model.Account>>(emptyList()) }
-    var selectedAccountId by remember { mutableStateOf<Int?>(null) }
-    var showAccountSheet by remember { mutableStateOf(false) }
     // v0.2 确认卡片需要分类列表做类目下拉
     var categories by remember { mutableStateOf<List<com.xinwallet.app.data.model.Category>>(emptyList()) }
 
@@ -186,14 +153,11 @@ fun ChatScreen(navController: NavHostController) {
         val resp = AppContainer.accountRepository.getAccounts()
         if (resp is ApiResult.Success) {
             accounts = resp.data.accounts
-            selectedAccountId = accounts.firstOrNull { it.isDefault }?.id ?: accounts.firstOrNull()?.id
+            vm.defaultAccountId = accounts.firstOrNull { it.isDefault }?.id ?: accounts.firstOrNull()?.id
         }
         val catResp = AppContainer.categoryRepository.getCategories()
         if (catResp is ApiResult.Success) categories = catResp.data
     }
-
-    // 把选中账户同步给 ViewModel，作为 parse 的 context.account_id
-    LaunchedEffect(selectedAccountId) { vm.defaultAccountId = selectedAccountId }
 
     fun launchCamera() {
         try {
@@ -242,18 +206,7 @@ fun ChatScreen(navController: NavHostController) {
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column(Modifier.background(MaterialTheme.colorScheme.background).imePadding()) {
-                // 输入区上方的快捷 chips 行（账本/账户/不关联/地点）
-                ChatContextChipsRow(
-                    bookName = books.find { it.id == currentBookId }?.name ?: "默认账本",
-                    accountName = accounts.find { it.id == selectedAccountId }?.name ?: "选择账户",
-                    notReimbursable = notReimbursable,
-                    location = chatLocation,
-                    onPickBook = { showBookSheet = true },
-                    onPickAccount = { showAccountSheet = true },
-                    onToggleNotReimbursable = { notReimbursable = !notReimbursable },
-                    onPickLocation = { locationDraft = chatLocation; showLocationDialog = true }
-                )
-                // 输入栏
+                // 输入栏（账本 / 账户 / 地点已迁移到 AI 识别卡片内的 chip）
                 ChatInputBar(
                     input = state.input,
                     onInput = { vm.onInputChange(it) },
@@ -279,133 +232,20 @@ fun ChatScreen(navController: NavHostController) {
             if (showClearConfirm) {
                 AlertDialog(
                     onDismissRequest = { showClearConfirm = false },
-                    title = { Text("清空对话") },
-                    text = { Text("确认清空当前对话历史吗？该操作不可撤销。") },
+                    title = { Text("删除记录") },
+                    text = { Text("确认删除全部对话记录吗？该操作不可撤销，删除后无法恢复。") },
                     confirmButton = {
-                        TextButton(onClick = { showClearConfirm = false; vm.clearMessages() }) { Text("清空", color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { showClearConfirm = false; vm.clearMessages() }) { Text("删除", color = MaterialTheme.colorScheme.error) }
                     },
                     dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("取消") } }
                 )
             }
-            // 账本选择
-            if (showBookSheet) {
-                androidx.compose.material3.ModalBottomSheet(
-                    onDismissRequest = { showBookSheet = false },
-                    sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    containerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text("选择账本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
-                        books.forEach { book ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable {
-                                        scope.launch { AppContainer.switchBook(book.id) }
-                                        showBookSheet = false
-                                    }
-                                    .padding(vertical = 12.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(book.icon.ifBlank { "📒" }, fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(book.name, style = MaterialTheme.typography.bodyLarge)
-                                    if (book.isDefault) Text("默认账本", style = MaterialTheme.typography.labelSmall, color = Brown500)
-                                }
-                                if (currentBookId == book.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
-                            }
-                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                        }
-                    }
-                }
             }
-            // 账户选择
-            if (showAccountSheet) {
-                androidx.compose.material3.ModalBottomSheet(
-                    onDismissRequest = { showAccountSheet = false },
-                    sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    containerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text("选择账户", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
-                        accounts.forEach { acc ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { selectedAccountId = acc.id; showAccountSheet = false }
-                                    .padding(vertical = 12.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(acc.icon ?: "💰", fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(acc.name, style = MaterialTheme.typography.bodyLarge)
-                                    Text("余额 ${formatMoney(acc.balance)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                if (selectedAccountId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
-                            }
-                            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                        }
-                    }
-                }
-            }
-            // 地点输入
-            if (showLocationDialog) {
-                AlertDialog(
-                    onDismissRequest = { showLocationDialog = false },
-                    title = { Text("地点") },
-                    text = {
-                        Column {
-                            OutlinedTextField(
-                                value = locationDraft,
-                                onValueChange = { locationDraft = it },
-                                singleLine = true,
-                                placeholder = { Text("输入地点（如：合肥、公司）") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                                    if (hasPermission) {
-                                        isLocating = true
-                                        scope.launch {
-                                            val addr = getCurrentLocation(context)
-                                            if (addr != null) locationDraft = addr
-                                            isLocating = false
-                                            if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
-                                        }
-                                    } else {
-                                        locationPermissionLauncher.launch(arrayOf(
-                                            Manifest.permission.ACCESS_FINE_LOCATION,
-                                            Manifest.permission.ACCESS_COARSE_LOCATION
-                                        ))
-                                    }
-                                },
-                                enabled = !isLocating,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = Brown500)
-                                Spacer(Modifier.width(6.dp))
-                                Text(if (isLocating) "定位中…" else "获取设备定位")
-                            }
-                        }
-                    },
-                    confirmButton = { TextButton(onClick = { chatLocation = locationDraft.trim(); showLocationDialog = false }) { Text("保存") } },
-                    dismissButton = {
-                        Row {
-                            if (chatLocation.isNotBlank()) {
-                                TextButton(onClick = { chatLocation = ""; locationDraft = ""; showLocationDialog = false }) { Text("清除", color = MaterialTheme.colorScheme.error) }
-                            }
-                            TextButton(onClick = { showLocationDialog = false }) { Text("取消") }
-                        }
-                    }
-                )
-            }
-        }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (isEmpty) {
-                // 空态：AI 信息气泡（截图风格）
-                AiIntroPanel()
+                // 空态：AI 信息气泡（截图风格）；未起名时沿用「小鑫」做自我介绍
+                AiIntroPanel(aiName = if (state.aiName == "AI助手") "小鑫" else state.aiName)
             } else {
                 LazyColumn(
                     state = listState,
@@ -417,7 +257,8 @@ fun ChatScreen(navController: NavHostController) {
                         ChatBubble(
                             msg = msg,
                             onEdit = { txnId -> navController.navigate("edit/$txnId") },
-                            onDelete = { txnId -> vm.deleteTransaction(txnId) }
+                            onDelete = { txnId -> vm.deleteTransaction(txnId) },
+                            aiName = if (state.aiName == "AI助手") "AI" else state.aiName
                         )
                     }
                     if (state.thinking) {
@@ -430,13 +271,30 @@ fun ChatScreen(navController: NavHostController) {
                                 confirm = confirm,
                                 accounts = accounts,
                                 categories = categories,
+                                books = books,
+                                currentBookId = currentBookId,
+                                onPickBook = { id -> scope.launch { AppContainer.switchBook(id) } },
                                 onSetType = { seq, t -> vm.setCandidateType(seq, t) },
                                 onSetAmount = { seq, a -> vm.setCandidateAmount(seq, a) },
                                 onSetCategory = { seq, id, name -> vm.setCandidateCategory(seq, id, name) },
                                 onSetAccount = { seq, id -> vm.setCandidateAccount(seq, id) },
                                 onSetTransferAccounts = { seq, f, t -> vm.setCandidateTransferAccounts(seq, f, t) },
                                 onSetDate = { seq, d -> vm.setCandidateDate(seq, d) },
+                                onSetTime = { seq, t -> vm.setCandidateTime(seq, t) },
                                 onSetNote = { seq, n -> vm.setCandidateNote(seq, n) },
+                                onSetLocation = { seq, loc -> vm.setCandidateLocation(seq, loc) },
+                                onRequestGps = { seq ->
+                                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                                        PackageManager.PERMISSION_GRANTED ||
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                                        PackageManager.PERMISSION_GRANTED
+                                    if (granted) {
+                                        vm.requestGpsForSeq(context, seq)
+                                    } else {
+                                        scope.launch { snackbar.showSnackbar("未授予定位权限，请在系统设置中开启") }
+                                    }
+                                },
+                                isLocating = isLocating,
                                 onRemove = { seq -> vm.removeCandidate(seq) },
                                 onCommit = { vm.commitPrediction() },
                                 onDiscard = { vm.discardPrediction() }
@@ -467,7 +325,7 @@ private fun ChatTopBar(onBack: () -> Unit, onClear: () -> Unit) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
         }
         Text(
-            "AI记账",
+            "AI助手",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f),
@@ -483,7 +341,7 @@ private fun ChatTopBar(onBack: () -> Unit, onClear: () -> Unit) {
  * 空态：AI 自我介绍蓝色信息气泡 + 右上「清空」按钮
  * ============================================================ */
 @Composable
-private fun AiIntroPanel() {
+private fun AiIntroPanel(aiName: String = "小鑫") {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
         Box(
             Modifier
@@ -494,13 +352,13 @@ private fun AiIntroPanel() {
                 .padding(14.dp)
         ) {
             Text(
-                """Hi您好 我是小鑫，您的AI记账助手！
-只要像聊天一样告诉我花费，我就能帮您快速记账：
-1、直接输入一段描述，例如「中午吃牛肉面28元」
-2、拍照或从相册上传小票/截图，我来帮您识别
-3、点麦克风开始说话，再点一下结束，语音自动转文字
-4、识别完成后会生成账单，您可以在卡片里修改或删除
-小提示：包含金额、类别/用途、时间(可选)信息会更准确哦""",
+                """Hi您好 我是$aiName，您的AI助手！
+我能帮你记账，也能分析消费、做财务决策：
+1、记账：直接输入「中午吃牛肉面28元」，或拍照/相册上传小票
+2、语音：点麦克风说话，自动转文字记账
+3、分析：问我「分析近半年的消费情况」「这个月花了多少」「负债压力大吗」
+4、结果会在卡片里展示，记账需你确认后才入账
+小提示：记账请尽量包含金额、类别、时间；分析直接说需求即可""",
                 style = MaterialTheme.typography.bodyMedium,
                 color = IntroBubbleText,
                 lineHeight = 20.sp
@@ -511,83 +369,20 @@ private fun AiIntroPanel() {
 }
 
 /* ============================================================
- * 上下文 chip 行：账本 / 账户 / 不关联 / 地点（可点击交互）
- * ============================================================ */
-@Composable
-private fun ChatContextChipsRow(
-    bookName: String,
-    accountName: String,
-    notReimbursable: Boolean,
-    location: String,
-    onPickBook: () -> Unit,
-    onPickAccount: () -> Unit,
-    onToggleNotReimbursable: () -> Unit,
-    onPickLocation: () -> Unit
-) {
-    val scroll = rememberScrollState()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scroll)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ChatChip(icon = Icons.Filled.MenuBook, label = bookName, onClick = onPickBook)
-        ChatChip(icon = Icons.Filled.AccountBox, label = accountName, onClick = onPickAccount)
-        ChatChip(
-            icon = Icons.Filled.LinkOff,
-            label = if (notReimbursable) "不关联 ✓" else "不关联",
-            active = notReimbursable,
-            onClick = onToggleNotReimbursable
-        )
-        ChatChip(
-            icon = Icons.Filled.LocationOn,
-            label = if (location.isBlank()) "添加地点" else location,
-            onClick = onPickLocation
-        )
-    }
-}
-
-@Composable
-private fun ChatChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    active: Boolean = false,
-    onClick: (() -> Unit)? = null
-) {
-    val mod = if (onClick != null) Modifier.clickable { onClick() } else Modifier
-    val bg = if (active) Brown500 else Brown50
-    val border = if (active) Brown500 else Brown100
-    val fg = if (active) Color.White else MaterialTheme.colorScheme.onSurface
-    val iconColor = if (active) Color.White else Brown500
-    Row(
-        modifier = mod
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .border(1.dp, border, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = fg)
-    }
-}
-
-/* ============================================================
  * 聊天气泡（保留）
  * ============================================================ */
 @Composable
 private fun ChatBubble(
     msg: ChatMessage,
     onEdit: (Int) -> Unit = {},
-    onDelete: (Int) -> Unit = {}
+    onDelete: (Int) -> Unit = {},
+    /** 对话里 AI 的显示名：web 端起的名字，未起名回退「AI」 */
+    aiName: String = "AI"
 ) {
     val isUser = msg.role == "user"
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         Text(
-            if (isUser) "我" else "AI",
+            if (isUser) "我" else aiName,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
