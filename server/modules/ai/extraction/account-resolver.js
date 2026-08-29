@@ -146,6 +146,41 @@ function findAccountByChannel(accounts, channel) {
 }
 
 /**
+ * 用【真实账户名】在原文里直接匹配。
+ *
+ * 为什么需要它：渠道字典（支付宝/微信/招行/…）覆盖不到用户的自定义账户名
+ *   （工资卡、零钱通、小金库…）。只要账户名不含字典里的渠道词，
+ *   scanPaymentChannels 就扫不到 → 只能 fallback，表现为「账户识别不出来」。
+ *
+ * 为什么安全：这属于「账单原文写明的账户证据」（照抄），而不是 prompt 里被明令
+ *   禁止的「商家 → 账户」习惯猜测 —— 原文确实写了这个账户名。
+ *
+ * 冲突处理：多个账户名同时命中时取【最长】的那个，避免「信用卡」压过
+ *   更具体的「招行信用卡」。
+ *
+ * ⛔ 规范化后长度 < 2 的名称（如「卡」「钱」）不参与，避免泛词误命中。
+ *
+ * @param {Array<{id:number|string,name:string}>} accounts
+ * @param {string} text
+ * @returns {object|null}
+ */
+function findAccountByNameInText(accounts, text) {
+    if (!Array.isArray(accounts) || accounts.length === 0 || !text) return null;
+    const normText = norm(text);
+    let best = null;
+    let bestLen = 0;
+    for (const a of accounts) {
+        const n = norm(a.name);
+        if (!n || n.length < 2) continue;
+        if (normText.includes(n) && n.length > bestLen) {
+            best = a;
+            bestLen = n.length;
+        }
+    }
+    return best;
+}
+
+/**
  * 主入口：基于 OCR/原始文本解析出最合适的账户。
  *
  * @param {string} text            OCR 文本或用户输入
@@ -169,6 +204,21 @@ function resolveAccount(text, ctx = {}) {
         account_id: defaultAccountId = null,
         last_account_name: lastAccountName = null,
     } = ctx;
+
+    // ---- 0) 账户名直配：原文写明了某个真实账户的名称 → 最强证据，直接采用 ----
+    // 放在渠道关键词之前：账户全名比渠道词更具体（「招行信用卡」> 「信用卡」）。
+    const direct = findAccountByNameInText(accounts, text);
+    if (direct) {
+        return {
+            account_id: direct.id,
+            confidence: 0.95,
+            source: 'name_in_text',
+            matched_channel: null,
+            matched_account: direct,
+            channels: [],
+            details: `原文写明账户「${direct.name}」，按账户名直接匹配`,
+        };
+    }
 
     const channels = scanPaymentChannels(text);
 
@@ -223,4 +273,4 @@ function resolveAccount(text, ctx = {}) {
     };
 }
 
-module.exports = { resolveAccount, scanPaymentChannels, findAccountByChannel, norm };
+module.exports = { resolveAccount, scanPaymentChannels, findAccountByChannel, findAccountByNameInText, norm };

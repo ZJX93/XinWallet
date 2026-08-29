@@ -152,8 +152,10 @@ function buildV2({ text, candidates, categories = [], accounts = [], memoryHints
     // 账户带上 type（cash/bank/credit/alipay/wechat…）：仅凭名字模型很难区分
     // 「招行储蓄卡」和「招行信用卡」，而账单上的「信用卡」「花呗」正是关键线索。
     // 与类目列表保持同构（id:名称(类型)），降低模型解析负担。
+    // 上限从 20 提到 50：账户数超过上限时模型根本看不到后面的账户，
+    // 表现为「明明有这个卡却识别不出来」。50 条以内对 prompt 长度影响可接受。
     const acctList = accounts.length
-        ? accounts.slice(0, 20).map(a => `${a.id}:${a.name}(${a.type || 'other'})`).join(', ')
+        ? accounts.slice(0, 50).map(a => `${a.id}:${a.name}(${a.type || 'other'})`).join(', ')
         : '（该用户暂无账户，account_id 一律填 null）';
 
     const systemParts = [
