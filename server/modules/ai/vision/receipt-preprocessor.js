@@ -41,6 +41,28 @@
 /** 汇总行：这些行的金额不是一笔交易，必须整行丢掉 */
 const SKIP_KEYWORDS = /合计|总计|小计|总金额|优惠|退款|实付|找零|应付|应收|余额|折扣|满减|立减/i;
 
+/**
+ * 优惠类行：其后的负数是抵扣金额，不是一笔独立交易。
+ * ⛔ 与 SKIP_KEYWORDS 的区别：SKIP 行只是「丢弃该行」，而命中这里意味着
+ *    「这个负数金额是被抵扣掉的优惠，不是一笔支出」→ 整笔丢弃。
+ *    实测（2026-08-29）「交通银行立减金 / -0.10」被策略5 当成 0.1 元交易，
+ *    多拆出一笔导致日期硬覆盖因笔数不匹配被整体跳过（日期置信度 0.00）。
+ */
+const DISCOUNT_KEYWORDS = /优惠|立减|满减|折扣|抵扣|减免|返现|回馈/i;
+
+/**
+ * 描述类标签：竖排版式下取其下一行，作为交易的【备注】与【分类依据】。
+ *
+ * ⛔ 商品说明是分类和备注的关键（2026-08-29 用户反馈）：
+ *    票据上「淘宝闪购 -12.71」只能看出是淘宝，而下一行的
+ *    「商品说明 / 蜜雪冰城(龙湖星悦广场店)外卖订单」才是真正决定
+ *    「这笔花在哪、该算什么类」的信息 —— 以前整行丢掉了。
+ */
+const DESC_LABEL = /^(?:商品说明|商品描述|订单详情|交易说明|消费内容|商品详情)$/;
+
+/** 备注占位符：UI 未填值时显示的提示文字，不能当备注（如「备注 / 添加」） */
+const NOTE_PLACEHOLDER = /^(?:添加|请输入|请输入备注|选填|无|暂无|点击添加|备注信息|填写备注|备注)$/;
+
 /** 结构性标签行：它本身不是商户名，但其后的金额可能有效 */
 const NOISE_KEYWORDS = /支付金额|支付|消费|收款|订单|交易|当前状态|付款方式|账单详情/i;
 
@@ -92,6 +114,8 @@ function preprocessReceipt(text, opts = {}) {
 
     // 全局日期：整张票据共用（单笔账单只有一个日期）
     const ctx = extractContextDate(raw, defaultDate);
+    // 全局描述：票据上的「商品说明」，决定这笔花在哪、算什么类
+    const desc = extractDescription(lines);
 
     const items = [];
     const seen = new Set();
@@ -107,7 +131,7 @@ function preprocessReceipt(text, opts = {}) {
         used.add(strategy);
         // ⛔ 时间从全局上下文取：一张票据只有一个「转账时间」，
         //    各版式策略不必各自再找一遍（金额行与时间行常不在同一行）。
-        items.push({ name: cleanName, amount, date: date || ctx.date, time: ctx.time || null });
+        items.push({ name: cleanName, amount, date: date || ctx.date, time: ctx.time || null, note: desc });
     };
 
     runStrategy1(lines, ctx, add);
@@ -129,9 +153,15 @@ function preprocessReceipt(text, opts = {}) {
     const sentences = items.map(it => {
         const d = formatDateForNL(it.date, ctx.date);
         const t = it.time ? ` ${it.time}` : '';
+        /*  ⛔ 商品说明必须写进句子：它是分类与备注的唯一来源，而下游 v0.2 抽取器
+            只认自然语言，context 里的附加字段它读不到。
+            ⚠️ 含数字的备注不拼：抽取器假设文中数字就是金额（本模块存在的理由），
+               「iPhone 15 手机壳」会被当成第二笔 15 元的交易。
+               这种产品名只能靠下方 note 兜底（预览页不强求模型读懂）。 */
+        const n = (it.note && !/\d/.test(it.note)) ? ` 备注:${it.note}` : '';
         // ⛔ 时间必须随句子一起进 parseText：下游 v0.2 抽取器不读时间，
         //    唯一能把时间喂给模型的就是这行自然语言，丢了就回退 00:00:00。
-        return `${d}${t} ${it.name} ${it.amount}元`;
+        return `${d}${t} ${it.name} ${it.amount}元${n}`;
     });
 
     return {
@@ -139,11 +169,54 @@ function preprocessReceipt(text, opts = {}) {
         lines: sentences,
         text: sentences.join('\n'),
         items,
+        note: desc,
         strategy: Array.from(used).join('+'),
     };
 }
 
 /* ── 版式策略 ───────────────────────────────────────────── */
+
+/**
+ * 提取票据上的「商品说明」等描述文字 → 用作交易备注与分类依据。
+ *
+ * ⛔ 竖排版式：标签行与值【各占一行】（微信/支付宝账单详情页的真实形态，同策略1b）：
+ *      `商品说明` / `蜜雪冰城(龙湖星悦广场店)外卖订单`
+ *    这类行以前整行被丢弃，导致只能看出「淘宝闪购」而看不出买了什么。
+ *
+ * @param {string[]} lines
+ * @returns {string|null} 描述文字（已过滤占位符/金额行/单号等噪声）
+ */
+function extractDescription(lines) {
+    for (let i = 0; i < lines.length - 1; i++) {
+        if (!DESC_LABEL.test(lines[i])) continue;
+        const val = String(lines[i + 1] || '').trim();
+        // 「备注 / 添加」这种 UI 占位必须滤掉，否则备注会写成「添加」
+        if (NOTE_PLACEHOLDER.test(val) || !isUsableDescription(val)) continue;
+        return val;
+    }
+    return null;
+}
+
+/**
+ * 描述文字可用性判定。
+ *
+ * ⛔ 不能用 isNoiseLine 代替：那是给「商户名行」设计的，它把「订单 / 支付 /
+ *    消费」这类【结构性标签词】统统当噪声，而描述文字天然含这些词
+ *    —— 实测「蜜雪冰城(龙湖星悦广场店)外卖订单」就因含「订单」被整行杀掉，
+ *       备注永远是 null（2026-08-29）。
+ *    描述行只需要挡掉「不是人话」的行：金额行、单号、日期、时间、UI 控件名。
+ */
+function isUsableDescription(val) {
+    const v = String(val || '').trim();
+    if (!v || v.length > 60) return false;
+    if (UI_NOISE.test(v)) return false;                                          // UI 控件名
+    if (/^[-+]?\s*[¥￥]?\s*\d[\d,]*\.?\d*\s*(?:元)?$/.test(v)) return false;      // 纯金额
+    if (/^\d{6,}$/.test(v)) return false;                                        // 单号
+    if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(v)) return false;                    // 日期
+    if (/^\d{4}年\d{1,2}月/.test(v)) return false;
+    if (/^\d{1,2}:\d{2}/.test(v)) return false;                                  // 时间
+    return true;
+}
 
 /** 策略1：微信支付单笔 —「商户名」行 +「支付金额 ¥18.00」行（支持 -8.00） */
 function runStrategy1(lines, ctx, add) {
@@ -247,6 +320,17 @@ function runStrategy5(lines, ctx, add) {
         const m = lines[i].match(re);
         if (!m) continue;
 
+        /*  ⛔ 优惠行检查：这个负数金额上方若出现「立减/优惠/满减」等行，
+            说明它是被抵扣的优惠金额，不是一笔支出 → 整笔丢弃。
+            实测（2026-08-29）「交通银行立减金 / -0.10」：
+            不丢它 → 预处理器多拆一笔 → 模型只回 1 笔 →
+            日期硬覆盖因笔数不匹配被整体跳过 → 日期置信度 0.00。 */
+        for (let k = 1; k <= 8 && i - k >= 0; k++) {
+            if (DISCOUNT_KEYWORDS.test(lines[i - k])) return;
+            if (isNoiseLine(lines[i - k])) continue;
+            break;
+        }
+
         // 优先「商品」行
         let name = null;
         for (let k = 1; k <= 8 && i - k >= 0; k++) {
@@ -293,6 +377,7 @@ function isNoiseLine(line) {
     if (UI_NOISE.test(l)) return true;
     if (isDateLine(l)) return true;
     if (/^\d{2}:\d{2}/.test(l)) return true;          // 时间行
+    if (/^[-+]?\s*[¥￥]?\s*\d{1,10}(?:\.\d{1,2})?\s*(?:元)?$/.test(l)) return true; // 纯金额行：不能当商户名
     if (/^\d{10,}$/.test(l)) return true;             // 纯长数字 = 单号
     if (/^(?:交易单号|商户单号|收单机构|支付方式|商家小程序|账单服务|商户全称|商品|创建时间|支付时间)$/.test(l)) return true;
     return false;
@@ -413,5 +498,5 @@ module.exports = {
     looksLikeReceipt,
     preprocessReceipt,
     // 导出供单测直接验证防线
-    _internals: { isNoiseLine, sanitizeName, extractContextDate, parseDateFromLine, formatDateForNL },
+    _internals: { isNoiseLine, sanitizeName, extractContextDate, parseDateFromLine, formatDateForNL, extractDescription },
 };

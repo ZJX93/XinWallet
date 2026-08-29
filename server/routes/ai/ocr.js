@@ -122,6 +122,18 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
     // （详见 receipt-date-override.js，逻辑已抽出以便单元测试）。
     applyPreprocessDateOverride(pre, transactions);
 
+    /*  备注兜底：票据上的「商品说明」是白纸黑字写了买了什么
+        （如「蜜雪冰城(龙湖星悦广场店)外卖订单」），模型常自己编一个笼统备注
+        （如「淘宝闪购外卖」）或干脆留空 → 模型没给备注时直接用票据原文。 */
+    if (pre && pre.ok && pre.note) {
+        transactions.forEach(t => {
+            if (t && !t.note) {
+                t.note = pre.note;
+                if (t.evidence) t.evidence.note = 'receipt_preprocess_note';
+            }
+        });
+    }
+
     /*  账户字段必须打出来：此前这行只打日期/金额/商户，账户匹配情况在日志里完全不可见，
         线上「账户没匹配上」只能靠查库快照反推（2026-08-29 排障代价）。 */
     console.log('[OCR-DEBUG] transactions=', JSON.stringify(transactions.map(t => ({
