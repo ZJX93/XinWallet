@@ -325,24 +325,34 @@ function sanitizeName(name) {
        微信账单详情页写的是「转账时间 2026年8月28日 08:56:32」，
        老实现只认「支付/创建/交易时间」且只取日期，于是时间永远丢，
        最终交易时间被回退成 00:00:00、卡片显示 0:0:0（2026-08-29 复现）。 */
+/*  空白分隔符：必须显式带上全角空格 U+3000。
+    ⛔ 微信账单详情页 OCR 出来的是「支付时间　2026年8月27日 10:20:04」，
+       标签与值之间是【全角空格】，而 JS 正则的 \s 并不匹配 U+3000
+       —— 带标签的分支会整条失配，日期只能落到不带标签的兜底分支去碰运气
+       （2026-08-29 实测：票据写着 8月27日，最终被记成 08-25）。 */
+const WS = '[\\s\\u3000]';
+
 function extractContextDate(raw, defaultDate) {
     // 时间标签：微信账单用「转账时间」，其它平台用支付/创建/交易时间
     const L = '(?:转账时间|付款时间|支付时间|创建时间|交易时间|成交时间)';
 
     // ① 标签 + 日期 + 时间（最完整，优先）
-    const mT1 = raw.match(new RegExp(L + '\\s*(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日\\s*(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
+    const mT1 = raw.match(new RegExp(L + WS + '*(\\d{4})年' + WS + '*(\\d{1,2})月' + WS + '*(\\d{1,2})日' + WS + '*(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
     if (mT1) return mkDateTime(mT1, 1, 2, 3, 4, 5, 6, true);
-    const mT2 = raw.match(new RegExp(L + '\\s*(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
+    const mT2 = raw.match(new RegExp(L + WS + '*(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})' + WS + '+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?'));
     if (mT2) return mkDateTime(mT2, 1, 2, 3, 4, 5, 6, true);
 
     // ② 仅有日期（无时间）：仍优先带标签的，避免把单号/时间戳误当日期
-    const m1 = raw.match(new RegExp(L + '\\s*(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日'));
+    const m1 = raw.match(new RegExp(L + WS + '*(\\d{4})年' + WS + '*(\\d{1,2})月' + WS + '*(\\d{1,2})日'));
     if (m1) return { date: `${m1[1]}-${pad(m1[2])}-${pad(m1[3])}`, time: null, explicit: true };
-    const m2 = raw.match(new RegExp(L + '\\s*(\\d{4})[-/](\\d{1,2})[-/](\d{1,2})'));
+    /*  ⛔ 修：原先写作 '(\d{1,2})'（少一个反斜杠）。在字符串字面量里 \d 不是合法
+        转义，会被直接退化成字母 d，正则实际去匹配字面量 "d{1,2}" —— 这条
+        「标签 + 2026-08-27」分支从未命中过。 */
+    const m2 = raw.match(new RegExp(L + WS + '*(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})'));
     if (m2) return { date: `${m2[1]}-${pad(m2[2])}-${pad(m2[3])}`, time: null, explicit: true };
 
     // ③ 游离的日期（无标签）：兜底
-    const m3 = raw.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+    const m3 = raw.match(new RegExp('(\\d{4})年' + WS + '*(\\d{1,2})月' + WS + '*(\\d{1,2})日'));
     if (m3) return { date: `${m3[1]}-${pad(m3[2])}-${pad(m3[3])}`, time: null, explicit: true };
     const m4 = raw.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
     if (m4) return { date: `${m4[1]}-${m4[2]}-${m4[3]}`, time: null, explicit: false };
@@ -373,7 +383,8 @@ function findDateNear(lines, i, ctx, span = 5) {
 
 function parseDateFromLine(line) {
     const l = String(line || '');
-    const a = l.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+    // 同样要认全角空格（账单行内「支付时间　2026年8月27日」）
+    const a = l.match(new RegExp('(\\d{4})年' + WS + '*(\\d{1,2})月' + WS + '*(\\d{1,2})日'));
     if (a) return `${a[1]}-${pad(a[2])}-${pad(a[3])}`;
     const b = l.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
     if (b) return `${b[1]}-${b[2]}-${b[3]}`;

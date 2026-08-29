@@ -31,12 +31,17 @@ const KEYWORD_GROUPS = [
         label: '支付宝',
         // 关键词列表 = 「用于在文本里识别这个渠道」+「用于匹配账户名的字典」
         // 任一关键词出现在文本即激活；激活后用全部 kws 在账户名里找匹配
-        kws: ['支付宝', 'alipay', '集分宝', '花呗', '借呗', '信用购'],
+        // ⛔ 刻意【不加】泛词「余额」：票据里「余额充值」这类商品名会误命中。
+        kws: ['支付宝', 'alipay', '集分宝', '花呗', '借呗', '信用购', '余额宝'],
     },
     {
         source: 'wechat',
         label: '微信',
-        kws: ['微信', 'wechat', 'weixin'],
+        /*  ⛔ 必须带「零钱 / 零钱通」：微信账单详情页的支付方式字段只写这两个词，
+            整页都不出现「微信」二字。词典里没有它们，scanPaymentChannels 一条都
+            扫不到 → 账户永远回退到客户端默认账户
+            （2026-08-29 真机实测：票据写着「支付方式　零钱」，却记到默认账户上）。 */
+        kws: ['微信', 'wechat', 'weixin', '零钱通', '零钱'],
     },
     {
         source: 'union',
@@ -116,6 +121,16 @@ function findAccountByChannel(accounts, channel) {
     // 找到这个渠道对应的完整 kws 字典
     const grp = KEYWORD_GROUPS.find(g => g.source === channel.source);
     if (!grp) return null;
+
+    /*  优先级 0：先用【实际命中的那个关键词】去匹配账户名。
+        ⛔ 否则「支付方式　零钱通」会先被排得更靠前的「微信」命中，从而落到
+           「微信 零钱」而不是「微信 零钱通」—— 账看着匹配上了，其实张冠李戴。 */
+    const hitKw = norm(channel.keyword);
+    if (hitKw) {
+        for (const a of accounts) {
+            if (norm(a.name).includes(hitKw)) return a;
+        }
+    }
 
     // 优先级 1：精确关键词（如「招行」「中行」「招商银行」）出现在账户名里
     const genericSuffix = new Set(['银行卡', '储蓄卡', '信用卡', '尾号', '现金', '现付', 'cash']);

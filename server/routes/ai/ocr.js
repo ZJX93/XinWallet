@@ -100,6 +100,11 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         // resolveAccount 走 fallback_default 路径会用到，让识别依据可显示「上次使用：XXX」。
         last_account_name: (req.body && req.body.account_name) ? String(req.body.account_name) : null,
         platform: (req.body && req.body.platform) || 'unknown',
+        /*  ⚠️ 账户渠道词必须扫【原始 OCR 文本】，不能扫下面的 parseText：
+            票据预处理器会把「支付方式 / 零钱 / 银行卡」这类标签行当噪声整行丢弃，
+            parseText 里已无渠道词，只扫它会让账户永远回退到客户端默认账户
+            （2026-08-29 实测：原文写着「支付方式　零钱」，仍落到默认账户）。 */
+        account_scan_text: tr.text || null,
     };
     if (receiptDate) imageContext.date = receiptDate;
 
@@ -126,7 +131,19 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         });
     }
 
-    console.log('[OCR-DEBUG] transactions=', JSON.stringify(transactions.map(t => ({ date: t.date, amount: t.amount, merchant: t.merchant, date_source: t.evidence && t.evidence.date }))));
+    /*  账户字段必须打出来：此前这行只打日期/金额/商户，账户匹配情况在日志里完全不可见，
+        线上「账户没匹配上」只能靠查库快照反推（2026-08-29 排障代价）。 */
+    console.log('[OCR-DEBUG] transactions=', JSON.stringify(transactions.map(t => ({
+        date: t.date,
+        amount: t.amount,
+        merchant: t.merchant,
+        account_id: t.account_id != null ? t.account_id : null,
+        account_evidence: (t.evidence && t.evidence.account) || null,
+        account_conf: (t.confidence && t.confidence.account) != null ? t.confidence.account : null,
+        account_details: t.account_match_details || null,
+        date_source: t.evidence && t.evidence.date,
+    }))));
+    console.log('[OCR-DEBUG] 客户端传入 account_id=', imageContext.account_id, ' last_account_name=', imageContext.last_account_name);
 
     // 转录成功但抽不出交易：把转录文字回给前端，用户可以手工改文字再解析
     if (!transactions.length) {

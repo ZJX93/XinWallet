@@ -428,13 +428,20 @@ private fun AiCandidateRow(
                     maxLines = 1
                 )
             } else {
-                // 兜底账户（AI 未从账单识别）：用 chip 高亮"未识别"状态，强制用户选择
+                /*  兜底账户：AI 没能从账单文本里认出支付渠道，回退到客户端传的默认账户。
+                    ⛔ 原实现把 fallback 一律置空成「选择账户」—— 用户看到的就是
+                       「账户根本没匹配」，可实际上 accountId 有值（就是默认账户）。
+                       现在照实显示账户名并标注「默认」，只有真的没有账户 id 才提示选择。 */
                 val accSource = item.evidence["account"] ?: ""
                 val isFallback = accSource.startsWith("fallback") || accSource.startsWith("channel_no_match")
-                val acc = if (isFallback) null else accounts.firstOrNull { it.id == item.accountId }
+                val acc = accounts.firstOrNull { it.id == item.accountId }
                 AiQuickChip(
                     icon = Icons.Filled.AccountBox,
-                    label = acc?.name ?: "选择账户",
+                    label = when {
+                        acc == null -> "选择账户"
+                        isFallback -> "${acc.name}（默认）"
+                        else -> acc.name
+                    },
                     active = acc != null,
                     onClick = { showAccountSheet = true },
                     modifier = Modifier.weight(1.5f),

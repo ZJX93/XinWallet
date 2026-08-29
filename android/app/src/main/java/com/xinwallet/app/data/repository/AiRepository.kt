@@ -1,5 +1,6 @@
 package com.xinwallet.app.data.repository
 
+import android.util.Log
 import com.xinwallet.app.data.model.AiCandidateTxn
 import com.xinwallet.app.data.model.AiCommitRequest
 import com.xinwallet.app.data.model.AiDiscardRequest
@@ -21,6 +22,11 @@ import java.util.UUID
 
 class AiRepository(private val apiProvider: () -> ApiService) {
 
+    companion object {
+        /** AI 链路日志 TAG（与 ChatViewModel 一致）：`adb logcat -s XW_AI:V` 单独观察 */
+        private const val AI_LOG_TAG = "XW_AI"
+    }
+
     /**
      * 上传账单图片做 OCR + 交易项提取。
      * 后端 multer 限制 5MB 且只接受图片格式，字段名固定为 image。
@@ -28,6 +34,8 @@ class AiRepository(private val apiProvider: () -> ApiService) {
      */
     suspend fun ocr(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg", accountId: Int? = null) =
         safeApiCall {
+            // 只打关键字段（图片大小 + 本次上传的账户 id），不打图片内容本身
+            Log.d(AI_LOG_TAG, "[OCR] 上传 size=${bytes.size}B mime=$mime accountId=$accountId")
             val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
             val part = MultipartBody.Part.createFormData("image", fileName, body)
             val textPlain = "text/plain".toMediaTypeOrNull()

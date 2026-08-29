@@ -10,6 +10,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Base64
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.model.AiCandidateTxn
@@ -41,6 +42,11 @@ import kotlinx.coroutines.flow.map
 // 对话历史本地持久化（DataStore Preferences）：重启 App 后仍在，仅用户主动「删除记录」才清空
 private val Context.chatHistoryStore by preferencesDataStore(name = "chat_history")
 private val CHAT_HISTORY_KEY = stringPreferencesKey("messages")
+
+/*  AI 链路日志 TAG：`adb logcat -s XW_AI:V` 可单独观察识别与账户匹配全过程。
+    ⛔ 此前全项目零业务日志（0 处 Log.d），线上「账户没匹配上」只能靠猜。
+       这里只打关键字段（账户 id / 证据源 / 商户 / 金额），不打图片与文本原文。 */
+private const val AI_LOG_TAG = "XW_AI"
 
 /**
  * AI v0.2 预测确认态。
@@ -520,6 +526,15 @@ class ChatViewModel(
                     val d = r.data
                     // 「识别不出交易」分支不返回 v0.2 字段（Gson 绕过默认值 → null），必须判空
                     val txns = d.transactions.orEmpty()
+                    // 账户匹配可观测：accountId 为 null、或 evidence 以 fallback 开头即「未真正匹配」
+                    Log.d(
+                        AI_LOG_TAG,
+                        "[OCR] 回包 predictionId=${d.predictionId} 笔数=${txns.size} " +
+                            txns.joinToString(" | ") {
+                                "seq=${it.seq} 商户=${it.merchant} 金额=${it.amount} " +
+                                    "accountId=${it.accountId} evidence=${it.evidence["account"]}"
+                            }
+                    )
                     if (d.predictionId > 0 && txns.isNotEmpty()) {
                         val perTxn = if (d.needsConfirmation) {
                             when (val snap = aiRepo.getPrediction(d.predictionId)) {

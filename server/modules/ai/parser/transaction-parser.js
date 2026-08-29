@@ -94,6 +94,8 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         refDate: ctx.wm.refDate,
         userMerchants: merchantHints,
         last_account_name: ctx.wm.lastAccountName || null,
+        // 图片通道：把原始 OCR 文本透传给账户解析器扫渠道词（见 deterministic-extractor）
+        account_scan_text: context.account_scan_text || null,
     });
 
     // ---- 3) Memory Retrieval ----
@@ -123,6 +125,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             refDate: ctx.wm.refDate,
             userMerchants: mergedMerchants,
             last_account_name: ctx.wm.lastAccountName || null,
+            account_scan_text: context.account_scan_text || null,
         })
         : firstPass;
 

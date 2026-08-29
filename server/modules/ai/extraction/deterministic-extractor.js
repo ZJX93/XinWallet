@@ -43,6 +43,13 @@ function extractTransactions(text, ctx = {}) {
         // 这里直接读 ctx，不再依赖 working-memory（extractTransactions 在路由层直接被调，
         // 不一定走 buildContext 路径，wm 不一定有 lastAccountName 字段）。
         last_account_name = null,
+        // 【图片通道专用】账户渠道词的扫描文本。
+        // ⛔ 票据预处理器（receipt-preprocessor）会把「支付方式/零钱/银行卡」等
+        //    标签行当噪声整行丢弃，产出的 parseText 只剩「商户 金额」——
+        //    若拿它去扫渠道词，永远扫不到 → 账户恒等于客户端默认账户
+        //   （实测 2026-08-29：票据原文写着「支付方式　零钱」，却落到默认账户，
+        //    confidence 为 0）。故图片通道把原始 OCR 文本单独传进来扫渠道。
+        account_scan_text = null,
     } = ctx;
 
     const { segments, source: splitSource, multi } = splitTransactions(text);
@@ -71,7 +78,9 @@ function extractTransactions(text, ctx = {}) {
         // 账户解析：用 OCR/原文里出现的「支付宝/微信/银行/现金」关键词，
         // 优先于请求体里的默认账户（解决「账户像被锁死」的用户投诉）。
         // 文本里完全没线索时才回退到默认账户（含「上次使用」兜底）。
-        const accountResolved = resolveAccount(seg, {
+        // ⛔ 扫描文本优先取 account_scan_text（原始 OCR 文本）：渠道词只存在于原文，
+        //    seg 是可能被票据预处理清洗过的分片，用它扫等于永远扫不到。
+        const accountResolved = resolveAccount(account_scan_text || seg, {
             accounts,
             account_id,
             last_account_name: last_account_name || null,
