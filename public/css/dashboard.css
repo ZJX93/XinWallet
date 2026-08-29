@@ -99,18 +99,19 @@
 .alert-item.bad { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); }
 .alert-item.warn { color: var(--warning-500); background: color-mix(in srgb, var(--warning-500) 10%, transparent); }
 
-/* ===== 资产负债概览 ===== */
+/* ===== 资产负债概览（与图表卡片统一节奏） ===== */
 .balance-overview {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-3) 0;
+  gap: var(--space-3);
+  padding: 0;
+  flex: 1;              /* 填满卡片剩余空间 */
 }
 .bo-row { width: 100%; }
 .bo-bar-track {
   display: flex;
-  height: 14px;
-  border-radius: 7px;
+  height: 10px;
+  border-radius: 5px;
   overflow: hidden;
   background: var(--surface-hover);
 }
@@ -118,89 +119,116 @@
 .bo-bar-invest { background: linear-gradient(90deg, var(--accent-500), var(--accent-400)); transition: width 0.6s; }
 .bo-bar-legend {
   display: flex;
-  justify-content: space-around;
-  margin-top: 8px;
-  font-size: 12px;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: 6px;
+  font-size: 11px;
   color: var(--text-tertiary);
 }
 .bo-bar-legend .dot {
   display: inline-block;
-  width: 8px; height: 8px;
+  width: 7px; height: 7px;
   border-radius: 50%;
   margin-right: 4px;
   vertical-align: middle;
 }
 .dot-liquid { background: var(--success-500); }
 .dot-invest { background: var(--accent-500); }
+
+/* 三栏统计：紧凑横排（与 KPI 卡片的 icon+info 风格对齐） */
 .bo-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--surface-subtle);
+  padding: var(--space-3) var(--space-2);
+  background: var(--surface-subtle, #f6f7fb);
   border-radius: var(--radius-md);
+  align-items: start;
 }
-.bo-stat { text-align: center; padding: var(--space-2); min-width: 0; }
+.bo-stat { text-align: left; padding: var(--space-1) var(--space-2); min-width: 0; }
 .bo-stat-label {
   font-size: 11px;
   color: var(--text-tertiary);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  margin-bottom: 2px;
 }
 .bo-stat-value {
-  /* 字号自适应：基础 12-14px，随列宽缩放，保证全部内容可见 */
-  font-size: clamp(11px, 1.3vw, 14px) !important;
-  font-weight: 700 !important;
-  color: var(--text-primary) !important;
+  font-size: clamp(13px, 1.5vw, 16px);
+  font-weight: 700;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap !important;          /* 强制一行 */
-  overflow: visible !important;            /* 不省略，全部显示 */
-  text-overflow: clip !important;
-  font-family: var(--font-mono);
-  letter-spacing: -.0.03em;
-  line-height: 1.2;
-  display: inline-block;
-  max-width: 100%;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 .bo-stat-value.positive { color: var(--income); }
 .bo-stat-value.negative { color: var(--expense); }
 .bo-stat-sub {
   font-size: 10px;
   color: var(--text-tertiary);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: 1px;
 }
+
+/* 债务摘要：单行紧凑 */
 .bo-debt-info {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-subtle);
+  background: var(--surface-subtle, #f6f7fb);
   border-radius: var(--radius-md);
 }
 .bo-debt-info strong {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
-.bo-debt-info .bad { color: var(--income); }
+.bo-debt-info .bad { color: var(--expense); }
 
 @media (max-width: 720px) {
   .bo-stats { grid-template-columns: 1fr; }
   .dash-alert-bar { flex-direction: column; align-items: flex-start; }
+  .dash-grid { grid-template-columns: 1fr; }   /* 窄屏单列（覆盖 styles.css 同规则被后加载压过的问题） */
 }
 
-/* ---------- 主网格 ---------- */
+/* ---------- 主网格（三卡等高 + 内部自适应） ---------- */
+/* 覆盖 styles.css 旧版规则：1.4fr/1fr 两列 + balance-overview-card 跨行 */
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: auto;            /* 覆盖旧 grid-auto-rows: min-content */
   gap: var(--space-5);
+  align-items: stretch;            /* 行高由最高卡片决定，其余拉伸对齐 */
 }
-.dash-grid .chart-card { min-height: 260px; }
+.dash-grid .balance-overview-card {
+  grid-row: auto;                  /* 覆盖旧 grid-row: span 2 */
+}
+/* 三卡固定高度（clamp 随视口自适应）：等高，且内容不会把卡片无限撑高。
+   不能再用 min-height + flex:1 —— 高度自适应的 flex 容器里，canvas 的
+   flex-grow 会反哺行高，形成「图表越长 → 卡片越高 → 图表越长」的循环。 */
+.dash-grid > * {
+  height: clamp(300px, 38vh, 380px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;                /* 高度固定后的溢出保护 */
+}
+/* 标题固定，画布区域吃掉剩余高度。
+   关键：canvas 必须包一层 wrapper，让 Chart.js responsive 监听 wrapper 尺寸
+   （= canvas 实际显示区域）。若直接监听整卡（含标题/hint），canvas 绘图缓冲
+   与 CSS 显示尺寸比例不一致，饼图会被压成椭圆。 */
+.dash-grid .chart-card > .chart-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.dash-grid .chart-card > .chart-canvas-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;     /* 覆盖 styles.css 的 220px 锁高 */
+}
 
 /* ---------- 资产分布 ---------- */
 .dash-assets-dist { display: flex; flex-direction: column; gap: var(--space-2); }

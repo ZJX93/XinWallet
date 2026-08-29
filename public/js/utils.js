@@ -18,6 +18,19 @@ function fmt(n) {
     return (v < 0 ? '-' : '') + '¥' + _moneyFmt.format(Math.abs(v));
 }
 
+// 紧凑货币格式：窄列场景下按中文习惯压缩为「万 / 亿」，避免长数字被截断
+// ¥1,110,800.00 → ¥111.08万 ；¥123,456,789.00 → ¥1.23亿 ；¥1,234.56 → ¥1,234.56（原样）
+function fmtCompact(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return '¥0.00';
+    const sign = v < 0 ? '-' : '';
+    const abs = Math.abs(v);
+    const _c = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (abs >= 1e8) return sign + '¥' + _c.format(abs / 1e8) + '亿';
+    if (abs >= 1e4) return sign + '¥' + _c.format(abs / 1e4) + '万';
+    return sign + '¥' + _c.format(abs);
+}
+
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
 function csvCell(v) {
     const s = String(v == null ? '' : v);

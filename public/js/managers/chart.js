@@ -236,7 +236,7 @@ const ChartManager = {
                 ]
             },
             options: {
-                responsive: true, maintainAspectRatio: true,
+                responsive: true, maintainAspectRatio: false,
                 animation: this.reduceMotion() ? false : { duration: 1200, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
@@ -360,7 +360,7 @@ const ChartManager = {
                 }]
             },
             options: {
-                responsive: true, maintainAspectRatio: true, cutout: '72%',
+                responsive: true, maintainAspectRatio: false, cutout: '72%',
                 onClick: (evt, els) => {
                     if (!els.length) return;
                     const idx = els[0].index;

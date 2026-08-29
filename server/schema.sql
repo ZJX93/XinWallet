@@ -760,8 +760,11 @@ CREATE TABLE IF NOT EXISTS ai_rules (
   user_id INT NOT NULL DEFAULT 1,
   book_id INT DEFAULT NULL,
   -- 规则类型：merchant→category 是主力；keyword→category / merchant→account 备用
+  -- ⛔ 此处取值必须与 server/routes/ai/rules.js 的 AI_RULE_TYPES 完全一致：
+  --    历史上 schema 写 merchant_type 而代码用 keyword_type，导致 PG 下新建 keyword_type
+  --    规则被 CHECK 拒绝、applyEvidence 静默吞异常，前端只看到「规则创建失败」。
   rule_type VARCHAR(32) NOT NULL DEFAULT 'merchant_category'
-    CHECK (rule_type IN ('merchant_category','keyword_category','merchant_account','merchant_type')),
+    CHECK (rule_type IN ('merchant_category','keyword_category','merchant_account','keyword_type')),
   -- 匹配键（规范化后的小写 merchant / keyword）
   match_key VARCHAR(120) NOT NULL,
   -- 目标值：category_id / account_id / type 之一，按 rule_type 解读

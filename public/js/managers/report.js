@@ -169,9 +169,8 @@ const ReportManager = {
             </div>
             <div class="report-grid report-grid--detail">
                 ${this.renderTopExpenses(data)}
-                ${this.renderBudgetExecution(data)}
+                ${this.renderDebtSection(data)}
             </div>
-            ${this.renderDebtSection(data)}
         `;
         this.initCharts(data);
         this.initInteractions();
@@ -360,7 +359,7 @@ const ReportManager = {
         }
         const overdueTag = d.overdue > 0 ? `<span style="color:#ef4444;font-weight:bold;">⚠️ 逾期 ${d.overdue} 笔</span>` : '';
         const headerKpi = `
-            <div class="report-compare-grid">
+            <div class="report-compare-grid debt-kpi-grid">
                 <div class="report-compare-row">
                     <span class="report-compare-label">总负债</span>
                     <span class="report-compare-value">${fmt(d.totalRemaining)}</span>

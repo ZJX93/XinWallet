@@ -431,6 +431,13 @@ async function healSchemaColumns() {
  */
 async function healAiConstraints() {
   if (DB_DIALECT === 'mysql') return; // MySQL 不走 PG 这套约束自愈
+  // 两个约束互不阻塞：任一失败都不应吃掉另一个的自愈机会
+  await healEventTypeConstraint();
+  await healRuleTypeConstraint();
+}
+
+/** ai_feedback_events.event_type 取值集随版本扩张，老库需要重建约束 */
+async function healEventTypeConstraint() {
   const allowed = [
     'explicit_confirmation', 'explicit_correction', 'discard',
     'manual_rule_creation', 'contradiction', 'rule_disabled',
@@ -448,6 +455,29 @@ async function healAiConstraints() {
     // 表还不存在（全新库尚未执行 schema）或约束已是新版，均属预期
     if (/does not exist|already exists/i.test(err.message)) return;
     console.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
+  }
+}
+
+/**
+ * ai_rules.rule_type 的 CHECK 必须与后端 AI_RULE_TYPES 一致。
+ *
+ * 老库里这条约束写的是 'merchant_type'，而代码与前端实际用的是 'keyword_type'
+ * （关键字 → 收支方向）。不一致时：PG 直接拒绝插入，applyEvidence 又静默吞异常，
+ * 用户在 UI 上只看到「规则创建失败」——所以必须由自愈把约束拉回代码侧取值。
+ */
+async function healRuleTypeConstraint() {
+  const allowed = ['merchant_category', 'merchant_account', 'keyword_category', 'keyword_type']
+    .map(v => `'${v}'`).join(',');
+  try {
+    await query('ALTER TABLE ai_rules DROP CONSTRAINT IF EXISTS ai_rules_rule_type_check');
+    await query(
+      `ALTER TABLE ai_rules
+         ADD CONSTRAINT ai_rules_rule_type_check
+         CHECK (rule_type IN (${allowed}))`
+    );
+  } catch (err) {
+    if (/does not exist|already exists/i.test(err.message)) return;
+    console.warn('⚠️ AI 规则类型约束自愈警告（不影响启动，下次启动重试）:', err.message);
   }
 }
 

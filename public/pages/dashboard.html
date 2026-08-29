@@ -73,10 +73,10 @@
 
                 <!-- 主网格：核心 3 卡 -->
                 <div class="dash-grid">
-                    <div class="glass-card chart-card"><h3 class="card-title">收支趋势 <span class="card-sub" id="dashTrendMoM"></span></h3><canvas id="dashTrendChart" height="240"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title">收支趋势 <span class="card-sub" id="dashTrendMoM"></span></h3><div class="chart-canvas-wrap"><canvas id="dashTrendChart"></canvas></div></div>
                     <div class="glass-card chart-card">
                         <h3 class="card-title"><span id="dashPieTitle">支出构成</span> <span id="dashPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
-                        <canvas id="dashPieChart" height="240"></canvas>
+                        <div class="chart-canvas-wrap"><canvas id="dashPieChart"></canvas></div>
                         <div id="dashPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                     </div>
                     <div class="glass-card balance-overview-card">

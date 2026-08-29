@@ -400,9 +400,11 @@ async function seedUserData(userId, conn) {
             const randomFactor = 0.92 + weekProgress * 0.16 + (Math.random() * 0.04 - 0.02);
             const snapValue = Math.round(baseValue * randomFactor * 100) / 100;
             const snapCost = Math.round(cost * (0.95 + Math.random() * 0.1) * 100) / 100;
+            // ⛔ 不能硬编码 INSERT IGNORE：那是 MySQL 专有语法，PG 下直接 syntax error，
+            //    会让整个演示数据初始化在 PostgreSQL 上失败（db.js 有方言封装）。
             await conn.query(
-                `INSERT IGNORE INTO investment_snapshots (user_id, book_id, investment_id, total_value, total_cost, nav_date)
-                 VALUES (?, ?, ?, ?, ?, ?)`,
+                db.insertIgnoreSql('investment_snapshots',
+                    ['user_id', 'book_id', 'investment_id', 'total_value', 'total_cost', 'nav_date']),
                 [userId, bookId, inv.id, snapValue, snapCost, snapDate]
             );
         }

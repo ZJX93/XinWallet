@@ -1621,29 +1621,31 @@
 /* --------------------------------------------------------------------------
    11. AI 洞察/建议条目（insights + advice，ai-advice.html 渲染）
    -------------------------------------------------------------------------- */
+/* 统一卡片基底：洞察与建议共用同一套视觉语言 */
 .insight-item, .ai-advice-item {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-hover);
-  margin-bottom: var(--space-2);
-  font-size: var(--text-body-sm); line-height: 1.5;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card, #fff);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-body-sm); line-height: 1.55;
+  border-left: 3px solid transparent;
 }
 
 .insight-item:last-child, .ai-advice-item:last-child { margin-bottom: 0; }
 
 .insight-item .insight-title, .ai-advice-item .advice-type {
   font-weight: var(--fw-semibold); color: var(--text-primary);
-  margin-bottom: 2px; font-size: var(--text-body-sm);
+  margin-bottom: 4px; font-size: 14px;
 }
 
 .insight-item .insight-desc, .ai-advice-item .advice-content {
-  color: var(--text-secondary); font-size: var(--text-caption);
+  color: var(--text-secondary); font-size: 13px;
   line-height: 1.5;
 }
 
 .insight-item .insight-action, .ai-advice-item .advice-impact {
-  margin-top: 2px; color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  margin-top: 4px; color: var(--text-secondary);
+  font-size: 12px;
 }
 
 /* AI 洞察/建议：标题行 + 重要程度/优先级标签 */
@@ -1664,9 +1666,13 @@
 .lv-warning, .pr-high { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); border-color: color-mix(in srgb, var(--error-500) 28%, transparent); }
 .lv-info, .pr-medium { color: var(--warning-600); background: color-mix(in srgb, var(--warning-500) 10%, transparent); border-color: color-mix(in srgb, var(--warning-500) 28%, transparent); }
 .lv-tip, .pr-low { color: var(--success-600); background: color-mix(in srgb, var(--success-500) 10%, transparent); border-color: color-mix(in srgb, var(--success-500) 28%, transparent); }
-/* 高优先级卡片左侧强调色 */
-.ai-advice-item.pr-high { border-left: 3px solid var(--expense); }
-.insight-item.lv-warning { border-left: 3px solid var(--error-500); }
+/* 级别/优先级左侧强调色（统一：洞察用 lv-*，建议用 pr-*） */
+.ai-advice-item.pr-high, .ai-advice-card.priority-high { border-left-color: var(--expense, #ef4444); }
+.insight-item.lv-warning { border-left-color: var(--error-500, #dc2626); }
+.ai-advice-item.pr-medium, .ai-advice-card.priority-medium { border-left-color: var(--warning-500, #f59e0b); }
+.insight-item.lv-info { border-left-color: var(--warning-600, #d97706); }
+.ai-advice-item.pr-low, .ai-advice-card.priority-low { border-left-color: var(--success-500, #22c55e); }
+.insight-item.lv-tip { border-left-color: var(--success-600, #16a34a); }
 
 /* 洞察/建议/规则列表内容区：自适应高度（避免短条目被滚动裁掉） */
 #insightList, #aiAdviceList, #aiRulesList {
@@ -2261,29 +2267,21 @@
 /* AI Advice：三级 priority 配色 */
 .ai-insight-section, .ai-advice-section { margin-top: 8px; }
 .ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
+/* 建议卡片与洞察条目共用同一套 padding / 圆角 / 背景（见上方 .insight-item），
+   仅保留优先级标签的绝对定位和级别配色差异 */
 .ai-advice-card {
   position: relative;
-  padding: 16px 16px 16px 56px;
+  padding: var(--space-3) var(--space-4);
 }
-.ai-advice-card::before {
-  content: '';
-  position: absolute;
-  left: 12px; top: 18px;
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: var(--brand-soft, rgba(99,102,241,0.15));
-}
+/* 去掉左侧圆形伪元素图标，改为与 insight 一致的左边框强调色 */
 .ai-advice-priority-tag {
   position: absolute; top: 12px; right: 12px;
   font-size: 11px; padding: 2px 8px; border-radius: 10px;
   background: var(--surface-2, #f3f4f6); color: var(--text-secondary, #666);
 }
 .ai-advice-card.priority-high .ai-advice-priority-tag { background: #fde2e2; color: #b91c1c; }
-.ai-advice-card.priority-high::before { background: #fde2e2; }
 .ai-advice-card.priority-medium .ai-advice-priority-tag { background: #dbeafe; color: #1d4ed8; }
-.ai-advice-card.priority-medium::before { background: #dbeafe; }
 .ai-advice-card.priority-low .ai-advice-priority-tag { background: #dcfce7; color: #15803d; }
-.ai-advice-card.priority-low::before { background: #dcfce7; }
 .ai-advice-title { margin: 0 0 8px 0; font-size: 15px; font-weight: 600; }
 .ai-advice-content { margin: 0 0 6px 0; font-size: 14px; color: var(--text-primary, #111); line-height: 1.55; }
 .ai-advice-impact, .ai-advice-action { margin: 4px 0 0 0; font-size: 13px; color: var(--text-secondary, #555); }

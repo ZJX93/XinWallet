@@ -384,31 +384,30 @@ const DashboardManager = {
                         <div class="bo-bar-invest" style="width:${totalAssets > 0 ? (investTotal / totalAssets * 100) : 0}%"></div>
                     </div>
                     <div class="bo-bar-legend">
-                        <span><i class="dot dot-liquid"></i>流动资产 ${fmt(liquidTotal)}</span>
-                        <span><i class="dot dot-invest"></i>投资资产 ${fmt(investTotal)}</span>
+                        <span title="${fmt(liquidTotal)}"><i class="dot dot-liquid"></i>流动资产 ${fmtCompact(liquidTotal)}</span>
+                        <span title="${fmt(investTotal)}"><i class="dot dot-invest"></i>投资资产 ${fmtCompact(investTotal)}</span>
                     </div>
                 </div>
             </div>
             <div class="bo-stats">
                 <div class="bo-stat bo-stat-asset">
                     <div class="bo-stat-label">总资产</div>
-                    <div class="bo-stat-value">${fmt(totalAssets)}</div>
+                    <div class="bo-stat-value" title="${fmt(totalAssets)}">${fmtCompact(totalAssets)}</div>
                 </div>
                 <div class="bo-stat bo-stat-liab">
                     <div class="bo-stat-label">总负债</div>
-                    <div class="bo-stat-value">${fmt(totalDebt)}</div>
+                    <div class="bo-stat-value" title="${fmt(totalDebt)}">${fmtCompact(totalDebt)}</div>
                     <div class="bo-stat-sub">负债率 ${debtRatio.toFixed(1)}%</div>
                 </div>
                 <div class="bo-stat bo-stat-net">
                     <div class="bo-stat-label">净资产</div>
-                    <div class="bo-stat-value ${netWorth >= 0 ? 'positive' : 'negative'}">${fmt(netWorth)}</div>
+                    <div class="bo-stat-value ${netWorth >= 0 ? 'positive' : 'negative'}" title="${fmt(netWorth)}">${fmtCompact(netWorth)}</div>
                 </div>
             </div>
             <div class="bo-debt-info">
                 <span>活跃债务 <strong>${debts.activeCount || 0}</strong> 笔</span>
                 <span>月供 <strong>${fmt(monthlyPayment)}</strong></span>
-                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmt(dueAmount)}</strong></span>
-                ${overdue ? `<span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}
+                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmt(dueAmount)}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
             </div>
         `;
     },
