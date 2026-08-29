@@ -514,6 +514,15 @@ CREATE INDEX IF NOT EXISTS idx_ai_user_active ON ai_providers (user_id, is_activ
 DROP TRIGGER IF EXISTS trg_ai_updated ON ai_providers;
 CREATE TRIGGER trg_ai_updated BEFORE UPDATE ON ai_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- ===== AI 识别行为设置（每用户）=====
+-- 覆盖 AI_* 环境变量（AI_ALLOW_MODEL_ROUTE / AI_MODEL_ROUTE_SIMPLE / AI_LLM_FIRST /
+-- AI_FEWSHOT_ENABLED / AI_PARSER_PROMPT_VERSION）；未在 Web 设置页保存的项回退到 env / 内置默认。
+CREATE TABLE IF NOT EXISTS ai_settings (
+  user_id INT PRIMARY KEY,
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 默认标签种子
 INSERT INTO tags (id, user_id, name, color, icon) VALUES
 (1, 1, '餐饮', '#f59e0b', '🍜'),

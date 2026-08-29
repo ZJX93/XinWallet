@@ -23,8 +23,12 @@ const { buildParserMessages } = require('../prompts/parser-prompt');
 //   - 未设置 → 自动判断：只要存在可用 provider（api_key 非空）就允许模型路由，
 //     让"配了模型就用模型"成为默认行为；没配 provider 时退回纯本地，不报错。
 //   （旧默认是 false，导致整套模型链路形同虚设，体验不如直接用第三方模型。）
+// ⚠️ 传入用户级 settings（DB 优先，来自 ai-settings-service）时以其 model_route 为准。
 let _providerProbe = null;
-function isModelRouteAllowed() {
+function isModelRouteAllowed(settings) {
+    if (settings && typeof settings.model_route === 'boolean') {
+        return settings.model_route;
+    }
     const raw = process.env.AI_ALLOW_MODEL_ROUTE;
     const explicit = String(raw || '').toLowerCase();
     if (explicit === 'false' || raw === '0') return false;
@@ -81,11 +85,12 @@ async function resolveProvider(userId) {
  * @param {Array}  [params.accounts]    真实账户表（供习惯提示引用账户名称）
  * @param {object} [params.memory]      Memory Retrieval 结果 —— 用户记账习惯的数据来源
  * @param {Array}  [params.fewShot]     用户历史相似样例（Few-shot 先例）
+ * @param {string} [params.promptVersion] prompt 版本覆盖（来自用户级 AI 设置，缺省走 env）
  * @param {number} [params.timeoutMs]   超时毫秒
  */
 async function reviewWithModel({
     provider, model, text, candidates, categories,
-    accounts = [], memory = null, fewShot = null, timeoutMs = 12000,
+    accounts = [], memory = null, fewShot = null, promptVersion = null, timeoutMs = 12000,
 }) {
     // 用户记账习惯：把本地已检索到的规则 / 习惯假设 / 历史分布 / 否证
     // 翻译成自然语言喂给模型。此前模型只拿到「原文 + 本地候选 + 类目表」，
@@ -96,8 +101,9 @@ async function reviewWithModel({
     // prompt 已外置到 ../prompts/parser-prompt.js 并版本化。
     // 默认 v2（见 DEFAULT_PROMPT_VERSION）：v1 不接收 accounts，
     //   模型拿不到账户列表就无法从账单内容匹配账户。v3 = v2 + Few-shot 先例。
-    const { messages, version: promptVersion } = buildParserMessages({
-        text, candidates, categories, accounts, memoryHints, fewShot,
+    // 用户级设置可覆盖 prompt 版本（排障/回退无需改 env）。
+    const { messages, version: resolvedPromptVersion } = buildParserMessages({
+        text, candidates, categories, accounts, memoryHints, fewShot, version: promptVersion,
     });
 
     const request = {
@@ -113,7 +119,7 @@ async function reviewWithModel({
         few_shot_count: Array.isArray(fewShot) ? fewShot.length : 0,
         // prompt 版本落库：事后可回溯"哪次错判用的是哪一版 prompt"，
         // 也是 A/B 对比与一键回退的依据。
-        prompt_version: promptVersion,
+        prompt_version: resolvedPromptVersion,
     };
     const started = Date.now();
 

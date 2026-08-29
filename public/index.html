@@ -583,6 +583,49 @@
                         <div id="ocrConfigMsg" class="form-msg" style="margin-top:12px"></div>
                     </form>
                 </div>
+
+                <!-- AI 识别行为设置 -->
+                <div class="glass-card" style="margin-top:16px">
+                    <h3 class="card-title">🎯 AI 识别行为</h3>
+                    <p class="card-desc">调整 AI 账单识别策略，保存后立即生效，无需改服务器环境变量。未保存的项自动沿用服务器 <code>AI_*</code> 默认值。</p>
+                    <form class="trans-form" id="aiSettingsForm" style="margin-top:12px">
+                        <div class="form-row" style="flex-wrap:wrap">
+                            <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
+                                <input type="checkbox" id="aiSettingModelRoute" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
+                                <span><strong>模型复核</strong><br><small class="form-hint">大模型复核并修正本地识别结果（需要启用一个 AI 服务商）。</small></span>
+                            </label>
+                            <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
+                                <input type="checkbox" id="aiSettingModelRouteSimple" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
+                                <span><strong>简单输入也过模型</strong><br><small class="form-hint">简短账单也发给模型，用少量 token 换语义准确率。</small></span>
+                            </label>
+                        </div>
+                        <div class="form-row" style="flex-wrap:wrap">
+                            <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
+                                <input type="checkbox" id="aiSettingLlmFirst" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
+                                <span><strong>模型主抽取</strong><br><small class="form-hint">让模型独立从原文抽取，不依赖本地候选。识别更准但更耗 token，建议先试默认模式。</small></span>
+                            </label>
+                            <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
+                                <input type="checkbox" id="aiSettingFewShot" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
+                                <span><strong>历史先例</strong><br><small class="form-hint">把脱敏后的历史归类样例注入 prompt，帮助模型贴合你的记账习惯。</small></span>
+                            </label>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="max-width:220px">
+                                <label>Prompt 版本</label>
+                                <select id="aiSettingPromptVersion">
+                                    <option value="v3">v3 · 最新（历史先例）</option>
+                                    <option value="v2">v2 · 账户匹配</option>
+                                    <option value="v1">v1 · 冻结基线</option>
+                                </select>
+                                <small class="form-hint">识别异常时可回退到旧版本对比排障</small>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">保存 AI 识别设置</button>
+                        </div>
+                        <div id="aiSettingsMsg" class="form-msg" style="margin-top:12px"></div>
+                    </form>
+                </div>
             </section>
 
             <!-- ========== AI 识别 ========== -->

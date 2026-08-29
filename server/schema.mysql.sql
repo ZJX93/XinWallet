@@ -486,6 +486,14 @@ CREATE TABLE IF NOT EXISTS ai_providers (
 CREATE INDEX idx_ai_user ON ai_providers (user_id);
 CREATE INDEX idx_ai_user_active ON ai_providers (user_id, is_active);
 
+-- ===== AI 识别行为设置（每用户）=====
+-- 覆盖 AI_* 环境变量；未在 Web 设置页保存的项回退到 env / 内置默认。
+CREATE TABLE IF NOT EXISTS ai_settings (
+  user_id INT PRIMARY KEY,
+  settings JSON NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- 默认标签种子
 INSERT INTO tags (id, user_id, name, color, icon) VALUES
 (1, 1, '餐饮', '#f59e0b', '🍜'),

@@ -29,6 +29,8 @@ const { selectFewShotExamples, isFewShotEnabled } = require('../memory/few-shot-
 const { analyzeComplexity } = require('../runtime/complexity-analyzer');
 const { route, isSimpleModelRouteAllowed, isLlmFirstEnabled } = require('../runtime/model-router');
 const { resolveProvider, reviewWithModel, isModelRouteAllowed } = require('../providers/provider-gateway');
+// 用户级 AI 识别设置（DB 优先，env 兜底；Web「AI 配置」页可改）
+const { getAiSettings } = require('../services/ai-settings-service');
 
 const PREDICTION_VERSION = 2;   // Phase 3/4 接入后快照结构升级
 
@@ -64,6 +66,16 @@ async function loadContext(db, userId, bookId) {
  *                    model_response:object|null, route:string, matched_rule_ids:number[]}>}
  */
 async function parseTransactions(db, { userId, bookId, text, context = {}, allowModel = null }) {
+    // ---- 0) 用户级 AI 识别设置（DB 优先，env 兜底）----
+    //      模型复核 / 简单走模型 / LLM-first / 历史先例 / prompt 版本
+    //      均可由 Web「AI 配置」页调整，无需改 env 重启服务。
+    let aiSettings = null;
+    try {
+        aiSettings = await getAiSettings(db, userId);
+    } catch (_) {
+        aiSettings = null;   // 设置层故障 → 全部回退 env / 内置默认
+    }
+
     // ---- 1) Context Builder ----
     const ctx = await buildContext(db, { userId, bookId, context });
 
@@ -122,10 +134,10 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         text, extraction, memory, validation: decision.validation,
     });
 
-    const modelAllowed = allowModel === null ? isModelRouteAllowed() : allowModel;
+    const modelAllowed = allowModel === null ? isModelRouteAllowed(aiSettings) : allowModel;
     // simple 默认不去查 provider（省一次 SQL + 省一次模型调用）；
-    // 只有当部署方开启 AI_MODEL_ROUTE_SIMPLE 时才为 simple 也解析 provider。
-    const simpleToModel = isSimpleModelRouteAllowed();
+    // 只有当开启「简单输入也过模型」（env AI_MODEL_ROUTE_SIMPLE / 设置页）时才为 simple 也解析 provider。
+    const simpleToModel = isSimpleModelRouteAllowed(aiSettings);
     let provider = null;
     if (modelAllowed && (complexity.level !== 'simple' || simpleToModel)) {
         provider = await resolveProvider(userId);
@@ -144,7 +156,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         // ⛔ 仅在开关打开时才检索（它会把历史消费明细发给第三方模型）。
         //    检索失败一律降级为「无先例」，绝不让记账链路挂掉。
         let fewShot = null;
-        if (isFewShotEnabled()) {
+        if (isFewShotEnabled(aiSettings)) {
             try {
                 fewShot = await selectFewShotExamples(db, ctx.wm, {
                     text,
@@ -158,7 +170,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         // LLM-first：不把本地候选喂给模型，让它独立从原文抽取。
         //   理由：本地正则一旦漏拆或错拆，候选就成了错误锚点，会带偏模型。
         //   独立抽取后模型能给出本地压根没识别出的笔数与语义。
-        const llmFirst = isLlmFirstEnabled();
+        const llmFirst = isLlmFirstEnabled(aiSettings);
 
         const review = await reviewWithModel({
             provider, model: routing.model, text,
@@ -169,6 +181,8 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             accounts: ctx.accounts,
             memory,
             fewShot,
+            // 设置页可调 prompt 版本（v3 能力全集 / v2 / v1 冻结基线）
+            promptVersion: aiSettings ? aiSettings.prompt_version : null,
         });
         modelRequest = review.request || null;
 

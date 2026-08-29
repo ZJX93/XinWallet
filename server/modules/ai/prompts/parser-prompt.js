@@ -61,9 +61,14 @@ const DEFAULT_PROMPT_VERSION = 'v3';
 
 /**
  * 选择当前生效的 prompt 版本。
- * 未配置或配了未知版本时回退到 DEFAULT_PROMPT_VERSION（防止配错导致全站异常）。
+ * 用户级设置（Web 设置页）优先；未配置或配了未知版本时回退到 env / DEFAULT_PROMPT_VERSION
+ * （防止配错导致全站异常）。
+ * @param {object} [settings]  用户级 AI 设置；缺省时读环境变量
  */
-function getParserPromptVersion() {
+function getParserPromptVersion(settings) {
+    if (settings && typeof settings.prompt_version === 'string' && VERSIONS[settings.prompt_version]) {
+        return settings.prompt_version;
+    }
     const raw = String(process.env.AI_PARSER_PROMPT_VERSION || '').trim().toLowerCase();
     return VERSIONS[raw] ? raw : DEFAULT_PROMPT_VERSION;
 }

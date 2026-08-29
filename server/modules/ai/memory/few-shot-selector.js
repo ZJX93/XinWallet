@@ -228,7 +228,10 @@ function cutoffDate(refDate) {
  *   若部署方不接受，设 AI_FEWSHOT_ENABLED=false 关闭；
  *   关闭后 v3 prompt 自动退化为 v2（先例区块为空串），不影响其余能力。
  */
-function isFewShotEnabled() {
+function isFewShotEnabled(settings) {
+    if (settings && typeof settings.few_shot === 'boolean') {
+        return settings.few_shot;
+    }
     const raw = String(process.env.AI_FEWSHOT_ENABLED || '').toLowerCase();
     // 未配置时默认开启；只认显式关闭
     return !(raw === 'false' || raw === '0' || raw === 'no');

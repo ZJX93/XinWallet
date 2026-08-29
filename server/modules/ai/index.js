@@ -51,6 +51,9 @@ const {
 // AI 模块扩展服务
 // ============================================
 
+// AI 识别行为设置（DB 优先，env 兜底；供 /ai/settings 路由与解析链路使用）
+const { getAiSettings, updateAiSettings } = require('./services/ai-settings-service');
+
 // 洞察引擎
 const insightEngine = require('./services/insight-engine');
 const {
@@ -183,4 +186,8 @@ module.exports = {
     getAllFlags,
     getUserFeatures,
     metricsCleanup,
+
+    // ---- AI 识别行为设置 ----
+    getAiSettings,
+    updateAiSettings,
 };

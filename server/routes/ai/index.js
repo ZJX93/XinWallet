@@ -31,6 +31,7 @@ router.use(require('./conversations'));   // 会话管理
 router.use(require('./profile'));         // AI 画像与偏好
 router.use(require('./events'));          // 事件总线
 router.use(require('./simulate'));        // 现金流/预算/储蓄/债务模拟
+router.use(require('./settings'));        // AI 识别行为设置（Web 设置页读写）
 router.use(require('./v2-ops'));          // V2 运维端点
 
 module.exports = router;

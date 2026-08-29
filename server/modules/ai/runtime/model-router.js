@@ -88,8 +88,13 @@ function route({ complexity, provider = null, allowModel = false, allowSimpleMod
  * 默认 false —— 保持"simple → local"的省钱策略不变。
  * 置为 true 后，简单输入也会过一遍 cheap model，用 token 成本换语义准确率。
  * 适用于：本地正则效果不佳、或用户输入普遍口语化的部署。
+ *
+ * @param {object} [settings]  用户级 AI 设置（DB 优先）；缺省时回退环境变量
  */
-function isSimpleModelRouteAllowed() {
+function isSimpleModelRouteAllowed(settings) {
+    if (settings && typeof settings.model_route_simple === 'boolean') {
+        return settings.model_route_simple;
+    }
     const raw = String(process.env.AI_MODEL_ROUTE_SIMPLE || '').toLowerCase();
     return raw === 'true' || raw === '1' || raw === 'yes';
 }
@@ -115,7 +120,10 @@ function isSimpleModelRouteAllowed() {
  *    自动回落到传统链路。仅在本地正则明显不够用、且能接受
  *    上述账户/笔数权衡时才开启（口语化输入多、版式杂）。
  */
-function isLlmFirstEnabled() {
+function isLlmFirstEnabled(settings) {
+    if (settings && typeof settings.llm_first === 'boolean') {
+        return settings.llm_first;
+    }
     const raw = String(process.env.AI_LLM_FIRST || '').toLowerCase();
     return raw === 'true' || raw === '1' || raw === 'yes';
 }

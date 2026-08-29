@@ -426,7 +426,7 @@ async function refreshPage(page) {
     if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
     if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
     if (page === 'ai-evaluation' && M.AIEvaluation) await M.AIEvaluation.refresh();
-    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } }
+    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); }
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
 }
 
@@ -512,6 +512,7 @@ async function boot() {
     safeInit('AIInsights', () => AIInsights.init());
     safeInit('AIEvaluation', () => AIEvaluation.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
+    safeInit('AISettings', () => AISettings.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());
     try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn('  ⚠️  Dashboard (跳过):', e.message); }
