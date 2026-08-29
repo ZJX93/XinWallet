@@ -6,6 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, toNumber, getActiveProvider, aiModule, upload } = require('./_shared');
+const { applyPreprocessDateOverride } = require('../../modules/ai/extraction/receipt-date-override');
 const router = express.Router();
 function toLegacyOcrItems(transactions) {
     return (transactions || []).map(t => ({
@@ -117,31 +118,9 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
     const { transactions, validation, decision_trace } = parsed;
 
     // 时间/日期兜底：票据预处理器已从「转账时间/支付时间」读到精确时分秒与日期，
-    // 但模型复核可能仍填 00:00:00、甚至编造错误的日期 → 用预处理的硬证据覆盖。
-    // 仅在预处理成功、且笔数 1:1 能对上时启用，避免错配污染多笔账单。
-    if (pre && pre.ok && Array.isArray(pre.items) && pre.items.length &&
-        transactions.length === pre.items.length) {
-        pre.items.forEach((src, idx) => {
-            const t = transactions[idx];
-            if (!src || !t || !t.date) return;
-
-            // ① 时间兜底：模型常把时间填成 00:00:00，用票据读到的精确时分秒覆盖
-            if (src.time && / 00:00:00$/.test(t.date)) {
-                t.date = `${t.date.slice(0, 10)} ${src.time}`;
-                if (t.evidence) t.evidence.date = 'receipt_preprocess_time';
-            }
-
-            // ② 日期硬覆盖：票据上的日期是白纸黑字的硬证据，模型复核却会「编造」日期
-            //    （实测同一张淘宝账单两次识别：一次 2026-08-29、一次 2026-08-25，时间都对）。
-            //    只要本地从票据读到了日期，就以票据为准，模型无权改写。
-            if (src.date && t.date.slice(0, 10) !== src.date) {
-                const m = / (\d{2}:\d{2}:\d{2})$/.exec(t.date);
-                const time = m ? m[1] : (src.time || '00:00:00');
-                t.date = `${src.date} ${time}`;
-                if (t.evidence) t.evidence.date = 'receipt_preprocess_date';
-            }
-        });
-    }
+    // 但模型复核可能仍填 00:00:00、甚至编造错误的日期 → 用预处理的硬证据覆盖
+    // （详见 receipt-date-override.js，逻辑已抽出以便单元测试）。
+    applyPreprocessDateOverride(pre, transactions);
 
     /*  账户字段必须打出来：此前这行只打日期/金额/商户，账户匹配情况在日志里完全不可见，
         线上「账户没匹配上」只能靠查库快照反推（2026-08-29 排障代价）。 */
