@@ -14,7 +14,6 @@ import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.model.TranscribeRequest
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
-import com.xinwallet.app.BuildConfig
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -59,15 +58,17 @@ class AiRepository(private val apiProvider: () -> ApiService) {
         date: String? = null,
         source: String = "parse"
     ) = safeApiCall {
-        // dev-only: dev build 自动给服务端带 mock=1，跳过 AI provider 调用，便于本地 UI 自测
-        val mockFlag = if (BuildConfig.DEBUG) "1" else null
+        // ⛔ 绝不带 mock=1：服务端一旦命中 mock 分支就跳过真实 AI，直接返回硬编码样例
+        //    （account_id 恒为 null / evidence.account='fallback_default'），
+        //    前端会把账户判成「未识别」——表现为「AI 账户识别能力消失」。
+        //    分发出去的是 debug APK，debug 自动 mock 会直接坑掉线上用户（2026-08-29 踩坑）。
         apiProvider().parseTransactions(
             AiParseRequest(
                 text = text,
                 context = AiParseContext(accountId = accountId, date = date),
                 source = source
             ),
-            mock = mockFlag
+            mock = null
         )
     }
 
