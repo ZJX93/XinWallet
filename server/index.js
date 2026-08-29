@@ -160,6 +160,12 @@ app.get('/login', (req, res) => {
 // 健康检查：Docker / k8s 探测
 app.get('/healthz', (req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
+// 应用版本号：CI 构建镜像时通过环境变量 APP_VERSION 注入（auto-tag 生成的 git tag，如 v0.1.3）；
+// 本地开发回退到 npm_package_version（package.json 版本）或 'dev'
+app.get('/api/version', (req, res) => {
+    res.json({ success: true, data: { version: process.env.APP_VERSION || process.env.npm_package_version || 'dev' } });
+});
+
 // OpenAPI 规范 + Swagger UI（本地资源，离线可用，遵循 CSP 的 scriptSrc 'self'）
 const openapiSpec = require('./openapi');
 const swaggerUiDist = require('swagger-ui-dist');

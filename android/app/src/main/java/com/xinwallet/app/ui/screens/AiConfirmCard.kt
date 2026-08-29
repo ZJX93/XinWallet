@@ -873,7 +873,14 @@ private fun AiAccountSheet(
                 }
             } else {
                 // 按账户类型分组，便于查找（与账户管理页一致）
-                AI_ACCOUNT_TYPE_ORDER.forEach { type ->
+                // 分组必须覆盖 accounts 中【所有实际出现的类型】，否则 investment/loan
+                // 等不在 AI_ACCOUNT_TYPE_ORDER 里的账户会被整组隐藏，表现为
+                // 「AI 卡片可选账户比资产页/手工记账少」（例如 20 个里只显示 14 个）。
+                // 这里在固定展示顺序之后补齐其余实际类型，新增账户类型也自动兼容。
+                val shownTypes =
+                    AI_ACCOUNT_TYPE_ORDER + accounts.map { it.type }.distinct()
+                        .filter { it !in AI_ACCOUNT_TYPE_ORDER }
+                shownTypes.forEach { type ->
                     val list = accounts.filter { it.type == type }
                     if (list.isEmpty()) return@forEach
                     Text(

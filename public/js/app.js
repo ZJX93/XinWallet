@@ -248,7 +248,8 @@ const PAGE_META = {
     reports: { title: '报表中心', subtitle: '专业报表，深度回顾' },
     tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
     'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
-    'ai-config': { title: 'AI配置', subtitle: 'AI 服务商配置' }
+    'ai-config': { title: 'AI配置', subtitle: 'AI 服务商配置' },
+    about: { title: '关于', subtitle: '关于 鑫钱包' }
 };
 
 // ==========================================
@@ -378,6 +379,14 @@ async function showPage(page) {
     // 该 class 不再改变定位行为，--sticky-top-1/2 也不再需要注入。
     const topBar = document.querySelector('header.top-bar');
     if (topBar) topBar.classList.toggle('top-bar-sticky', page === 'transactions');
+    // 关于页：动态填充真实版本号（懒加载 HTML 经 innerHTML 注入，内联脚本不会执行）
+    if (page === 'about') {
+        fetch('/api/version').then(r => r.json()).then(j => {
+            const v = j?.data?.version;
+            const el = document.getElementById('aboutVersion');
+            if (v && el) el.textContent = v;
+        }).catch(() => {});
+    }
     // 刷新当前页数据
     refreshPage(page);
 }

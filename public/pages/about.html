@@ -1,0 +1,55 @@
+<section class="page" id="page-about">
+    <style>
+        .about-hero { text-align: center; padding: 36px 24px; }
+        .about-logo { width: 64px; height: 64px; border-radius: 50%; background: url('images/logo.png') center/cover no-repeat; margin: 0 auto; box-shadow: 0 2px 8px rgba(180, 130, 20, 0.3); }
+        .about-name { font-size: 28px; font-weight: 700; margin: 12px 0 4px; }
+        .about-tagline { color: var(--text-secondary); margin: 0 0 10px; font-size: 14px; }
+        .about-version { color: var(--interactive-default); font-weight: 600; margin: 0 0 18px; font-size: 13px; }
+        .about-desc { color: var(--text-secondary); line-height: 1.75; max-width: 640px; margin: 0 auto; font-size: 14px; }
+        .about-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; margin-top: 18px; }
+        .about-feature { display: flex; gap: 12px; align-items: flex-start; }
+        .af-icon { font-size: 24px; flex-shrink: 0; line-height: 1.4; }
+        .about-feature b { display: block; margin-bottom: 4px; font-size: 14px; }
+        .about-feature p { color: var(--text-secondary); margin: 0; font-size: 13px; line-height: 1.6; }
+        .about-stack { margin: 12px 0 0; padding-left: 20px; line-height: 2; color: var(--text-secondary); font-size: 14px; }
+        .about-stack b { color: var(--text-primary); }
+        .about-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+    </style>
+
+    <div class="glass-card about-hero">
+        <div class="about-logo"></div>
+        <h2 class="about-name">鑫钱包</h2>
+        <p class="about-tagline">个人财务助手 · Personal Finance</p>
+        <p class="about-version">版本 <span id="aboutVersion">v0.1.x</span></p>
+        <p class="about-desc">一个注重隐私与可解释性的自托管个人记账应用：多账户复式记账、预算、债务、理财、AI 智能识别记账与深度报表，数据完全掌握在自己手中。</p>
+    </div>
+
+    <div class="glass-card">
+        <h3 class="card-title">✨ 核心特性</h3>
+        <div class="about-features">
+            <div class="about-feature"><span class="af-icon">🏦</span><div><b>多账户复式记账</b><p>现金 / 银行卡 / 信用卡 / 电子支付 / 金融账户统一记账，自动对账防漂移。</p></div></div>
+            <div class="about-feature"><span class="af-icon">🤖</span><div><b>AI 智能识别</b><p>一句话或截图，AI 自动归类落地；模型可复核、可回退。</p></div></div>
+            <div class="about-feature"><span class="af-icon">🎯</span><div><b>预算与债务</b><p>多周期预算、贷款 / 信用卡 / 借贷全周期跟踪。</p></div></div>
+            <div class="about-feature"><span class="af-icon">📊</span><div><b>报表与洞察</b><p>专业报表、AI 消费洞察与习惯学习。</p></div></div>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h3 class="card-title">🧱 技术栈</h3>
+        <ul class="about-stack">
+            <li><b>后端</b>：Node.js + Express + PostgreSQL / MySQL（双方言）</li>
+            <li><b>前端</b>：原生 HTML / CSS / JS（毛玻璃 UI）+ Chart.js</li>
+            <li><b>移动端</b>：原生 Android（Kotlin）· 鸿蒙 HarmonyOS（ArkTS）</li>
+            <li><b>部署</b>：Docker 镜像，统一版本线，一键自托管</li>
+        </ul>
+    </div>
+
+    <div class="glass-card">
+        <h3 class="card-title">📄 开源协议与链接</h3>
+        <p class="about-desc" style="margin:0;text-align:left">本项目以 MIT 协议开源，欢迎在 GitHub 上提 Issue 与 PR。</p>
+        <div class="about-links">
+            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet" target="_blank" rel="noopener">GitHub 仓库</a>
+            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet/releases" target="_blank" rel="noopener">更新日志</a>
+        </div>
+    </div>
+</section>

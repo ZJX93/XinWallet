@@ -52,6 +52,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 
 # OCI 镜像元数据（docker/build-push-action 会用 metadata-action 再次写入更完整的 labels）
 ARG VERSION=dev
+ENV APP_VERSION=$VERSION
 LABEL org.opencontainers.image.title="XIN Wallet" \
       org.opencontainers.image.description="鑫钱包 - 个人财务助手 (Node.js + Express + PostgreSQL)" \
       org.opencontainers.image.source="https://github.com/ZJX93/XinWallet" \

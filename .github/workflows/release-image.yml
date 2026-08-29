@@ -94,6 +94,7 @@ jobs:
           # 自动生成生产环境加密密钥（避免启动崩溃），用户应在生产部署时显式注入
           build-args: |
             ENCRYPTION_KEY=${{ steps.genkey.outputs.key }}
+            VERSION=${{ steps.setup.outputs.VERSION }}
           tags: |
             ${{ steps.setup.outputs.FULL_TAG }}
             ${{ env.REGISTRY }}/${{ steps.setup.outputs.IMAGE_PATH }}:latest

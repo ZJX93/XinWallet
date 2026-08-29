@@ -41,11 +41,13 @@ async function buildContext(db, { userId, bookId, context = {}, now = new Date()
     }
 
     // 账户：供规则 target_account_id 校验与账户名解析（不做默认账户猜测）
+    // 与安卓/Web 端 AI 确认卡片严格保持一致：只用「当前账本 + 未关闭」账户，
+    // 避免 AI 把交易匹配到已销户/其他账本账户，而确认卡片下拉里选不到（表现为「账户不全」）。
     let accounts = [];
     try {
         accounts = await db.query(
             `SELECT id, name, type FROM accounts
-              WHERE user_id = ? AND (book_id = ? OR book_id IS NULL)
+              WHERE user_id = ? AND book_id = ? AND status = 'active'
               ORDER BY id`,
             [userId, bookId]
         );
