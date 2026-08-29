@@ -119,9 +119,7 @@ private fun CategoryRow(cat: Category, onEdit: () -> Unit, onDelete: () -> Unit)
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val c = runCatching { Color(android.graphics.Color.parseColor(cat.color ?: "#6366f1")) }
-            .getOrDefault(MaterialTheme.colorScheme.primary)
-        Surface(shape = CircleShape, color = c, modifier = Modifier.size(36.dp)) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp)) {
             Box(contentAlignment = Alignment.Center) {
                 Text(cat.icon?.ifBlank { "📌" } ?: "📌", color = Color.White, fontSize = 18.sp)
             }
