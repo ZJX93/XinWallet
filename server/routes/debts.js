@@ -118,9 +118,12 @@ function autoCalcMethods() {
 router.get('/', async (req, res) => {
     try {
         // 自动清理已还清超过7天的债务（仅删债务记录，保留还款流水和交易不变）
+        // 用 JS 算截止时间再参数化，避免 MySQL/PG 在 INTERVAL 语法上的差异
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         await db.query(
-            "DELETE FROM debts WHERE user_id = ? AND book_id = ? AND status = 'paid_off' AND updated_at < NOW() - INTERVAL 7 DAY",
-            [req.userId, req.bookId]
+            "DELETE FROM debts WHERE user_id = ? AND book_id = ? AND status = 'paid_off' AND updated_at < ?",
+            [req.userId, req.bookId, sevenDaysAgo]
         );
         const debts = await db.query(
             'SELECT * FROM debts WHERE user_id = ? AND book_id = ? ORDER BY status = \'paid_off\', status = \'overdue\', due_date IS NULL, due_date ASC, id DESC',

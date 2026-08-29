@@ -112,6 +112,7 @@ const DebtManager = {
     async refresh() {
         const container = document.getElementById('debtList');
         showSkeleton(container, 4, 'grid');
+        try {
         const res = await api('/debts');
         if (!res) { showEmpty(container, '加载失败，请检查网络', '⚠️'); return; }
         const s = res.summary || {};
@@ -165,6 +166,10 @@ const DebtManager = {
         container.querySelectorAll('[data-action="repay-history"]').forEach(b => b.addEventListener('click', () => this.openRepayHistory(parseInt(b.dataset.id))));
         container.querySelectorAll('[data-action="edit-debt"]').forEach(b => { b.addEventListener('click', () => { const d = this._listCache.find(x => x.id === parseInt(b.dataset.id)); if (d) this.openEditModal(d); }); });
         container.querySelectorAll('[data-action="delete-debt"]').forEach(b => b.addEventListener('click', () => this.delete(parseInt(b.dataset.id))));
+        } catch (err) {
+            console.error('DebtManager.refresh error:', err);
+            showEmpty(container, '加载失败：' + (err.message || '未知错误'), '⚠️');
+        }
     },
 
     // 应收/应付余额占比条（渲染进顶部汇总区 #debtRatioBar，不再重复数字）
