@@ -14,9 +14,9 @@
         任何 throw 都是 bug。
    ============================================ */
 
-const { applyEvidence, markRuleHit, EVIDENCE_WEIGHTS } = require('../rules/rule-store');
+const { applyEvidence, markRuleHit, demoteConflictedMerchantRules, EVIDENCE_WEIGHTS } = require('../rules/rule-store');
 const { upsertMemoryItem } = require('../memory/semantic-memory');
-const { normalizeKey, isUsefulKey, chunkKeys } = require('../memory/keys');
+const { normalizeKey, isUsefulKey, chunkKeys, stripStoreSuffix, productKey } = require('../memory/keys');
 
 /**
  * 从一笔交易里提炼可学习的「主体键」。
@@ -27,9 +27,39 @@ const { normalizeKey, isUsefulKey, chunkKeys } = require('../memory/keys');
  *    规则永远命中不了自己，学习看着在攒分实际零效果，且完全不报错。
  *    （这正是 2026-08-25 端到端验证抓到的真实缺陷。）
  */
+/**
+ * 商户键 —— 只用于「商户 → 类目」的【弱证据】规则。
+ *
+ * ⛔ 必须去门店后缀（「蜜雪冰城(龙湖星悦广场店)」→「蜜雪冰城」）：
+ *    带门店名当键，换一家分店规则就永远命中不了，且不报任何错。
+ */
+function merchantKey(txn) {
+    const m = normalizeKey(stripStoreSuffix(txn && txn.merchant));
+    return isUsefulKey(m) ? m : null;
+}
+
+/**
+ * 商品键 —— 决定类目的【主依据】：从备注/商品说明里提取「买了什么」。
+ *
+ * ⛔ 商户不决定类目（2026-08-29）：一个商户可以卖任何东西
+ *    （淘宝闪购今天奶茶、明天盒饭），按商户学的规则必然错一半。
+ */
+function learnableProductKey(txn) {
+    if (!txn) return null;
+    // ⛔ raw_segment 优先：note 是「场景-对象」拼装的，顺序不固定（见 keys.productKey 注释）
+    return productKey(txn.raw_segment, txn.merchant) || productKey(txn.note, txn.merchant) || null;
+}
+
+/**
+ * 兼容旧调用：给一个可用于记忆检索的键（商品词优先，商户兜底）。
+ * ⛔ 必须与读侧 memory-retrieval.buildRetrievalKeys 用同一份 keys.js 归一，
+ *    否则规则永远命中不了自己（本模块存在的理由）。
+ */
 function learnableKey(txn) {
-    const m = normalizeKey(txn.merchant);
-    if (isUsefulKey(m)) return m;
+    const p = learnableProductKey(txn);
+    if (p) return p;
+    const m = merchantKey(txn);
+    if (m) return m;
 
     /*  ⛔ 必须 raw_segment 优先、note 兜底（2026-08-25 修正，顺序反了会静默失效）：
         note 现在由 note-composer 规范化成「场景-对象」，当交易【没有商家】
@@ -71,8 +101,12 @@ async function learnFromCommit(db, {
     for (const final of finalTxns) {
         try {
             const orig = candidateTxns.find(c => c.seq === final.seq) || {};
-            const key = learnableKey(final) || learnableKey(orig);
-            if (!key) continue;
+            /*  商品词（主依据）与商户名（弱证据）分开取：
+                备注里写的是「买了什么」→ 决定类目；
+                商户只在该商户的类目始终一致时才有参考价值。 */
+            const pKey = learnableProductKey(final) || learnableProductKey(orig);
+            const mKey = merchantKey(final) || merchantKey(orig);
+            if (!pKey && !mKey) continue;
 
             // 转账没有类目学习价值（类目固定为「转账」）
             if (final.type === 'transfer') continue;
@@ -82,40 +116,58 @@ async function learnFromCommit(db, {
             if (!finalCat) continue;
 
             const corrected = action === 'corrected' && origCat && origCat !== finalCat;
+            const eventType = corrected ? 'explicit_correction' : 'explicit_confirmation';
+            const correct = !corrected;
 
-            if (corrected) {
-                // ---- 用户改了类目：这是最强监督信号（+6）----
-                // 1) 正向：为「新类目」累积证据，并把规则目标改到新类目
+            /*  ① 主依据：商品词 → 类目。
+                「蜜雪冰城」「盒饭」「洗衣液」这类词才是分类的依据，
+                商户（淘宝闪购）今天卖奶茶、明天卖盒饭，不能拿来定类目。 */
+            if (pKey) {
                 const res = await applyEvidence(db, {
-                    userId, bookId, ruleType: 'merchant_category', matchKey: key,
-                    targetCategoryId: finalCat, eventType: 'explicit_correction',
-                    predictionId, feedbackEventId, correct: false,
-                    payload: { from_category_id: origCat, to_category_id: finalCat, seq: final.seq },
+                    userId, bookId, ruleType: 'keyword_category', matchKey: pKey,
+                    targetCategoryId: finalCat, eventType,
+                    predictionId, feedbackEventId, correct,
+                    payload: {
+                        from_category_id: origCat, to_category_id: finalCat,
+                        seq: final.seq, basis: 'product',
+                    },
                 });
-                if (res) learned.push({ key, event: 'explicit_correction', ...res });
+                if (res) learned.push({ key: pKey, rule_type: 'keyword_category', event: eventType, ...res });
+            }
 
-                // 2) 负向：把「旧类目」这条假设记为被证伪（Negative Memory）
+            /*  ② 弱证据：商户 → 类目。
+                仅在该商户【类目始终一致】时才可信（蜜雪冰城永远卖饮品）；
+                一旦学到第二个类目，就由 demoteConflictedMerchantRules
+                把它们整体降级为 candidate —— 从此不再参与裁决。 */
+            if (mKey && mKey !== pKey) {
+                const res = await applyEvidence(db, {
+                    userId, bookId, ruleType: 'merchant_category', matchKey: mKey,
+                    targetCategoryId: finalCat, eventType,
+                    predictionId, feedbackEventId, correct,
+                    payload: {
+                        from_category_id: origCat, to_category_id: finalCat,
+                        seq: final.seq, basis: 'merchant',
+                    },
+                });
+                if (res) learned.push({ key: mKey, rule_type: 'merchant_category', event: eventType, ...res });
+                await demoteConflictedMerchantRules(db, { userId, bookId, matchKey: mKey });
+            }
+
+            // 记忆也以商品词为主体（分类依据），商户名兜底
+            const memKey = pKey || mKey;
+            if (corrected) {
+                // 旧类目记为被证伪（Negative Memory），新类目 +1 支持
                 await upsertMemoryItem(db, {
-                    userId, bookId, subject: key, predicate: 'category',
+                    userId, bookId, subject: memKey, predicate: 'category',
                     objectValue: String(origCat), categoryId: origCat, signal: 'refute',
                 });
-                // 3) 正向记忆：新类目 +1 支持
                 await upsertMemoryItem(db, {
-                    userId, bookId, subject: key, predicate: 'category',
+                    userId, bookId, subject: memKey, predicate: 'category',
                     objectValue: String(finalCat), categoryId: finalCat, signal: 'support',
                 });
             } else {
-                // ---- 用户直接确认：弱监督信号（+2）----
-                const res = await applyEvidence(db, {
-                    userId, bookId, ruleType: 'merchant_category', matchKey: key,
-                    targetCategoryId: finalCat, eventType: 'explicit_confirmation',
-                    predictionId, feedbackEventId, correct: true,
-                    payload: { category_id: finalCat, seq: final.seq },
-                });
-                if (res) learned.push({ key, event: 'explicit_confirmation', ...res });
-
                 await upsertMemoryItem(db, {
-                    userId, bookId, subject: key, predicate: 'category',
+                    userId, bookId, subject: memKey, predicate: 'category',
                     objectValue: String(finalCat), categoryId: finalCat, signal: 'support',
                 });
             }

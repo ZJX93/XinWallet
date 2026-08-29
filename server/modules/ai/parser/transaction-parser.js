@@ -198,7 +198,9 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
             //   绝不因为开了开关就丢掉可记账的结果。
             let llmFirstApplied = false;
             if (llmFirst) {
-                const firstPass = mergeLlmFirst(review.transactions, decision.transactions, text, routing);
+                const firstPass = mergeLlmFirst(
+                    review.transactions, decision.transactions, text, routing, ctx.categories
+                );
                 if (firstPass && firstPass.length) {
                     decision = decide({
                         extraction: { ...extraction, transactions: firstPass }, memory, context: ctx, routing,
@@ -361,9 +363,10 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
  * @param {Array} localTxns  本地抽取结果（兜底用）
  * @param {string} text      用户原文
  * @param {object} routing   路由结果（用于标记 evidence 来源）
+ * @param {Array} [categories] 用户可用类目（用于把 category_name 校准到最终 id）
  * @returns {Array} 标准 candidate 结构
  */
-function mergeLlmFirst(modelTxns, localTxns, text, routing) {
+function mergeLlmFirst(modelTxns, localTxns, text, routing, categories = []) {
     if (!Array.isArray(modelTxns) || modelTxns.length === 0) return [];
 
     const localBySeq = new Map((localTxns || []).map(t => [t.seq, t]));
@@ -451,6 +454,15 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
             && baseConf.category >= Number(conf.category_id || 0)) {
             out.confidence.category = baseConf.category;
             out.evidence.category = (local.evidence && local.evidence.category) || 'local_keyword_match';
+        }
+
+        /*  类目名必须跟着【最终 id】走（2026-08-29 实测）：
+            合并阶段只裁定 category_id（模型与本地谁赢），category_name 却留在
+            另一方的取值上 —— 结果 id=早午晚餐(23)、name=零食饮料，
+            前端显示「零食饮料」、落库却是「早午晚餐」，用户改都改不明白。 */
+        if (out.category_id != null && categories.length) {
+            const hit = categories.find(c => Number(c.id) === Number(out.category_id));
+            if (hit) out.category_name = hit.name;
         }
         return out;
     });

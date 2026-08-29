@@ -174,7 +174,114 @@ function splitByParticles(seg) {
     return [...parts, s];
 }
 
+/* ── 商品词 / 门店后缀（2026-08-29 新增）───────────────────── */
+
+/**
+ * 剥掉门店后缀：「蜜雪冰城(龙湖星悦广场店)」→「蜜雪冰城」。
+ *
+ * ⛔ 不剥的后果：换一家分店就是另一个键，学到的规则永远命中不了，
+ *    而且完全不报错（学习看着在攒分，实际零效果）。
+ *    读写两侧必须都归一 —— 这正是本模块存在的理由。
+ */
+function stripStoreSuffix(raw) {
+    let s = String(raw || '').trim();
+    s = s.replace(/[（(][^）)]*[）)]/g, '');                     // 括号里的门店名
+    s = s.replace(/(?:旗舰店|专营店|直营店|加盟店|连锁店|分店|门店)$/g, '').trim();
+    // 裸「店」只在不会把词剥残时才剥（「便利店」不能变成「便利」）
+    if (s.length >= 4 && s.endsWith('店')) s = s.slice(0, -1).trim();
+    return s.trim();
+}
+
+/**
+ * 通用动作/渠道词 —— 不是商品，绝不能当类目学习键。
+ * 「外卖订单」可以是奶茶、可以是盒饭、也可以是药品，
+ * 学「外卖订单 → 零食饮料」等于给所有外卖都盖上同一个类目。
+ */
+const NON_PRODUCT_KEYS = new Set([
+    '外卖', '订单', '配送', '配送费', '支付', '付款', '消费', '支出', '收入',
+    '购买', '交易', '账单', '快递', '退款', '优惠', '立减', '红包', '会员', '充值',
+    '转账', '收款', '扫码', '商家', '店铺', '商品', '说明', '备注', '详情',
+    '数量', '单价', '合计', '总计', '小计', '套餐', '一份', '一杯', '现金', '余额',
+]);
+
+/** 商品词尾部要剥掉的通用词（「蜜雪冰城外卖订单」→「蜜雪冰城」） */
+const NON_PRODUCT_TAILS = [
+    '外卖订单', '配送费', '订单', '外卖', '配送', '支付', '付款', '消费', '交易',
+    '账单', '快递', '退款', '优惠', '立减', '红包', '充值', '套餐', '商品',
+    '说明', '备注', '详情', '一份', '一杯',
+];
+
+/** 反复剥离尾部的非商品词，剥到不能再剥为止（至少保留 2 字） */
+function stripNonProductTail(raw) {
+    let s = normalizeKey(raw);
+    const tails = [...NON_PRODUCT_TAILS].sort((a, b) => b.length - a.length);
+    let changed = true;
+    while (changed && s.length > 0) {
+        changed = false;
+        for (const w of tails) {
+            if (s.endsWith(w) && s.length - w.length >= 2) {
+                s = s.slice(0, s.length - w.length);
+                changed = true;
+                break;
+            }
+        }
+    }
+    return s.trim();
+}
+
+/**
+ * 提取「商品词」—— 真正决定这笔算什么类的东西。
+ *
+ * ⛔ 商户名不是分类依据（2026-08-29）：一个商户可以卖任何东西
+ *    （淘宝闪购今天买奶茶、明天买盒饭），「商户 → 类目」必然错一半。
+ *    决定类目的是【买了什么】。
+ *
+ * ⛔ 必须优先看 raw_segment 而不是 note（2026-08-29 实测）：
+ *    note 由 note-composer 拼成「场景-对象」，顺序还不固定 ——
+ *    同一个语义能写出「午餐-盒饭」「奶茶-淘宝闪购」「外卖-麻辣烫」三种形态，
+ *    按位置取必然取错。raw_segment 是原文，商品名就在里面，且带商户名可排除。
+ *
+ * 实测覆盖：
+ *   raw「淘宝闪购 盒饭 15元」        merchant=淘宝闪购 → 盒饭
+ *   raw「淘宝闪购 奶茶 8元」         merchant=淘宝闪购 → 奶茶
+ *   raw「美团外卖 麻辣烫 30元」      merchant=美团外卖 → 麻辣烫
+ *   raw「20:19:15 淘宝闪购 12.71元 备注:蜜雪冰城(龙湖星悦广场店)外卖订单」→ 蜜雪冰城
+ *   raw「蜜雪冰城 12元」             merchant=蜜雪冰城 → 蜜雪冰城（商户即品牌，回退）
+ *
+ * @param {string} raw       原文（raw_segment 优先，其次 note）
+ * @param {string} [merchant] 已抽取的商户名，用于排除（渠道名不是商品）
+ * @returns {string|null}
+ */
+function productKey(raw, merchant = '') {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const mer = normalizeKey(stripStoreSuffix(merchant));
+
+    // 去括号（门店名/规格）→ 去时间 → 去金额，剩下的才是「名词」
+    const cleaned = s
+        .replace(/[（(][^）)]*[）)]/g, ' ')
+        .replace(/\d{1,2}:\d{2}(?::\d{2})?/g, ' ')
+        .replace(/\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)?/g, ' ');
+    const segs = cleaned.split(/[\s\-—–_|,，、:：+]+/).filter(Boolean);
+
+    const cands = [];
+    for (const seg of segs) {
+        const t = stripNonProductTail(seg);
+        if (!isUsefulKey(t)) continue;
+        if (NON_PRODUCT_KEYS.has(t)) continue;
+        // 商户名（渠道）不是商品：淘宝闪购只是下单的地方，不是买到的东西
+        if (mer && (t === mer || t.includes(mer) || mer.includes(t))) continue;
+        cands.push(t);
+    }
+    if (cands.length) return cands.sort((a, b) => b.length - a.length)[0];
+
+    /*  整句只剩商户名（「蜜雪冰城 12元」）→ 商户本身就是品牌/商品，回退用它。
+        「蜜雪冰城」既是商户也是商品，这种回退正是我们要的。 */
+    return (mer && isUsefulKey(mer)) ? mer : null;
+}
+
 module.exports = {
     normalizeKey, isUsefulKey, chunkKeys, splitByParticles, stripDateTime,
-    NOISE_KEYS, LEADING_PARTICLES, TRAILING_PARTICLES, TIME_WORDS,
+    stripStoreSuffix, stripNonProductTail, productKey,
+    NOISE_KEYS, LEADING_PARTICLES, TRAILING_PARTICLES, TIME_WORDS, NON_PRODUCT_KEYS,
 };

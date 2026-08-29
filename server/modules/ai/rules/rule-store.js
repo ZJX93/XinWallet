@@ -62,7 +62,32 @@ async function retrieveRules(db, wm, keys = []) {
               LIMIT 40`,
             [wm.userId, wm.bookId, ...cleanKeys]
         );
-        return rows.map(r => decorate(r, wm.refDate));
+        const decorated = rows.map(r => decorate(r, wm.refDate));
+
+        /*  ⛔ 商户冲突即失效（2026-08-29）：
+            一个商户可以卖任何东西 —— 淘宝闪购今天买奶茶、明天买盒饭。
+            只要同一个商户出现【两个以上不同类目】，就说明这个商户
+            决定不了类目，它名下所有 merchant_category 规则立刻停止参与裁决。
+            ⚠️ detectContradictions 只是把冲突【展示】出来，拦不住它们，
+              真正的拦截必须在这里做（active=false 后 decision-engine 直接跳过）。
+            商品词（keyword_category）规则不受影响：那才是分类的依据。
+
+            ⚠️ 唯一约束 uk_ai_rule_key(user_id, book_id, rule_type, match_key) 保证
+              【同一账本】下同一商户只有一条规则 —— 所以学习时是【改目标】而不是新建，
+              冲突不会来自同一账本。真正会撞上的是：
+                · 本账本规则 vs 全局规则（book_id IS NULL）目标不一致
+                · 约束建立前的历史脏数据
+              除了这两类，商户「决定不了类目」表现为【目标被改来改去】，
+              由 accuracy_rate 自然淘汰（改一次记一次 incorrect）。 */
+        const conflicted = await findConflictedMerchantKeys(db, wm, cleanKeys);
+        for (const r of decorated) {
+            if (r.rule_type === 'merchant_category'
+                && conflicted.has(String(r.match_key || '').toLowerCase())) {
+                r.active = false;
+                r.conflicted = true;
+            }
+        }
+        return decorated;
     } catch (_) {
         // 表不存在（老库未升级）或查询失败 → 无规则可用，退回纯确定性抽取
         return [];
@@ -83,6 +108,11 @@ function decorate(row, refDate = new Date()) {
     else if (row.status === 'trusted') priority = 20;
     else if (row.status === 'verified') priority = 30;
     else priority = 80; // candidate：仅作为弱证据参考，不足以裁决
+
+    /*  商品词（keyword_category）优先于商户（merchant_category）：
+        决定类目的是【买了什么】，不是【在哪买的】—— 淘宝闪购既卖奶茶也卖盒饭，
+        同分时商户规则必须让位给商品词规则（2026-08-29）。 */
+    if (row.rule_type === 'keyword_category') priority -= 5;
 
     return {
         id: row.id,
@@ -327,8 +357,79 @@ async function ruleEvidenceTrail(db, { userId, ruleId, limit = 50 }) {
     }
 }
 
+/**
+ * 找出「被学到多个不同类目」的商户键。
+ * 这类商户决定不了类目（淘宝闪购既买奶茶又买盒饭），其规则不该参与裁决。
+ *
+ * @returns {Promise<Set<string>>} 冲突的 match_key（已小写）
+ */
+async function findConflictedMerchantKeys(db, wm, cleanKeys = []) {
+    if (!cleanKeys.length) return new Set();
+    try {
+        const placeholders = cleanKeys.map(() => '?').join(',');
+        const rows = await db.query(
+            `SELECT LOWER(match_key) AS k
+               FROM ai_rules
+              WHERE user_id = ?
+                AND (book_id = ? OR book_id IS NULL)
+                AND rule_type = 'merchant_category'
+                AND status IN ('verified','trusted','candidate')
+                AND target_category_id IS NOT NULL
+                AND LOWER(match_key) IN (${placeholders})
+              GROUP BY LOWER(match_key)
+             HAVING COUNT(DISTINCT target_category_id) > 1`,
+            [wm.userId, wm.bookId, ...cleanKeys]
+        );
+        return new Set(rows.map(r => String(r.k || '').toLowerCase()));
+    } catch (_) {
+        return new Set();
+    }
+}
+
+/**
+ * 某个商户一旦学到多个类目，就把它名下所有【学习来的】商户规则降为 candidate。
+ *
+ * ⛔ 不降级手工规则：那是用户显式意图（origin='manual'），只能由用户自己改。
+ * ⛔ 降级后 active=false（ACTIVE_STATUSES 只含 verified/trusted），
+ *    从此不再参与裁决；用户仍能在规则管理页看到它并手动重新启用。
+ *
+ * @returns {Promise<{demoted:number, variants:number}>}
+ */
+async function demoteConflictedMerchantRules(db, { userId, bookId, matchKey }) {
+    try {
+        const rows = await db.query(
+            `SELECT id, origin, status, target_category_id
+               FROM ai_rules
+              WHERE user_id = ?
+                AND (book_id = ? OR book_id IS NULL)
+                AND rule_type = 'merchant_category'
+                AND LOWER(match_key) = LOWER(?)
+                AND status IN ('verified','trusted','candidate')`,
+            [userId, bookId, matchKey]
+        );
+        const cats = new Set(rows.map(r => r.target_category_id).filter(v => v != null));
+        if (cats.size <= 1) return { demoted: 0, variants: cats.size };
+
+        const ids = rows
+            .filter(r => r.origin !== 'manual' && r.status !== 'candidate')
+            .map(r => r.id);
+        if (!ids.length) return { demoted: 0, variants: cats.size };
+
+        const placeholders = ids.map(() => '?').join(',');
+        await db.query(
+            `UPDATE ai_rules SET status = 'candidate' WHERE id IN (${placeholders})`,
+            ids
+        );
+        return { demoted: ids.length, variants: cats.size };
+    } catch (_) {
+        // 学习链路绝不抛异常（方案 §11：学习失败不得回滚已保存的账本）
+        return { demoted: 0, variants: 0 };
+    }
+}
+
 module.exports = {
     retrieveRules, applyEvidence, markRuleHit, deriveStatus, applyDecay, decorate,
     listRules, ruleEvidenceTrail,
+    findConflictedMerchantKeys, demoteConflictedMerchantRules,
     EVIDENCE_WEIGHTS, STATUS_THRESHOLDS, HALF_LIFE_DAYS, ACTIVE_STATUSES,
 };

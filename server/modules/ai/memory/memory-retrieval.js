@@ -15,7 +15,7 @@
 const { retrieveEpisodic, retrieveFrequentMerchants, dominantAccount } = require('./episodic-memory');
 const { retrieveMemoryItems, induceSemantic, isNegated } = require('./semantic-memory');
 const { retrieveRules } = require('../rules/rule-store');
-const { normalizeKey, isUsefulKey, chunkKeys, NOISE_KEYS } = require('./keys');
+const { normalizeKey, isUsefulKey, chunkKeys, stripStoreSuffix, productKey, NOISE_KEYS } = require('./keys');
 
 /**
  * 从文本与抽取结果中提取候选检索键。
@@ -31,9 +31,20 @@ const { normalizeKey, isUsefulKey, chunkKeys, NOISE_KEYS } = require('./keys');
 function buildRetrievalKeys(text, merchants = []) {
     const keys = new Set();
     for (const m of merchants) {
-        const k = normalizeKey(m);
+        /*  ⛔ 必须与写侧一致地剥掉门店后缀：
+            写侧学的是「蜜雪冰城」，读侧拿「蜜雪冰城(龙湖星悦广场店)」去查
+            —— 换一家分店规则就永远命中不了，且不报任何错（2026-08-29）。 */
+        const k = normalizeKey(stripStoreSuffix(m));
         if (isUsefulKey(k)) keys.add(k);
+        // 带门店名的原样也留一份：老规则可能是按全称存的，去掉会查不到
+        const full = normalizeKey(m);
+        if (isUsefulKey(full)) keys.add(full);
     }
+    /*  商品词优先入键（2026-08-29）：分类依据是「买了什么」而不是商户，
+        学习侧也已改为按商品词建 keyword_category 规则。
+        不把商品词放进检索键，那些规则就永远命中不了。 */
+    const pk = productKey(text, merchants[0]);
+    if (pk) keys.add(pk);
     // 文本中的连续中文/字母片段（2-8 字），作为兜底检索键
     for (const c of chunkKeys(text, 8)) keys.add(c);
     // 限制检索键数量：每个键一次 SQL，无上限会让长文本拖垮 parse
@@ -80,10 +91,17 @@ async function retrieveMemory(db, wm, { text, merchants = [] }) {
             account_id: r.target_account_id || null,
             type: r.target_type || null,
             rule_id: r.id,
-            // 手工规则给 0.97，trusted 0.94，verified 0.88 —— 均高于类目关键词的 0.90？
-            // 不：verified 刻意压到 0.88 < 0.90，让「关键词明确」的场景仍以关键词为准，
-            // 只有 trusted 及以上才允许覆盖关键词判定。
-            confidence: r.origin === 'manual' ? 0.97 : (r.status === 'trusted' ? 0.94 : 0.88),
+            /*  手工规则 0.97；商品词规则 trusted 0.94 / verified 0.88；
+                商户规则【整体压低】到 0.86 / 0.80（2026-08-29）：
+                商户决定不了类目 —— 淘宝闪购今天卖奶茶、明天能卖洗发水。
+                它只配在【商品词和关键词都判定不了】的时候兜底，所以必须低于
+                类目关键词的 0.90；否则一条 trusted 的商户规则会把
+                「淘宝闪购 洗发水」硬掰成上次学到的类目，且用户完全看不出为什么。 */
+            confidence: r.origin === 'manual'
+                ? 0.97
+                : (r.rule_type === 'merchant_category'
+                    ? (r.status === 'trusted' ? 0.86 : 0.80)
+                    : (r.status === 'trusted' ? 0.94 : 0.88)),
             evidence_score: r.evidence_score,
             decay_score: r.decay_score,
             accuracy_rate: r.accuracy_rate,

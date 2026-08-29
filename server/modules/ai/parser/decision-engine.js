@@ -64,8 +64,13 @@ function decide({ extraction, memory = {}, context, routing = null }) {
 
             // 覆盖条件：记忆更强，或确定性抽取本就只是兜底（兜底 0.35 必被覆盖）
             if (stronger || isFallback) {
-                const hit = categories.find(c => c.id === catCandidate.category_id);
-                merged.category_id = catCandidate.category_id;
+                /*  ⛔ 必须按【数值】比较：规则里的 target_category_id 从库里读出来
+                    可能是字符串（'23'），而类目表的 id 是数字 —— 严格 === 就找不到，
+                    结果 category_id 被改掉、category_name 却还留着旧类目的名字：
+                    前端显示「零食饮料」，实际落库是「早午晚餐」（2026-08-29 实测）。 */
+                const wantedId = Number(catCandidate.category_id);
+                const hit = categories.find(c => Number(c.id) === wantedId);
+                merged.category_id = wantedId;
                 merged.category_name = hit ? hit.name : merged.category_name;
                 merged.confidence = { ...merged.confidence, category: catCandidate.confidence };
                 merged.evidence = { ...merged.evidence, category: catCandidate.source };
