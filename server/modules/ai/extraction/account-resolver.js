@@ -205,25 +205,25 @@ function resolveAccount(text, ctx = {}) {
         last_account_name: lastAccountName = null,
     } = ctx;
 
-    // ---- 0) 账户名直配：原文写明了某个真实账户的名称 → 最强证据，直接采用 ----
-    // 放在渠道关键词之前：账户全名比渠道词更具体（「招行信用卡」> 「信用卡」）。
-    const direct = findAccountByNameInText(accounts, text);
-    if (direct) {
-        return {
-            account_id: direct.id,
-            confidence: 0.95,
-            source: 'name_in_text',
-            matched_channel: null,
-            matched_account: direct,
-            channels: [],
-            details: `原文写明账户「${direct.name}」，按账户名直接匹配`,
-        };
-    }
-
     const channels = scanPaymentChannels(text);
 
     // 文本中没扫到任何支付渠道 → 直接返回默认
     if (channels.length === 0) {
+        // 【账户名直配】渠道词典覆盖不到自定义账户名（工资卡/零钱通/小金库…），
+        // 但原文若直接写出了某个真实账户的名称，那就是「账单写明的账户」——强证据，
+        // 属于照抄而非猜测，优先级高于「上次使用」和默认账户。
+        const direct = findAccountByNameInText(accounts, text);
+        if (direct) {
+            return {
+                account_id: direct.id,
+                confidence: 0.9,
+                source: 'name_in_text',
+                matched_channel: null,
+                matched_account: direct,
+                channels: [],
+                details: `原文写明账户「${direct.name}」，按账户名直接匹配`,
+            };
+        }
         // 优先用「上次使用账户名」找对应的账户 id，让结果真正落在用户已有的账上；
         // 找不到才退回到 defaultAccountId（OCR 上传时客户端传入）。
         let fallbackId = defaultAccountId;
@@ -260,6 +260,20 @@ function resolveAccount(text, ctx = {}) {
                 channels,
             };
         }
+    }
+
+    // 文本里有渠道关键词但用户没有对应账户（罕见）→ 先看能否按账户名直配
+    const direct = findAccountByNameInText(accounts, text);
+    if (direct) {
+        return {
+            account_id: direct.id,
+            confidence: 0.85,
+            source: 'name_in_text',
+            matched_channel: channels[0],
+            matched_account: direct,
+            channels,
+            details: `渠道词未匹配到账户，但原文写明账户「${direct.name}」`,
+        };
     }
 
     // 文本里有渠道关键词但用户没有对应账户（罕见）→ 用默认
