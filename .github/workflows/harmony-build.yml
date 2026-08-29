@@ -11,9 +11,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-    paths:
-      - 'harmony/**'
-      - '.github/workflows/harmony-build.yml'
 
 jobs:
   build-harmony:
