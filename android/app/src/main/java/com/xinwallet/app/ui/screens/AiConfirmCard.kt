@@ -949,6 +949,8 @@ private fun AiCategorySheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
