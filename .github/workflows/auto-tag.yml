@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 无 PAT 时用 gh workflow run 派发下游构建，派发 workflow 需要 actions: write
+      actions: write
 
     steps:
       - name: 检出代码
@@ -77,6 +79,7 @@ jobs:
           echo "Next version: ${NEW_TAG}"
 
       - name: 创建并推送 tag
+        id: push
         if: steps.version.outputs.skip == 'false'
         env:
           # 用 PAT 推送 tag 才能触发下游 on: push: tags 的 workflow
@@ -90,9 +93,29 @@ jobs:
             -m "chore(release): ${{ steps.version.outputs.new_tag }}"
           if [ -n "$RELEASE_PAT" ]; then
             git push "https://x-access-token:${RELEASE_PAT}@github.com/${{ github.repository }}.git" "${{ steps.version.outputs.new_tag }}"
+            echo "used_pat=true" >> $GITHUB_OUTPUT
           else
             git push origin "${{ steps.version.outputs.new_tag }}"
-            echo "::warning::未配置 secrets.RELEASE_PAT，tag 由 GITHUB_TOKEN 推送，下游镜像/APK/HAP 构建不会被自动触发。请在仓库 Settings > Secrets 添加一个具有 repo + workflow 权限的 PAT，命名为 RELEASE_PAT。"
+            echo "used_pat=false" >> $GITHUB_OUTPUT
+            echo "::warning::未配置 secrets.RELEASE_PAT：tag 由 GITHUB_TOKEN 推送，不会拉起下游 on:push:tags 构建，已改用 workflow_dispatch 派发兜底。"
           fi
+
+      - name: 派发下游构建（镜像 / APK / HAP）
+        # 仅在未使用 PAT 时需要：GITHUB_TOKEN 推送的 tag 不会拉起 on: push: tags 的 workflow
+        # （GitHub anti-loop）。这里改用 workflow_dispatch 显式派发同一个 tag，
+        # 保证「push main → 自动打 tag → 自动出镜像/APK/HAP」链路不断。
+        # 三个下游 workflow 均已声明 workflow_dispatch 且输入为 tag，并已支持按 tag 发布产物。
+        if: steps.version.outputs.skip == 'false' && steps.push.outputs.used_pat == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.new_tag }}"
+          for wf in release-image.yml android-build.yml harmony-build.yml; do
+            if gh workflow run "$wf" --ref main -f tag="$TAG"; then
+              echo "::notice::已派发 $wf (tag=$TAG)"
+            else
+              echo "::warning::$wf 派发失败"
+            fi
+          done
 
 

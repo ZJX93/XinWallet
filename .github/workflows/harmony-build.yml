@@ -32,6 +32,9 @@ jobs:
     steps:
       - name: 'Checkout'
         uses: actions/checkout@v4
+        with:
+          # 手动派发时 checkout 对应 tag 的代码，保证 HAP 版本与 tag 一致
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: 'Set up JDK 17'
         uses: actions/setup-java@v4
@@ -302,7 +305,9 @@ jobs:
       #   若等待超时（安卓尚未建 Release），则自行创建同名 Release 并附带 HAP，避免阻塞。
       # ----------------------------------------------------------------------------
       - name: 'Publish HAP to GitHub Release'
-        if: startsWith(github.ref, 'refs/tags/')
+        # 同 android-build：派发时 github.ref 是分支而非 tag，需显式并入「派发且带 tag」，
+        # 否则派发构建只出 HAP、不会挂到 Release 上。
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
