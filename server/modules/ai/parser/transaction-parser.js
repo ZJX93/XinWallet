@@ -382,7 +382,18 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
             amount: m.amount != null ? m.amount : (local ? local.amount : null),
             currency: (local && local.currency) || 'CNY',
             merchant: m.merchant != null ? m.merchant : (local ? local.merchant : null),
-            category_id: m.category_id !== undefined ? m.category_id : (local ? local.category_id : null),
+            /*  类目：本地词库按【具体商品名】命中时是硬证据
+                （如「蜜雪冰城」→ 零食饮料，0.90），不该被模型按常识给出的
+                软推测盖掉 —— 实测蜜雪冰城的外卖订单被模型分成「早午晚餐」，
+                而「外卖」二字还会先命中更泛的「外卖小吃」（2026-08-29）。
+                ⇒ 与账户同一套保守合并：只有模型自报把握更高才允许覆盖。 */
+            category_id: (() => {
+                if (m.category_id === undefined) return local ? local.category_id : null;
+                const localScore = Number(baseConf.category) || 0;
+                const modelScore = Number(conf.category_id) || 0;
+                if (modelScore > localScore) return m.category_id;
+                return local && local.category_id != null ? local.category_id : m.category_id;
+            })(),
             /*  账户：模型给什么都不如票据上白纸黑字的付款方式可靠。
                 ⛔ 原先是「模型给了就用模型」——于是模型按「淘宝 → 支付宝花呗」的常识
                    推测，把票据明写的「交通银行信用卡(8341)」整个盖掉
@@ -433,6 +444,13 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
             && baseConf.account >= Number(conf.account_id || 0)) {
             out.confidence.account = baseConf.account;
             out.evidence.account = (local.evidence && local.evidence.account) || 'local_channel_match';
+        }
+        /*  类目同理：本地词库命中胜出时，置信度与证据来源必须如实标注，
+            否则「识别依据」显示的是模型路径，实际却是本地词库的结果。 */
+        if (local && local.category_id != null && out.category_id === local.category_id
+            && baseConf.category >= Number(conf.category_id || 0)) {
+            out.confidence.category = baseConf.category;
+            out.evidence.category = (local.evidence && local.evidence.category) || 'local_keyword_match';
         }
         return out;
     });
