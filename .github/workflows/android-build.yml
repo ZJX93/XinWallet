@@ -130,7 +130,7 @@ jobs:
           echo "Android version: $NEW_TAG (versionName=$VER, versionCode=$CODE)"
 
       - name: 编译 Debug APK（注入版本号）
-        run: ./gradlew assembleDebug --no-daemon -PappVersionName="${{ steps.android_version.outputs.new_name }}" -PappVersionCode="${{ steps.android_version.outputs.new_code }}"
+        run: ./gradlew assembleDebug --no-daemon --stacktrace -PappVersionName="${{ steps.android_version.outputs.new_name }}" -PappVersionCode="${{ steps.android_version.outputs.new_code }}"
 
       - name: 重命名 APK 为 XinWallet 格式
         if: success()
