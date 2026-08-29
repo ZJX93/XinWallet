@@ -94,12 +94,18 @@ function sanitize(settings) {
  *    PG → ON CONFLICT (user_id) DO UPDATE ...
  *    MySQL → ON DUPLICATE KEY UPDATE ...
  *    裸写 ON CONFLICT 会在 MySQL 下 syntax error（本项目默认方言是 PG）。
+ *
+ * ⛔ PG 的 db.prepare() 会对无 RETURNING 的 INSERT 自动追加 `RETURNING id`，
+ *    而 ai_settings 只有 user_id 主键、没有 id 列 → 会报 column "id" does not exist。
+ *    因此 PG 分支必须显式追加 `RETURNING user_id` 抢占该逻辑（autoReturning
+ *    检测到 RETURNING 即跳过）；MySQL 不支持 RETURNING，走原样分支。
  */
 async function updateAiSettings(db, userId, patch) {
     const current = await getAiSettings(db, userId);
     const next = sanitize({ ...current, ...(patch || {}) });
     const json = JSON.stringify(next);
-    const sql = db.upsertSql('ai_settings', ['user_id'], ['settings', 'updated_at']);
+    const sql = db.upsertSql('ai_settings', ['user_id'], ['settings', 'updated_at'])
+        + (db.DB_DIALECT === 'mysql' ? '' : ' RETURNING user_id');
     try {
         await db.query(sql, [userId, json, new Date()]);
     } catch (_) {
