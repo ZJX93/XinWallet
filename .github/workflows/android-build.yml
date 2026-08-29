@@ -13,6 +13,9 @@ name: Android Build
 on:
   pull_request:
     branches: [ main, master ]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       tag:
@@ -98,9 +101,15 @@ jobs:
       - name: 计算安卓版本号
         id: android_version
         run: |
-          TAG="${{ github.event.inputs.tag }}"
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG=""
+          fi
           if [ -n "$TAG" ]; then
-            # 使用 auto-tag 派发的统一版本号（vX.Y.Z）
+            # 使用统一版本号（vX.Y.Z，来自 auto-tag 派发或 tag push）
             VER=${TAG#v}
           else
             # 手动派发未带 tag 时的兜底：自 latest v* 推导 patch+1
@@ -140,13 +149,19 @@ jobs:
           echo "APK renamed to: XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk"
 
       - name: 创建 GitHub Release 并上传 APK
-        # 仅在工作流派发（auto-tag 触发的正式发布）时创建 Release；PR 编译校验不发布
-        if: github.event_name == 'workflow_dispatch'
+        # 仅在正式发布（tag push 或手动 workflow_dispatch 带 tag）时创建 Release；PR 编译校验不发布
+        if: startsWith(github.ref, 'refs/tags/')
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.android_version.outputs.new_tag }}" \
-            --title "XinWallet APP ${{ steps.android_version.outputs.new_tag }}" \
-            --notes "自动构建的安卓 debug 安装包（debug 签名，可侧载安装，无需 Google Play）。\n\n安装方式：下载 XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk 传到手机，允许「未知来源」后点击安装；或用 adb install 'XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk'。" \
-            "android/app/build/outputs/apk/debug/XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk"
+          APK="android/app/build/outputs/apk/debug/XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk"
+          if gh release view "${{ steps.android_version.outputs.new_tag }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.android_version.outputs.new_tag }} 已存在，覆盖上传 APK"
+            gh release upload "${{ steps.android_version.outputs.new_tag }}" "$APK" --clobber
+          else
+            gh release create "${{ steps.android_version.outputs.new_tag }}" \
+              --title "XinWallet APP ${{ steps.android_version.outputs.new_tag }}" \
+              --notes "自动构建的安卓 debug 安装包（debug 签名，可侧载安装，无需 Google Play）。\n\n安装方式：下载 XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk 传到手机，允许「未知来源」后点击安装；或用 adb install 'XinWallet android ${{ steps.android_version.outputs.new_tag }}.apk'。" \
+              "$APK"
+          fi

@@ -9,6 +9,8 @@ on:
         required: false
         default: ''
   push:
+    tags:
+      - 'v*.*.*'
     paths:
       - 'harmony/**'
       - '.github/workflows/harmony-build.yml'
@@ -167,7 +169,13 @@ jobs:
         id: hm_version
         run: |
           set -e
-          TAG="${{ github.event.inputs.tag }}"
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG=""
+          fi
           if [ -n "$TAG" ]; then
             VER=${TAG#v}
           else
@@ -297,7 +305,7 @@ jobs:
       #   若等待超时（安卓尚未建 Release），则自行创建同名 Release 并附带 HAP，避免阻塞。
       # ----------------------------------------------------------------------------
       - name: 'Publish HAP to GitHub Release'
-        if: github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
