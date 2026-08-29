@@ -828,7 +828,7 @@ private fun AiOptionSheet(
 }
 
 /** 账户类型展示顺序，与账户管理页保持一致 */
-private val ACCOUNT_TYPE_ORDER = listOf(
+private val AI_ACCOUNT_TYPE_ORDER = listOf(
     "cash", "bank_card", "credit_card", "electronic_payment",
     "financial_account", "digital", "other"
 )
@@ -873,11 +873,9 @@ private fun AiAccountSheet(
                 }
             } else {
                 // 按账户类型分组，便于查找（与账户管理页一致）
-                val grouped = ACCOUNT_TYPE_ORDER.mapNotNull { t ->
-                    val list = accounts.filter { it.type == t }
-                    if (list.isEmpty()) null else t to list
-                }
-                grouped.forEach { (type, list) ->
+                AI_ACCOUNT_TYPE_ORDER.forEach { type ->
+                    val list = accounts.filter { it.type == type }
+                    if (list.isEmpty()) return@forEach
                     Text(
                         "${accountTypeLabel(type)}（${list.size}）",
                         style = MaterialTheme.typography.labelMedium,
