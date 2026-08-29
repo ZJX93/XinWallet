@@ -149,7 +149,10 @@ fun ChatScreen(navController: NavHostController) {
     // v0.2 确认卡片需要分类列表做类目下拉
     var categories by remember { mutableStateOf<List<com.xinwallet.app.data.model.Category>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    // 账户/分类按当前账本隔离返回。AI 卡片内的账本 chip 会切换 currentBookId，
+    // 必须随其变化重新拉取，否则确认卡片的账户/分类 chip 弹层仍显示旧账本选项 → 用户觉得「不全」。
+    LaunchedEffect(currentBookId) {
+        if (currentBookId <= 0) return@LaunchedEffect
         val resp = AppContainer.accountRepository.getAccounts()
         if (resp is ApiResult.Success) {
             accounts = resp.data.accounts
