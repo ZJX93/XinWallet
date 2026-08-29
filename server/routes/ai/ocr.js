@@ -6,7 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, toNumber, getActiveProvider, aiModule, upload } = require('./_shared');
-const { applyPreprocessDateOverride } = require('../../modules/ai/extraction/receipt-date-override');
+const { applyPreprocessDateOverride } = aiModule;
 const router = express.Router();
 function toLegacyOcrItems(transactions) {
     return (transactions || []).map(t => ({

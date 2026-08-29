@@ -18,6 +18,8 @@ const { validateResult, FIELD_THRESHOLDS } = require('./validation/result-valida
 const { extractTransactions } = require('./extraction/deterministic-extractor');
 // 备注「场景-对象」生成（服务端确定性，唯一真相）
 const { composeNote } = require('./extraction/note-composer');
+// 票据日期/时间硬覆盖（routes/ai/ocr 用；收进桶，路由层不得直连 extraction）
+const { applyPreprocessDateOverride } = require('./extraction/receipt-date-override');
 
 // 规则演化与证据
 const {
@@ -147,6 +149,7 @@ module.exports = {
     // ---- 供测试 / 其它模块复用的纯函数 ----
     extractTransactions,
     composeNote,
+    applyPreprocessDateOverride,
     validateResult,
     loadContext,
     parseOffline,
