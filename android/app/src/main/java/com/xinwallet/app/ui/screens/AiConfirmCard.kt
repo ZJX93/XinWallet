@@ -513,17 +513,13 @@ private fun AiCandidateRow(
     // ============== 弹层 / 对话框区 ==============
 
     if (showCategorySheet) {
-        val catList = categories.filter { it.type == if (item.type == "income") "income" else "expense" }
-        AiOptionSheet(
+        AiCategorySheet(
             title = "选择分类",
-            options = catList.map { it.name to it.id.toString() },
-            currentValue = item.categoryId?.toString() ?: "",
+            categories = categories,
+            type = if (item.type == "income") "income" else "expense",
+            currentId = item.categoryId,
             onDismiss = { showCategorySheet = false },
-            onPick = { picked ->
-                val id = picked.toIntOrNull()
-                onSetCategory(item.seq, id, catList.firstOrNull { it.id == id }?.name)
-                showCategorySheet = false
-            }
+            onPick = { id, name -> onSetCategory(item.seq, id, name); showCategorySheet = false }
         )
     }
 
@@ -903,6 +899,120 @@ private fun AiAccountSheet(
             Spacer(Modifier.height(8.dp))
         }
     }
+}
+
+/** 分类选择弹层：按父级/子级分级显示，便于查找；父级和子级都可点选 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiCategorySheet(
+    title: String,
+    categories: List<Category>,
+    type: String,
+    currentId: Int?,
+    onDismiss: () -> Unit,
+    onPick: (Int, String?) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            val filtered = remember(categories, type) { categories.filter { it.type == type } }
+            val roots = remember(filtered) { filtered.filter { it.parentId == null } }
+            val childrenMap = remember(filtered) { filtered.filter { it.parentId != null }.groupBy { it.parentId } }
+            val orphanParents = remember(filtered) {
+                filtered.filter { it.parentId != null }.mapNotNull { it.parentId }.toSet() -
+                    roots.map { it.id }.toSet()
+            }
+            if (filtered.isEmpty()) {
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "暂无可选项",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                roots.forEach { root ->
+                    AiCategoryOptionRow(
+                        cat = root,
+                        currentId = currentId,
+                        isChild = false,
+                        onClick = { onPick(root.id, root.name) }
+                    )
+                    childrenMap[root.id]?.forEach { child ->
+                        AiCategoryOptionRow(
+                            cat = child,
+                            currentId = currentId,
+                            isChild = true,
+                            onClick = { onPick(child.id, child.name) }
+                        )
+                    }
+                }
+                // 父级不在可见列表中的孤立子分类，也平级显示出来避免找不到
+                orphanParents.forEach { parentId ->
+                    childrenMap[parentId]?.forEach { child ->
+                        AiCategoryOptionRow(
+                            cat = child,
+                            currentId = currentId,
+                            isChild = true,
+                            onClick = { onPick(child.id, child.name) }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun AiCategoryOptionRow(
+    cat: Category,
+    currentId: Int?,
+    isChild: Boolean,
+    onClick: () -> Unit
+) {
+    val on = currentId == cat.id
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable { onClick() }
+            .padding(
+                start = if (isChild) 28.dp else 4.dp,
+                end = 4.dp,
+                top = if (isChild) 8.dp else 12.dp,
+                bottom = if (isChild) 8.dp else 12.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            cat.icon?.ifBlank { "📌" } ?: "📌",
+            fontSize = if (isChild) 18.sp else 20.sp,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+        Text(
+            cat.name,
+            style = if (isChild) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+            color = if (isChild) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        if (on) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 }
 
 // 金额显示统一复用 AddTransactionScreen.kt 的 internal trimAmount()：
