@@ -120,16 +120,11 @@ async function learnFromCommit(db, {
                 });
             }
 
-            // 账户习惯：同一商家总用同一账户，也值得学（弱信号，不改类目规则）
-            const acc = final.account_id || final.from_account_id;
-            if (acc) {
-                await applyEvidence(db, {
-                    userId, bookId, ruleType: 'merchant_account', matchKey: key,
-                    targetAccountId: acc, eventType: 'consistent_reuse',
-                    predictionId, feedbackEventId, correct: true,
-                    payload: { account_id: acc },
-                });
-            }
+            /*  ⛔ 不再自动学习 merchant_account（商户→账户）规则：
+                一个商户完全可以用多种支付方式（淘宝闪购 → 交行信用卡 / 花呗 / 零钱…），
+                「把商户固定到一个账户」的规则会越学越错，此规则类型已整体移除
+                （v0.1.52，见 AI_RULE_TYPES）。账户应由票据上的付款方式/卡号尾号决定，
+                而不是商户的历史习惯。 */
         } catch (_) {
             errors += 1;   // 单笔学习失败不影响其余笔
         }

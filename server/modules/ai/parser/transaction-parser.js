@@ -383,7 +383,19 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
             currency: (local && local.currency) || 'CNY',
             merchant: m.merchant != null ? m.merchant : (local ? local.merchant : null),
             category_id: m.category_id !== undefined ? m.category_id : (local ? local.category_id : null),
-            account_id: m.account_id !== undefined ? m.account_id : (local ? local.account_id : null),
+            /*  账户：模型给什么都不如票据上白纸黑字的付款方式可靠。
+                ⛔ 原先是「模型给了就用模型」——于是模型按「淘宝 → 支付宝花呗」的常识
+                   推测，把票据明写的「交通银行信用卡(8341)」整个盖掉
+                   （2026-08-29 实测：本地算出 #12，最终却落账 #22）。
+                   本地一旦命中支付渠道（0.9）或卡号尾号（0.98）即属硬证据，
+                   模型只有自报更高把握时才允许覆盖。 */
+            account_id: (() => {
+                if (m.account_id === undefined) return local ? local.account_id : null;
+                const localScore = Number(baseConf.account) || 0;
+                const modelScore = Number(conf.account_id) || 0;
+                if (modelScore > localScore) return m.account_id;
+                return local && local.account_id != null ? local.account_id : m.account_id;
+            })(),
             // 时间增强：模型未识别时间（00:00:00 占位或缺失）时，回退本地抽取到的真实时间
             date: (() => {
                 const md = m.date, ld = local ? local.date : null;
@@ -412,6 +424,15 @@ function mergeLlmFirst(modelTxns, localTxns, text, routing) {
         out.evidence = {};
         for (const k of ['amount', 'type', 'category', 'account', 'date', 'merchant']) {
             out.evidence[k] = `model_first_${routing.route}`;
+        }
+
+        /*  账户若最终采用了本地值（票据渠道/尾号硬证据胜出），置信度与证据来源
+            都要如实标注，否则「识别依据」会误导排查 —— 显示模型路径，实际却是
+            本地匹配的结果（2026-08-29 实测排查时的困惑点）。 */
+        if (local && local.account_id != null && out.account_id === local.account_id
+            && baseConf.account >= Number(conf.account_id || 0)) {
+            out.confidence.account = baseConf.account;
+            out.evidence.account = (local.evidence && local.evidence.account) || 'local_channel_match';
         }
         return out;
     });

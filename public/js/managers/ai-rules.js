@@ -234,19 +234,17 @@ const AIRules = {
         const matchKey = (document.getElementById('aiRulesAddmatchKey') || {}).value || '';
         const ruleType = (document.getElementById('aiRulesAddruleType') || {}).value || 'merchant_category';
         const targetCategoryId = parseInt((document.getElementById('aiRulesAddtargetCategoryId') || {}).value || '', 10) || null;
-        const targetAccountId = parseInt((document.getElementById('aiRulesAddtargetAccountId') || {}).value || '', 10) || null;
         const targetType = (document.getElementById('aiRulesAddtargetType') || {}).value || null;
 
         if (!matchKey.trim()) { this.errorMsg = 'match_key 不能为空'; this._renderError(); return; }
-        if (!targetCategoryId && !targetAccountId && !targetType) {
-            this.errorMsg = '至少需要一个 target（类目/账户/类型）';
+        if (!targetCategoryId && !targetType) {
+            this.errorMsg = '至少需要一个 target（类目/收支方向）';
             this._renderError();
             return;
         }
 
         const payload = { match_key: matchKey.trim(), rule_type: ruleType };
         if (targetCategoryId) payload.target_category_id = targetCategoryId;
-        if (targetAccountId) payload.target_account_id = targetAccountId;
         if (targetType) payload.target_type = targetType;
 
         try {

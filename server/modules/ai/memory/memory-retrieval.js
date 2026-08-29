@@ -172,7 +172,7 @@ async function retrieveMemory(db, wm, { text, merchants = [] }) {
 
 /** 规则类型 → 它影响的字段 */
 function fieldOfRuleType(t) {
-    if (t === 'merchant_account') return 'account';
+    // ⛔ merchant_account（商户→账户）已移除：商户不固定支付方式（2026-08-29）
     if (t === 'merchant_type') return 'type';
     return 'category';
 }

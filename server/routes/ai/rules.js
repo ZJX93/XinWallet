@@ -7,7 +7,9 @@
 
 const { express, db, success, fail, handleServerError, aiModule } = require('./_shared');
 const router = express.Router();
-const AI_RULE_TYPES = ['merchant_category', 'merchant_account', 'keyword_category', 'keyword_type'];
+// ⛔ merchant_account 已移除：商户≠固定支付方式（淘宝闪购可用信用卡/花呗/零钱…），
+//    商户→账户的固定规则会越学越错（2026-08-29）。账户只由票据付款方式/尾号决定。
+const AI_RULE_TYPES = ['merchant_category', 'keyword_category', 'keyword_type'];
 
 // ---- GET /api/ai/rules ----
 // 列出「我的记账习惯」。管理通道：全状态可见（含 disabled），否则用户无法重新启用
@@ -51,13 +53,15 @@ router.post('/rules', async (req, res) => {
         }
 
         const targetCategoryId = body.target_category_id ? parseInt(body.target_category_id, 10) : null;
-        const targetAccountId = body.target_account_id ? parseInt(body.target_account_id, 10) : null;
+        if (body.target_account_id != null) {
+            return res.status(400).json(fail('商户→账户规则已移除：商户不固定支付方式，账户由票据付款方式/卡号尾号决定'));
+        }
         const targetType = body.target_type || null;
         if (targetType && !['expense', 'income', 'transfer'].includes(targetType)) {
             return res.status(400).json(fail("target_type 必须是 'expense' / 'income' / 'transfer'"));
         }
-        if (!targetCategoryId && !targetAccountId && !targetType) {
-            return res.status(400).json(fail('至少要指定一个目标（类目 / 账户 / 收支方向）'));
+        if (!targetCategoryId && !targetType) {
+            return res.status(400).json(fail('至少要指定一个目标（类目 / 收支方向）'));
         }
 
         // 归属校验必须在入口做：规则指向别人的类目会让后续 parse 产出无法落账的预测，
@@ -74,19 +78,9 @@ router.post('/rules', async (req, res) => {
             );
             if (!cat) return res.status(400).json(fail('目标类目不存在或不属于当前账本'));
         }
-        if (targetAccountId) {
-            // 账户没有系统预设，条件与 accounts 路由一致
-            const acc = await db.queryOne(
-                `SELECT id FROM accounts
-                  WHERE id = ? AND user_id = ? AND (book_id = ? OR book_id IS NULL)`,
-                [targetAccountId, req.userId, req.bookId]
-            );
-            if (!acc) return res.status(400).json(fail('目标账户不存在或不属于当前账本'));
-        }
-
         const rule = await aiModule.createManualRule(db, {
             userId: req.userId, bookId: req.bookId, matchKey, ruleType,
-            targetCategoryId, targetAccountId, targetType,
+            targetCategoryId, targetType,
         });
         if (!rule) return res.status(500).json(fail('规则创建失败，请稍后重试'));
 

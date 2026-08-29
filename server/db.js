@@ -466,7 +466,8 @@ async function healEventTypeConstraint() {
  * 用户在 UI 上只看到「规则创建失败」——所以必须由自愈把约束拉回代码侧取值。
  */
 async function healRuleTypeConstraint() {
-  const allowed = ['merchant_category', 'merchant_account', 'keyword_category', 'keyword_type']
+  // ⛔ merchant_account 已移除：商户不固定支付方式，该规则类型会越学越错（2026-08-29）
+  const allowed = ['merchant_category', 'keyword_category', 'keyword_type']
     .map(v => `'${v}'`).join(',');
   try {
     await query('ALTER TABLE ai_rules DROP CONSTRAINT IF EXISTS ai_rules_rule_type_check');

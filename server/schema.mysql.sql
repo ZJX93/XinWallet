@@ -714,7 +714,7 @@ CREATE TABLE IF NOT EXISTS ai_rules (
   -- 规则类型：merchant→category 是主力；keyword→category / merchant→account 备用
   -- ⛔ 取值必须与 server/routes/ai/rules.js 的 AI_RULE_TYPES 一致（详见 schema.sql 同名注释）
   rule_type VARCHAR(32) NOT NULL DEFAULT 'merchant_category'
-    CHECK (rule_type IN ('merchant_category','keyword_category','merchant_account','keyword_type')),
+    CHECK (rule_type IN ('merchant_category','keyword_category','keyword_type')),
   -- 匹配键（规范化后的小写 merchant / keyword）
   match_key VARCHAR(120) NOT NULL,
   -- 目标值：category_id / account_id / type 之一，按 rule_type 解读

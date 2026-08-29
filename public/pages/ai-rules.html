@@ -54,17 +54,13 @@
                     <span>rule_type</span>
                     <select id="aiRulesAddruleType">
                         <option value="merchant_category">merchant_category（商家→类目）</option>
-                        <option value="merchant_account">merchant_account（商家→账户）</option>
+                        <!-- ⛔ merchant_account（商家→账户）已移除：商户不固定支付方式（2026-08-29） -->
                         <option value="keyword_type">keyword_type（关键字→收/支）</option>
                     </select>
                 </label>
                 <label class="ai-rules-dialog-field">
                     <span>target_category_id（任一即可）</span>
                     <input type="number" id="aiRulesAddtargetCategoryId" placeholder="如：23 (打车拼车)" />
-                </label>
-                <label class="ai-rules-dialog-field">
-                    <span>target_account_id</span>
-                    <input type="number" id="aiRulesAddtargetAccountId" placeholder="如：1" />
                 </label>
                 <label class="ai-rules-dialog-field">
                     <span>target_type（仅 keyword_type）</span>

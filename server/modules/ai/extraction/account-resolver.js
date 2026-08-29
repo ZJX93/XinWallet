@@ -63,6 +63,8 @@ const KEYWORD_GROUPS = [
             '招商银行', '招行', '工商银行', '工行', '建设银行', '建行',
             '中国银行', '中行', '农业银行', '农行', '交通银行', '邮储银行', '邮政',
             '浦发银行', '民生银行', '兴业银行', '光大银行', '平安银行', '中信银行',
+            // 简称：票据有时印全称、账户名用简称，两边都要能命中（见 normBank）
+            '交行', '邮储', '平安', '中信', '光大', '民生', '兴业', '浦发', '广发', '华夏', '徽商',
             // 通用兜底（放最后，避免误匹配其他账户）
             '银行卡', '储蓄卡', '信用卡', '尾号',
         ],
@@ -74,6 +76,30 @@ const KEYWORD_GROUPS = [
  */
 function norm(s) {
     return String(s || '').toLowerCase().replace(/[\s·\.\-_/()（）\[\]【】,，]/g, '');
+}
+
+/*  银行全称 → 简称对照。
+    ⛔ 票据上印的是【全称】「交通银行信用卡(8341)」，而用户的账户名往往用
+       【简称】「交行信用卡（8341）」—— 两边对不上，渠道匹配落空后就会被模型
+       按「淘宝 → 支付宝」这类常识猜成错的账户
+       （2026-08-29 实测：票据明写交通银行信用卡 8341，却落到支付宝花呗 22）。
+    匹配前统一把全称折算成简称，两边就对得上了。 */
+const BANK_ALIASES = [
+    ['交通银行', '交行'], ['工商银行', '工行'], ['建设银行', '建行'],
+    ['中国银行', '中行'], ['农业银行', '农行'], ['招商银行', '招行'],
+    ['邮储银行', '邮储'], ['邮政储蓄', '邮储'], ['平安银行', '平安'],
+    ['中信银行', '中信'], ['光大银行', '光大'], ['民生银行', '民生'],
+    ['兴业银行', '兴业'], ['浦发银行', '浦发'], ['广发银行', '广发'],
+    ['华夏银行', '华夏'], ['徽商银行', '徽商'],
+];
+
+/** 规范化 + 银行全称折算为简称（用于账户名与票据文本的双向比对） */
+function normBank(s) {
+    let out = String(s || '');
+    for (const [full, short] of BANK_ALIASES) {
+        if (out.indexOf(full) !== -1) out = out.split(full).join(short);
+    }
+    return norm(out);
 }
 
 /**
@@ -125,10 +151,10 @@ function findAccountByChannel(accounts, channel) {
     /*  优先级 0：先用【实际命中的那个关键词】去匹配账户名。
         ⛔ 否则「支付方式　零钱通」会先被排得更靠前的「微信」命中，从而落到
            「微信 零钱」而不是「微信 零钱通」—— 账看着匹配上了，其实张冠李戴。 */
-    const hitKw = norm(channel.keyword);
+    const hitKw = normBank(channel.keyword);
     if (hitKw) {
         for (const a of accounts) {
-            if (norm(a.name).includes(hitKw)) return a;
+            if (normBank(a.name).includes(hitKw)) return a;
         }
     }
 
@@ -136,27 +162,53 @@ function findAccountByChannel(accounts, channel) {
     const genericSuffix = new Set(['银行卡', '储蓄卡', '信用卡', '尾号', '现金', '现付', 'cash']);
     const specificKws = grp.kws.filter(kw => !genericSuffix.has(kw));
     for (const kw of specificKws) {
-        const nkw = norm(kw);
+        const nkw = normBank(kw);
         for (const a of accounts) {
-            if (norm(a.name).includes(nkw)) return a;
+            if (normBank(a.name).includes(nkw)) return a;
         }
     }
 
     // 优先级 2：通用关键词（含「银行」「卡」「现金」等）出现在账户名里
     for (const kw of grp.kws) {
         if (specificKws.includes(kw)) continue;
-        const nkw = norm(kw);
+        const nkw = normBank(kw);
         for (const a of accounts) {
-            if (norm(a.name).includes(nkw)) return a;
+            if (normBank(a.name).includes(nkw)) return a;
         }
     }
 
     // 优先级 3：用渠道 label 兜底
-    const n = norm(channel.label);
+    const n = normBank(channel.label);
     for (const a of accounts) {
-        if (norm(a.name).includes(n)) return a;
+        if (normBank(a.name).includes(n)) return a;
     }
 
+    return null;
+}
+
+/**
+ * 用票据上的【卡号尾号】精确匹配账户。
+ *
+ * 为什么需要它：同一家银行常常有多个账户（工行信用卡 / 工行储蓄卡 / 工行储蓄卡2…），
+ *   只靠「工行」会匹配到第一个，而不是票据实际用的那张卡。
+ *   票据打印的「交通银行信用卡(8341)」里，尾号才是唯一区分依据。
+ *
+ * 为什么安全：要求【账户名里确实含有这个尾号】才命中，不是猜测。
+ *
+ * @param {Array<{id:number|string,name:string}>} accounts
+ * @param {string} text 票据原文
+ * @returns {object|null}
+ */
+function findAccountByTailNumber(accounts, text) {
+    if (!Array.isArray(accounts) || accounts.length === 0 || !text) return null;
+    // 尾号形态：(8341) / （8341） / 尾号8341 / 尾号 8341
+    const m = String(text).match(/[（(]\s*(\d{3,4})\s*[)）]/)
+        || String(text).match(/尾号\s*[:：]?\s*(\d{3,4})/);
+    if (!m) return null;
+    const tail = m[1];
+    for (const a of accounts) {
+        if (norm(a.name).indexOf(tail) !== -1) return a;
+    }
     return null;
 }
 
@@ -181,11 +233,12 @@ function findAccountByChannel(accounts, channel) {
  */
 function findAccountByNameInText(accounts, text) {
     if (!Array.isArray(accounts) || accounts.length === 0 || !text) return null;
-    const normText = norm(text);
+    // 用 normBank：账户名「交行信用卡」也要能命中票据上的「交通银行信用卡」
+    const normText = normBank(text);
     let best = null;
     let bestLen = 0;
     for (const a of accounts) {
-        const n = norm(a.name);
+        const n = normBank(a.name);
         if (!n || n.length < 2) continue;
         if (normText.includes(n) && n.length > bestLen) {
             best = a;
@@ -219,6 +272,22 @@ function resolveAccount(text, ctx = {}) {
         account_id: defaultAccountId = null,
         last_account_name: lastAccountName = null,
     } = ctx;
+
+    /*  尾号优先：票据写的「交通银行信用卡(8341)」与账户名「交行信用卡（8341）」尾号一致时，
+        这是最强的账户证据 —— 同一家银行有多个账户时，尾号是唯一区分依据。
+        confidence 给到 0.98，高于模型复核，保证不会被常识推测（淘宝→支付宝）覆盖。 */
+    const byTail = findAccountByTailNumber(accounts, text);
+    if (byTail) {
+        return {
+            account_id: byTail.id,
+            confidence: 0.98,
+            source: 'tail_number',
+            matched_channel: null,
+            matched_account: byTail,
+            channels: [],
+            details: `票据尾号与账户「${byTail.name}」一致，按尾号精确匹配`,
+        };
+    }
 
     const channels = scanPaymentChannels(text);
 
