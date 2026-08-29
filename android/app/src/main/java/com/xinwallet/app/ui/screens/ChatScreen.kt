@@ -153,6 +153,7 @@ fun ChatScreen(navController: NavHostController) {
     // 必须随其变化重新拉取，否则确认卡片的账户/分类 chip 弹层仍显示旧账本选项 → 用户觉得「不全」。
     LaunchedEffect(currentBookId) {
         if (currentBookId <= 0) return@LaunchedEffect
+        // 仅取未销户账户：用户确认 AI 选账户不应包含已销户账户
         val resp = AppContainer.accountRepository.getAccounts()
         if (resp is ApiResult.Success) {
             accounts = resp.data.accounts

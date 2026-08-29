@@ -70,6 +70,7 @@ import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.AiCandidateTxn
 import com.xinwallet.app.data.model.Book
 import com.xinwallet.app.data.model.Category
+import com.xinwallet.app.ui.components.accountTypeLabel
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.Brown50
@@ -826,7 +827,13 @@ private fun AiOptionSheet(
     }
 }
 
-/** 账户选择弹层：图标 + 名称 + 余额；与转账另一端互斥 */
+/** 账户类型展示顺序，与账户管理页保持一致 */
+private val ACCOUNT_TYPE_ORDER = listOf(
+    "cash", "bank_card", "credit_card", "electronic_payment",
+    "financial_account", "digital", "other"
+)
+
+/** 账户选择弹层：图标 + 名称 + 余额；按类型分组；与转账另一端互斥 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AiAccountSheet(
@@ -865,35 +872,48 @@ private fun AiAccountSheet(
                     )
                 }
             } else {
-                accounts.forEach { acc ->
-                    val disabled = excludedId != null && acc.id == excludedId
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(enabled = !disabled) { onPick(acc.id) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            acc.icon ?: "💰",
-                            fontSize = 22.sp,
-                            modifier = Modifier.padding(end = 12.dp)
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(acc.name, style = MaterialTheme.typography.bodyLarge)
+                // 按账户类型分组，便于查找（与账户管理页一致）
+                val grouped = ACCOUNT_TYPE_ORDER.mapNotNull { t ->
+                    val list = accounts.filter { it.type == t }
+                    if (list.isEmpty()) null else t to list
+                }
+                grouped.forEach { (type, list) ->
+                    Text(
+                        "${accountTypeLabel(type)}（${list.size}）",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 16.dp, bottom = 4.dp)
+                    )
+                    list.forEach { acc ->
+                        val disabled = excludedId != null && acc.id == excludedId
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable(enabled = !disabled) { onPick(acc.id) }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                "余额 ${formatMoney(acc.balance)}",
+                                acc.icon ?: "💰",
+                                fontSize = 22.sp,
+                                modifier = Modifier.padding(end = 12.dp)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(acc.name, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "余额 ${formatMoney(acc.balance)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (currentId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
+                            if (disabled) Text(
+                                "（与对端相同）",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        if (currentId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
-                        if (disabled) Text(
-                            "（与对端相同）",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 }
             }
             Spacer(Modifier.height(8.dp))
