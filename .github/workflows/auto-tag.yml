@@ -182,7 +182,7 @@ jobs:
       - name: 清理遗留的失败 Release（v0.1.66 缺 HAP）
         # 一次性清理：v0.1.66 的鸿蒙构建失败，其 Release 仅含 APK、无 HAP。
         # 幂等：Release 不存在时静默跳过，后续 auto-tag 运行自动 no-op。
-        if: steps.version.outputs.skip == 'false'
+        # 不依赖 version.skip：即使是 ci/chore 提交（不会发新版），也照常执行清理。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
