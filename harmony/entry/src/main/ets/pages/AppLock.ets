@@ -81,32 +81,35 @@ struct AppLock {
   onClear(): void { this.cur = ''; }
 
   @Builder PinDots() {
-    Row({ space: 16 }) {
+    Row({ space: 20 }) {
       ForEach([0, 1, 2, 3], (i: number) => {
-        Column().width(14).height(14)
-          .borderRadius(7)
+        Column().width(16).height(16)
+          .borderRadius(8)
           .backgroundColor(this.cur.length > i ? COLORS.brand : COLORS.divider)
       })
-    }.margin({ top: 12, bottom: 12 })
+    }.margin({ top: 14, bottom: 14 })
   }
 
   @Builder KeyPad() {
     Column() {
-      Column({ space: 8 }).width('80%') {
+      Column({ space: 12 }).width('86%') {
         ForEach([
           ['1', '2', '3'],
           ['4', '5', '6'],
           ['7', '8', '9'],
           ['清空', '0', '⌫']
         ], (row: string[]) => {
-          Row({ space: 8 }) {
+          Row({ space: 12 }) {
             ForEach(row, (k: string) => {
               Column() {
-                Text(k === '⌫' ? '⌫' : k).fontSize(20).fontColor(COLORS.textPrimary)
-                  .fontWeight((k === '清空' || k === '⌫') ? FontWeight.Medium : FontWeight.Normal)
-              }.width('100%').height(52).justifyContent(FlexAlign.Center)
+                Text(k === '⌫' ? '⌫' : k)
+                  .fontSize(k === '⌫' ? 24 : 26)
+                  .fontColor(k === '清空' || k === '⌫' ? COLORS.brand : COLORS.textPrimary)
+                  .fontWeight(FontWeight.Bold)
+              }.width('100%').height(62).justifyContent(FlexAlign.Center)
               .backgroundColor((k === '清空' || k === '⌫') ? COLORS.brandBgLight : COLORS.card)
-              .borderRadius(14)
+              .borderRadius(16)
+              .shadow({ radius: 6, color: '#1A000000', offsetY: 2 })
               .onClick(() => {
                 if (k === '清空') this.onClear();
                 else if (k === '⌫') this.onDel();
@@ -116,7 +119,7 @@ struct AppLock {
           }.width('100%')
         }, (row: string[]) => row.join())
       }
-    }.margin({ top: 12 }).width('100%')
+    }.margin({ top: 16 }).width('100%')
   }
 
   build() {

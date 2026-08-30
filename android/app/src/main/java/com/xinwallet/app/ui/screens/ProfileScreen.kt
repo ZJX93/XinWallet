@@ -27,13 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Storage
@@ -170,15 +169,10 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
-            // 2) 宫格快捷入口：每行 4 格，共 11 项（第 3 行 3 项左对齐 + 1 个占位）
-            // 项目与顺序必须与鸿蒙 Profile.ets 的 GRID 数组逐项一致（见该文件注释）。
-            // 注意「记一笔」不进宫格：底栏中间已有记账浮钮，重复入口是冗余。
-            //
-            // 2026-08-26 调整：原 row1 含 7 个 AI 平铺入口（截图记账 / AI 洞察 / AI 建议 /
-            // AI 服务商 / AI 规则 / 学习统计 / 模型评测），全部收敛进新建的 AiToolsScreen
-            // 聚合页（点「实验室」宫格 → AiToolsScreen，v0.2.3 由「AI 工具」更名）。
-            // 原 row1 第 1 位改成实验室聚合入口；后续 3 位挪到 row1 后段（分类/标签/账户）。
-            // 其他 6 项非 AI 功能（理财/储蓄/预算/债务/数据管理/应用锁/设置）保持原状。
+            // 2) 宫格快捷入口：每行 4 格，共 10 项（第 3 行 2 项左对齐 + 2 个占位）。
+            // 项目、顺序、文案须与鸿蒙 Profile.ets 的 GRID 数组逐项一致（见该文件注释）。
+            // 「实验室」已移除：AI 工具聚合仅在 Web 端提供，移动端不再入口（v0.2.x）。
+            // 「记一笔」不进宫格：底栏中间已有记账浮钮，重复入口是冗余。
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = MaterialTheme.shapes.large,
@@ -187,25 +181,18 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val row1 = listOf(
-                        // 第一格实验室聚合入口（2026-08-26 新增，2026-08-27 减 2 项，
-                        //                 v0.2.3 由「AI 工具」更名）——
-                        // 收纳 AI 建议（含洞察）/ AI 服务商 / AI 规则 / 学习统计 / 模型评测
-                        // 共 5 项（AI 洞察 v0.2.1 已合并进 AI 建议；截图记账 v0.2.2 整页删除，
-                        // 图片通道仍由底栏 FAB → AI 记账对话 → 发图片触达）。
-                        // 原 row1 的 7 个 AI 平铺入口已全部迁移到聚合页，避免重复入口冗余。
-                        QuickAction("实验室", Icons.Filled.Science, QuickActionKind.Nav) { navController.navigate(Screen.AiTools.route) },
-                        QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
+                        QuickAction("分类管理", Icons.Filled.Category, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
                         QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
-                        QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) }
+                        QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) },
+                        QuickAction("理财管理", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) }
                     )
                     val row2 = listOf(
-                        QuickAction("理财管理", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) },
                         QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav) { navController.navigate(Screen.SavingsGoals.route) },
                         QuickAction("预算管理", Icons.Filled.Receipt, QuickActionKind.Nav) { navController.navigate(Screen.Budgets.route) },
-                        QuickAction("债务管理", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Debts.route) }
+                        QuickAction("债务管理", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Debts.route) },
+                        QuickAction("数据管理", Icons.Filled.Storage, QuickActionKind.Nav) { navController.navigate(Screen.DataManagement.route) }
                     )
                     val row3 = listOf(
-                        QuickAction("数据管理", Icons.Filled.Storage, QuickActionKind.Nav) { navController.navigate(Screen.DataManagement.route) },
                         QuickAction("应用锁", Icons.Filled.Lock, QuickActionKind.Nav) { navController.navigate(Screen.AppLock.route) },
                         QuickAction("设置", Icons.Filled.Settings, QuickActionKind.Nav) { navController.navigate(Screen.Settings.route) }
                     )

@@ -100,7 +100,6 @@ fun SettingsScreen(navController: NavHostController) {
     })
     val state by vm.state.collectAsState()
     val updateState by vm.updateState.collectAsState()
-    val probeState by vm.probeState.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -209,25 +208,6 @@ fun SettingsScreen(navController: NavHostController) {
                 onClick = { serverInput = server; showServerDialog = true }
             )
 
-            // 服务器自检：探测当前 baseUrl 是否下发 transfer 字段。
-            // 不是 SettingsRow 风格而是独立 Button，因为它是诊断动作而非配置项。
-            // 触发后由 vm.probeServerSupportsTransfer() 用 HttpURLConnection 拉一条
-            // /transactions?limit=1 检查响应体中有没有 "transfer" 字段名。
-            // 返回结果用 AlertDialog 展示，关闭后清空。
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { vm.probeServerSupportsTransfer() },
-                    enabled = !probeState.probing,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (probeState.probing) "正在探测…" else "🔍 测试服务器是否支持转账合并")
-                }
-            }
-
             // 关于我们（双击 = 检查更新）
             SettingsRow(
                 icon = Icons.Filled.Info,
@@ -279,22 +259,6 @@ fun SettingsScreen(navController: NavHostController) {
         )
     }
 
-    // 服务器自检结果弹窗。summary 为 null 表示无结果不应显示；
-    // 关闭后调 clearProbe() 避免下次进入设置页时残留。
-    if (!probeState.probing && probeState.summary != null) {
-        AlertDialog(
-            onDismissRequest = { vm.clearProbe() },
-            title = { Text(probeState.summary!!) },
-            text = {
-                Text(
-                    probeState.detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = { TextButton(onClick = { vm.clearProbe() }) { Text("知道了") } }
-        )
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
