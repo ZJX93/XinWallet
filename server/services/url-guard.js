@@ -52,15 +52,38 @@ function isPrivateIPv6(ip) {
     return false;
 }
 
+function isLinkLocalIPv4(ip) {
+    try {
+        const long = ipToLongSafe(ip);
+        return (long & 0xffff0000) === (ipToLongSafe('169.254.0.0') & 0xffff0000);
+    } catch {
+        return true;
+    }
+}
+
+function isLinkLocalIPv6(ip) {
+    const norm = ip.toLowerCase();
+    return norm === 'fe80::' || norm.startsWith('fe80:');
+}
+
 /**
  * 异步校验 URL：协议白名单 + 拒绝内网地址。
  * 域名需 DNS 解析后再次校验（防 DNS rebinding 与字母绕过）。
  *
  * @param {string} urlStr 用户输入的外发 URL
+ * @param {object} [opts] 选项
+ * @param {boolean} [opts.allowLoopback] 是否放行回环地址（localhost / 127.0.0.1 / ::1）。
+ *   用于用户本地部署的服务商（如本机 Ollama）—— 这是用户明确配置的自身服务，
+ *   不属于 SSRF 风险。
+ * @param {boolean} [opts.allowPrivate] 是否放行私有内网地址（10/8、172.16/12、192.168/16 等）。
+ *   用于用户自定义的局域网 AI 服务商（如家中另一台机器部署的 FreeLLMAPI）。
+ *   注意：链路本地 169.254.0.0/16（含云 metadata）始终拦截，不受此选项影响。
  * @returns {Promise<URL>} 通过校验的 URL 对象
  * @throws 协议非法或地址指向内网/链路本地
  */
-async function assertPublicUrl(urlStr) {
+async function assertPublicUrl(urlStr, opts = {}) {
+    const allowLoopback = !!opts.allowLoopback;
+    const allowPrivate = !!opts.allowPrivate;
     let u;
     try {
         u = new URL(urlStr);
@@ -75,13 +98,22 @@ async function assertPublicUrl(urlStr) {
     let host = u.hostname.replace(/^\[|\]$/g, '');
     if (!host) throw new Error('URL 缺少主机名');
 
-    if (host === 'localhost') throw new Error('禁止访问 localhost');
+    // 回环地址：allowLoopback 时放行（本地 Ollama 等）；否则仍按原策略拒绝，
+    // 链路本地 169.254.0.0/16（含云 metadata 169.254.169.254）始终拦截，不在此分支
+    const isLoopback = host === 'localhost' || host === '::1' || host === '0:0:0:0:0:0:0:1'
+        || (net.isIP(host) === 4 && host.startsWith('127.'));
+    if (isLoopback) {
+        if (!allowLoopback) throw new Error('禁止访问 localhost');
+        return u;
+    }
     if (net.isIP(host) === 4) {
-        if (isPrivateIPv4(host)) throw new Error(`禁止访问内网地址: ${host}`);
+        if (isLinkLocalIPv4(host)) throw new Error(`禁止访问链路本地地址: ${host}`);
+        if (!allowPrivate && isPrivateIPv4(host)) throw new Error(`禁止访问内网地址: ${host}`);
         return u;
     }
     if (net.isIP(host) === 6) {
-        if (isPrivateIPv6(host)) throw new Error(`禁止访问内网地址: ${host}`);
+        if (isLinkLocalIPv6(host)) throw new Error(`禁止访问链路本地地址: ${host}`);
+        if (!allowPrivate && isPrivateIPv6(host)) throw new Error(`禁止访问内网地址: ${host}`);
         return u;
     }
 
@@ -90,11 +122,13 @@ async function assertPublicUrl(urlStr) {
         const records = await dns.lookup(host, { all: true });
         if (!records.length) throw new Error(`域名无法解析: ${host}`);
         for (const r of records) {
-            if (net.isIPv4(r.address) && isPrivateIPv4(r.address)) {
-                throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
+            if (net.isIPv4(r.address)) {
+                if (isLinkLocalIPv4(r.address)) throw new Error(`域名 ${host} 解析到链路本地地址: ${r.address}`);
+                if (!allowPrivate && isPrivateIPv4(r.address)) throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
             }
-            if (net.isIPv6(r.address) && isPrivateIPv6(r.address)) {
-                throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
+            if (net.isIPv6(r.address)) {
+                if (isLinkLocalIPv6(r.address)) throw new Error(`域名 ${host} 解析到链路本地地址: ${r.address}`);
+                if (!allowPrivate && isPrivateIPv6(r.address)) throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
             }
         }
     } catch (err) {

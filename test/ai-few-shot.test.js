@@ -213,28 +213,16 @@ test('v3: 注入 few-shot 区块', () => {
     assert.match(messages[0].content, /物业费-永升物业/);
 });
 
-test('v3: 无 few-shot 时与 v2 完全一致（冷启动用户）', () => {
+test('v3: 无 few-shot 时不注入先例区块（冷启动用户）', () => {
     const common = {
         text: '物业维修 638.4元',
         candidates: [],
         categories: [{ id: 35, name: '居家', type: 'expense' }],
         accounts: [{ id: 7, name: '支付宝 花呗' }],
     };
-    const v2 = buildParserMessages({ ...common, version: 'v2' });
     const v3 = buildParserMessages({ ...common, fewShot: [], version: 'v3' });
-    assert.equal(v3.messages[0].content, v2.messages[0].content, '无先例时 v3 应退化为 v2');
-});
-
-test('v1/v2: 传入 fewShot 也不受影响（版本隔离）', () => {
-    for (const v of ['v1', 'v2']) {
-        const { messages } = buildParserMessages({
-            text: 'x', candidates: [], categories: [], accounts: [],
-            fewShot: [{ note: '敏感历史', amount: 1, category_name: '居家' }],
-            version: v,
-        });
-        assert.doesNotMatch(
-            messages[0].content, /敏感历史/,
-            `${v} 不应包含 few-shot 内容`
-        );
-    }
+    assert.doesNotMatch(
+        v3.messages[0].content, /【该用户过往的真实记账先例】/,
+        '无先例时 v3 不应注入先例区块'
+    );
 });

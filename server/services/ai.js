@@ -34,9 +34,11 @@ function describeProviderError(body, statusCode) {
 
 // HTTP POST JSON 请求（通用）。
 // ⚠️ 调用前必须经 assertPublicUrl() 校验（SSRF 防护）。Node http.request 默认不跟随重定向。
+// AI Provider 的 base_url 由用户配置，本地 Ollama（127.0.0.1）及局域网自定义服务商是合法场景，
+// 故放行回环与私有内网地址；链路本地 169.254.0.0/16（含云 metadata）仍始终拦截。
 // 关键修正：非 2xx 视为调用失败，抛 AiProviderError 携带真实错误，避免被当成成功响应解析。
 async function httpsPostJson(url, headers, body) {
-    await assertPublicUrl(url);
+    await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
     return new Promise((resolve, reject) => {
         const u = new URL(url);
         const mod = u.protocol === 'https:' ? https : http;
@@ -120,8 +122,7 @@ async function getTranscriptionProvider(userId) {
     // 1. 先在激活的服务商中找 OpenAI 兼容的
     let providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE ORDER BY id', [userId]);
     for (const p of providers) {
-        const url = p.base_url || '';
-        if (p.api_type === 'openai' && !url.includes('minimaxi.com') && !url.includes('minimax.chat')) {
+        if (p.api_type === 'openai' && !isMiniMaxHost(p.base_url)) {
             if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
             return p;
         }
@@ -129,8 +130,7 @@ async function getTranscriptionProvider(userId) {
     // 2. 再在所有服务商中找（即使未激活，只要有 Key 就行）
     providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? ORDER BY is_active DESC, id', [userId]);
     for (const p of providers) {
-        const url = p.base_url || '';
-        if (p.api_type === 'openai' && !url.includes('minimaxi.com') && !url.includes('minimax.chat')) {
+        if (p.api_type === 'openai' && !isMiniMaxHost(p.base_url)) {
             if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
             return p;
         }
@@ -160,7 +160,8 @@ async function callAnthropic(baseUrl, apiKey, model, messages) {
     }).map(m => ({ role: m.role, content: m.content }));
     const url = (baseUrl || 'https://api.anthropic.com/v1').replace(/\/+$/, '') + '/messages';
 
-    const isMiniMax = url.includes('minimaxi.com');
+    // MiniMax 国内（minimaxi.com）与海外（minimax.chat）Anthropic 兼容接口均使用 Bearer 认证
+    const isMiniMax = url.includes('minimaxi.com') || url.includes('minimax.chat');
     const headers = isMiniMax
         ? { 'Authorization': `Bearer ${apiKey}` }
         : { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
@@ -282,8 +283,7 @@ async function chatAnthropicTools(provider, messages, tools) {
     const body = { model: provider.model || 'claude-3-haiku-20240307', max_tokens: 8192, system, messages: translated };
     if (tools && tools.length) body.tools = toAnthropicTools(tools);
     // MiniMax Anthropic 兼容接口使用 Bearer 认证，标准 Anthropic 使用 x-api-key
-    const isMiniMax = url.includes('minimaxi.com');
-    const headers = isMiniMax
+    const headers = isMiniMaxHost(url)
         ? { 'Authorization': `Bearer ${provider.api_key}` }
         : { 'x-api-key': provider.api_key, 'anthropic-version': '2023-06-01' };
     const data = await httpsPostJson(url, headers, body);
@@ -307,9 +307,14 @@ async function chatWithTools(provider, messages, tools) {
     return await chatOpenAITools(provider, messages, tools);
 }
 
+/** 判断是否为 MiniMax 域名（国内 minimaxi.com / 海外 minimax.chat） */
+function isMiniMaxHost(url) {
+    return /minimaxi\.com|minimax\.chat/i.test(String(url || ''));
+}
+
 // 发送原始字节 body（multipart 等），用于语音转写
 async function httpsPostRaw(url, headers, bufferBody) {
-    await assertPublicUrl(url);
+    await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
     return new Promise((resolve, reject) => {
         const u = new URL(url);
         const mod = u.protocol === 'https:' ? https : http;

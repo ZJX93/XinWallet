@@ -27,6 +27,8 @@ const CRED_CIPHER_KEY = 'zhicai_pwd_cipher';   // base64 密文
 const CRED_IV_KEY = 'zhicai_pwd_iv';           // base64 iv
 const CRED_USER_KEY = 'zhicai_pwd_user';       // 配套用户名（明文，用户名不是秘密）
 const CRED_REMEMBER_KEY = 'zhicai_remember_pwd';
+const CRED_WEAK_FLAG = 'zhicai_pwd_weak';     // 标记：当前密文为弱混淆存储（非 AES-GCM）
+const WEAK_KEY = [0x5a, 0x3c, 0x9f, 0x1b];   // 弱混淆盐（非加密，仅防明文裸奔，可被还原）
 
 function credAvailable() {
     return typeof indexedDB !== 'undefined' && window.crypto && window.crypto.subtle;
@@ -103,23 +105,54 @@ function credB64Decode(str) {
     return arr;
 }
 
+// 弱混淆（非加密）：crypto.subtle 在非安全上下文（http:// 非 localhost）下不可用，
+// 此时无法走 AES-GCM，退化为可被还原的简单 XOR+base64，仅防止密码以明文存储在 localStorage。
+// ⚠️ 安全性远低于 AES-GCM，仅适用于本机/局域网 http 部署；生产环境请上 HTTPS。
+function weakEncode(str) {
+    const bytes = new TextEncoder().encode(str);
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i] ^ WEAK_KEY[i % WEAK_KEY.length] ^ 0x37);
+    return btoa(s);
+}
+
+function weakDecode(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) ^ WEAK_KEY[i % WEAK_KEY.length] ^ 0x37;
+    return new TextDecoder().decode(out);
+}
+
 /** 保存密码（加密）。⛔ 只能在登录成功后调用，否则会存下错误密码 */
 async function credSave(password, username) {
     if (!password) return;
-    const key = await credGetKey(true);
-    if (!key) return;
+    // 优先走 AES-GCM（需要 crypto.subtle，即 https 或 localhost）。
+    if (credAvailable()) {
+        const key = await credGetKey(true);
+        if (key) {
+            try {
+                const iv = crypto.getRandomValues(new Uint8Array(12));   // GCM 标准 12 字节
+                const data = new TextEncoder().encode(password);
+                const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+                localStorage.setItem(CRED_CIPHER_KEY, credB64Encode(cipher));
+                localStorage.setItem(CRED_IV_KEY, credB64Encode(iv));
+                localStorage.setItem(CRED_REMEMBER_KEY, '1');
+                localStorage.removeItem(CRED_WEAK_FLAG);   // 成功升级为强加密，清掉弱标记
+                // 用户名跟着凭据一起存（明文即可，用户名不是秘密）。
+                if (username) localStorage.setItem(CRED_USER_KEY, username);
+                return;
+            } catch (e) {
+                console.warn('[cred] AES 加密失败，降级弱存储:', e);
+            }
+        }
+    }
+    // 降级：非安全上下文（http:// 局域网等）crypto.subtle 不可用，用轻量混淆存储。
     try {
-        const iv = crypto.getRandomValues(new Uint8Array(12));   // GCM 标准 12 字节
-        const data = new TextEncoder().encode(password);
-        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
-        localStorage.setItem(CRED_CIPHER_KEY, credB64Encode(cipher));
-        localStorage.setItem(CRED_IV_KEY, credB64Encode(iv));
+        localStorage.setItem(CRED_CIPHER_KEY, weakEncode(password));
         localStorage.setItem(CRED_REMEMBER_KEY, '1');
-        // 用户名跟着凭据一起存（明文即可，用户名不是秘密）。
-        // 与安卓/鸿蒙对齐：凭据自带用户名，不依赖 zhicai_last_user 是否被清过。
+        localStorage.setItem(CRED_WEAK_FLAG, '1');
         if (username) localStorage.setItem(CRED_USER_KEY, username);
     } catch (e) {
-        console.warn('[cred] 加密失败，未保存密码:', e);
+        console.warn('[cred] 弱存储失败，未保存密码:', e);
     }
 }
 
@@ -127,8 +160,19 @@ async function credSave(password, username) {
 async function credLoad() {
     if (localStorage.getItem(CRED_REMEMBER_KEY) !== '1') return '';
     const cipherB64 = localStorage.getItem(CRED_CIPHER_KEY);
+    if (!cipherB64) return '';
+    // 弱存储分支（http 等非安全上下文）：直接弱解码
+    if (localStorage.getItem(CRED_WEAK_FLAG) === '1') {
+        try {
+            return weakDecode(cipherB64);
+        } catch (e) {
+            console.warn('[cred] 弱解密失败:', e);
+            return '';
+        }
+    }
+    // AES-GCM 分支（https / localhost）
     const ivB64 = localStorage.getItem(CRED_IV_KEY);
-    if (!cipherB64 || !ivB64) return '';
+    if (!ivB64) return '';
     const key = await credGetKey(false);
     if (!key) return '';
     try {
@@ -149,6 +193,7 @@ async function credClear() {
     localStorage.removeItem(CRED_IV_KEY);
     localStorage.removeItem(CRED_USER_KEY);
     localStorage.removeItem(CRED_REMEMBER_KEY);
+    localStorage.removeItem(CRED_WEAK_FLAG);
     if (!credAvailable()) return;
     try {
         const db = await credOpenDb();
@@ -214,6 +259,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rememberBox) rememberBox.addEventListener('change', () => {
         if (!rememberBox.checked) credClear();
     });
+
+    // 非安全上下文（http:// 非 localhost）下 crypto.subtle 不可用，记住密码降级为弱加密，给个提示
+    if (rememberBox && !window.isSecureContext) {
+        const row = rememberBox.closest('.remember-row');
+        if (row) {
+            const tip = document.createElement('small');
+            tip.textContent = '（当前为 http，密码以弱加密保存）';
+            tip.style.cssText = 'color:var(--text-muted,#888);font-size:11px;margin-left:6px;font-weight:normal;';
+            row.appendChild(tip);
+        }
+    }
 
     const tabs = document.querySelectorAll('.auth-tab');
     const nickGroup = document.getElementById('authNickGroup');

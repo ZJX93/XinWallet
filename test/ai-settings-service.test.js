@@ -59,8 +59,8 @@ test('PG 方言：upsert SQL 必须显式 RETURNING user_id（否则 autoReturni
 
 test('MySQL 方言：upsert 用 ON DUPLICATE KEY UPDATE，不带 RETURNING', async () => {
     const db = makeDb('mysql');
-    const out = await updateAiSettings(db, 1, { prompt_version: 'v2' });
-    assert.equal(out.prompt_version, 'v2');
+    const out = await updateAiSettings(db, 1, { prompt_version: 'v3' });
+    assert.equal(out.prompt_version, 'v3');
     assert.match(db.lastSql, /ON DUPLICATE KEY UPDATE settings = VALUES\(settings\)/);
     assert.doesNotMatch(db.lastSql, /RETURNING/);
 });
@@ -80,5 +80,5 @@ test('getAiSettings：DB 无记录时回退 env 默认，绝不抛错', async ()
     assert.equal(typeof s.model_route_simple, 'boolean');
     assert.equal(typeof s.llm_first, 'boolean');
     assert.equal(typeof s.few_shot, 'boolean');
-    assert.ok(['v1', 'v2', 'v3'].includes(s.prompt_version));
+    assert.ok(['v3'].includes(s.prompt_version));
 });

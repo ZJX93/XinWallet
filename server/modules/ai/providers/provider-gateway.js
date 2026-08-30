@@ -99,9 +99,8 @@ async function reviewWithModel({
     const memoryHints = buildMemoryHints({ memory, categories, accounts });
 
     // prompt 已外置到 ../prompts/parser-prompt.js 并版本化。
-    // 默认 v2（见 DEFAULT_PROMPT_VERSION）：v1 不接收 accounts，
-    //   模型拿不到账户列表就无法从账单内容匹配账户。v3 = v2 + Few-shot 先例。
-    // 用户级设置可覆盖 prompt 版本（排障/回退无需改 env）。
+    // 当前仅 v3（能力全集 = v2 本体 + Few-shot 先例），默认即最佳，无需选择版本。
+    // 用户级设置仍可按需覆盖 prompt 版本（对应 env：AI_PARSER_PROMPT_VERSION）。
     const { messages, version: resolvedPromptVersion } = buildParserMessages({
         text, candidates, categories, accounts, memoryHints, fewShot, version: promptVersion,
     });

@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="css/fonts.css">
     <!-- 设计令牌：颜色 / 阴影 / 玻璃 / 品牌色，必须先于组件样式 -->
     <link rel="stylesheet" href="css/tokens.css">
-    <link rel="stylesheet" href="css/styles.css?v=24">
+    <link rel="stylesheet" href="css/styles.css?v=25">
     <link rel="stylesheet" href="css/components.css?v=37">
     <link rel="stylesheet" href="css/dashboard.css?v=20">
     <link rel="stylesheet" href="css/auth.css?v=15">
@@ -513,6 +513,7 @@
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="openai">OpenAI</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="anthropic">Anthropic</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="ollama">Ollama 本地</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="custom">自定义</button>
                                 </div>
                                 <div id="aiPresetDesc" class="form-hint" style="margin-top:8px;font-size:var(--text-caption);color:var(--text-secondary)"></div>
                             </div>
@@ -520,6 +521,13 @@
                             <div class="form-group full-width">
                                 <label>服务商名称</label>
                                 <input type="text" id="aiProviderName" placeholder="如 DeepSeek 官方" required>
+                            </div>
+                            <div class="form-group full-width" id="aiProviderRegionGroup">
+                                <label>服务地区</label>
+                                <div class="region-switch" id="aiProviderRegionSwitch">
+                                    <button type="button" class="region-btn" data-region="cn">国内版</button>
+                                    <button type="button" class="region-btn" data-region="en">国际版</button>
+                                </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
@@ -617,10 +625,8 @@
                                 <label>Prompt 版本</label>
                                 <select id="aiSettingPromptVersion">
                                     <option value="v3">v3 · 最新（历史先例）</option>
-                                    <option value="v2">v2 · 账户匹配</option>
-                                    <option value="v1">v1 · 冻结基线</option>
                                 </select>
-                                <small class="form-hint">识别异常时可回退到旧版本对比排障</small>
+                                <small class="form-hint">当前仅保留最新 v3 版本</small>
                             </div>
                             <div class="form-group" style="max-width:320px">
                                 <label>AI 助手名称</label>

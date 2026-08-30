@@ -640,28 +640,38 @@ header.top-bar.top-bar-sticky {
   .provider-card-actions { justify-content: flex-start; }
 }
 
-/* Type switch */
-.type-switch {
+/* Type switch / Region switch 共用同款胶囊切换 */
+.type-switch,
+.region-switch {
   display: inline-flex; padding: 3px; gap: 3px;
   background: var(--surface-hover); border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
 }
 
-.type-btn {
+.type-btn,
+.region-btn {
   border: none; background: transparent; cursor: pointer;
   padding: var(--space-2) var(--space-5); border-radius: var(--radius-sm);
   font-weight: var(--fw-semibold); font-size: var(--text-body-sm);
   color: var(--text-tertiary); transition: all var(--duration-150) var(--ease-out-quart);
 }
 
-.type-btn.active { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.type-btn.active,
+.region-btn.active { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-sm); }
 .type-btn[data-type="expense"].active { color: var(--expense); }
 .type-btn[data-type="income"].active { color: var(--income); }
 .type-btn[data-type="transfer"].active { color: var(--transfer); }
 
+/* 地区切换默认均分宽度 */
+.region-switch { width: 100%; }
+.region-switch .region-btn { flex: 1; text-align: center; padding-left: 0; padding-right: 0; }
+
 /* 三个类型按钮均分宽度 */
 .type-switch.three { width: 100%; }
 .type-switch.three .type-btn { flex: 1; text-align: center; padding-left: 0; padding-right: 0; }
+
+/* 自定义/无地区预设时隐藏地区切换 */
+#aiProviderRegionGroup.hidden { display: none; }
 
 /* 转账专属字段显隐：完全由 JS 控制 inline style，不写默认 display:none，
    避免 style.display='' 回退到 hidden。初始 inline style 已写在 HTML 中。 */

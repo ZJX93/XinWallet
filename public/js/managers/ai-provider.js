@@ -14,19 +14,23 @@ const AIProviderManager = {
 
     // 每个服务商分别内置两种接口类型（anthropic + openai 兼容）的完整配置
     // 用户切换接口类型时地址/模型自动跟着变，不再出现「OpenAI 兼容 + Anthropic 路径」这种矛盾
+    // 每个服务商分别内置国内/国际两种地区的配置（variants[地区][接口类型]）。
+    // 用户通过「国内版/国际版」按钮选择地区，接口类型切换时地址/模型自动跟着变，
+    // 避免再出现「OpenAI 兼容 + Anthropic 路径」这类矛盾配置（典型如 DeepSeek 不支持 Anthropic 接口）。
     PRESETS: {
         minimax: {
             name: 'MiniMax',
-            desc: '国内直连·国内版和海外版域名不同，请按你的账号注册地选择',
+            desc: '国内直连·国内版和国际版域名不同，请按你的账号注册地选择',
             caps: ['chat', 'tools'],
             keyHint: '访问 platform.minimaxi.com → API Keys 创建密钥（国内版）',
             models: ['MiniMax-M3', 'MiniMax-Text-01'],
-            // 国内版
-            'anthropic_cn': { base_url: 'https://api.minimaxi.com/anthropic/v1', model: 'MiniMax-M3' },
-            'openai_cn':    { base_url: 'https://api.minimaxi.com/v1', model: 'MiniMax-M3' },
-            // 海外版
-            'anthropic_en': { base_url: 'https://api.MiniMax.chat/anthropic/v1', model: 'MiniMax-M3' },
-            'openai_en':    { base_url: 'https://api.MiniMax.chat/v1', model: 'MiniMax-M3' }
+            regions: ['cn', 'en'], defaultRegion: 'cn',
+            variants: {
+                cn: { anthropic: { base_url: 'https://api.minimaxi.com/anthropic/v1', model: 'MiniMax-M3' },
+                      openai:    { base_url: 'https://api.minimaxi.com/v1', model: 'MiniMax-M3' } },
+                en: { anthropic: { base_url: 'https://api.MiniMax.chat/anthropic/v1', model: 'MiniMax-M3' },
+                      openai:    { base_url: 'https://api.MiniMax.chat/v1', model: 'MiniMax-M3' } }
+            }
         },
         deepseek: {
             name: 'DeepSeek',
@@ -34,8 +38,10 @@ const AIProviderManager = {
             caps: ['chat', 'tools', 'voice'],
             keyHint: '访问 platform.deepseek.com → API Keys 创建密钥',
             models: ['deepseek-chat', 'deepseek-reasoner'],
-            'anthropic_cn': { base_url: 'https://api.deepseek.com/anthropic/v1', model: 'deepseek-chat' },
-            'openai_cn':    { base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
+            regions: ['cn'], defaultRegion: 'cn',
+            variants: {
+                cn: { openai: { base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' } }
+            }
         },
         groq: {
             name: 'Groq',
@@ -43,7 +49,10 @@ const AIProviderManager = {
             caps: ['chat', 'tools', 'voice'],
             keyHint: '访问 console.groq.com → API Keys 免费创建密钥',
             models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'whisper-large-v3'],
-            'openai_en':    { base_url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' }
+            regions: ['en'], defaultRegion: 'en',
+            variants: {
+                en: { openai: { base_url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' } }
+            }
         },
         kimi: {
             name: 'Kimi',
@@ -51,7 +60,10 @@ const AIProviderManager = {
             caps: ['chat', 'tools', 'voice'],
             keyHint: '访问 platform.moonshot.cn → API Keys 创建密钥',
             models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-            'openai_cn':    { base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' }
+            regions: ['cn'], defaultRegion: 'cn',
+            variants: {
+                cn: { openai: { base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' } }
+            }
         },
         zhipu: {
             name: '智谱 AI',
@@ -59,15 +71,21 @@ const AIProviderManager = {
             caps: ['chat', 'tools', 'voice'],
             keyHint: '访问 open.bigmodel.cn → API Keys 创建密钥',
             models: ['glm-4-flash', 'glm-4', 'glm-4-air'],
-            'openai_cn':    { base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' }
+            regions: ['cn'], defaultRegion: 'cn',
+            variants: {
+                cn: { openai: { base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' } }
+            }
         },
         openai: {
             name: 'OpenAI',
-            desc: '官方·全功能支持（对话+语音转写），需海外网络',
+            desc: '官方·全功能支持（对话+语音转写），需国际网络',
             caps: ['chat', 'tools', 'voice'],
             keyHint: '访问 platform.openai.com → API Keys 创建密钥',
             models: ['gpt-4o-mini', 'gpt-4o', 'whisper-1'],
-            'openai_en':    { base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' }
+            regions: ['en'], defaultRegion: 'en',
+            variants: {
+                en: { openai: { base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' } }
+            }
         },
         anthropic: {
             name: 'Anthropic',
@@ -75,7 +93,10 @@ const AIProviderManager = {
             caps: ['chat', 'tools'],
             keyHint: '访问 console.anthropic.com → API Keys 创建密钥',
             models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
-            'anthropic_en': { base_url: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' }
+            regions: ['en'], defaultRegion: 'en',
+            variants: {
+                en: { anthropic: { base_url: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' } }
+            }
         },
         ollama: {
             name: 'Ollama 本地',
@@ -83,36 +104,75 @@ const AIProviderManager = {
             caps: ['chat'],
             keyHint: '无需 Key（本地运行 Ollama 即可）',
             models: ['llama3.1', 'qwen2.5', 'phi3'],
-            'openai_en':    { base_url: 'http://127.0.0.1:11434/v1', model: 'llama3.1' }
+            regions: ['en'], defaultRegion: 'en',
+            variants: {
+                en: { openai: { base_url: 'http://127.0.0.1:11434/v1', model: 'llama3.1' } }
+            }
+        },
+        // 自定义：不绑定任何预设地址，用户手动填写；隐藏国内/国际切换
+        custom: {
+            name: '自定义',
+            desc: '手动填写任意兼容 OpenAI / Anthropic 协议的服务商地址与模型',
+            caps: ['chat', 'tools', 'voice'],
+            keyHint: '参考服务商官方文档填写接口地址（通常以 /v1 结尾）与模型名',
+            models: [], custom: true, regions: [], defaultRegion: null
         }
     },
 
-    // 检测服务商所属地区（基于服务商名匹配预设）
+    // 当前选中的地区（'cn' | 'en' | null），由地区切换按钮驱动
+    currentRegion: null,
+
+    // 检测服务商所属预设（基于服务商名匹配预设）
     detectPresetByName(name) {
         const trimmed = (name || '').trim().toLowerCase();
         for (const [key, preset] of Object.entries(this.PRESETS)) {
+            if (preset.custom) continue;          // 自定义不通过名称反查，避免与预设名"自定义"冲突
             if (preset.name.toLowerCase() === trimmed) return key;
         }
         return null;
     },
 
-    // 根据当前选中的服务商名 + 接口类型，找出对应的 variant key
-    // 默认国内版（除非 base_url 明确包含海外域名）；若目标地区无对应 variant，回退到另一地区
-    resolveVariantKey(presetKey, apiType, currentBaseUrl) {
+    // 根据服务商预设 + 接口类型 + 地区，解析出可用的 variant。
+    // 返回 { region, apiType, variant } 或 null：
+    //  - 先按 (region, apiType) 精确匹配；
+    //  - 再在该地区内回退到其它接口类型（如 DeepSeek 选了 anthropic 会自动落到 openai）；
+    //  - 最后跨地区回退（仅对多地区预设有意义）。
+    resolveVariant(presetKey, apiType, region) {
         const preset = this.PRESETS[presetKey];
-        if (!preset) return null;
-        const url = (currentBaseUrl || '').toLowerCase();
+        if (!preset || preset.custom) return null;
+        const regions = (preset.regions && preset.regions.length) ? preset.regions : [(region || preset.defaultRegion)].filter(Boolean);
+        const tryRegion = (r) => {
+            if (!r || !preset.variants[r]) return null;
+            if (preset.variants[r][apiType]) return { region: r, apiType, variant: preset.variants[r][apiType] };
+            const alt = apiType === 'anthropic' ? 'openai' : 'anthropic'; // 同地区回退其它接口类型
+            if (preset.variants[r][alt]) return { region: r, apiType: alt, variant: preset.variants[r][alt] };
+            return null;
+        };
+        const byRegion = tryRegion(region || preset.defaultRegion);
+        if (byRegion) return byRegion;
+        for (const r of regions) {                       // 跨地区回退
+            const v = tryRegion(r);
+            if (v) return v;
+        }
+        return null;
+    },
+
+    // 编辑已有服务商时，根据已保存的 base_url 推断所属地区（高亮对应按钮）
+    inferRegionFromUrl(presetKey, baseUrl) {
+        const preset = this.PRESETS[presetKey];
+        if (!preset || preset.custom || !preset.regions || preset.regions.length < 2) return preset?.defaultRegion || null;
+        const url = (baseUrl || '').toLowerCase();
         const isEN = url.includes('minimax.chat') || url.includes('anthropic.com')
                   || url.includes('api.openai.com') || url.includes('api.groq.com')
                   || url.includes('127.0.0.1:11434') || url.includes('localhost:11434');
-        const isCN = url && (url.includes('minimaxi.com') || url.includes('moonshot.cn')
-                          || url.includes('bigmodel.cn') || url.includes('deepseek.com'));
-        // 1. 按当前 base_url 判断
-        const preferred = isEN && !isCN ? 'en' : 'cn';
-        if (preset[`${apiType}_${preferred}`]) return `${apiType}_${preferred}`;
-        // 2. 回退：找任何一个匹配的 variant
-        const alt = preferred === 'cn' ? 'en' : 'cn';
-        if (preset[`${apiType}_${alt}`]) return `${apiType}_${alt}`;
+        const isCN = url.includes('minimaxi.com') || url.includes('moonshot.cn')
+                  || url.includes('bigmodel.cn') || url.includes('deepseek.com');
+        if (isEN && !isCN) return 'en';
+        if (isCN && !isEN) return 'cn';
+        for (const r of preset.regions) {               // 无法二分时按预设匹配地址
+            const v = preset.variants[r];
+            if (v && Object.values(v).some(vr => url.includes(vr.base_url.toLowerCase()))) return r;
+        }
         return null;
     },
 
@@ -133,6 +193,10 @@ const AIProviderManager = {
             if (presetKey) {
                 this.applyPreset(presetKey);
             }
+        });
+        // 国内/国际地区切换按钮
+        document.querySelectorAll('#aiProviderRegionSwitch .region-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.onRegionChange(btn.dataset.region));
         });
         document.getElementById('aiProviderList').addEventListener('click', (e) => {
             const btn = e.target.closest('button');
@@ -206,24 +270,6 @@ const AIProviderManager = {
         return caps;
     },
 
-    // 接口类型切换时检查 base_url 是否匹配
-    onApiTypeChange(type) {
-        const baseUrl = document.getElementById('aiProviderBaseUrl').value.trim();
-        const hint = document.getElementById('aiBaseUrlHint');
-        if (!baseUrl) return;
-        const isAnthropicUrl = baseUrl.includes('/anthropic/') || baseUrl.includes('anthropic.com');
-        if (type === 'anthropic' && !isAnthropicUrl) {
-            hint.textContent = '⚠️ 当前接口地址看起来不是 Anthropic 格式，请确认地址是否正确';
-            hint.style.color = 'var(--color-warning)';
-        } else if (type === 'openai' && isAnthropicUrl) {
-            hint.textContent = '⚠️ 当前接口地址包含 anthropic 路径，OpenAI 兼容类型通常不需要 /anthropic/ 前缀';
-            hint.style.color = 'var(--color-warning)';
-        } else {
-            hint.textContent = '通常以 /v1 结尾，无需尾部斜杠';
-            hint.style.color = '';
-        }
-    },
-
     openModal(id) {
         this.editingId = id || null;
         document.getElementById('aiProviderModalTitle').textContent = id ? '编辑服务商' : '添加服务商';
@@ -241,18 +287,22 @@ const AIProviderManager = {
             document.getElementById('aiProviderKey').placeholder = p.api_key ? '已保存（修改请重新输入）' : 'sk-...';
             // 编辑时尝试匹配预设
             const presetKey = this.detectPresetByName(p.name);
+            this.clearPresetActive();
             if (presetKey) {
                 const preset = this.PRESETS[presetKey];
-                const variantKey = this.resolveVariantKey(presetKey, p.api_type, p.base_url);
+                this.currentRegion = this.inferRegionFromUrl(presetKey, p.base_url);
+                const resolved = this.resolveVariant(presetKey, p.api_type, this.currentRegion);
                 this.updateModelList(preset.models);
-                this.showPresetDesc(preset, variantKey);
+                this.showPresetDesc(preset, resolved ? resolved.region : null);
                 document.getElementById('aiKeyHint').textContent = preset.keyHint || '';
-                this.clearPresetActive();
                 const btn = document.querySelector(`#aiProviderPresets [data-preset="${presetKey}"]`);
                 if (btn) btn.classList.add('preset-active');
+                this.applyRegionUI(preset);
             } else {
+                this.currentRegion = null;
                 this.updateModelList(null);
                 this.showPresetDesc(null);
+                this.applyRegionUI(null);   // 自定义 → 隐藏地区切换
             }
         } else {
             document.getElementById('aiProviderForm').reset();
@@ -273,49 +323,98 @@ const AIProviderManager = {
     applyPreset(key) {
         const p = this.PRESETS[key];
         if (!p) return;
-        // 根据当前选中的接口类型选择对应的 variant
-        const apiType = document.getElementById('aiProviderType').value || 'anthropic';
-        const currentBaseUrl = document.getElementById('aiProviderBaseUrl').value.trim();
-        const variantKey = this.resolveVariantKey(key, apiType, currentBaseUrl);
-        const variant = variantKey ? p[variantKey] : null;
-
         document.getElementById('aiProviderName').value = p.name;
-        if (variant) {
-            document.getElementById('aiProviderBaseUrl').value = variant.base_url;
-            document.getElementById('aiProviderModel').value = variant.model;
-        }
-        // 更新模型建议列表
-        this.updateModelList(p.models);
-        // 显示预设描述
-        this.showPresetDesc(p, variantKey);
-        // 更新 Key 提示
-        document.getElementById('aiKeyHint').textContent = p.keyHint || '编辑时留空表示保留已保存的 Key';
         // 高亮选中的预设按钮
         this.clearPresetActive();
         const btn = document.querySelector(`#aiProviderPresets [data-preset="${key}"]`);
         if (btn) btn.classList.add('preset-active');
-        // 重置 base_url 提示
+        // 更新模型建议列表
+        this.updateModelList(p.models);
+        // 更新 Key 提示
+        document.getElementById('aiKeyHint').textContent = p.keyHint || '编辑时留空表示保留已保存的 Key';
+        // 自定义：隐藏地区切换，清空地址让用户手填自己的服务商名
+        if (p.custom) {
+            this.currentRegion = null;
+            this.applyRegionUI(p);
+            const nameEl = document.getElementById('aiProviderName');
+            if (!nameEl.value || nameEl.value === p.name) nameEl.value = '';
+            document.getElementById('aiProviderBaseUrl').value = '';
+            document.getElementById('aiProviderModel').value = '';
+            this.showPresetDesc(p, null);
+            const hint = document.getElementById('aiBaseUrlHint');
+            hint.textContent = '请填写服务商的完整接口地址（含 /v1 或 /messages 等路径）与模型名';
+            hint.style.color = '';
+            return;
+        }
+        // 非自定义：确保有地区，默认预设 defaultRegion
+        this.currentRegion = (this.currentRegion && (p.regions || []).includes(this.currentRegion))
+            ? this.currentRegion : p.defaultRegion;
+        this.applyRegionUI(p);
+        this.fillByRegionAndType(p);
+    },
+
+    // 根据当前地区 + 接口类型，从预设 variants 取出 base_url / model 并回填表单与提示
+    fillByRegionAndType(preset) {
+        const apiType = document.getElementById('aiProviderType').value || 'openai';
+        const resolved = this.resolveVariant(this.detectPresetByName(document.getElementById('aiProviderName').value) || '', apiType, this.currentRegion);
         const hint = document.getElementById('aiBaseUrlHint');
-        if (variant) {
-            const regionLabel = variantKey.includes('_cn') ? '国内版' : '海外版';
-            hint.textContent = `✅ 已自动填入${regionLabel}地址（${apiType === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`;
+        if (resolved) {
+            // 若接口类型被回退（如 DeepSeek 选了 anthropic → 落到 openai），同步修正下拉
+            if (resolved.apiType !== apiType) {
+                document.getElementById('aiProviderType').value = resolved.apiType;
+            }
+            document.getElementById('aiProviderBaseUrl').value = resolved.variant.base_url;
+            document.getElementById('aiProviderModel').value = resolved.variant.model;
+            const regionLabel = resolved.region === 'cn' ? '国内版' : '国际版';
+            const typeLabel = resolved.apiType === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容';
+            const fallbackNote = resolved.apiType !== apiType ? '（已自动改为支持的接口类型）' : '';
+            hint.textContent = `✅ 已自动填入${regionLabel}地址（${typeLabel}）${fallbackNote}`;
             hint.style.color = 'var(--color-success)';
         } else {
-            hint.textContent = `⚠️ ${p.name} 不支持当前接口类型，请切换接口类型`;
+            hint.textContent = `⚠️ ${preset.name} 不支持当前接口类型，请切换接口类型或地区`;
             hint.style.color = 'var(--color-warning)';
         }
+        this.showPresetDesc(preset, this.currentRegion);
+    },
+
+    // 显示/隐藏地区切换，并按 currentRegion 高亮按钮
+    applyRegionUI(preset) {
+        const group = document.getElementById('aiProviderRegionGroup');
+        const sw = document.getElementById('aiProviderRegionSwitch');
+        if (!preset || preset.custom || !(preset.regions && preset.regions.length)) {
+            group.classList.add('hidden');
+            return;
+        }
+        group.classList.remove('hidden');
+        // 单地区预设也展示按钮（便于理解），但禁用不可选项
+        sw.querySelectorAll('.region-btn').forEach(b => {
+            const r = b.dataset.region;
+            const supported = preset.regions.includes(r);
+            b.classList.toggle('active', r === this.currentRegion);
+            b.disabled = !supported;
+            b.style.display = supported ? '' : 'none';
+        });
+    },
+
+    // 点击国内/国际按钮
+    onRegionChange(region) {
+        this.currentRegion = region;
+        const presetKey = this.detectPresetByName(document.getElementById('aiProviderName').value);
+        const preset = this.PRESETS[presetKey];
+        if (!preset || preset.custom) return;
+        this.applyRegionUI(preset);
+        this.fillByRegionAndType(preset);
     },
 
     // 接口类型切换时自动调整 base_url（如果当前服务商名匹配某个预设）
     onApiTypeChange(type) {
         const nameEl = document.getElementById('aiProviderName');
         const baseUrlEl = document.getElementById('aiProviderBaseUrl');
-        const modelEl = document.getElementById('aiProviderModel');
-        const hint = document.getElementById('aiBaseUrlHint');
         const currentBaseUrl = baseUrlEl.value.trim();
+        const hint = document.getElementById('aiBaseUrlHint');
         const presetKey = this.detectPresetByName(nameEl.value);
         if (!presetKey) {
-            // 不是已知预设，只做格式校验提示
+            // 不是已知预设（如自定义），只做格式校验提示
             const isAnthropicUrl = currentBaseUrl.includes('/anthropic/') || currentBaseUrl.includes('anthropic.com');
             if (type === 'anthropic' && !isAnthropicUrl && currentBaseUrl) {
                 hint.textContent = '⚠️ 当前接口地址看起来不是 Anthropic 格式，请确认地址是否正确';
@@ -329,21 +428,9 @@ const AIProviderManager = {
             }
             return;
         }
-        // 是已知预设：自动切换到对应 variant
+        // 是已知预设：按当前地区切换到对应 variant
         const preset = this.PRESETS[presetKey];
-        const variantKey = this.resolveVariantKey(presetKey, type, currentBaseUrl);
-        const variant = variantKey ? preset[variantKey] : null;
-        if (!variant) {
-            hint.textContent = `⚠️ ${preset.name} 不支持 ${type === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} 接口，请选择其他接口类型`;
-            hint.style.color = 'var(--color-warning)';
-            return;
-        }
-        // 自动更新 base_url 和 model
-        baseUrlEl.value = variant.base_url;
-        modelEl.value = variant.model;
-        const regionLabel = variantKey.includes('_cn') ? '国内版' : '海外版';
-        hint.textContent = `✅ 已自动切换到 ${preset.name} ${type === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'} 接口（${regionLabel}）`;
-        hint.style.color = 'var(--color-success)';
+        this.fillByRegionAndType(preset);
     },
 
     clearPresetActive() {
@@ -359,7 +446,7 @@ const AIProviderManager = {
         datalist.innerHTML = models.map(m => `<option value="${m}">`).join('');
     },
 
-    showPresetDesc(preset, variantKey) {
+    showPresetDesc(preset, region) {
         const el = document.getElementById('aiPresetDesc');
         if (!preset) { el.textContent = ''; return; }
         const caps = preset.caps || [];
@@ -367,8 +454,8 @@ const AIProviderManager = {
             chat: '对话', tools: '函数调用', voice: '语音转写'
         };
         const capText = caps.map(c => capLabels[c] || c).join(' · ');
-        const region = variantKey?.includes('_cn') ? '国内版' : (variantKey?.includes('_en') ? '海外版' : '');
-        const regionHtml = region ? ` <span class="preset-region-tag">${region}</span>` : '';
+        const regionText = region === 'cn' ? '国内版' : region === 'en' ? '国际版' : '';
+        const regionHtml = regionText ? ` <span class="preset-region-tag">${regionText}</span>` : '';
         el.innerHTML = `${regionHtml}${escapeHtml(preset.desc)} <span style="color:var(--text-tertiary)">| 支持：${capText}</span>`;
     },
 

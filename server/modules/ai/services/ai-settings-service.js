@@ -17,7 +17,7 @@
    ============================================ */
 
 const SETTING_KEYS = ['model_route', 'model_route_simple', 'llm_first', 'few_shot', 'prompt_version', 'ai_name'];
-const PROMPT_VERSIONS = ['v1', 'v2', 'v3'];
+const PROMPT_VERSIONS = ['v3'];
 
 /** env 布尔读取：仅识别 false/0/no 为关；否则返回 fallback */
 function envBool(key, fallback) {
