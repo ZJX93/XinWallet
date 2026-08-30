@@ -1,0 +1,36 @@
+name: Cleanup Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "保留最新的 release 数量"
+        required: false
+        default: "10"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 删除旧 Release（保留最新 N 个）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          KEEP="${{ inputs.keep }}"
+          echo "保留最新 $KEEP 个 release，其余（含对应 git tag）一并删除"
+          mapfile -t tags < <(gh release list --limit 200 --json tagName --jq '.[].tagName')
+          total=${#tags[@]}
+          echo "当前共 $total 个 release"
+          if [ "$total" -le "$KEEP" ]; then
+            echo "不超过 $KEEP 个，无需删除"
+            exit 0
+          fi
+          for ((i=KEEP; i<total; i++)); do
+            tag="${tags[$i]}"
+            echo "删除 release + tag: $tag"
+            gh release delete "$tag" --cleanup-tag -y || true
+          done
+          echo "完成，已保留最新 $KEEP 个 release"
