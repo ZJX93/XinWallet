@@ -30,7 +30,7 @@ struct Login {
       setBaseUrl(savedUrl);
     }
     if (loggedIn) {
-      router.replacePath({ url: 'pages/Main' });
+      router.replaceUrl({ url: 'pages/Main' });
     }
     // 记住密码：勾选过则回填用户名+密码（密码由 HUKS 解密）
     this.rememberPwd = await CredentialStore.isRemember();
@@ -95,7 +95,7 @@ struct Login {
             await CredentialStore.clear();
           }
         }
-        router.replacePath({ url: 'pages/Main' });
+        router.replaceUrl({ url: 'pages/Main' });
       } else {
         this.error = resp.message ?? '登录失败';
       }

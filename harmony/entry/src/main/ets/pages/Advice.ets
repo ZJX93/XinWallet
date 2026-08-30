@@ -260,7 +260,7 @@ struct Advice {
       Text('需要先在「服务商」中添加并激活一个对话模型（如 GPT-4o、Claude、国产大模型）才能生成建议')
         .fontSize(13).fontColor(COLORS.textSecondary).textAlign(TextAlign.Center).margin({ top: 8 }).padding({ left: 32, right: 32 })
       Text('去配置').fontSize(14).fontColor(COLORS.onPrimary).backgroundColor(COLORS.brand).padding({ left: 24, right: 24, top: 10, bottom: 10 }).borderRadius(999).margin({ top: 18 })
-        .onClick(() => router.pushDestination({ url: 'pages/Settings' }))
+        .onClick(() => router.pushUrl({ url: 'pages/Settings' }))
     }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
   }
 

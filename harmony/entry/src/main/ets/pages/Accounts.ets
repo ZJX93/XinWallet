@@ -225,7 +225,7 @@ export struct AccountsPage {
                     // 列表负责浏览与选择，详情负责管理。
                     AccountListItem({
                       account: a,
-                      onTap: () => router.pushDestination({ url: 'pages/AccountDetail', params: { id: a.id } })
+                      onTap: () => router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } })
                     })
                   }, (a: Account) => a.id.toString())
                 }

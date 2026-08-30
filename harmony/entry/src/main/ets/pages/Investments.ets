@@ -298,7 +298,7 @@ export struct InvestmentsPage {
                       }.alignItems(HorizontalAlign.End)
                     }.width('100%').padding({ top: 12, bottom: 12 }).backgroundColor(COLORS.cardGlass).borderRadius(12)
                     .border({ width: 0.5, color: COLORS.outlineVariant })
-                      .onClick(() => router.pushDestination({ url: 'pages/InvestmentDetail', params: { id: x.id } }))
+                      .onClick(() => router.pushUrl({ url: 'pages/InvestmentDetail', params: { id: x.id } }))
                   }, (x: Inv) => x.id.toString())
                 }
               }, (g: ESObject) => g.type)

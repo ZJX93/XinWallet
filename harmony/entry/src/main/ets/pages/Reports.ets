@@ -1042,7 +1042,7 @@ export struct ReportsPage {
         BookHeader({
           bookName: this.bookName,
           onSwapBook: () => { this.showBookSheet = true; },
-          onSearch: () => { router.pushDestination({ url: 'pages/Search' }); }
+          onSearch: () => { router.pushUrl({ url: 'pages/Search' }); }
         })
 
         // 类型分段 + 周期导航同一行（对齐安卓：左右各占一半，不随下方内容滚动）

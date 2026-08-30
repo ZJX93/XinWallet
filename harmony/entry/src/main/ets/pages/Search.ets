@@ -209,7 +209,7 @@ struct SearchEntry {
           Scroll() {
             Column({ space: 8 }) {
               ForEach(this.results, (it: TransactionItem) => {
-                TransactionRow({ item: it, onItemClick: () => router.pushDestination({ url: 'pages/AddTransaction', params: { editId: it.id } }) })
+                TransactionRow({ item: it, onItemClick: () => router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id } }) })
               }, (it: TransactionItem) => it.id.toString())
               Blank().height(20)
             }.padding(12)

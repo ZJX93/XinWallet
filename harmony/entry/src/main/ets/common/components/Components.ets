@@ -160,7 +160,7 @@ export struct ErrorState {
         Button('重新登录').height(36).backgroundColor(COLORS.brand)
           .onClick(() => {
             if (this.onLogin) { this.onLogin(); }
-            else { router.replacePath({ url: 'pages/Login' }); }
+            else { router.replaceUrl({ url: 'pages/Login' }); }
           })
       }
     }
