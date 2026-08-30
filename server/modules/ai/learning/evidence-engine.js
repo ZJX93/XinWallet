@@ -35,7 +35,13 @@ const { normalizeKey, isUsefulKey, chunkKeys, stripStoreSuffix, productKey } = r
  */
 function merchantKey(txn) {
     const m = normalizeKey(stripStoreSuffix(txn && txn.merchant));
-    return isUsefulKey(m) ? m : null;
+    if (!isUsefulKey(m)) return null;
+    /*  ⛔ 含空白的商户名一律拒绝（2026-08-30 端到端实测）：
+        商户抽取偶发把一整句话当成商户（merchant = 「超市 买洗衣液」）。
+        这种值写进 ai_rules.match_key 既污染规则表，又永远匹配不上任何真实商户。
+        ⇒ 宁可这次不学；与 productKey 的兜底护栏保持一致。 */
+    if (/\s/.test(m)) return null;
+    return m;
 }
 
 /**

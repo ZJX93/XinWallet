@@ -290,6 +290,9 @@ test('productKey 取「买了什么」而非渠道 / 场所 / 商户', () => {
         ['中石化加油 300元', '中石化', '加油'],
         // 词表未收录的新商品名：靠长度兜底，不能用渠道名顶替
         ['瑞幸咖啡 生椰拿铁 16元', '瑞幸咖啡', '生椰拿铁'],
+        // ⛔ 商户抽取把一整句话当商户时（实测 merchant = 「超市 买洗衣液」），
+        //    仍要取到商品词 —— 否则商品词被商户名吞掉、回退成整段「场所+动作」
+        ['超市 买洗衣液 25元', '超市 买洗衣液', '洗衣液'],
     ];
     for (const [raw, mer, want] of cases) {
         assert.strictEqual(
@@ -307,4 +310,14 @@ test('productKey 不误伤以动作词开头的真商品', () => {
     assert.strictEqual(productKey('买了充电宝 129元', ''), '充电宝');
     assert.strictEqual(productKey('打车去公司 25元', ''), '打车');
     assert.strictEqual(productKey('买菜 45元', ''), '买菜');   // 「菜」单字不成键，保留原词
+});
+
+test('productKey 不把含空白的「整句式商户名」当作商品词', () => {
+    /*  商户抽取偶发把一整句话填进 merchant（实测「超市 买洗衣液」）。
+        此时候选池可能为空，若照旧回退 merchant，就会学出
+        match_key = 「超市 买洗衣液」这种「场所+动作」的脏规则。
+        ⇒ 宁可这次不学（返回 null），也不能污染规则表。 */
+    assert.strictEqual(productKey('超市 便利店 25元', '超市 便利店'), null);
+    // 干净的品牌型商户仍允许回退（「蜜雪冰城」既是商户也是商品）
+    assert.strictEqual(productKey('蜜雪冰城 12元', '蜜雪冰城'), '蜜雪冰城');
 });

@@ -264,20 +264,21 @@ const PRODUCT_LEAD_VERBS = [
     '打了', '打', '坐了', '坐', '还了', '还', '存了', '存', '取了', '取', '加了', '加',
 ];
 
-/** 反复剥离前导动作词，剥到不能再剥为止（至少保留 2 字） */
+/**
+ * 剥离前导动作词（只剥【一层】，至少保留 2 字）。
+ *
+ * ⛔ 绝不能像 normalizeKey 那样反复剥离（2026-08-30 实测）：
+ *    「买了充电宝」→ 剥「买了」→「充电宝」→ 再剥「充」→「电宝」。
+ *    动作词只会在最前面出现一次，剥第二层必然切到商品本身。
+ *    真需要叠剥的介词场景（「在去星巴克」）由 normalizeKey 负责，职责分开。
+ */
 function stripProductLeadVerb(raw) {
-    let s = String(raw || '').trim();
+    const s = String(raw || '').trim();
     const verbs = [...PRODUCT_LEAD_VERBS].sort((a, b) => b.length - a.length);
-    let changed = true;
-    while (changed && s.length > 0) {
-        changed = false;
-        for (const v of verbs) {
-            if (s.startsWith(v) && s.length - v.length >= 2) {
-                s = s.slice(v.length); changed = true; break;
-            }
-        }
+    for (const v of verbs) {
+        if (s.startsWith(v) && s.length - v.length >= 2) return s.slice(v.length).trim();
     }
-    return s.trim();
+    return s;
 }
 
 /**
@@ -397,7 +398,12 @@ function productKey(raw, merchant = '') {
                     if (!isUsefulKey(t)) continue;
                     if (NON_PRODUCT_KEYS.has(t)) continue;
                     // 商户名（渠道）不是商品：淘宝闪购只是下单的地方，不是买到的东西
-                    if (mer && (t === mer || t.includes(mer) || mer.includes(t))) continue;
+                    if (mer && (t === mer || t.includes(mer))) continue;
+                    /*  ⛔ 「t 是商户名的一部分」只在两者长度接近时才排除（2026-08-30 实测）：
+                        商户抽取偶发把一整句话当商户名（「超市 买洗衣液」被抽成 merchant），
+                        此时无差别排除会把真商品（洗衣液）一并吞掉，候选池变空，
+                        最后回退成用整段商户当商品词 —— 学到的又是「超市 买洗衣液」。 */
+                    if (mer && mer.includes(t) && mer.length - t.length <= 2) continue;
                     cands.push(t);
                 }
             }
@@ -415,8 +421,13 @@ function productKey(raw, merchant = '') {
     }
 
     /*  整句只剩商户名（「蜜雪冰城 12元」）→ 商户本身就是品牌/商品，回退用它。
-        「蜜雪冰城」既是商户也是商品，这种回退正是我们要的。 */
-    return (mer && isUsefulKey(mer)) ? mer : null;
+        「蜜雪冰城」既是商户也是商品，这种回退正是我们要的。
+
+        ⛔ 但含空白的商户名绝不能回退：那说明抽取器把一整句话当成了商户
+           （实测 merchant = 「超市 买洗衣液」），写进 ai_rules.match_key 会污染规则表。
+           宁可这次不学，也不能学一条指向「场所+动作」的错规则。 */
+    if (mer && isUsefulKey(mer) && !/\s/.test(mer)) return mer;
+    return null;
 }
 
 module.exports = {
