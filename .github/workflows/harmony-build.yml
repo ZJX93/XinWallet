@@ -269,38 +269,15 @@ jobs:
           echo "signing=real" >> "$GITHUB_OUTPUT"
 
       - name: 'Build HAP (compile verification)'
-        continue-on-error: true
         run: |
           chmod +x hvigorw
-          set +e
-          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap 2>&1 | tee build.log
-          RC=${PIPESTATUS[0]}
-          set -e
-          if [ "$RC" -ne 0 ]; then
-            echo "::group::hvigor build.log (tail 200)"
-            tail -n 200 build.log
-            echo "::endgroup::"
-            echo "::error::===== hvigor 退出码 $RC，build.log 尾部逐行 ====="
-            tail -n 140 build.log | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do echo "::error::$line"; done
-          fi
+          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap
 
       - name: 'Analyze build result'
         run: |
           SIGNING="${{ steps.sign.outputs.signing }}"
           echo "签名模式: $SIGNING"
-          echo "::error::===== build.log 尾部（无条件，排查 HAP 未产出）====="
-          tail -n 180 build.log 2>/dev/null | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do echo "::error::$line"; done
-          echo "::error::===== entry/build 下 .hap 查找结果 ====="
-          find entry/build -name '*.hap' 2>/dev/null | while IFS= read -r f; do echo "::error::HAP: $f"; done
-          echo "::error::===== entry/build/default/outputs 目录树 ====="
-          find entry/build/default/outputs -maxdepth 4 2>/dev/null | while IFS= read -r f; do echo "::error::$f"; done
-          # hvigor 默认走 daemon，HAP 可能异步产出；轮询等待最多 4 分钟
-          HAP=""
-          for i in $(seq 1 48); do
-            HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
-            if [ -n "$HAP" ]; then break; fi
-            sleep 5
-          done
+          HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
           if [ -n "$HAP" ]; then
             echo "::notice::HAP 产出成功 ✅ -> $HAP"
           elif [ "$SIGNING" = "real" ]; then
