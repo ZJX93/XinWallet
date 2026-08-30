@@ -1,0 +1,51 @@
+name: Cleanup Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "保留最新的容器包版本数量"
+        required: false
+        default: "10"
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 删除旧容器包版本（保留最新 N 个）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          KEEP="${{ inputs.keep }}"
+          OWNER="ZJX93"
+          PKG="xin-wallet%2Fxinwallet"
+          # 先探测包归属（用户态或组织态），避免路径 404
+          if gh api "users/$OWNER/packages/container/$PKG/versions?per_page=1" >/dev/null 2>&1; then
+            BASE="users/$OWNER/packages/container/$PKG"
+          else
+            BASE="orgs/$OWNER/packages/container/$PKG"
+          fi
+          echo "包路径基准: $BASE"
+          echo "保留最新 $KEEP 个容器包版本，其余删除"
+          gh api "$BASE/versions?per_page=100" --paginate --jq 'sort_by(.created_at) | reverse | .[] | "\(.id)\t\(.name)"' > /tmp/pkgs.tsv
+          total=$(wc -l < /tmp/pkgs.tsv)
+          echo "当前共 $total 个包版本"
+          if [ "$total" -le "$KEEP" ]; then
+            echo "不超过 $KEEP 个，无需删除"
+            exit 0
+          fi
+          i=0
+          while IFS=$'\t' read -r vid vname; do
+            i=$((i+1))
+            if [ "$i" -le "$KEEP" ]; then continue; fi
+            echo "删除包版本 id=$vid name=$vname"
+            if gh api -X DELETE "$BASE/versions/$vid" >/dev/null 2>&1; then
+              echo "  -> 已删除"
+            else
+              echo "  -> 删除失败: $vname"
+            fi
+          done < /tmp/pkgs.tsv
+          echo "完成，已保留最新 $KEEP 个包版本"
