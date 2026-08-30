@@ -36,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -332,9 +331,9 @@ private fun PinKeypad(onDigit: (String) -> Unit, onBackspace: () -> Unit, onClea
         listOf("7", "8", "9"),
         listOf("清空", "0", "⌫")
     )
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         keys.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 row.forEach { key ->
                     when (key) {
                         "清空" -> KeypadBtn("清空", onClick = onClear, isAction = true)
@@ -356,17 +355,17 @@ private fun KeypadBtn(
 ) {
     Box(
         Modifier
-            .size(width = 96.dp, height = 60.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (isAction) Brown100 else MaterialTheme.colorScheme.surface)
-            .shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Brown500)
+            .size(76.dp)
+            .clip(CircleShape)
+            .background(if (isAction) Brown100 else Brown50)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = label, tint = Brown500, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = label, tint = Brown500, modifier = Modifier.size(28.dp))
         } else {
-            Text(label, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Brown500)
+            val fontSize = if (label.length > 1) 20.sp else 28.sp
+            Text(label, fontSize = fontSize, fontWeight = FontWeight.SemiBold, color = Brown500)
         }
     }
 }

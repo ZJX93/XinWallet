@@ -92,34 +92,44 @@ struct AppLock {
 
   @Builder KeyPad() {
     Column() {
-      Column({ space: 12 }).width('86%') {
+      Column({ space: 20 }).width('86%') {
         ForEach([
           ['1', '2', '3'],
           ['4', '5', '6'],
           ['7', '8', '9'],
           ['清空', '0', '⌫']
         ], (row: string[]) => {
-          Row({ space: 12 }) {
+          Row({ space: 20 }).width('100%') {
             ForEach(row, (k: string) => {
-              Column() {
-                Text(k === '⌫' ? '⌫' : k)
-                  .fontSize(k === '⌫' ? 24 : 26)
-                  .fontColor(k === '清空' || k === '⌫' ? COLORS.brand : COLORS.textPrimary)
-                  .fontWeight(FontWeight.Bold)
-              }.width('100%').height(62).justifyContent(FlexAlign.Center)
-              .backgroundColor((k === '清空' || k === '⌫') ? COLORS.brandBgLight : COLORS.card)
-              .borderRadius(16)
-              .shadow({ radius: 6, color: '#1A000000', offsetY: 2 })
-              .onClick(() => {
-                if (k === '清空') this.onClear();
-                else if (k === '⌫') this.onDel();
-                else this.onDigit(k);
-              })
+              if (k === '⌫') {
+                Column() {
+                  Image($r('app.media.ic_backspace'))
+                    .width(28)
+                    .height(28)
+                    .fillColor(COLORS.brand)
+                }.width('100%').height(76).justifyContent(FlexAlign.Center)
+                .backgroundColor(COLORS.brandBg)
+                .borderRadius(999)
+                .onClick(() => this.onDel())
+              } else {
+                Column() {
+                  Text(k)
+                    .fontSize(k === '清空' ? 20 : 32)
+                    .fontColor(COLORS.brand)
+                    .fontWeight(k === '清空' ? FontWeight.Normal : FontWeight.Bold)
+                }.width('100%').height(76).justifyContent(FlexAlign.Center)
+                .backgroundColor(k === '清空' ? COLORS.brandBg : COLORS.brandBgLight)
+                .borderRadius(999)
+                .onClick(() => {
+                  if (k === '清空') this.onClear();
+                  else this.onDigit(k);
+                })
+              }
             }, (k: string) => k)
           }.width('100%')
         }, (row: string[]) => row.join())
       }
-    }.margin({ top: 16 }).width('100%')
+    }.margin({ top: 24 }).width('100%')
   }
 
   build() {
