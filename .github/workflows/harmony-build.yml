@@ -294,7 +294,13 @@ jobs:
           find entry/build -name '*.hap' 2>/dev/null | while IFS= read -r f; do echo "::error::HAP: $f"; done
           echo "::error::===== entry/build/default/outputs 目录树 ====="
           find entry/build/default/outputs -maxdepth 4 2>/dev/null | while IFS= read -r f; do echo "::error::$f"; done
-          HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
+          # hvigor 默认走 daemon，HAP 可能异步产出；轮询等待最多 4 分钟
+          HAP=""
+          for i in $(seq 1 48); do
+            HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
+            if [ -n "$HAP" ]; then break; fi
+            sleep 5
+          done
           if [ -n "$HAP" ]; then
             echo "::notice::HAP 产出成功 ✅ -> $HAP"
           elif [ "$SIGNING" = "real" ]; then
