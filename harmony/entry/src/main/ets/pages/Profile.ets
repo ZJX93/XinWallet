@@ -116,7 +116,7 @@ export struct ProfilePage {
             }.width('100%').padding({ top: 16, bottom: 16 })
               .backgroundColor(COLORS.surface).borderRadius(16)
               .shadow({ radius: 1, color: '#0A000000', offsetY: 1 })
-              .onClick(() => router.pushUrl({ url: g.url }))
+              .onClick(() => router.pushDestination({ url: g.url }))
           }
         }, (g: Iface1) => g.label)
       }.columnsTemplate('1fr 1fr 1fr 1fr').rowsGap(10).columnsGap(10)
@@ -132,7 +132,7 @@ export struct ProfilePage {
         .alignSelf(ItemAlign.Center)
         .onClick(async () => {
           await Session.clear();
-          router.replaceUrl({ url: 'pages/Login' });
+          router.replacePath({ url: 'pages/Login' });
         })
       Blank().height(LAYOUT.bottomNavSafe)
     }.width('100%').height('100%')

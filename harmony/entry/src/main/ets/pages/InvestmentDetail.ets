@@ -73,7 +73,7 @@ export struct InvestmentDetailPage {
               }.width('100%').padding({ top: 14, bottom: 14, left: 12, right: 12 })
                 .backgroundColor(COLORS.cardGlass).borderRadius(12)
                 .border({ width: 0.5, color: COLORS.outlineVariant })
-                .onClick(() => router.pushUrl({ url: 'pages/InvestmentTransactions', params: { id: this.inv!.id } }))
+                .onClick(() => router.pushDestination({ url: 'pages/InvestmentTransactions', params: { id: this.inv!.id } }))
 
               SectionTitleLocal({ text: '持仓信息' })
               this.InfoRow('名称', this.inv!.name)

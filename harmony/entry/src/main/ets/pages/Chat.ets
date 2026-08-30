@@ -756,7 +756,7 @@ struct Chat {
               }
               Row({ space: 12 }) {
                 Text('修改').fontSize(13).fontColor(COLORS.brand)
-                  .onClick(() => router.pushUrl({ url: 'pages/AddTransaction', params: { editId: t.id } }))
+                  .onClick(() => router.pushDestination({ url: 'pages/AddTransaction', params: { editId: t.id } }))
                 Text('删除').fontSize(13).fontColor(COLORS.danger)
                   .onClick(() => { Api.deleteTransaction(t.id).then(() => {/* refresh */ }); })
               }.justifyContent(FlexAlign.End)

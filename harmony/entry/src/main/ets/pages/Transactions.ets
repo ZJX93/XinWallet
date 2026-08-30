@@ -468,7 +468,7 @@ export struct TransactionsPage {
     AlertDialog.show({
       title: '交易操作',
       message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)}`,
-      primaryButton: { value: '编辑', action: () => { router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); } },
+      primaryButton: { value: '编辑', action: () => { router.pushDestination({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); } },
       secondaryButton: { value: '删除', action: () => { Api.deleteTransaction(it.id).then(() => this.load()); } }
     });
   }
@@ -485,7 +485,7 @@ export struct TransactionsPage {
     const tAmount = String(Math.abs(it.amount));
     const fromId = t.from?.id ?? 0;
     const toId = t.to?.id ?? 0;
-    router.pushUrl({
+    router.pushDestination({
       url: 'pages/AddTransaction',
       params: {
         editTransferId: t.id,
@@ -646,7 +646,7 @@ export struct TransactionsPage {
         BookHeader({
           bookName: this.bookName,
           onSwapBook: () => { this.showBookSheet = true; },
-          onSearch: () => router.pushUrl({ url: 'pages/Search' })
+          onSearch: () => router.pushDestination({ url: 'pages/Search' })
         })
         this.ToolBar()
         if (this.loading) { LoadingBox() }
@@ -695,5 +695,5 @@ export struct TransactionsPage {
 // 注：原 @Entry struct Transactions 包装已删除（对应 main_pages.json 的死路由）。
 // TransactionsPage 是 Main 的 tab 内容，pushUrl 过去会丢底部导航栏。
 // 如需带月份参数进入账单 tab，请用 @StorageLink('mainTabIndex') 切 tab，
-// 月份通过 AppStorage 传递，而不是 router.pushUrl。
+// 月份通过 AppStorage 传递，而不是 router.pushDestination。
 // 详见 docs/harmony-style-guide.md 第 11 节。

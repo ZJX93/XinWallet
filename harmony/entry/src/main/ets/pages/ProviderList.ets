@@ -168,7 +168,7 @@ struct ProviderList {
         .borderRadius(28)
         .position({ x: '100%', y: '100%' })
         .markAnchor({ x: -72, y: -96 })
-        .onClick(() => router.pushUrl({ url: 'pages/ProviderEdit', params: { id: 0 } }))
+        .onClick(() => router.pushDestination({ url: 'pages/ProviderEdit', params: { id: 0 } }))
     }
     .height('100%')
     .width('100%')
@@ -273,6 +273,6 @@ struct ProviderList {
     .padding(16)
     .backgroundColor(COLORS.surface)
     .borderRadius(12)
-    .onClick(() => router.pushUrl({ url: 'pages/ProviderEdit', params: { id: p.id } }))
+    .onClick(() => router.pushDestination({ url: 'pages/ProviderEdit', params: { id: p.id } }))
   }
 }

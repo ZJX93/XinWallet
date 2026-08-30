@@ -77,12 +77,12 @@ struct Main {
 
   private goChat(): void {
     this.closeMenu();
-    router.pushUrl({ url: 'pages/Chat' });
+    router.pushDestination({ url: 'pages/Chat' });
   }
 
   private goAdd(): void {
     this.closeMenu();
-    router.pushUrl({ url: 'pages/AddTransaction' });
+    router.pushDestination({ url: 'pages/AddTransaction' });
   }
 
   /**

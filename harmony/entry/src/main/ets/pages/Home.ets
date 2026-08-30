@@ -402,7 +402,7 @@ export struct HomePage {
                 item: it,
                 compact: true,
                 showTopDivider: index !== 0,
-                onItemClick: () => router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id } })
+                onItemClick: () => router.pushDestination({ url: 'pages/AddTransaction', params: { editId: it.id } })
               })
             }, (it: TransactionItem) => it.id.toString())
           }.padding({ top: SPACING.sm })
@@ -483,7 +483,7 @@ export struct HomePage {
         CardHeader({
           icon: '🎯',
           title: '预算进度',
-          onMore: () => { router.pushUrl({ url: 'pages/Budgets' }); }
+          onMore: () => { router.pushDestination({ url: 'pages/Budgets' }); }
         })
         if (this.budgets.length === 0) {
           this.CardEmpty('🎯', '还没有设置预算', '设个月度预算，花钱更有数')
@@ -592,7 +592,7 @@ export struct HomePage {
         CardHeader({
           icon: '💳',
           title: '账户资产',
-          onMore: () => { router.pushUrl({ url: 'pages/Accounts' }); }
+          onMore: () => { router.pushDestination({ url: 'pages/Accounts' }); }
         })
         if (this.accounts.length === 0) {
           this.CardEmpty('💳', '还没有添加账户', '添加账户后可跟踪资产变化')
@@ -641,7 +641,7 @@ export struct HomePage {
       width: { top: showDivider ? 0.5 : 0, bottom: 0, left: 0, right: 0 },
       color: COLORS.outlineVariant
     })
-    .onClick(() => { router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } }); })
+    .onClick(() => { router.pushDestination({ url: 'pages/AccountDetail', params: { id: a.id } }); })
   }
 
   /** ⑥ 储蓄目标 —— 攒钱进度 */
@@ -651,7 +651,7 @@ export struct HomePage {
         CardHeader({
           icon: '🏆',
           title: '储蓄目标',
-          onMore: () => { router.pushUrl({ url: 'pages/SavingsGoals' }); }
+          onMore: () => { router.pushDestination({ url: 'pages/SavingsGoals' }); }
         })
         if (this.goals.length === 0) {
           this.CardEmpty('🏆', '还没有储蓄目标', '定个目标，攒钱更有动力')
@@ -804,7 +804,7 @@ export struct HomePage {
         BookHeader({
           bookName: this.bookName,
           onSwapBook: () => { this.showBookSheet = true; },
-          onSearch: () => router.pushUrl({ url: 'pages/Search' })
+          onSearch: () => router.pushDestination({ url: 'pages/Search' })
         })
 
         Scroll() {

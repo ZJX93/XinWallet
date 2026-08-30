@@ -23,11 +23,11 @@ struct Lab {
               .fontSize(13).fontColor(COLORS.textSecondary)
               .width('100%').padding({ left: 16, right: 16, top: 8, bottom: 4 })
             Column() {
-              RowItem({ icon: '🧠', title: 'AI 建议', onItemClick: () => router.pushUrl({ url: 'pages/Advice' }) })
-              RowItem({ icon: '☁️', title: 'AI 服务商', onItemClick: () => router.pushUrl({ url: 'pages/ProviderList' }) })
-              RowItem({ icon: '📜', title: 'AI 规则', onItemClick: () => router.pushUrl({ url: 'pages/RuleList' }) })
-              RowItem({ icon: '📊', title: '学习统计', onItemClick: () => router.pushUrl({ url: 'pages/LearningStats' }) })
-              RowItem({ icon: '🧪', title: '模型评测', onItemClick: () => router.pushUrl({ url: 'pages/Evaluation' }) })
+              RowItem({ icon: '🧠', title: 'AI 建议', onItemClick: () => router.pushDestination({ url: 'pages/Advice' }) })
+              RowItem({ icon: '☁️', title: 'AI 服务商', onItemClick: () => router.pushDestination({ url: 'pages/ProviderList' }) })
+              RowItem({ icon: '📜', title: 'AI 规则', onItemClick: () => router.pushDestination({ url: 'pages/RuleList' }) })
+              RowItem({ icon: '📊', title: '学习统计', onItemClick: () => router.pushDestination({ url: 'pages/LearningStats' }) })
+              RowItem({ icon: '🧪', title: '模型评测', onItemClick: () => router.pushDestination({ url: 'pages/Evaluation' }) })
             }
             .width('100%')
             .borderRadius(16)
