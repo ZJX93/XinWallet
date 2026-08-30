@@ -22,7 +22,7 @@ const path = require('path');
 
 const {
     normalizeKey, isUsefulKey, chunkKeys, splitByParticles, stripDateTime,
-    LEADING_PARTICLES, TRAILING_PARTICLES, NOISE_KEYS,
+    LEADING_PARTICLES, TRAILING_PARTICLES, NOISE_KEYS, productKey,
 } = require('../server/modules/ai/memory/keys');
 const { buildRetrievalKeys } = require('../server/modules/ai/memory/memory-retrieval');
 const { learnableKey } = require('../server/modules/ai/learning/evidence-engine');
@@ -247,4 +247,64 @@ test('stripDateTime 只剥与数字捆绑的日期，不动相对日期', () => 
     assert.strictEqual(stripDateTime('08:12:33 便利店').trim(), '便利店');
     assert.ok(stripDateTime('昨天老乡鸡').includes('昨天'),
         '相对日期不该在 stripDateTime 剥离（由虚词切分负责）');
+});
+
+// ============================================================
+// 7) 商品词提取（2026-08-30：从「取最长段」改为「类目词表命中优先」）
+// ============================================================
+/*  ⛔ 历史缺陷：productKey 原按【最长段】选商品词，而商户名 / 渠道名几乎总比商品名长 ——
+    实测 14 个真实账单样本错 8 个：
+
+        「淘宝闪购 奶茶 8元」（无商户）  → 学到「淘宝闪购」
+        「午餐 公司食堂 刷卡 15元」      → 学到「公司食堂」
+        「在星巴克喝咖啡 35元」          → 剔掉商户后候选池空，回退成「星巴克」
+        「中石化加油 300元」             → 回退成「中石化」
+        「超市 买洗衣液 25元」           → 学到「超市」（场所不是商品）
+
+    学到的规则指向渠道 / 场所而不是「买了什么」，等于把「按商户学类目」的旧病
+    又原样带回来 —— 这正是当初做商品词学习要解决的问题。
+
+    ⇒ 修法：候选按【是否命中类目词表】排序（词表里越靠前越优先），
+      并区分「完全命中」优于「包含命中」，长度只作兜底 tiebreak。 */
+test('productKey 取「买了什么」而非渠道 / 场所 / 商户', () => {
+    const cases = [
+        // [raw_segment, merchant, 期望商品词]
+        ['淘宝闪购 盒饭 15元', '淘宝闪购', '盒饭'],
+        ['淘宝闪购 奶茶 8元', '淘宝闪购', '奶茶'],
+        // ⛔ 商户字段缺失时也不能退化成渠道名（改前取到「淘宝闪购」）
+        ['淘宝闪购 奶茶 8元', '', '奶茶'],
+        ['美团外卖 麻辣烫 30元', '美团外卖', '麻辣烫'],
+        ['20:19:15 淘宝闪购 12.71元 备注:蜜雪冰城(龙湖星悦广场店)外卖订单', '淘宝闪购', '蜜雪冰城'],
+        // 商户即品牌（店里只卖这个）时回退用商户，这是我们要的
+        ['蜜雪冰城 12元', '蜜雪冰城', '蜜雪冰城'],
+        // ⛔ 场所 / 场景并存时取更靠前的类目词（改前取到更长的「公司食堂」）
+        ['午餐 公司食堂 刷卡 15元', '', '午餐'],
+        ['超市 买洗衣液 25元', '', '洗衣液'],
+        // ⛔ 前导动词不是商品
+        ['充话费 100元', '', '话费'],
+        ['交房租 2000元', '', '房租'],
+        // ⛔ 虚词切段后取商品，别回退成商户
+        ['在星巴克喝咖啡 35元', '星巴克', '咖啡'],
+        ['打车去机场 58元', '', '打车'],
+        // ⛔ 商户与商品粘连时剥出商品（改前整段被剔、回退成「中石化」）
+        ['中石化加油 300元', '中石化', '加油'],
+        // 词表未收录的新商品名：靠长度兜底，不能用渠道名顶替
+        ['瑞幸咖啡 生椰拿铁 16元', '瑞幸咖啡', '生椰拿铁'],
+    ];
+    for (const [raw, mer, want] of cases) {
+        assert.strictEqual(
+            productKey(raw, mer), want,
+            `productKey("${raw}", merchant="${mer}") 应取「${want}」`
+        );
+    }
+});
+
+test('productKey 不误伤以动作词开头的真商品', () => {
+    /*  剥前导动词是启发式，必然有误伤面：
+        「充电宝」剥「充」→「电宝」、「打车」剥「打」→「车」。
+        防线是【剥离结果不替换原词，两者一起进候选池由词表 rank 择优】——
+        「充电宝」「打车」本身就在类目词表里，rank 优于残词，故自动保留。 */
+    assert.strictEqual(productKey('买了充电宝 129元', ''), '充电宝');
+    assert.strictEqual(productKey('打车去公司 25元', ''), '打车');
+    assert.strictEqual(productKey('买菜 45元', ''), '买菜');   // 「菜」单字不成键，保留原词
 });

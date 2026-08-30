@@ -14,6 +14,16 @@
       用户下次输入「验证商家 25元」（没有"在"）就匹配不上。
    ============================================ */
 
+/**
+ * 类目词表（唯一真相）—— 商品词候选打分用，见 categoryWordRank。
+ *
+ * ⛔ 依赖方向：memory/keys → extraction/category-matcher，单向。
+ *    category-matcher 不 require 本模块（已确认），不会成环。
+ * ⚠️ 本模块被 extraction/note-composer 复用，故这里是「底层 → 上层」的反向依赖，
+ *    只取词表做打分、不改变任何既有键的归一结果，保持幂等。
+ */
+const { KEYWORD_TO_CATEGORY } = require('../extraction/category-matcher');
+
 // 前置虚词：出现在商家名之前的介词/动词，不属于商家本身。
 // 按长度降序剥离，避免「在到」这类叠词只剥掉一层。
 const LEADING_PARTICLES = ['在', '去', '到', '从', '给', '用', '找', '往', '于'];
@@ -165,13 +175,15 @@ function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
  *    「中午外卖」切出 ['外卖']（只 1 段），但那正是我们要的键，
  *    丢掉它会把时间词永久粘在键上。判据应是「切分结果是否等于原段」。
  */
-function splitByParticles(seg) {
+function splitByParticles(seg, keepOriginal = true) {
     const s = String(seg);
     const parts = s.split(PARTICLE_SPLIT_RE).filter(Boolean);
     // 无虚词可切：split 原样返回 [seg]
     if (parts.length === 1 && parts[0] === s) return [s];
     // 商家名本身可能恰好含虚词（如「买买提」），故保留原段兜底，由 Decision Engine 择优
-    return [...parts, s];
+    // ⛔ 商品词场景要传 keepOriginal=false：原段会带回「在/喝」这类残渣
+    //    （实测「在星巴克喝咖啡」竟切出「喝咖啡」抢在「咖啡」前面）
+    return keepOriginal ? [...parts, s] : parts;
 }
 
 /* ── 商品词 / 门店后缀（2026-08-29 新增）───────────────────── */
@@ -202,6 +214,15 @@ const NON_PRODUCT_KEYS = new Set([
     '购买', '交易', '账单', '快递', '退款', '优惠', '立减', '红包', '会员', '充值',
     '转账', '收款', '扫码', '商家', '店铺', '商品', '说明', '备注', '详情',
     '数量', '单价', '合计', '总计', '小计', '套餐', '一份', '一杯', '现金', '余额',
+
+    /*  场所 / 渠道：只说明【在哪儿买的】，不说明【买了什么】。
+        ⛔ 2026-08-30 实测补入：「超市 买洗衣液」学成了「超市」——
+           因为类目词表里「超市」排在日用百货条目第一位，rank 比「洗衣液」还高，
+           靠排序救不回来，只能在候选池里就把它剔掉（买菜同理，别去学「菜市场」）。 */
+    '超市', '便利店', '商场', '购物中心', '市场', '菜市场', '生鲜超市',
+    '食堂', '餐厅', '饭店', '快餐店', '饮品店', '商店', '小卖部', '杂货店',
+    '药店', '加油站', '服务区', '网点', '专柜', '门店', '分店',
+    '网购', '电商', '平台', '官网', '小程序', '旗舰店',
 ]);
 
 /** 商品词尾部要剥掉的通用词（「蜜雪冰城外卖订单」→「蜜雪冰城」） */
@@ -230,6 +251,92 @@ function stripNonProductTail(raw) {
 }
 
 /**
+ * 商品词前导动作词：「买洗衣液」「充话费」「交房租」的动词不是商品。
+ *
+ * ⚠️ 剥离结果【不直接替换】原词，而是与原词一起进候选池（见 productKey），
+ *    由 categoryWordRank 择优 —— 否则会误伤真商品：
+ *      「充电宝」剥成「电宝」、「打车」剥成「车」。
+ *    而「充电宝」「打车」本身就在类目词表里，rank 更优 → 自动保留原词。
+ */
+const PRODUCT_LEAD_VERBS = [
+    '买了', '买了个', '买的', '买', '充了', '充值', '充', '交了', '交', '付了', '付',
+    '吃了', '吃', '喝了', '喝', '点了', '点', '订了', '订', '叫了', '叫',
+    '打了', '打', '坐了', '坐', '还了', '还', '存了', '存', '取了', '取', '加了', '加',
+];
+
+/** 反复剥离前导动作词，剥到不能再剥为止（至少保留 2 字） */
+function stripProductLeadVerb(raw) {
+    let s = String(raw || '').trim();
+    const verbs = [...PRODUCT_LEAD_VERBS].sort((a, b) => b.length - a.length);
+    let changed = true;
+    while (changed && s.length > 0) {
+        changed = false;
+        for (const v of verbs) {
+            if (s.startsWith(v) && s.length - v.length >= 2) {
+                s = s.slice(v.length); changed = true; break;
+            }
+        }
+    }
+    return s.trim();
+}
+
+/**
+ * 商户名与商品粘连时，剥掉商户、留下商品部分。
+ *   「中石化加油」 merchant=中石化 → 「加油」
+ *   「淘宝闪购奶茶」merchant=淘宝闪购 → 「奶茶」
+ *
+ * ⛔ 不剥的后果（2026-08-30 实测）：整段因「包含商户名」被 productKey 剔除，
+ *    候选池空 → 回退成用商户当商品词 → 学到的又是商户，白改一圈。
+ *
+ * @returns {string[]} [剩余部分, 原段]（剩余部分为空时只返回原段）
+ */
+function splitOffMerchant(seg, mer) {
+    if (!mer) return [seg];
+    const i = seg.indexOf(mer);
+    if (i < 0) return [seg];
+    const rest = (seg.slice(0, i) + seg.slice(i + mer.length)).trim();
+    return rest ? [rest, seg] : [seg];
+}
+
+/**
+ * 候选词在类目词表里的命中次序 —— 越小越"像商品"。
+ *
+ * ⛔ 为什么不能用「取最长段」（2026-08-30 修正，实测 14 例错 8 例）：
+ *    商户名/渠道名几乎总是比商品名长 —— 「淘宝闪购 奶茶」取到「淘宝闪购」、
+ *    「午餐 公司食堂」取到「公司食堂」。长度排序在记账文本里方向是反的。
+ *
+ *    判据应是「这个词本身是不是某个类目的关键词」：
+ *    词表是本项目对"什么东西算什么类"的唯一真相，命中它 = 它就是被分类的对象。
+ *
+ * ① 只认【候选包含词表词】（「珍珠奶茶」⊃「奶茶」），不反过来看
+ *    （否则「中国」会因「中国移动」被当成话费类商品）。
+ * ② 词表**条目内**的顺序也计入：早午晚餐那条里「午餐」排在「食堂」前，
+ *    于是「午餐 公司食堂」取「午餐」而不是更长的「公司食堂」。
+ *
+ * ③ 命中方式分两档（2026-08-30 实测补正）：
+ *    【完全命中】优于【包含命中】，包含时再按"多出来的字数"递增惩罚。
+ *    否则「充话费」会因包含「话费」与「话费」同分，再被长度规则翻盘选走 ——
+ *    同理「喝咖啡」会压过「咖啡」，前导动词剥离白做。
+ *
+ * @returns {number} 命中则返回 i*10000+j*10(+惩罚)，未命中返回 Infinity
+ */
+function categoryWordRank(word) {
+    const w0 = String(word || '').toLowerCase();
+    if (!w0) return Infinity;
+    for (let i = 0; i < KEYWORD_TO_CATEGORY.length; i++) {
+        const words = KEYWORD_TO_CATEGORY[i].words || [];
+        for (let j = 0; j < words.length; j++) {
+            const w = String(words[j] || '').toLowerCase();
+            if (!w) continue;
+            if (w0 === w) return i * 10000 + j * 10;
+            // 包含命中：多出的字数越多越可疑（「打车去机场」⊃「打车」应让位给「打车」）
+            if (w0.includes(w)) return i * 10000 + j * 10 + 5 + Math.min(w0.length - w.length, 4);
+        }
+    }
+    return Infinity;
+}
+
+/**
  * 提取「商品词」—— 真正决定这笔算什么类的东西。
  *
  * ⛔ 商户名不是分类依据（2026-08-29）：一个商户可以卖任何东西
@@ -241,12 +348,22 @@ function stripNonProductTail(raw) {
  *    同一个语义能写出「午餐-盒饭」「奶茶-淘宝闪购」「外卖-麻辣烫」三种形态，
  *    按位置取必然取错。raw_segment 是原文，商品名就在里面，且带商户名可排除。
  *
- * 实测覆盖：
+ * 实测覆盖（2026-08-30 重写排序策略后，14 例全过；改前仅 6/14）：
  *   raw「淘宝闪购 盒饭 15元」        merchant=淘宝闪购 → 盒饭
  *   raw「淘宝闪购 奶茶 8元」         merchant=淘宝闪购 → 奶茶
+ *   raw「淘宝闪购 奶茶 8元」         merchant=（空）  → 奶茶   ⛔ 改前取到「淘宝闪购」
  *   raw「美团外卖 麻辣烫 30元」      merchant=美团外卖 → 麻辣烫
  *   raw「20:19:15 淘宝闪购 12.71元 备注:蜜雪冰城(龙湖星悦广场店)外卖订单」→ 蜜雪冰城
  *   raw「蜜雪冰城 12元」             merchant=蜜雪冰城 → 蜜雪冰城（商户即品牌，回退）
+ *   raw「午餐 公司食堂 刷卡 15元」   merchant=（空）  → 午餐   ⛔ 改前取到「公司食堂」
+ *   raw「超市 买洗衣液 25元」        merchant=（空）  → 洗衣液 ⛔ 改前取到「买洗衣液」
+ *   raw「在星巴克喝咖啡 35元」       merchant=星巴克   → 咖啡   ⛔ 改前回退成「星巴克」
+ *   raw「中石化加油 300元」          merchant=中石化   → 加油   ⛔ 改前回退成「中石化」
+ *   raw「充话费 100元」/「交房租 2000元」→ 话费 / 房租（前导动词不是商品）
+ *   raw「瑞幸咖啡 生椰拿铁 16元」    merchant=瑞幸咖啡 → 生椰拿铁（词表未收录，按长度兜底）
+ *
+ * ⚠️ 反向用例（必须保持）：「充电宝」不剥成「电宝」、「打车」不剥成「车」——
+ *    二者本身在类目词表里，rank 优于剥离后的残词，故自动保留。
  *
  * @param {string} raw       原文（raw_segment 优先，其次 note）
  * @param {string} [merchant] 已抽取的商户名，用于排除（渠道名不是商品）
@@ -266,14 +383,36 @@ function productKey(raw, merchant = '') {
 
     const cands = [];
     for (const seg of segs) {
-        const t = stripNonProductTail(seg);
-        if (!isUsefulKey(t)) continue;
-        if (NON_PRODUCT_KEYS.has(t)) continue;
-        // 商户名（渠道）不是商品：淘宝闪购只是下单的地方，不是买到的东西
-        if (mer && (t === mer || t.includes(mer) || mer.includes(t))) continue;
-        cands.push(t);
+        // ① 虚词处切段：「在星巴克喝咖啡」→「咖啡」，「打车去机场」→「打车」
+        //    ⛔ 必须保留原段兜底（keepOriginal 默认 true）：虚词表里「加油」这类词
+        //    本身就是商品（油），只靠切分会把它当分隔符丢掉 ——
+        //    实测「中石化加油」改回退成「中石化」。原段再经 ② 剥商户即可救回「加油」。
+        //    原段带出的残渣（如「喝咖啡」）由 ④ 的 rank 分档压下去。
+        for (const sub of splitByParticles(seg)) {
+            // ② 商户与商品粘连时剥出商品部分：「中石化加油」→「加油」
+            for (const piece of splitOffMerchant(sub, mer)) {
+                // ③ 剥与不剥前导动词两个版本都进池（「买洗衣液」/「洗衣液」），由 ④ 择优
+                for (const variant of new Set([piece, stripProductLeadVerb(piece)])) {
+                    const t = stripNonProductTail(variant);
+                    if (!isUsefulKey(t)) continue;
+                    if (NON_PRODUCT_KEYS.has(t)) continue;
+                    // 商户名（渠道）不是商品：淘宝闪购只是下单的地方，不是买到的东西
+                    if (mer && (t === mer || t.includes(mer) || mer.includes(t))) continue;
+                    cands.push(t);
+                }
+            }
+        }
     }
-    if (cands.length) return cands.sort((a, b) => b.length - a.length)[0];
+
+    // ④ 择优：命中类目词表者优先（词表越靠前越优），都不命中时才长者胜
+    const uniq = [...new Set(cands)];
+    if (uniq.length) {
+        return uniq.sort((a, b) => {
+            const ra = categoryWordRank(a), rb = categoryWordRank(b);
+            if (ra !== rb) return ra - rb;
+            return b.length - a.length;
+        })[0];
+    }
 
     /*  整句只剩商户名（「蜜雪冰城 12元」）→ 商户本身就是品牌/商品，回退用它。
         「蜜雪冰城」既是商户也是商品，这种回退正是我们要的。 */
@@ -283,5 +422,6 @@ function productKey(raw, merchant = '') {
 module.exports = {
     normalizeKey, isUsefulKey, chunkKeys, splitByParticles, stripDateTime,
     stripStoreSuffix, stripNonProductTail, productKey,
+    stripProductLeadVerb, splitOffMerchant, categoryWordRank,
     NOISE_KEYS, LEADING_PARTICLES, TRAILING_PARTICLES, TIME_WORDS, NON_PRODUCT_KEYS,
 };
