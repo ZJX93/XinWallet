@@ -1,5 +1,0 @@
-fix(harmony): 还原误改的 router API（pushDestination→pushUrl、replacePath→replaceUrl）
-
-CI 环境的 HarmonyOS SDK（@ohos/hvigor-ohos-plugin 6.24.4）中 router 类型
-不支持 pushDestination/replacePath，导致 41 个编译错误（含 11 个同行的
-implicit-return-type 连带报错）。还原为当前 SDK 实际支持的 pushUrl/replaceUrl。
