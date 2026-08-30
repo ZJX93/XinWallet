@@ -1,0 +1,25 @@
+name: Cleanup Runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 删除所有 Actions 运行记录
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "开始删除所有 workflow runs ..."
+          ids=$(gh api "repos/${{ github.repository }}/actions/runs" --paginate --jq '.workflow_runs[].id')
+          count=0
+          for id in $ids; do
+            if gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$id" >/dev/null 2>&1; then
+              count=$((count+1))
+            fi
+          done
+          echo "已删除 $count 条运行记录（当前运行自身无法删除，会保留 1 条）"
