@@ -272,7 +272,17 @@ jobs:
         continue-on-error: true
         run: |
           chmod +x hvigorw
+          set +e
           ./hvigorw --mode module -p module=entry@default -p product=default assembleHap 2>&1 | tee build.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            echo "::group::hvigor build.log (tail 150)"
+            tail -n 150 build.log
+            echo "::endgroup::"
+            echo "::error::hvigor 退出码 $RC，关键报错行如下："
+            grep -iE "error|cannot|exception|undefined|failed|not found|expect|signature|sign" build.log | tail -n 60 | while IFS= read -r line; do echo "::error::$line"; done
+          fi
 
       - name: 'Analyze build result'
         run: |
