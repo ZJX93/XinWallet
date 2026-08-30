@@ -122,7 +122,7 @@ struct AppLock {
                 else this.onDigit(k);
               })
             }, (k: string) => k)
-          }.width('100%')
+          }
         }, (row: string[]) => row.join())
       }
     }.margin({ top: 24 }).width('100%')
