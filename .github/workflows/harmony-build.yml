@@ -288,12 +288,17 @@ jobs:
         run: |
           SIGNING="${{ steps.sign.outputs.signing }}"
           echo "签名模式: $SIGNING"
+          echo "::error::===== build.log 尾部（无条件，排查 HAP 未产出）====="
+          tail -n 180 build.log 2>/dev/null | sed '/^[[:space:]]*$/d' | while IFS= read -r line; do echo "::error::$line"; done
+          echo "::error::===== entry/build 下 .hap 查找结果 ====="
+          find entry/build -name '*.hap' 2>/dev/null | while IFS= read -r f; do echo "::error::HAP: $f"; done
+          echo "::error::===== entry/build/default/outputs 目录树 ====="
+          find entry/build/default/outputs -maxdepth 4 2>/dev/null | while IFS= read -r f; do echo "::error::$f"; done
           HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
           if [ -n "$HAP" ]; then
             echo "::notice::HAP 产出成功 ✅ -> $HAP"
           elif [ "$SIGNING" = "real" ]; then
-            echo "::error::已配置签名但仍未产出 HAP，说明编译/签名注入有问题。build.log 尾部："
-            tail -n 50 build.log 2>/dev/null || echo "(无 build.log)"
+            echo "::error::已配置签名但仍未产出 HAP，说明编译/签名注入有问题。"
             exit 1
           else
             echo "::warning::编译验证通过 ✅（源码可过 hvigor 编译），但「仅编译验证」模式按设计不产出 HAP。请在仓库 Settings > Secrets 配置 HARMONY_SIGN_* 6 项，重跑即可出可安装 HAP。"
