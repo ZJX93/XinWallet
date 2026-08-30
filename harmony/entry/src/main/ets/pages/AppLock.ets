@@ -101,30 +101,26 @@ struct AppLock {
         ], (row: string[]) => {
           Row({ space: 20 }).width('100%') {
             ForEach(row, (k: string) => {
-              if (k === '⌫') {
-                Column() {
+              Column() {
+                if (k === '⌫') {
                   Image($r('app.media.ic_backspace'))
                     .width(28)
                     .height(28)
                     .fillColor(COLORS.brand)
-                }.width('100%').height(76).justifyContent(FlexAlign.Center)
-                .backgroundColor(COLORS.brandBg)
-                .borderRadius(999)
-                .onClick(() => this.onDel())
-              } else {
-                Column() {
+                } else {
                   Text(k)
                     .fontSize(k === '清空' ? 20 : 32)
                     .fontColor(COLORS.brand)
                     .fontWeight(k === '清空' ? FontWeight.Normal : FontWeight.Bold)
-                }.width('100%').height(76).justifyContent(FlexAlign.Center)
-                .backgroundColor(k === '清空' ? COLORS.brandBg : COLORS.brandBgLight)
-                .borderRadius(999)
-                .onClick(() => {
-                  if (k === '清空') this.onClear();
-                  else this.onDigit(k);
-                })
-              }
+                }
+              }.width('100%').height(76).justifyContent(FlexAlign.Center)
+              .backgroundColor(k === '清空' ? COLORS.brandBg : (k === '⌫' ? COLORS.brandBg : COLORS.brandBgLight))
+              .borderRadius(999)
+              .onClick(() => {
+                if (k === '清空') this.onClear();
+                else if (k === '⌫') this.onDel();
+                else this.onDigit(k);
+              })
             }, (k: string) => k)
           }.width('100%')
         }, (row: string[]) => row.join())

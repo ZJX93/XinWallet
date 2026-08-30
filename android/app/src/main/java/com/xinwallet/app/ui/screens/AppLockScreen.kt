@@ -45,6 +45,7 @@ import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.util.HashUtil
 import kotlinx.coroutines.launch
