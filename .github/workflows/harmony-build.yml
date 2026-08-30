@@ -320,21 +320,17 @@ jobs:
           mkdir -p "$(dirname "$DEST")"
           cp "$SRC" "$DEST"
           echo "::notice::HAP 资产: $DEST ($(du -h "$DEST" | cut -f1))"
-          # 等待同源派发的安卓工作流创建同名 Release（版本一致）
-          for i in $(seq 1 30); do
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Release $TAG 已存在，追加 HAP 资产"; break
-            fi
-            echo "[$i] 等待 Release $TAG 创建中..."
-            sleep 20
-          done
+          # 各构建相互独立：先确保 Release 存在（已存在则忽略），再追加本构建资产，
+          # 不再阻塞等待其他构建。谁先完成谁建 Release，其余只挂自己的资产。
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$DEST" --clobber
+            echo "Release $TAG 已存在，追加 HAP 资产"
           else
-            echo "::warning::等待超时，改为创建 Release 并附带 HAP"
+            echo "创建 Release $TAG 并附带 HAP"
             gh release create "$TAG" \
               --title "XinWallet APP $TAG" \
               --notes "自动构建安装包（版本 $TAG）。\n- 鸿蒙 HAP：XinWallet.harmony.$TAG.hap\n- 安卓 APK：由 android-build 工作流产出" \
-              "$DEST"
+              "$DEST" || echo "::warning::Release 创建失败（可能已被其他构建抢先创建），继续尝试上传"
           fi
+          gh release upload "$TAG" "$DEST" --clobber
+          gh release edit "$TAG" --draft=false
           echo "::notice::已发布 HAP -> Release $TAG : XinWallet.harmony.$TAG.hap"
