@@ -20,17 +20,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           KEEP="${{ inputs.keep }}"
+          REPO="${{ github.repository }}"
           echo "保留最新 $KEEP 个 release，其余（含对应 git tag）一并删除"
-          mapfile -t tags < <(gh release list --limit 200 --json tagName --jq '.[].tagName')
-          total=${#tags[@]}
+          gh api "repos/$REPO/releases?per_page=100" --paginate --jq -r '.[] | "\(.id)\t\(.tag_name)"' > /tmp/rels.tsv
+          total=$(wc -l < /tmp/rels.tsv)
           echo "当前共 $total 个 release"
           if [ "$total" -le "$KEEP" ]; then
             echo "不超过 $KEEP 个，无需删除"
             exit 0
           fi
-          for ((i=KEEP; i<total; i++)); do
-            tag="${tags[$i]}"
-            echo "删除 release + tag: $tag"
-            gh release delete "$tag" --cleanup-tag -y || true
-          done
+          i=0
+          while IFS=$'\t' read -r rid rtag; do
+            i=$((i+1))
+            if [ "$i" -le "$KEEP" ]; then continue; fi
+            echo "删除 release id=$rid tag=$rtag"
+            if gh api -X DELETE "repos/$REPO/releases/$rid" >/dev/null 2>&1; then
+              gh api -X DELETE "repos/$REPO/git/refs/tags/$rtag" >/dev/null 2>&1 || echo "  -> release 已删但 tag 删除失败: $rtag"
+              echo "  -> 已删除"
+            else
+              echo "  -> 删除失败: $rtag"
+            fi
+          done < /tmp/rels.tsv
           echo "完成，已保留最新 $KEEP 个 release"
