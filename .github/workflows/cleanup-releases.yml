@@ -22,7 +22,7 @@ jobs:
           KEEP="${{ inputs.keep }}"
           REPO="${{ github.repository }}"
           echo "保留最新 $KEEP 个 release，其余（含对应 git tag）一并删除"
-          gh api "repos/$REPO/releases?per_page=100" --paginate --jq -r '.[] | "\(.id)\t\(.tag_name)"' > /tmp/rels.tsv
+          gh api "repos/$REPO/releases?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.tag_name)"' > /tmp/rels.tsv
           total=$(wc -l < /tmp/rels.tsv)
           echo "当前共 $total 个 release"
           if [ "$total" -le "$KEEP" ]; then
