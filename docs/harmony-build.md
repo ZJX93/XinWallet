@@ -194,3 +194,30 @@ gh secret set HARMONY_SIGN_KEY_ALIAS      "debugKey"
 - **签名材料绝不提交到 git 仓库**：`.p12/.p7b/.cer` 及 base64 文件都只放 Secrets / 本地 `.sign/`（已加入 `.gitignore`）。
 - 自动签名证书有**有效期**（通常与 DevEco 登录态相关），过期后需重新在 DevEco 打开工程重新自动签名并更新 Secrets。
 - 若要**上架/正式分发**，请改用 AppGallery Connect 申请的正式发布证书与 Profile，替换上述 3 个文件后同样走 Secrets 注入。
+
+## 八、CI 自动构建所需的 SDK 下载源配置（必看，否则 workflow 在 Download 步骤失败）
+
+> `Build HarmonyOS HAP`（`harmony-build.yml`）在 GitHub runner 上是**全新环境，没有** HarmonyOS SDK 与
+> Command Line Tools。它必须先拿到 **HarmonyOS Command Line Tools（含 `sdkmgr` / `ohpm` / `hvigorw` 工具链）**，
+> 才能用 `sdkmgr install` 拉取 `ets/js/toolchains` SDK 组件并编译。
+> 若未配置任何下载源，workflow 会在 **Download HarmonyOS Command Line Tools** 步骤报
+> `::error::未配置 Command Line Tools 下载源，无法安装 SDK` 并 `exit 1`。
+
+workflow 按以下顺序寻找工具包（命中即止）：
+
+1. **Secret `HARMONY_COMMANDLINE_TOOLS_URL`**（直链优先）。
+   - 支持格式：`.zip` / `.tar.gz` / ErBWs/ohos-sdk 分卷 `.tar.gz.aa`（脚本会自动拼 `.ab` + `.sha256`）。
+   - 华为官网「Command Line Tools for HarmonyOS (Linux)」通常需要开发者账号登录，直链易失效；
+     若用社区镜像，可填 ErBWs/ohos-sdk 的 Release 资产直链（形如 `...commandline-tools...tar.gz.aa`）。
+   - 配置：仓库 **Settings → Secrets and variables → Actions → New repository secret**，
+     名称 `HARMONY_COMMANDLINE_TOOLS_URL`，值填压缩包直链。
+
+2. **本仓库 GitHub Release（tag 名必须填 `harmony-cli`）的 assets**：文件名需包含
+   `commandline-tools-linux-x64` 且以 `.zip` 结尾（如 `commandline-tools-linux-x64.zip`）。
+   - 从华为官网下载「Command Line Tools for HarmonyOS (Linux)」得到该 zip，
+     到仓库 **Releases → Draft a new release**，Tag 填 `harmony-cli`，把 zip 作为资产上传并发布。
+   - workflow 会用 `GITHUB_TOKEN` 拉取（私有仓库经 302 跳转，`--location-trusted` 已处理鉴权）。
+
+> **二选一即可，推荐方案 ②（上传 Release）**：华为官网直链依赖登录态、不稳定，上传到本仓库 Release 最省心。
+> 配置好下载源后重跑 `Build HarmonyOS HAP` 即可通过 Download 步骤（进入 SDK 安装）。
+> 若还想产出**可安装的 `.hap`**，还需按上一节配置签名 Secret `HARMONY_SIGN_BUNDLE_B64`。

@@ -29,10 +29,15 @@ jobs:
             echo "不超过 $KEEP 个，无需删除"
             exit 0
           fi
+          EXCLUDE="harmony-cli"   # 受保护：鸿蒙 Command Line Tools 工具包，harmony-build.yml 的 CI 构建依赖，禁止清理
           i=0
           while IFS=$'\t' read -r rid rtag; do
             i=$((i+1))
             if [ "$i" -le "$KEEP" ]; then continue; fi
+            if [ "$rtag" = "$EXCLUDE" ]; then
+              echo "跳过受保护 release（鸿蒙 SDK 工具包，CI 依赖）: tag=$rtag"
+              continue
+            fi
             echo "删除 release id=$rid tag=$rtag"
             if gh api -X DELETE "repos/$REPO/releases/$rid" >/dev/null 2>&1; then
               gh api -X DELETE "repos/$REPO/git/refs/tags/$rtag" >/dev/null 2>&1 || echo "  -> release 已删但 tag 删除失败: $rtag"

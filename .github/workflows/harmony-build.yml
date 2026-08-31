@@ -23,8 +23,6 @@ jobs:
         shell: bash
         working-directory: harmony
     env:
-      # sdkmgr 用「组件:APIVersion」格式，APIVersion 取工程的 compatibleSdkVersion(=12)
-      OHOS_API_VERSION: '12'
       SDK_DIR: '${{ github.workspace }}/ohos-sdk'
       OHOS_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
       OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
@@ -46,6 +44,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+
+      - name: 'Resolve HarmonyOS API version from build-profile'
+        run: |
+          # 从 harmony/build-profile.json5 的 compatibleSdkVersion（如 6.1.1(24)）解析括号里的 API 数字，
+          # 注入 OHOS_API_VERSION，避免 job 级写死 12 与工程实际版本不符导致 sdkmgr install ets:12 失败。
+          VER=$(node -e 'const fs=require("fs");const t=fs.readFileSync("build-profile.json5","utf8");const j=JSON.parse(t);const s=(j.app.products[0]||{}).compatibleSdkVersion||"";const m=s.match(/\((\d+)\)/);console.log(m?m[1]:s);')
+          echo "OHOS_API_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "从 build-profile.json5 解析到 OHOS_API_VERSION=$VER"
 
       - name: 'Download HarmonyOS Command Line Tools'
         env:
