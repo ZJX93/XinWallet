@@ -10,7 +10,6 @@ const { hashPassword, verifyPassword, signToken, signRefreshToken, authMiddlewar
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
-const logger = require('../logger');
 
 // 登录失败次数阈值 + 锁定期（可通过环境变量调整，默认较宽松）
 const MAX_FAIL_COUNT = parseInt(process.env.AUTH_LOCK_MAX_FAIL || '10', 10);
@@ -144,10 +143,10 @@ router.post('/demo', async (req, res) => {
             );
             if (parseInt(userHasTransactions.cnt) === 0) {
                 await ensureUserSeed(user.id);
-                logger.info(`✅ 演示账号 ${user.id} 已注入演示数据`);
+                console.log(`✅ 演示账号 ${user.id} 已注入演示数据`);
             }
         } catch (seedErr) {
-            logger.warn('⚠️ 演示账号注入种子数据失败:', seedErr.message);
+            console.warn('⚠️ 演示账号注入种子数据失败:', seedErr.message);
         }
 
         const token = signToken({ id: user.id, username: user.username });
@@ -192,7 +191,7 @@ router.post('/refresh', validate({
                 res.json(success({ token: newToken, refreshToken: newRefreshToken }, '令牌刷新成功'));
             })
             .catch(err => {
-                logger.error('refresh: db error', err.message);
+                console.error('refresh: db error', err.message);
                 res.status(500).json(fail('服务器内部错误'));
             });
     } catch (err) {

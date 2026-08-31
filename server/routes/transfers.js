@@ -1,4 +1,3 @@
-const logger = require('../logger');
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
@@ -17,7 +16,7 @@ function classifyError(err) {
     if (msg.includes('账户不存在')) return failNotFound(msg);            // 404
     if (msg.includes('金额')) return failValidation(msg);                // 422
     // 未识别的错误：记录到控制台，但对外不暴露原始消息
-    logger.error('[transfer] 未分类错误:', err);
+    console.error('[transfer] 未分类错误:', err);
     return failBadRequest('操作失败，请稍后重试');
 }
 

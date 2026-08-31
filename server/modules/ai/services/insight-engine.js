@@ -22,7 +22,6 @@
    ============================================ */
 
 const db = require('../../../db');
-const logger = require('../../../logger');
 
 /** 所有洞察类型的定义（type → label + default importance） */
 const INSIGHT_TYPES = {
@@ -141,7 +140,7 @@ async function generateInsight({
     if (/duplicate key|ER_DUP_KEY|23505|1062/i.test(err.message)) {
       return { ok: true, skipped: true };
     }
-    logger.warn('⚠️ generateInsight 失败（不影响主流程）:', err.message);
+    console.warn('⚠️ generateInsight 失败（不影响主流程）:', err.message);
     return { ok: false };
   }
 }

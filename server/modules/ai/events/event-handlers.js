@@ -15,7 +15,6 @@
 
 const { emit } = require('./event-bus');
 const insightEngine = require('../services/insight-engine');
-const logger = require('../../../logger');
 
 // ============================================
 // transaction.created Handler
@@ -47,14 +46,14 @@ async function onTransactionCreated(event) {
         // 消费突增检测：异步运行完整分析（不阻塞）
         analyzers.push(
             runDeferredAnalysis(userId, bookId).catch(err =>
-                logger.warn('[event-handler] spending_spike 分析失败:', err.message)
+                console.warn('[event-handler] spending_spike 分析失败:', err.message)
             )
         );
 
         await Promise.allSettled(analyzers);
     } catch (err) {
         // 异常不抛出，event-bus fire-and-forget 会吞掉
-        logger.warn('[event-handler] transaction.created 处理异常:', err.message);
+        console.warn('[event-handler] transaction.created 处理异常:', err.message);
     }
 }
 
@@ -96,7 +95,7 @@ async function onBudgetExceeded(event) {
             importance: 5,
         });
     } catch (err) {
-        logger.warn('[event-handler] budget.exceeded 处理异常:', err.message);
+        console.warn('[event-handler] budget.exceeded 处理异常:', err.message);
     }
 }
 
@@ -119,7 +118,7 @@ async function onBalanceAnomaly(event) {
             importance: 5,
         });
     } catch (err) {
-        logger.warn('[event-handler] balance.anomaly 处理异常:', err.message);
+        console.warn('[event-handler] balance.anomaly 处理异常:', err.message);
     }
 }
 
@@ -138,7 +137,7 @@ let _unsubFns = [];
 function initEventHandlers(options = {}) {
     if (_initialized && options.skipExisting) return;
     if (_initialized) {
-        logger.warn('[event-handlers] initEventHandlers 已调用，忽略重复初始化');
+        console.warn('[event-handlers] initEventHandlers 已调用，忽略重复初始化');
         return;
     }
 
@@ -155,7 +154,7 @@ function initEventHandlers(options = {}) {
     _unsubFns.push(subscribe('balance.anomaly', onBalanceAnomaly));
 
     _initialized = true;
-    logger.info('[event-handlers] 已初始化，监听事件：transaction.created, budget.exceeded, balance.anomaly');
+    console.log('[event-handlers] 已初始化，监听事件：transaction.created, budget.exceeded, balance.anomaly');
 }
 
 /**

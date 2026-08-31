@@ -1,4 +1,3 @@
-const logger = require('../logger');
 /* ============================================
    鑫钱包 · AI 服务调用模块
    封装 OpenAI 兼容 / Anthropic 接口调用
@@ -80,7 +79,7 @@ async function getActiveProvider(userId) {
         if (!provider.api_key) {
             // 配置存在但密钥不匹配（极可能是重部署后 ENCRYPTION_KEY 变更），
             // 标记后由路由层提示用户前往「AI 配置」页重新保存，而非静默当作「未配置」。
-            logger.error(`[AI] 用户 ${userId} 的活跃服务商 API Key 解密失败（密钥不匹配或数据损坏）`);
+            console.error(`[AI] 用户 ${userId} 的活跃服务商 API Key 解密失败（密钥不匹配或数据损坏）`);
             provider._decryptFailed = true;
         }
     }
@@ -99,22 +98,22 @@ async function auditProviderKeys() {
         for (const p of providers) {
             if (p.api_key && !decrypt(p.api_key)) {
                 warnCount++;
-                logger.warn(`⚠️ [AI 凭证自检] ai_providers id=${p.id} user=${p.user_id} 解密失败（密钥可能已变更），该服务商配置已不可用，请前往「AI 配置」页重新保存 API Key。`);
+                console.warn(`⚠️ [AI 凭证自检] ai_providers id=${p.id} user=${p.user_id} 解密失败（密钥可能已变更），该服务商配置已不可用，请前往「AI 配置」页重新保存 API Key。`);
             }
         }
         for (const c of ocr) {
             if ((c.secret_id || c.secret_key) && (!decrypt(c.secret_id) || !decrypt(c.secret_key))) {
                 warnCount++;
-                logger.warn(`⚠️ [AI 凭证自检] ai_ocr_config user=${c.user_id} 解密失败（密钥可能已变更），请前往「AI 配置」页重新保存腾讯云 OCR 密钥。`);
+                console.warn(`⚠️ [AI 凭证自检] ai_ocr_config user=${c.user_id} 解密失败（密钥可能已变更），请前往「AI 配置」页重新保存腾讯云 OCR 密钥。`);
             }
         }
         if (warnCount > 0) {
-            logger.warn(`⚠️ 共 ${warnCount} 条 AI/OCR 凭证因加密密钥变更无法解密。根因：重部署后 ENCRYPTION_KEY 与历史不一致，或未保留 /app/data 卷。请固定 ENCRYPTION_KEY（见 .env.example）或保留 /app/data 卷后重启，否则需在「AI 配置」页重新保存凭证。`);
+            console.warn(`⚠️ 共 ${warnCount} 条 AI/OCR 凭证因加密密钥变更无法解密。根因：重部署后 ENCRYPTION_KEY 与历史不一致，或未保留 /app/data 卷。请固定 ENCRYPTION_KEY（见 .env.example）或保留 /app/data 卷后重启，否则需在「AI 配置」页重新保存凭证。`);
         } else {
-            logger.info('✅ AI/OCR 凭证自检通过（所有已存凭证均可正常解密）');
+            console.log('✅ AI/OCR 凭证自检通过（所有已存凭证均可正常解密）');
         }
     } catch (err) {
-        logger.warn('⚠️ AI 凭证自检异常（不影响启动）:', err.message);
+        console.warn('⚠️ AI 凭证自检异常（不影响启动）:', err.message);
     }
 }
 

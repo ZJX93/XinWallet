@@ -1,4 +1,3 @@
-const logger = require('./logger');
 /* ============================================
    鑫钱包 · 认证模块 (Auth)
    提供密码哈希、JWT 签发与校验、路由鉴权中间件
@@ -18,12 +17,12 @@ const DEFAULT_SECRETS = new Set([
 ]);
 if (!JWT_SECRET || DEFAULT_SECRETS.has(JWT_SECRET)) {
     if (process.env.NODE_ENV === 'production') {
-        logger.error('❌ 安全错误：生产环境必须设置 JWT_SECRET 环境变量（不得使用默认值）');
-        logger.error('   请运行: openssl rand -hex 32  生成一个随机密钥，并写入 .env 文件的 JWT_SECRET');
+        console.error('❌ 安全错误：生产环境必须设置 JWT_SECRET 环境变量（不得使用默认值）');
+        console.error('   请运行: openssl rand -hex 32  生成一个随机密钥，并写入 .env 文件的 JWT_SECRET');
         process.exit(1);
     } else {
-        logger.warn('⚠️ 安全警告：JWT_SECRET 未配置或使用默认值，仅开发环境允许。');
-        logger.warn('   生产环境请务必设置 JWT_SECRET 环境变量。');
+        console.warn('⚠️ 安全警告：JWT_SECRET 未配置或使用默认值，仅开发环境允许。');
+        console.warn('   生产环境请务必设置 JWT_SECRET 环境变量。');
     }
 }
 const EFFECTIVE_SECRET = JWT_SECRET || 'zhicai-dev-secret-change-me';

@@ -120,7 +120,7 @@ const AIRecognition = {
 
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.7));
             this.compressedFile = new File([blob], 'ocr_compressed.jpg', { type: 'image/jpeg' });
-            console.info('OCR compress:', (file.size / 1024).toFixed(0) + 'KB → ' + (blob.size / 1024).toFixed(0) + 'KB');
+            console.log('OCR compress:', (file.size / 1024).toFixed(0) + 'KB → ' + (blob.size / 1024).toFixed(0) + 'KB');
         } catch (e) {
             // 压缩失败则使用原图
             this.compressedFile = file;
