@@ -33,7 +33,7 @@
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
     "mysql2": "^3.11.0",
-    "pg": "^8.13.1",
+    "pg": "^8.23.0",
     "swagger-ui-dist": "^5.32.11",
     "tencentcloud-sdk-nodejs-ocr": "^4.1.268"
   },
