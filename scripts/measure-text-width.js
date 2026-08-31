@@ -86,33 +86,33 @@ const MONEY_CASES = [
 ];
 
 function reportKpi() {
-  console.log('=== KPI 卡：各屏宽下卡内可用 ===');
+  logger.info('=== KPI 卡：各屏宽下卡内可用 ===');
   for (const s of SCREENS) {
-    console.log(`  ${s}vp 屏 → ${CONTAINERS.kpiCard(s)}vp`);
+    logger.info(`  ${s}vp 屏 → ${CONTAINERS.kpiCard(s)}vp`);
   }
-  console.log('');
-  console.log('=== 20sp 下各金额能否放下 ===');
-  console.log('  值'.padEnd(20) + '宽度' + SCREENS.map(s => String(s).padStart(6)).join(''));
+  logger.info('');
+  logger.info('=== 20sp 下各金额能否放下 ===');
+  logger.info('  值'.padEnd(20) + '宽度' + SCREENS.map(s => String(s).padStart(6)).join(''));
   for (const v of MONEY_CASES) {
     const ww = width(v, 20);
     const cells = SCREENS.map(s => (ww <= CONTAINERS.kpiCard(s) ? '    ok' : '    XX')).join('');
-    console.log('  ' + v.padEnd(18) + String(ww).padStart(6) + cells);
+    logger.info('  ' + v.padEnd(18) + String(ww).padStart(6) + cells);
   }
-  console.log('');
-  console.log('=== minFontSize 倒推（最窄的 320vp 屏）===');
+  logger.info('');
+  logger.info('=== minFontSize 倒推（最窄的 320vp 屏）===');
   const avail = CONTAINERS.kpiCard(320);
   for (const v of ['¥1,234,567.89', '-¥1,234,567.89', '¥12,345,678.90']) {
     const fs = fitFontSize(v, avail);
-    console.log(`  ${v.padEnd(18)}→ ${fs}sp（可用 ${avail}，实宽 ${width(v, fs)}）`);
+    logger.info(`  ${v.padEnd(18)}→ ${fs}sp（可用 ${avail}，实宽 ${width(v, fs)}）`);
   }
-  console.log('');
-  console.log('  当前取 minFontSize(15)：留一档余量，不按亿级定');
-  console.log('  （按理论最大值定会让常见值也被压小，为极端情况牺牲日常可读性）');
-  console.log('');
-  console.log('=== 环形图中心（可用 ' + CONTAINERS.donutCenter() + 'vp，与屏宽无关）===');
+  logger.info('');
+  logger.info('  当前取 minFontSize(15)：留一档余量，不按亿级定');
+  logger.info('  （按理论最大值定会让常见值也被压小，为极端情况牺牲日常可读性）');
+  logger.info('');
+  logger.info('=== 环形图中心（可用 ' + CONTAINERS.donutCenter() + 'vp，与屏宽无关）===');
   for (const v of MONEY_CASES) {
     const ww = width(v, 20);
-    console.log('  ' + String(ww).padStart(6) + '  ' + v.padEnd(18) +
+    logger.info('  ' + String(ww).padStart(6) + '  ' + v.padEnd(18) +
       (ww <= CONTAINERS.donutCenter() ? 'ok' : 'XX 需缩到 ' + fitFontSize(v, CONTAINERS.donutCenter()) + 'sp'));
   }
 }
@@ -140,7 +140,7 @@ function main() {
     let line = `${String(ww).padStart(7)}vp  @${fs}sp  ${t}`;
     if (avail > 0) line += ww <= avail ? `  放得下（余 ${(avail - ww).toFixed(1)}）` : `  超出 ${(ww - avail).toFixed(1)}`;
     if (fit > 0) line += `  → 要塞进 ${fit}vp 需 ${fitFontSize(t, fit, fs)}sp`;
-    console.log(line);
+    logger.info(line);
   }
 }
 

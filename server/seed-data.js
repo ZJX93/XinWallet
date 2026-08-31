@@ -5,6 +5,7 @@
 
 const db = require('./db');
 const { ensureDefaultBook } = require('./routes/books');
+const logger = require('./logger');
 
 // 复式记账账户余额计算
 async function sumLedgerEffects(conn, userId, accountId) {
@@ -197,7 +198,7 @@ async function seedUserData(userId, conn) {
             const variance = 0.9 + Math.random() * 0.2;
             const acctId = accountIds[tx.account] || accountIds['工商银行'];
             const catId = codeToId[tx.cat];
-            if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
+            if (!catId) { logger.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
@@ -215,7 +216,7 @@ async function seedUserData(userId, conn) {
             const variance = 0.8 + Math.random() * 0.4;
             const acctId = accountIds[tx.account] || accountIds['微信支付'];
             const catId = codeToId[tx.cat];
-            if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
+            if (!catId) { logger.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
@@ -311,7 +312,7 @@ async function seedUserData(userId, conn) {
         const totalCost = inv.buy_price * inv.quantity;
         const currentValue = inv.current_price * inv.quantity;
         const typeId = investTypeCodeToId[inv.typeCode];
-        if (!typeId) { console.warn(`⚠️ 未知投资类型 code: ${inv.typeCode}`); continue; }
+        if (!typeId) { logger.warn(`⚠️ 未知投资类型 code: ${inv.typeCode}`); continue; }
         await conn.query(
             `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity,
              total_cost, current_value, buy_date, expected_rate, status)

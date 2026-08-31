@@ -17,7 +17,9 @@
     "test:full": "node scripts/full-verify.js",
     "mysql:init": "node scripts/mysql-init.js",
     "schema:convert": "node scripts/convert-pg-schema-to-mysql.js",
-    "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run"
+    "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run",
+    "lint": "eslint --rulesdir scripts/eslint public/js --ext .js",
+    "lint:fix": "eslint --rulesdir scripts/eslint public/js --ext .js --fix"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -39,5 +41,8 @@
   },
   "overrides": {
     "uuid": "^11.1.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
   }
 }

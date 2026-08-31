@@ -21,8 +21,8 @@
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
-  if (cond) { pass++; console.log(`  ✓ ${name}`); }
-  else { fail++; console.log(`  ✗ ${name}${extra ? '  → ' + extra : ''}`); }
+  if (cond) { pass++; logger.info(`  ✓ ${name}`); }
+  else { fail++; logger.info(`  ✗ ${name}${extra ? '  → ' + extra : ''}`); }
 }
 function eq(name, actual, expect) {
   const a = JSON.stringify(actual), e = JSON.stringify(expect);
@@ -78,7 +78,7 @@ function makeAtomic() {
   };
 }
 
-console.log('\n【1】月 → 年（用户在弹层选「2026年」）');
+logger.info('\n【1】月 → 年（用户在弹层选「2026年」）');
 {
   const two = makeTwoStep();  two.apply('2026', 'year');
   const ato = makeAtomic();   ato.apply('2026', 'year');
@@ -90,7 +90,7 @@ console.log('\n【1】月 → 年（用户在弹层选「2026年」）');
   eq('原子式：请求参数', ato.reqs[0], { gran: 'annual', period: '2026' });
 }
 
-console.log('\n【2】⛔ 年 → 月（从 2026 切回 2026-03，弹层里选了 3 月）');
+logger.info('\n【2】⛔ 年 → 月（从 2026 切回 2026-03，弹层里选了 3 月）');
 {
   const two = makeTwoStep();
   two.apply('2026', 'year');       // 先进年模式
@@ -117,7 +117,7 @@ console.log('\n【2】⛔ 年 → 月（从 2026 切回 2026-03，弹层里选�
     two.reqs.length === 2 && two.reqs[0].period === '2026-08');
 }
 
-console.log('\n【3】⛔ 年内换年（2026年 → 2025年，点左箭头）');
+logger.info('\n【3】⛔ 年内换年（2026年 → 2025年，点左箭头）');
 {
   const two = makeTwoStep();
   two.apply('2026', 'year');
@@ -136,7 +136,7 @@ console.log('\n【3】⛔ 年内换年（2026年 → 2025年，点左箭头）')
   eq('原子式：请求参数', ato.reqs[0], { gran: 'annual', period: '2025' });
 }
 
-console.log('\n【4】⛔ 月 → 自定义（custom 的 period 是区间串）');
+logger.info('\n【4】⛔ 月 → 自定义（custom 的 period 是区间串）');
 {
   const two = makeTwoStep();
   two.apply('2026-01-01~2026-06-30', 'custom');
@@ -155,7 +155,7 @@ console.log('\n【4】⛔ 月 → 自定义（custom 的 period 是区间串）'
   eq('两段式：第 2 次才正确', two.reqs[1], { gran: 'custom', period: '2026-01-01~2026-06-30' });
 }
 
-console.log('\n【5】⛔ 自定义 → 月（退出自定义回到某月）');
+logger.info('\n【5】⛔ 自定义 → 月（退出自定义回到某月）');
 {
   const two = makeTwoStep();
   two.apply('2026-01-01~2026-06-30', 'custom');
@@ -177,7 +177,7 @@ console.log('\n【5】⛔ 自定义 → 月（退出自定义回到某月）');
     two.reqs[0], { gran: 'monthly', period: '2026-01-01~2026-06-30' });
 }
 
-console.log('\n【6】重复点同一个周期不该发请求');
+logger.info('\n【6】重复点同一个周期不该发请求');
 {
   const ato = makeAtomic();
   ato.apply('2026', 'year');
@@ -186,7 +186,7 @@ console.log('\n【6】重复点同一个周期不该发请求');
   eq('原子式：重复点不发第二次', ato.reqs.length, n);
 }
 
-console.log('\n【7】箭头翻月（月模式内 period 变化）');
+logger.info('\n【7】箭头翻月（月模式内 period 变化）');
 {
   const ato = makeAtomic();
   ato.apply('2026-07', 'month');
@@ -196,7 +196,7 @@ console.log('\n【7】箭头翻月（月模式内 period 变化）');
     [{ gran: 'monthly', period: '2026-07' }, { gran: 'monthly', period: '2026-06' }]);
 }
 
-console.log('\n【8】granularity 取值必须是旧服务端也认识的集合');
+logger.info('\n【8】granularity 取值必须是旧服务端也认识的集合');
 {
   const OLD_SERVER_OK = ['monthly', 'quarterly', 'annual'];
   const ato = makeAtomic();
@@ -217,7 +217,7 @@ console.log('\n【8】granularity 取值必须是旧服务端也认识的集合'
     !OLD_SERVER_OK.includes(ato3.reqs[0].gran), ato3.reqs[0].gran);
 }
 
-console.log(`\n${'='.repeat(52)}`);
-console.log(`通过 ${pass} / 失败 ${fail}`);
-console.log('='.repeat(52));
+logger.info(`\n${'='.repeat(52)}`);
+logger.info(`通过 ${pass} / 失败 ${fail}`);
+logger.info('='.repeat(52));
 if (fail > 0) process.exit(1);

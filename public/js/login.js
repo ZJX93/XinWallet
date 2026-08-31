@@ -86,7 +86,7 @@ async function credGetKey(createIfMissing) {
         }
         return key || null;
     } catch (e) {
-        console.warn('[cred] 密钥获取失败，记住密码功能降级:', e);
+        logger.warn('[cred] 密钥获取失败，记住密码功能降级:', e);
         return null;
     }
 }
@@ -141,7 +141,7 @@ async function credSave(password, username) {
                 if (username) localStorage.setItem(CRED_USER_KEY, username);
                 return;
             } catch (e) {
-                console.warn('[cred] AES 加密失败，降级弱存储:', e);
+                logger.warn('[cred] AES 加密失败，降级弱存储:', e);
             }
         }
     }
@@ -152,7 +152,7 @@ async function credSave(password, username) {
         localStorage.setItem(CRED_WEAK_FLAG, '1');
         if (username) localStorage.setItem(CRED_USER_KEY, username);
     } catch (e) {
-        console.warn('[cred] 弱存储失败，未保存密码:', e);
+        logger.warn('[cred] 弱存储失败，未保存密码:', e);
     }
 }
 
@@ -166,7 +166,7 @@ async function credLoad() {
         try {
             return weakDecode(cipherB64);
         } catch (e) {
-            console.warn('[cred] 弱解密失败:', e);
+            logger.warn('[cred] 弱解密失败:', e);
             return '';
         }
     }
@@ -182,7 +182,7 @@ async function credLoad() {
         return new TextDecoder().decode(plain);
     } catch (e) {
         // 常见于清过 IndexedDB 但 localStorage 还在，或换了浏览器配置
-        console.warn('[cred] 解密失败（密钥可能已失效）:', e);
+        logger.warn('[cred] 解密失败（密钥可能已失效）:', e);
         return '';
     }
 }
@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else await credClear();
             location.href = '/';
         } catch (err) {
-            console.error('[login] 失败:', err.message, err);
+            logger.error('[login] 失败:', err.message, err);
             setHint(err.message || '操作失败，请重试', true);
             if (submitBtn) submitBtn.disabled = false;
         }

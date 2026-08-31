@@ -56,10 +56,10 @@ let fail = 0;
 const failures = [];
 
 function ok(name, cond, detail) {
-  if (cond) { pass++; console.log(`  \u2713 ${name}`); }
+  if (cond) { pass++; logger.info(`  \u2713 ${name}`); }
   else {
     fail++; failures.push(name);
-    console.log(`  \u2717 ${name}${detail ? '  \u2190 ' + detail : ''}`);
+    logger.info(`  \u2717 ${name}${detail ? '  \u2190 ' + detail : ''}`);
   }
 }
 function eq(name, actual, expected) {
@@ -72,10 +72,10 @@ function throwsWith(fn) {
 const P = impl.parseReportPeriod;
 const V = impl.prevPeriod;
 
-console.log(`\n源文件：${SRC}`);
-console.log(`抠出函数：${names.join(', ')} + PERIOD_TYPE_ALIAS\n`);
+logger.info(`\n源文件：${SRC}`);
+logger.info(`抠出函数：${names.join(', ')} + PERIOD_TYPE_ALIAS\n`);
 
-console.log('【A】自定义区间正常路径');
+logger.info('【A】自定义区间正常路径');
 {
   const r = P('custom', '2026-01~2026-06');
   eq('半年区间 start', r.start, '2026-01-01');
@@ -93,7 +93,7 @@ console.log('【A】自定义区间正常路径');
   eq('整年区间 end', P('custom', '2026-01~2026-12').end, '2026-12-31');
 }
 
-console.log('\n【B】越界输入必须抛错（本轮修复点）');
+logger.info('\n【B】越界输入必须抛错（本轮修复点）');
 {
   eq('月份 13/14', throwsWith(() => P('custom', '2026-13~2026-14')), '自定义区间格式错误');
   eq('月份 00', throwsWith(() => P('custom', '2026-00~2026-06')), '自定义区间格式错误');
@@ -111,7 +111,7 @@ console.log('\n【B】越界输入必须抛错（本轮修复点）');
   eq('起点晚于终点', throwsWith(() => P('custom', '2026-06~2026-01')), '自定义区间格式错误');
 }
 
-console.log('\n【C】合法边界不能被新校验误伤');
+logger.info('\n【C】合法边界不能被新校验误伤');
 {
   ok('Q1 正常', P('quarterly', '2026-Q1').start === '2026-01-01');
   ok('Q4 正常', P('quarterly', '2026-Q4').end === '2026-12-31');
@@ -125,7 +125,7 @@ console.log('\n【C】合法边界不能被新校验误伤');
   }));
 }
 
-console.log('\n【D】环比区间等长');
+logger.info('\n【D】环比区间等长');
 {
   eq('3 个月 → 前 3 个月', V('custom', '2026-01~2026-03').period, '2025-10~2025-12');
   eq('12 个月 → 上一整年', V('custom', '2026-01~2026-12').period, '2025-01~2025-12');
@@ -134,7 +134,7 @@ console.log('\n【D】环比区间等长');
   ok('环比区间可被二次解析', P('custom', V('custom', '2026-01~2026-03').period).start === '2025-10-01');
 }
 
-console.log('\n【E】按年/按月与旧版逐字节一致（不能弄坏已有功能）');
+logger.info('\n【E】按年/按月与旧版逐字节一致（不能弄坏已有功能）');
 {
   eq('annual start', P('annual', '2026').start, '2026-01-01');
   eq('annual end', P('annual', '2026').end, '2026-12-31');
@@ -145,14 +145,14 @@ console.log('\n【E】按年/按月与旧版逐字节一致（不能弄坏已有
   eq('别名 quarter', P('quarter', '2026-Q2').start, '2026-04-01');
 }
 
-console.log('\n' + '='.repeat(58));
-console.log(`  通过 ${pass}  失败 ${fail}`);
+logger.info('\n' + '='.repeat(58));
+logger.info(`  通过 ${pass}  失败 ${fail}`);
 if (fail > 0) {
-  console.log('\n  失败项：');
-  failures.forEach((f) => console.log(`    - ${f}`));
+  logger.info('\n  失败项：');
+  failures.forEach((f) => logger.info(`    - ${f}`));
 }
-console.log('='.repeat(58));
-console.log(
+logger.info('='.repeat(58));
+logger.info(
   fail === 0
     ? '\n验的是真实文件（非副本）。可以部署。\n'
     : '\n真实文件有问题，不要部署。\n'

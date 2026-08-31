@@ -1,3 +1,4 @@
+const logger = require('../../../../../../logger');
 /* ============================================
    鑫钱包 · 理财管理路由模块
    包含：理财类型 CRUD、持仓管理、行情 API
@@ -761,7 +762,7 @@ router.get('/quote', async (req, res) => {
         const data = await fetchQuoteByCategory(invCategory, c, { withName: true });
         return res.json(success({ type: data.source, ...data }));
     } catch (err) {
-        console.error('[行情查询]', err.message);
+        logger.error('[行情查询]', err.message);
         res.status(502).json(fail('行情查询失败：' + err.message));
     }
 });
@@ -799,7 +800,7 @@ router.post('/:id/refresh', async (req, res) => {
             actual_rate: actualRate, nav_date: navDate
         }, '行情已更新'));
     } catch (err) {
-        console.error('[刷新持仓]', err.message);
+        logger.error('[刷新持仓]', err.message);
         res.status(502).json(fail('行情刷新失败：' + err.message));
     }
 });

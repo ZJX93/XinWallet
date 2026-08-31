@@ -68,7 +68,7 @@ function processFile(filePath) {
   if (newContent !== before) {
     const count = (before.match(/\$\d+/g) || []).length;
     if (count > 0) {
-      console.log(`  [占位符] ${filePath}: 替换 ${count} 处 $N → ?`);
+      logger.info(`  [占位符] ${filePath}: 替换 ${count} 处 $N → ?`);
       modified = true;
       changes += count;
     }
@@ -80,7 +80,7 @@ function processFile(filePath) {
   if (newContent !== before2) {
     const count = (before2.match(/INTERVAL\s+'\d+/g) || []).length;
     if (count > 0) {
-      console.log(`  [INTERVAL] ${filePath}: 替换 ${count} 处 INTERVAL 'N unit' → INTERVAL N UNIT`);
+      logger.info(`  [INTERVAL] ${filePath}: 替换 ${count} 处 INTERVAL 'N unit' → INTERVAL N UNIT`);
       modified = true;
       changes += count;
     }
@@ -94,19 +94,19 @@ function processFile(filePath) {
 }
 
 function main() {
-  console.log('=== MySQL 兼容性修复 ===');
-  if (DRY_RUN) console.log('[DRY RUN 模式 — 不写入文件]\n');
+  logger.info('=== MySQL 兼容性修复 ===');
+  if (DRY_RUN) logger.info('[DRY RUN 模式 — 不写入文件]\n');
 
   const files = getJsFiles(SERVER_DIR);
-  console.log(`扫描 ${files.length} 个 JS 文件...\n`);
+  logger.info(`扫描 ${files.length} 个 JS 文件...\n`);
 
   let total = 0;
   for (const file of files) {
     total += processFile(file);
   }
 
-  console.log(`\n完成！共替换 ${total} 处。`);
-  if (DRY_RUN) console.log('(以上为预览，运行时不带 --dry-run 才会写入)');
+  logger.info(`\n完成！共替换 ${total} 处。`);
+  if (DRY_RUN) logger.info('(以上为预览，运行时不带 --dry-run 才会写入)');
 }
 
 main();

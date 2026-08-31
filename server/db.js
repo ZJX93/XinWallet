@@ -1,3 +1,4 @@
+const logger = require('../../../../../logger');
 /* ============================================
   鑫钱包 · Database Connection Pool（PostgreSQL / MySQL 双方言）
   ------------------------------------------------------------
@@ -250,7 +251,7 @@ function warnUnlessAlreadyExists(label, err) {
   // 建表 / 加索引 / 幂等写入常因「已存在 / 重复」而报错，属预期，忽略；
   // 其余错误才输出告警。
   if (/already exists|duplicate|ER_DUP_KEYNAME|ER_TABLE_EXISTS_ERROR/i.test(err.message)) return;
-  console.warn(`⚠️ ${label}`, err.message);
+  logger.warn(`⚠️ ${label}`, err.message);
 }
 
 /**
@@ -362,11 +363,11 @@ async function healBooks() {
 async function ensureColumn(table, column, definition) {
   try {
     await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    console.log(`✅ 已补齐列 ${table}.${column}`);
+    logger.info(`✅ 已补齐列 ${table}.${column}`);
   } catch (err) {
     // 列已存在（Postgres 42701）属预期，忽略
     if (/already exists|duplicate column|42701/i.test(err.message)) return;
-    console.warn(`⚠️ 补列 ${table}.${column} 失败（不影响启动，下次启动重试）:`, err.message);
+    logger.warn(`⚠️ 补列 ${table}.${column} 失败（不影响启动，下次启动重试）:`, err.message);
   }
 }
 
@@ -382,7 +383,7 @@ async function ensureIndex(name, table, columns) {
     await query(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns})`);
   } catch (err) {
     if (/already exists|duplicate key name|1061|42P07/i.test(err.message)) return;
-    console.warn(`⚠️ 建索引 ${name} 失败（不影响启动，下次启动重试）:`, err.message);
+    logger.warn(`⚠️ 建索引 ${name} 失败（不影响启动，下次启动重试）:`, err.message);
   }
 }
 
@@ -454,7 +455,7 @@ async function healEventTypeConstraint() {
   } catch (err) {
     // 表还不存在（全新库尚未执行 schema）或约束已是新版，均属预期
     if (/does not exist|already exists/i.test(err.message)) return;
-    console.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
+    logger.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
   }
 }
 
@@ -478,12 +479,12 @@ async function healRuleTypeConstraint() {
     );
   } catch (err) {
     if (/does not exist|already exists/i.test(err.message)) return;
-    console.warn('⚠️ AI 规则类型约束自愈警告（不影响启动，下次启动重试）:', err.message);
+    logger.warn('⚠️ AI 规则类型约束自愈警告（不影响启动，下次启动重试）:', err.message);
   }
 }
 
 async function initDatabase() {
-  console.log('🔧 正在初始化数据库...');
+  logger.info('🔧 正在初始化数据库...');
   try {
     const dbName = process.env.DB_NAME || 'xinwallet';
     const schemaFile = DB_DIALECT === 'mysql' ? 'schema.mysql.sql' : 'schema.sql';
@@ -507,7 +508,7 @@ async function initDatabase() {
             throw new Error(`非法数据库名: ${dbName}`);
           }
           await sysConn.query(`CREATE DATABASE \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-          console.log(`✅ MySQL 数据库 ${dbName} 已创建`);
+          logger.info(`✅ MySQL 数据库 ${dbName} 已创建`);
         }
       } finally {
         await sysConn.end();
@@ -532,7 +533,7 @@ async function initDatabase() {
             throw new Error(`非法数据库名: ${dbName}`);
           }
           await adminPool.query(`CREATE DATABASE "${dbName}" ENCODING 'UTF8'`);
-          console.log(`✅ PostgreSQL 数据库 ${dbName} 已创建`);
+          logger.info(`✅ PostgreSQL 数据库 ${dbName} 已创建`);
         }
       } finally {
         await adminPool.end();
@@ -560,42 +561,42 @@ async function initDatabase() {
     //    幂等、双方言兼容；在健康库上为 no-op，在损坏库上自动纠正。
     try {
       await healCategoryData();
-      console.log('✅ 分类种子自愈完成（无需修复时无任何变化）');
+      logger.info('✅ 分类种子自愈完成（无需修复时无任何变化）');
     } catch (err) {
-      console.warn('⚠️ 分类种子自愈警告（不影响启动，下次启动会重试）:', err.message);
+      logger.warn('⚠️ 分类种子自愈警告（不影响启动，下次启动会重试）:', err.message);
     }
 
     // 多账本自愈：为每位用户建立默认账本并回填遗留数据（幂等）
     try {
       await healBooks();
-      console.log('✅ 多账本数据自愈完成（无需修复时无任何变化）');
+      logger.info('✅ 多账本数据自愈完成（无需修复时无任何变化）');
     } catch (err) {
-      console.warn('⚠️ 多账本数据自愈警告（不影响启动，下次启动会重试）:', err.message);
+      logger.warn('⚠️ 多账本数据自愈警告（不影响启动，下次启动会重试）:', err.message);
     }
 
     // schema 列自愈：补齐已部署库缺失的新增列（如 sold_date），避免升级后查询 500
     try {
       await healSchemaColumns();
-      console.log('✅ schema 列自愈完成（无需补列时无任何变化）');
+      logger.info('✅ schema 列自愈完成（无需补列时无任何变化）');
     } catch (err) {
-      console.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
+      logger.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // AI CHECK 约束自愈：把 Phase 1 建的旧白名单升级到 Phase 3 的 8 个事件类型
     try {
       await healAiConstraints();
-      console.log('✅ AI 约束自愈完成（无需修复时无任何变化）');
+      logger.info('✅ AI 约束自愈完成（无需修复时无任何变化）');
     } catch (err) {
-      console.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
+      logger.warn('⚠️ AI 约束自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // 注：为保证「已部署库」升级兼容，上面仍运行幂等自愈步骤
     // （分类种子自愈 / 多账本回填 / 补齐新增列），对健康全新库均为 no-op，不会改动任何数据。
 
-    console.log(`✅ 数据库表结构已初始化 (${DB_DIALECT.toUpperCase()})`);
+    logger.info(`✅ 数据库表结构已初始化 (${DB_DIALECT.toUpperCase()})`);
     return true;
   } catch (err) {
-    console.error(`❌ 数据库初始化失败 [${DB_DIALECT.toUpperCase()}]:`, err.message);
+    logger.error(`❌ 数据库初始化失败 [${DB_DIALECT.toUpperCase()}]:`, err.message);
     return false;
   }
 }

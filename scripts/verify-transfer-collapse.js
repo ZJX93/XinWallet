@@ -53,7 +53,7 @@ const U = 1, B = 1;
 const mk = (id, type, amount, transfer_id = null, extra = {}) =>
   Object.assign({ id, type, amount, transfer_id, user_id: U, book_id: B }, extra);
 
-console.log('【1】正常转账：两条腿折叠成一条，保留 transfer_out');
+logger.info('【1】正常转账：两条腿折叠成一条，保留 transfer_out');
 {
   const rows = [
     mk(1, 'expense', 50),
@@ -67,7 +67,7 @@ console.log('【1】正常转账：两条腿折叠成一条，保留 transfer_ou
   ok('非转账记录不受影响', out.some(r => r.id === 1) && out.some(r => r.id === 4));
 }
 
-console.log('\n【2】⛔ 单边入账必须保留（transfer_id 为 NULL）');
+logger.info('\n【2】⛔ 单边入账必须保留（transfer_id 为 NULL）');
 {
   // POST /transactions 允许单独创建 type='transfer_in' 且 transfer_id 为 NULL。
   // 一刀切排除所有 transfer_in 会让这条记录彻底消失 —— 数据还在、余额还算着，
@@ -81,7 +81,7 @@ console.log('\n【2】⛔ 单边入账必须保留（transfer_id 为 NULL）');
   ok('它确实在结果里', out.some(r => r.id === 1));
 }
 
-console.log('\n【3】⛔ out 腿缺失的残留 in 腿必须保留');
+logger.info('\n【3】⛔ out 腿缺失的残留 in 腿必须保留');
 {
   // 历史数据里可能出现 out 腿被删而 in 腿残留。若一刀切排除，
   // 这条脏数据将永久不可见、无法清理。
@@ -94,7 +94,7 @@ console.log('\n【3】⛔ out 腿缺失的残留 in 腿必须保留');
   ok('可见因此可删', out.some(r => r.id === 1 && r.type === 'transfer_in'));
 }
 
-console.log('\n【4】多笔转账互不干扰');
+logger.info('\n【4】多笔转账互不干扰');
 {
   const rows = [
     mk(1, 'transfer_out', 100, 10),
@@ -110,7 +110,7 @@ console.log('\n【4】多笔转账互不干扰');
   eq('transfer_id 各一次', out.map(r => r.transfer_id), [10, 20, 30]);
 }
 
-console.log('\n【5】跨用户 / 跨账本不能误配对');
+logger.info('\n【5】跨用户 / 跨账本不能误配对');
 {
   // EXISTS 子查询必须带 user_id / book_id 条件。漏掉的话，
   // 另一个用户碰巧同 transfer_id 的 out 腿会把本用户的 in 腿隐藏掉。
@@ -129,7 +129,7 @@ console.log('\n【5】跨用户 / 跨账本不能误配对');
   ok('不同 book 的 in 腿不被隐藏', out2.some(r => r.id === 2));
 }
 
-console.log('\n【6】折叠不影响余额推导（复式记账两条腿都必须留在库里）');
+logger.info('\n【6】折叠不影响余额推导（复式记账两条腿都必须留在库里）');
 {
   // 折叠只发生在「列表查询的 WHERE」，不是删数据。
   // 余额由 computeAccountBalance 从全部 transactions 推导，
@@ -151,7 +151,7 @@ console.log('\n【6】折叠不影响余额推导（复式记账两条腿都必�
   ok('但库里仍是 2 条（折叠不删数据）', all.length === 2);
 }
 
-console.log('\n【7】汇总口径不受折叠影响');
+logger.info('\n【7】汇总口径不受折叠影响');
 {
   // /summary 只 SUM type='income' 和 type='expense'（见 transactions.js:547-556），
   // 转账两条腿从来不计入。所以折叠不会让任何汇总数字发生变化 —— 这一点必须
@@ -172,7 +172,7 @@ console.log('\n【7】汇总口径不受折叠影响');
   eq('支出值正确', sum(collapse(rows)).expense, 300);
 }
 
-console.log('\n【8】按类型筛选「转账」时同样只出一条');
+logger.info('\n【8】按类型筛选「转账」时同样只出一条');
 {
   // 客户端筛选 type=transfer 会展开成 IN ('transfer_in','transfer_out')。
   // 折叠条件是独立 AND 上去的，所以筛选态下同样生效。
@@ -186,7 +186,7 @@ console.log('\n【8】按类型筛选「转账」时同样只出一条');
   eq('且是 out 腿', typeFiltered[0].type, 'transfer_out');
 }
 
-console.log('\n【9】折叠记录必须携带完整 A→B（否则客户端无法渲染）');
+logger.info('\n【9】折叠记录必须携带完整 A→B（否则客户端无法渲染）');
 {
   // 服务端 formatted 里的 transfer 字段：只有 transfer_id + 两端名字都在才构造。
   const buildTransfer = t =>
@@ -208,7 +208,7 @@ console.log('\n【9】折叠记录必须携带完整 A→B（否则客户端无�
     buildTransfer({ tr_from_name: 'A', tr_to_name: 'B' }) === null);
 }
 
-console.log('\n【10】编辑/删除必须走 /transfers/:id 而不是 /transactions/:id');
+logger.info('\n【10】编辑/删除必须走 /transfers/:id 而不是 /transactions/:id');
 {
   // 改 transactions/:id 只会动一条腿 —— 转出账户扣了 200、转入账户还是加 100，
   // 两个账户余额从此对不上。折叠记录的编辑必须整体走 transfers 路由。
@@ -221,7 +221,7 @@ console.log('\n【10】编辑/删除必须走 /transfers/:id 而不是 /transact
     route({ id: 9, transfer: null }), '/transactions/9');
 }
 
-console.log('\n【11】分页：折叠必须在 SQL 层，不能在 JS 里过滤');
+logger.info('\n【11】分页：折叠必须在 SQL 层，不能在 JS 里过滤');
 {
   // 若拿到 LIMIT 20 的结果后再在 JS 里 filter 掉 in 腿，
   // 用户会看到「明明说有 20 条却只显示 14 条」，且下一页判断全错。
@@ -239,7 +239,7 @@ console.log('\n【11】分页：折叠必须在 SQL 层，不能在 JS 里过滤
   ok('本例总共只有 10 笔转账，所以 10 条即全部', collapse(page).length === 10);
 }
 
-console.log('\n' + results.join('\n'));
-console.log(`\n${'─'.repeat(52)}`);
-console.log(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
+logger.info('\n' + results.join('\n'));
+logger.info(`\n${'─'.repeat(52)}`);
+logger.info(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
 if (fail > 0) process.exit(1);

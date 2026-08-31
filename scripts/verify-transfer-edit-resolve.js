@@ -24,10 +24,10 @@ let pass = 0, fail = 0;
 const failures = [];
 
 function ok(cond, msg) {
-    if (cond) { pass++; console.log('  ok   ' + msg); }
-    else { fail++; failures.push(msg); console.log('  FAIL ' + msg); }
+    if (cond) { pass++; logger.info('  ok   ' + msg); }
+    else { fail++; failures.push(msg); logger.info('  FAIL ' + msg); }
 }
-function section(t) { console.log('\n' + t); }
+function section(t) { logger.info('\n' + t); }
 
 // ─────────────────────────────────────────────────────────────
 section('A. 服务端：GET /transactions/:id 必须自带转账信息');
@@ -228,10 +228,10 @@ ok(inRangeNew('2026-09-01T00:00:00', '2026-08-01', '2026-08-31') === false,
     '区间外仍然不命中（没有放宽边界）');
 
 // ─────────────────────────────────────────────────────────────
-console.log('\n' + '─'.repeat(52));
-console.log(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
+logger.info('\n' + '─'.repeat(52));
+logger.info(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
 if (fail) {
-    console.log('\n失败项：');
-    failures.forEach(f => console.log('  • ' + f));
+    logger.info('\n失败项：');
+    failures.forEach(f => logger.info('  • ' + f));
     process.exit(1);
 }

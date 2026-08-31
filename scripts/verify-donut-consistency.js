@@ -27,12 +27,12 @@ let pass = 0;
 let fail = 0;
 
 function check(name, ok, detail) {
-  if (ok) { pass++; console.log(`  ✓ ${name}`); }
-  else { fail++; console.log(`  ✗ ${name}${detail ? '  → ' + detail : ''}`); }
+  if (ok) { pass++; logger.info(`  ✓ ${name}`); }
+  else { fail++; logger.info(`  ✗ ${name}${detail ? '  → ' + detail : ''}`); }
 }
 
 /* ─────────── A. 调色板一致性 ─────────── */
-console.log('\n[A] 莫兰迪调色板三端一致');
+logger.info('\n[A] 莫兰迪调色板三端一致');
 
 // web: const lightCats = [ '#B89881','#84B3AC', ... ]
 const webBlock = read('web').match(/const lightCats\s*=\s*\[([\s\S]*?)\]/);
@@ -71,7 +71,7 @@ check('全部为低饱和莫兰迪（S ≤ 34%）', overSat.length === 0,
   overSat.map((c) => `${c}(S=${hsv(c).s.toFixed(0)}%)`).join(' '));
 
 /* ─────────── B. 几何参数等价 ─────────── */
-console.log('\n[B] 环图几何参数三端等价');
+logger.info('\n[B] 环图几何参数三端等价');
 
 const web = read('web');
 const and = read('android');
@@ -147,7 +147,7 @@ check('android 选中过渡 260ms', /durationMillis = 260/.test(and));
 check('harmony 选中过渡 260ms', /const DUR = 260/.test(har));
 
 /* ─────────── C. web 式样特征：不该再有的东西 ─────────── */
-console.log('\n[C] 已移除非 web 式样的元素');
+logger.info('\n[C] 已移除非 web 式样的元素');
 
 // 只在环图代码段内检查 —— 安卓 DonutProgress（预算进度）本来就该有灰轨道，
 // 鸿蒙 TrendChart 的网格线也用 COLORS.divider，全文匹配会误报。
@@ -167,7 +167,7 @@ check('harmony 环心第一行带占比', /donutCenterTitle[\s\S]{0,400}pct\.toF
 // 2026-08-23 改动：移除「小类/大类」全局切换，改为「环图只画一级、列表随选中项展开二级」。
 // 这是两端各自独立实现的行为契约，很容易在后续重构中被单端改回去 —— 一旦一端恢复
 // granularity 切换、另一端没有，两端统计页的信息层级就不一样了，而且不会有任何报错。
-console.log('\n[D] 层级式样：一级环图 + 选中项二级列表');
+logger.info('\n[D] 层级式样：一级环图 + 选中项二级列表');
 
 check('android 已移除小类/大类切换', !/GRAN_OPTIONS|granularity/.test(andReports));
 check('harmony 已移除小类/大类切换', !/GranChip|granularity/.test(harReports));
@@ -182,5 +182,5 @@ check('harmony 列表占比用父类总额', /baseTotal:\s*this\.effIdx\(\)/.tes
 const harComponents = fs.readFileSync(path.join(ROOT, 'harmony/entry/src/main/ets/common/components/Components.ets'), 'utf8');
 check('harmony CategoryBars.items 有 @Prop', /@Prop items: DonutPiece\[\]/.test(harComponents));
 
-console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass}/${pass + fail} 项通过`);
+logger.info(`\n${fail === 0 ? '✓' : '✗'} ${pass}/${pass + fail} 项通过`);
 process.exit(fail === 0 ? 0 : 1);

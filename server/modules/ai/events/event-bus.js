@@ -27,6 +27,7 @@
 
 // 事件处理器注册表
 const handlers = new Map();
+const logger = require('../../../logger');
 
 // 事件历史（用于调试/监控，最多保留 1000 条）
 const eventHistory = [];
@@ -91,7 +92,7 @@ function emit(eventType, payload) {
                 try {
                     handler(event);
                 } catch (err) {
-                    console.warn(`[event-bus] Handler for "${type}" threw:`, err.message);
+                    logger.warn(`[event-bus] Handler for "${type}" threw:`, err.message);
                 }
             });
         }

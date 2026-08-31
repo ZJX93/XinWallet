@@ -213,7 +213,7 @@ const ChartManager = {
         // 趋势图
         this.destroy('dashTrend');
         const trendCanvas = document.getElementById('dashTrendChart');
-        if (!trendCanvas) { console.warn('[chart] dashTrendChart canvas not found, skipping'); return; }
+        if (!trendCanvas) { logger.warn('[chart] dashTrendChart canvas not found, skipping'); return; }
         const ctx1 = trendCanvas.getContext('2d');
         const months = [...data.months].reverse();
 
@@ -265,7 +265,7 @@ const ChartManager = {
         // 饼图（支出构成）：仅显示一级分类，点击扇区下钻到二级（数据库已做子级向父级汇总）
         this.destroy('dashPie');
         const pieCanvas = document.getElementById('dashPieChart');
-        if (!pieCanvas) { console.warn('[chart] dashPieChart canvas not found'); return; }
+        if (!pieCanvas) { logger.warn('[chart] dashPieChart canvas not found'); return; }
         this._pieCtx = pieCanvas.getContext('2d');
         this._pieColors = c;
         this._pieStack = [];
@@ -393,7 +393,7 @@ const ChartManager = {
         this.applyDefaults();
         this.destroy('invAllocation');
         const canvas = document.getElementById('invAllocationPie');
-        if (!canvas) { console.warn('[chart] invAllocationPie canvas not found, skipping'); return; }
+        if (!canvas) { logger.warn('[chart] invAllocationPie canvas not found, skipping'); return; }
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         const c = this.colors();

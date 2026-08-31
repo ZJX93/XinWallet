@@ -86,13 +86,13 @@ const out = SPEC.map((c) => {
 const dark = SPEC.map((c) => ({ name: c.name, hex: hsvToHex(c.h, Math.max(0, c.s - 2), Math.min(100, c.v + 8)) }));
 
 let fail = 0;
-console.log('idx  名称      HSV            hex       白底对比  暗底对比');
+logger.info('idx  名称      HSV            hex       白底对比  暗底对比');
 out.forEach((c, i) => {
   const okS = c.s >= 16 && c.s <= 32;
   const okL = c.onLight >= 1.6;
   const okD = c.onDark >= 1.6;
   if (!okS || !okL || !okD) fail++;
-  console.log(
+  logger.info(
     String(i).padEnd(4),
     c.name.padEnd(8),
     `${c.h}/${c.s}/${c.v}`.padEnd(14),
@@ -103,18 +103,18 @@ out.forEach((c, i) => {
   );
 });
 
-console.log('\n相邻色相距离（环上必然并排，要求 ≥90°）:');
+logger.info('\n相邻色相距离（环上必然并排，要求 ≥90°）:');
 for (let i = 0; i < SPEC.length; i++) {
   const j = (i + 1) % SPEC.length;
   const d = hueDist(SPEC[i].h, SPEC[j].h);
   if (d < 90) fail++;
-  console.log(`  ${SPEC[i].name} ↔ ${SPEC[j].name}: ${d}°${d < 90 ? '  ✗' : ''}`);
+  logger.info(`  ${SPEC[i].name} ↔ ${SPEC[j].name}: ${d}°${d < 90 ? '  ✗' : ''}`);
 }
 
-console.log('\n— 亮色（安卓/鸿蒙/web 亮色共用）—');
-console.log(out.map((c) => `'${c.hex}', // ${c.name}`).join('\n'));
-console.log('\n— 暗色（web 暗色主题用）—');
-console.log(dark.map((c) => `'${c.hex}', // ${c.name}`).join('\n'));
+logger.info('\n— 亮色（安卓/鸿蒙/web 亮色共用）—');
+logger.info(out.map((c) => `'${c.hex}', // ${c.name}`).join('\n'));
+logger.info('\n— 暗色（web 暗色主题用）—');
+logger.info(dark.map((c) => `'${c.hex}', // ${c.name}`).join('\n'));
 
-console.log(fail === 0 ? '\n✓ 全部校验通过' : `\n✗ ${fail} 项未通过`);
+logger.info(fail === 0 ? '\n✓ 全部校验通过' : `\n✗ ${fail} 项未通过`);
 process.exit(fail === 0 ? 0 : 1);

@@ -22,7 +22,7 @@ const path = require('path');
 const appSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
 const start = appSrc.indexOf('function mergeTransferPairs');
 if (start < 0) {
-    console.error('✗ 在 public/js/app.js 里找不到 mergeTransferPairs');
+    logger.error('✗ 在 public/js/app.js 里找不到 mergeTransferPairs');
     process.exit(1);
 }
 // 从函数起点往后找到匹配的右花括号
@@ -37,12 +37,12 @@ const mergeTransferPairs = new Function(`${fnSrc}; return mergeTransferPairs;`)(
 
 let pass = 0, fail = 0;
 function check(name, cond, extra) {
-    if (cond) { pass++; console.log(`  ✓ ${name}`); }
-    else { fail++; console.log(`  ✗ ${name}${extra ? '  → ' + JSON.stringify(extra) : ''}`); }
+    if (cond) { pass++; logger.info(`  ✓ ${name}`); }
+    else { fail++; logger.info(`  ✗ ${name}${extra ? '  → ' + JSON.stringify(extra) : ''}`); }
 }
 
 /* ============ 1. 新服务端：已折叠，只有 out 腿 + transfer 字段 ============ */
-console.log('\n[1] 新服务端（SQL 已折叠，列表只有 out 腿）');
+logger.info('\n[1] 新服务端（SQL 已折叠，列表只有 out 腿）');
 {
     const list = [
         {
@@ -67,7 +67,7 @@ console.log('\n[1] 新服务端（SQL 已折叠，列表只有 out 腿）');
 }
 
 /* ============ 2. 旧服务端：未折叠，两条腿都在（兜底路径） ============ */
-console.log('\n[2] 旧服务端（未折叠，两条腿都返回）');
+logger.info('\n[2] 旧服务端（未折叠，两条腿都返回）');
 {
     const list = [
         {
@@ -87,7 +87,7 @@ console.log('\n[2] 旧服务端（未折叠，两条腿都返回）');
 }
 
 /* ============ 3. 手动单边入账：transfer_id 为 NULL，必须原样保留 ============ */
-console.log('\n[3] 手动单边入账（transfer_id 为 NULL）');
+logger.info('\n[3] 手动单边入账（transfer_id 为 NULL）');
 {
     const list = [
         { id: 201, type: 'transfer_in', amount: 500, date: '2026-08-19 12:00:00', transfer_id: null, account: { id: 2, name: '余额宝' } }
@@ -99,7 +99,7 @@ console.log('\n[3] 手动单边入账（transfer_id 为 NULL）');
 }
 
 /* ============ 4. 残留 in 腿（out 已被删）：必须仍可见 ============ */
-console.log('\n[4] 残留 in 腿（out 腿已被删除的历史脏数据）');
+logger.info('\n[4] 残留 in 腿（out 腿已被删除的历史脏数据）');
 {
     const list = [
         { id: 301, type: 'transfer_in', amount: 800, date: '2026-08-18 08:00:00', transfer_id: 9, account: { id: 2, name: '余额宝' } }
@@ -110,7 +110,7 @@ console.log('\n[4] 残留 in 腿（out 腿已被删除的历史脏数据）');
 }
 
 /* ============ 5. transfer 字段不完整（账户被删）：走兜底不崩 ============ */
-console.log('\n[5] transfer 字段缺 to（账户被删，服务端给 null）');
+logger.info('\n[5] transfer 字段缺 to（账户被删，服务端给 null）');
 {
     const list = [
         {
@@ -125,7 +125,7 @@ console.log('\n[5] transfer 字段缺 to（账户被删，服务端给 null）')
 }
 
 /* ============ 6. 多笔转账互不串台 ============ */
-console.log('\n[6] 同一天多笔折叠转账');
+logger.info('\n[6] 同一天多笔折叠转账');
 {
     const list = [
         {
@@ -147,7 +147,7 @@ console.log('\n[6] 同一天多笔折叠转账');
 }
 
 /* ============ 7. 混合形态（折叠 + 未折叠同时出现） ============ */
-console.log('\n[7] 混合：一笔已折叠 + 一笔仍是两条腿');
+logger.info('\n[7] 混合：一笔已折叠 + 一笔仍是两条腿');
 {
     const list = [
         {
@@ -164,5 +164,5 @@ console.log('\n[7] 混合：一笔已折叠 + 一笔仍是两条腿');
         merged.every(x => x._transferOut?.account?.name && x._transferIn?.account?.name));
 }
 
-console.log(`\n${fail === 0 ? '✅' : '❌'} 通过 ${pass} 项，失败 ${fail} 项`);
+logger.info(`\n${fail === 0 ? '✅' : '❌'} 通过 ${pass} 项，失败 ${fail} 项`);
 process.exit(fail === 0 ? 0 : 1);

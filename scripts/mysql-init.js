@@ -25,7 +25,7 @@ async function init() {
   const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
   const dbPass = process.env.DB_PASSWORD || '';
 
-  console.log(`连接 MySQL ${dbHost}:${dbPort}...`);
+  logger.info(`连接 MySQL ${dbHost}:${dbPort}...`);
 
   // 1. 连接（不指定数据库，先创建数据库）
   let conn = await mysql.createConnection({
@@ -36,7 +36,7 @@ async function init() {
     multipleStatements: true,
   });
 
-  console.log(`创建数据库 ${dbName} (若不存在)...`);
+  logger.info(`创建数据库 ${dbName} (若不存在)...`);
   await conn.query(
     `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
   );
@@ -46,7 +46,7 @@ async function init() {
   const schemaPath = path.join(__dirname, '..', 'server', 'schema.mysql.sql');
   const schemaSql = fs.readFileSync(schemaPath, 'utf8');
 
-  console.log(`执行 ${schemaPath}...`);
+  logger.info(`执行 ${schemaPath}...`);
 
   // 3. 分块执行（每条语句独立执行，避免一次执行太多）
   // 先剔除整行注释：否则"注释行 + 语句"的片段会以 -- 开头，被下方过滤器误删，
@@ -71,9 +71,9 @@ async function init() {
         err.code === 'ER_TABLE_EXISTS_ERROR' ||
         err.code === 'ER_DUP_FIELDNAME'
       ) {
-        console.log(`  [跳过] ${err.message.split('\n')[0]}`);
+        logger.info(`  [跳过] ${err.message.split('\n')[0]}`);
       } else {
-        console.error(`  [错误] ${err.code}: ${stmt.slice(0, 80)}...`);
+        logger.error(`  [错误] ${err.code}: ${stmt.slice(0, 80)}...`);
         failed++;
         // 遇到外键问题先跳过（MySQL 顺序敏感）
         if (err.code === 'ER_CANNOT_ADD_FOREIGN') continue;
@@ -81,16 +81,16 @@ async function init() {
     }
   }
 
-  console.log(`\n完成：${success} 成功, ${failed} 失败`);
+  logger.info(`\n完成：${success} 成功, ${failed} 失败`);
   await conn.end();
 
   if (failed > 0) {
-    console.warn('\n部分语句失败，建议检查错误信息或手动运行 schema.mysql.sql');
+    logger.warn('\n部分语句失败，建议检查错误信息或手动运行 schema.mysql.sql');
     process.exit(1);
   }
 }
 
 init().catch(err => {
-  console.error('初始化失败:', err.message);
+  logger.error('初始化失败:', err.message);
   process.exit(1);
 });

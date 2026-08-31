@@ -21,7 +21,7 @@ window.cache = cache; // ES Module 无法访问 let 声明的顶级变量，显�
 // ==========================================
 function showToast(msg, type = 'info') {
     const c = document.getElementById('toastContainer');
-    if (!c) { console.log(`[toast:${type}]`, msg); return; }
+    if (!c) { logger.info(`[toast:${type}]`, msg); return; }
     // error 走 role=alert 让屏幕阅读器立刻播报；其他用 role=status 走 polite
     const t = document.createElement('div');
     t.className = `toast ${type}`;
@@ -199,7 +199,7 @@ function showSkeleton(el, rows = 3, variant = 'list') {
 // 空状态：图标 + 文案，比纯文字更友好
 function showEmpty(el, text, icon = '🗂️') {
     if (!el) return;
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon}</div><div class="empty-text">${escapeHtml(text)}</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${escapeHtml(icon)}</div><div class="empty-text">${escapeHtml(text)}</div></div>`;
 }
 
 // ==========================================
@@ -444,7 +444,7 @@ window.getCurrentPage = () => currentPage;
 
 // 多账本切换：重拉缓存（账户/分类等随账本隔离）+ 刷新当前页数据
 window.addEventListener('book:changed', async () => {
-    try { await initCache(); } catch (e) { console.warn('book:changed initCache 失败:', e.message); }
+    try { await initCache(); } catch (e) { logger.warn('book:changed initCache 失败:', e.message); }
     if (typeof window.refreshCurrentPage === 'function') window.refreshCurrentPage();
 });
 
@@ -499,9 +499,9 @@ function initColorSwatches(containerId, inputId) {
 // 应用启动
 // ==========================================
 async function boot() {
-    console.log('🚀 鑫钱包启动...');
-    const safeInit = (name, fn) => { try { fn(); console.log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
-    try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
+    logger.info('🚀 鑫钱包启动...');
+    const safeInit = (name, fn) => { try { fn(); logger.info('  ✅ '+name); } catch(e) { logger.warn('  ⚠️  '+name+' (跳过):', e.message); } };
+    try { await initCache(); logger.info('  ✅ initCache'); } catch(e) { logger.error('  ❌ initCache:', e.message); throw e; }
     // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后
     safeInit('TransMonthFilter', () => initTransMonthFilter());
     safeInit('ThemeManager', () => ThemeManager.init());
@@ -524,7 +524,7 @@ async function boot() {
     safeInit('AISettings', () => AISettings.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());
-    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn('  ⚠️  Dashboard (跳过):', e.message); }
+    try { await DashboardManager.init(); logger.info('  ✅ Dashboard'); } catch(e) { logger.warn('  ⚠️  Dashboard (跳过):', e.message); }
 
     // 从 URL path 恢复页面状态（干净路由：/transactions）
     const page = currentRoute();
@@ -536,7 +536,7 @@ async function boot() {
         history.replaceState({ page: 'dashboard' }, '', pageUrl('dashboard'));
         await showPage('dashboard');
     }
-    console.log('✅ 鑫钱包系统已就绪');
+    logger.info('✅ 鑫钱包系统已就绪');
 }
 
 // boot() 由 js/managers/index.js 在 DOMContentLoaded 后直接调用；app.js 加载为普通 script，所有变量已在全局

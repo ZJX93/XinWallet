@@ -6,6 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, toNumber, getActiveProvider, aiModule, upload } = require('./_shared');
+const logger = require('../../logger');
 const { applyPreprocessDateOverride } = aiModule;
 const router = express.Router();
 function toLegacyOcrItems(transactions) {
@@ -42,7 +43,8 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         force,
     });
 
-    console.log('[OCR-DEBUG] transcribe_source=', tr.source, '\n[OCR-DEBUG] transcribe_text=', tr.text);
+    // 转录原文含用户账单隐私，默认不输出（需 LOG_LEVEL=debug 才记录）
+    logger.debug('[OCR] transcribe', { source: tr.source, text: tr.text });
     if (!tr.ok) {
         // ⚠️ fail(msg, code) 的第二参数是【错误码】不是附加数据（_helpers.js:16）。
         //    附加信息只能挂在返回对象上，不能塞进 fail()。
@@ -84,7 +86,8 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
             // 判定像票据但一条策略都没命中 → 退回原文，交给主链路尽力而为
         }
     }
-    console.log('[OCR-DEBUG] parseText=', parseText, ' receiptDate=', receiptDate, ' merchantHints=', JSON.stringify(merchantHints));
+    // 解析文本/商户线索含隐私，默认不输出
+    logger.debug('[OCR] parse', { parseText, receiptDate, merchantHints });
 
     // ── 第三步：文字 → v0.2 主链路（与手打文字完全同路）──────────
     /*  ⚠️ account_id 必须由客户端在上传时一并给出。
@@ -136,7 +139,8 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
 
     /*  账户字段必须打出来：此前这行只打日期/金额/商户，账户匹配情况在日志里完全不可见，
         线上「账户没匹配上」只能靠查库快照反推（2026-08-29 排障代价）。 */
-    console.log('[OCR-DEBUG] transactions=', JSON.stringify(transactions.map(t => ({
+    // 交易详情含金额/账户等隐私，默认不输出（排障设 LOG_LEVEL=debug）
+    logger.debug('[OCR] transactions', { transactions: transactions.map(t => ({
         date: t.date,
         amount: t.amount,
         merchant: t.merchant,
@@ -145,8 +149,8 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         account_conf: (t.confidence && t.confidence.account) != null ? t.confidence.account : null,
         account_details: t.account_match_details || null,
         date_source: t.evidence && t.evidence.date,
-    }))));
-    console.log('[OCR-DEBUG] 客户端传入 account_id=', imageContext.account_id, ' last_account_name=', imageContext.last_account_name);
+    })) });
+    logger.debug('[OCR] imageContext', { account_id: imageContext.account_id, last_account_name: imageContext.last_account_name });
 
     // 转录成功但抽不出交易：把转录文字回给前端，用户可以手工改文字再解析
     if (!transactions.length) {
@@ -215,7 +219,7 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
         const force = normalizeForce(req.body && req.body.force);
         await handleImageAccounting(req, res, imageBase64, mime, force);
     } catch (err) {
-        console.error('[图片记账 ERROR]', err && err.stack ? err.stack : err);
+        logger.error('[图片记账 ERROR]', err && err.stack ? err.stack : err);
         handleServerError(res, err, '图片识别');
     }
 });
@@ -238,7 +242,7 @@ router.post('/ocr/retranscribe', upload.single('image'), async (req, res) => {
         const force = normalizeForce(req.body && req.body.force) || 'tencent_ocr';
         await handleImageAccounting(req, res, imageBase64, mime, force);
     } catch (err) {
-        console.error('[图片重转录 ERROR]', err && err.stack ? err.stack : err);
+        logger.error('[图片重转录 ERROR]', err && err.stack ? err.stack : err);
         handleServerError(res, err, '重新识别');
     }
 });

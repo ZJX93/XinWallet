@@ -53,7 +53,7 @@ const PageLoader = {
             rawHtml = html;
             this.loading.delete(src);
         }).catch(err => {
-            console.error(`[PageLoader] Failed to load ${src}:`, err);
+            logger.error(`[PageLoader] Failed to load ${src}:`, err);
             this.loading.delete(src);
         });
         this.loading.set(src, p);

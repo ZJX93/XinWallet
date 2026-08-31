@@ -1,3 +1,4 @@
+const logger = require('../../../../../../../../logger');
 /* ============================================
    预测存储（Prediction Store）
    ------------------------------------------------
@@ -127,7 +128,7 @@ async function commitPrediction(id, userId, bookId, action, correctedTxns, idemp
         // 不 await：学习是后台增强，不让用户等；异常在内部被吞掉
         setImmediate(() => {
             triggerLearning(payload).catch(err => {
-                console.error(`[ai] learning failed for prediction ${payload.predictionId}`, err);
+                logger.error(`[ai] learning failed for prediction ${payload.predictionId}`, err);
             });
         });
     }
@@ -389,7 +390,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
             feedbackEventId = fbIns.insertId;
         } catch (_) {
             // 学习类写入失败不回滚已落账数据（只记日志，后续由 cron 兜底）
-            console.error(`[ai] feedback event insert failed for prediction ${id}`, _);
+            logger.error(`[ai] feedback event insert failed for prediction ${id}`, _);
         }
 
         // 9) 幂等竞态由外层 commitPrediction() 捕获 23505/1062 处理（见上方 catch），
@@ -433,7 +434,7 @@ async function discardPrediction(id, userId, bookId, reason) {
             [userId, bookId, accountId, id, JSON.stringify({ reason: reason || '', source: 'user_discard' })]
         );
     } catch (_) {
-        console.error(`[ai] discard feedback event failed for prediction ${id}`, _);
+        logger.error(`[ai] discard feedback event failed for prediction ${id}`, _);
     }
 
     await db.query(`UPDATE ai_predictions SET status = 'discarded' WHERE id = ?`, [id]);

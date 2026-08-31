@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -41,7 +42,7 @@ function writeKeyFile(keyHex) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(KEY_FILE, keyHex, { mode: 0o600 }); // 仅 owner 可读
     } catch (err) {
-        console.warn(`⚠️  无法写入加密密钥文件 ${KEY_FILE}: ${err.message}`);
+        logger.warn(`⚠️ 无法写入加密密钥文件 ${KEY_FILE}: ${err.message}`);
     }
 }
 
@@ -55,7 +56,7 @@ function getKey() {
     keyHex = readKeyFile();
     if (keyHex) {
         if (process.env.NODE_ENV !== 'production') {
-            console.log('🔐 从数据卷读取 ENCRYPTION_KEY');
+            logger.info('🔐 从数据卷读取 ENCRYPTION_KEY');
         }
         return deriveKey(keyHex);
     }
@@ -64,14 +65,14 @@ function getKey() {
     // 即可解密全部已存的 AI/OCR 凭证。必须通过 ENCRYPTION_KEY 环境变量或数据卷密钥文件
     // 显式提供；缺失即拒绝启动（参考 auth.js 对 JWT_SECRET 的硬失败做法）。
     if (process.env.NODE_ENV === 'production') {
-        console.error('❌ 生产环境未提供 ENCRYPTION_KEY 且数据卷无可读密钥文件，拒绝以临时密钥启动'
+        logger.error('❌ 生产环境未提供 ENCRYPTION_KEY 且数据卷无可读密钥文件，拒绝以临时密钥启动'
             + '（避免密钥泄露与既有凭证不可解密）。请显式设置 ENCRYPTION_KEY 环境变量或挂载密钥文件后重启。');
         process.exit(1);
     }
     keyHex = crypto.randomBytes(32).toString('hex');
     writeKeyFile(keyHex);
-    console.warn('🔐 首次启动自动生成 ENCRYPTION_KEY（已写入 ' + KEY_FILE + '）');
-    console.warn('   后续容器重启将自动使用此密钥');
+    logger.warn('🔐 首次启动自动生成 ENCRYPTION_KEY（已写入 ' + KEY_FILE + '）');
+    logger.warn('   后续容器重启将自动使用此密钥');
     return deriveKey(keyHex);
 }
 
@@ -121,7 +122,7 @@ function decrypt(ciphertext) {
     if (buf.length < IV_LENGTH + TAG_LENGTH) {
         // 安全加固：长度不足既非合法密文，也严禁当作明文原样返回（避免明文密钥/凭证泄露）。
         // 严格返回 null，由调用方按解密失败处理（需用户在「AI/OCR 配置」页重新保存凭证）。
-        console.warn(`[crypto] 数据长度异常（非合法密文），拒绝回退为明文：prefix=${ciphertext.slice(0, 6)}...`);
+        logger.warn(`[crypto] 数据长度异常（非合法密文），拒绝回退为明文：prefix=${ciphertext.slice(0, 6)}...`);
         return null;
     }
     try {
@@ -135,7 +136,7 @@ function decrypt(ciphertext) {
         return decrypted;
     } catch (err) {
         // tag 校验失败 = 密钥变更或数据已损坏。明确返回 null，不再静默回退。
-        console.error('[crypto] 解密失败（tag 校验未通过）：', err.message, `prefix=${ciphertext.slice(0, 6)}...`);
+        logger.error('[crypto] 解密失败（tag 校验未通过）：', err.message, `prefix=${ciphertext.slice(0, 6)}...`);
         return null;
     }
 }

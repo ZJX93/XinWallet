@@ -106,7 +106,7 @@ app.use('/api', routes);
 // 全局错误处理中间件：统一所有 API 错误的响应格式
 app.use((err, req, res, next) => {
     // 记录错误日志（生产环境可接入日志系统）
-    console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err.stack || err);
+    logger.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err.stack || err);
     
     // Multer 文件大小限制错误
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -279,37 +279,37 @@ app.get('*', (req, res, next) => {
 async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
     // 首次启动：打印连接配置（密码脱敏）
     if (process.env.NODE_ENV !== 'production' || process.env.DB_DEBUG === '1') {
-        console.log(`📡 数据库连接: ${process.env.DB_USER}@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME}`);
+        logger.info(`📡 数据库连接: ${process.env.DB_USER}@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME}`);
     }
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const ok = await db.initDatabase();
             if (ok) {
-                console.log('✅ 数据库已就绪');
+                logger.info('✅ 数据库已就绪');
                 return true;
             }
         } catch (err) {
             // 详细打印最后一次连接错误（帮助诊断）
             if (attempt === 1 || attempt % 5 === 0) {
-                console.error(`❌ 数据库初始化失败 (尝试 ${attempt}/${maxAttempts}): ${err.message}`);
-                if (err.code) console.error(`   错误代码: ${err.code}`);
+                logger.error(`❌ 数据库初始化失败 (尝试 ${attempt}/${maxAttempts}): ${err.message}`);
+                if (err.code) logger.error(`   错误代码: ${err.code}`);
                 // 输出排查建议
                 const isPg = db.DB_DIALECT === 'pg';
-                console.error('   排查方向:');
+                logger.error('   排查方向:');
                 if (isPg) {
-                    console.error('   1) 确认 PostgreSQL 已启动并监听 0.0.0.0:5432 (非仅 127.0.0.1)');
-                    console.error('   2) 确认用户有建表/建库权限 (CREATEDB, CREATE TABLE, ALTER, INDEX)');
-                    console.error('   3) 确认防火墙放行 5432 端口');
-                    console.error('   4) 在终端执行: psql -U postgres -h <HOST> 验证能登录');
+                    logger.error('   1) 确认 PostgreSQL 已启动并监听 0.0.0.0:5432 (非仅 127.0.0.1)');
+                    logger.error('   2) 确认用户有建表/建库权限 (CREATEDB, CREATE TABLE, ALTER, INDEX)');
+                    logger.error('   3) 确认防火墙放行 5432 端口');
+                    logger.error('   4) 在终端执行: psql -U postgres -h <HOST> 验证能登录');
                 } else {
-                    console.error('   1) 确认 MySQL 已启动并监听 0.0.0.0:3306 (非仅 127.0.0.1)');
-                    console.error('   2) 确认用户有建表/建库权限 (CREATE DATABASE, CREATE TABLE, ALTER, INDEX)');
-                    console.error('   3) 确认防火墙放行 3306 端口');
-                    console.error('   4) 在终端执行: mysql -u root -p -h <HOST> 验证能登录');
+                    logger.error('   1) 确认 MySQL 已启动并监听 0.0.0.0:3306 (非仅 127.0.0.1)');
+                    logger.error('   2) 确认用户有建表/建库权限 (CREATE DATABASE, CREATE TABLE, ALTER, INDEX)');
+                    logger.error('   3) 确认防火墙放行 3306 端口');
+                    logger.error('   4) 在终端执行: mysql -u root -p -h <HOST> 验证能登录');
                 }
             }
         }
-        console.log(`⏳ 等待数据库就绪并初始化 (${attempt}/${maxAttempts})...`);
+        logger.info(`⏳ 等待数据库就绪并初始化 (${attempt}/${maxAttempts})...`);
         await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
     return false;
@@ -317,12 +317,12 @@ async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
 
 // 启动
 async function start() {
-    console.log('🚀 鑫钱包服务器启动中...');
+    logger.info('🚀 鑫钱包服务器启动中...');
 
     // 等待数据库就绪并初始化（幂等建库建表，复用既有数据）
     const ready = await waitForDatabaseAndInit();
     if (!ready) {
-        console.error(`❌ 数据库在限定重试次数内未就绪，请检查 ${db.DB_DIALECT === 'mysql' ? 'MySQL' : 'PostgreSQL'} 容器状态或 .env 数据库连接配置（DB_DIALECT=${db.DB_DIALECT}）`);
+        logger.error(`❌ 数据库在限定重试次数内未就绪，请检查 ${db.DB_DIALECT === 'mysql' ? 'MySQL' : 'PostgreSQL'} 容器状态或 .env 数据库连接配置（DB_DIALECT=${db.DB_DIALECT}）`);
         process.exit(1);
     }
 
@@ -331,7 +331,7 @@ async function start() {
         const { auditProviderKeys } = require('./services/ai');
         await auditProviderKeys();
     } catch (err) {
-        console.warn('⚠️ AI 凭证自检未执行（不影响启动）:', err.message);
+        logger.warn('⚠️ AI 凭证自检未执行（不影响启动）:', err.message);
     }
 
     // AI Event Bus 初始化：注册 transaction.created / budget.exceeded / balance.anomaly 等事件处理器
@@ -339,7 +339,7 @@ async function start() {
         const { initEventHandlers } = require('./modules/ai/events/event-handlers');
         initEventHandlers();
     } catch (err) {
-        console.warn('⚠️ Event Bus 初始化失败（不影响启动）:', err.message);
+        logger.warn('⚠️ Event Bus 初始化失败（不影响启动）:', err.message);
     }
 
     // AI Evidence Batch Scheduler 初始化（每 24h 批量学习）
@@ -347,7 +347,7 @@ async function start() {
         const { startScheduler } = require('./modules/ai/learning/evidence-scheduler');
         startScheduler(24);
     } catch (err) {
-        console.warn('⚠️ Evidence Scheduler 启动失败（不影响启动）:', err.message);
+        logger.warn('⚠️ Evidence Scheduler 启动失败（不影响启动）:', err.message);
     }
 
     // 确保演示账号存在（使用 bcrypt 真实哈希，避免明文占位符）
@@ -360,10 +360,10 @@ async function start() {
                 'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
                 ['demo', demoHash, '演示用户']
             );
-            console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);
+            logger.info(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);
         }
     } catch (err) {
-        console.warn('⚠️ 创建演示账号时出错:', err.message);
+        logger.warn('⚠️ 创建演示账号时出错:', err.message);
     }
 
     // 演示账号：自动注入种子数据（覆盖所有功能模块）
@@ -373,15 +373,15 @@ async function start() {
             const demoUserId = demoUser.id;
             const hasData = await db.queryOne('SELECT COUNT(*) AS cnt FROM transactions WHERE user_id = ?', [demoUserId]);
             if (parseInt(hasData.cnt) === 0) {
-                console.log('📝 为演示账号注入完整的演示数据...');
+                logger.info('📝 为演示账号注入完整的演示数据...');
                 const inserted = await ensureUserSeed(demoUserId);
                 if (inserted) {
-                    console.log('✅ 演示账号数据已就绪（账户/交易/转账/预算/理财/储蓄/债务/标签）');
+                    logger.info('✅ 演示账号数据已就绪（账户/交易/转账/预算/理财/储蓄/债务/标签）');
                 }
             }
         }
     } catch (err) {
-        console.warn('⚠️ 演示数据初始化失败:', err.message);
+        logger.warn('⚠️ 演示数据初始化失败:', err.message);
     }
 
     const server = app.listen(PORT, () => {
@@ -399,11 +399,11 @@ async function start() {
     const shutdown = async (signal) => {
         if (isShuttingDown) return; // 避免重复触发
         isShuttingDown = true;
-        console.log(`\n🛑 收到 ${signal}，开始优雅退出...`);
+        logger.info(`\n🛑 收到 ${signal}，开始优雅退出...`);
 
         // 强制超时：最多等待 25 秒（K8s 默认给 30s）
         const forceExit = setTimeout(() => {
-            console.error('❌ 25 秒内未完成收尾，强制退出');
+            logger.error('❌ 25 秒内未完成收尾，强制退出');
             process.exit(1);
         }, 25_000);
         forceExit.unref();
@@ -412,7 +412,7 @@ async function start() {
             // 1. 停止接收新连接（继续完成在途请求）
             await new Promise((resolve) => {
                 server.close(() => {
-                    console.log('✅ HTTP server 已关闭');
+                    logger.info('✅ HTTP server 已关闭');
                     resolve();
                 });
             });
@@ -420,14 +420,14 @@ async function start() {
             // 2. 关闭数据库连接池
             if (db && db.pool) {
                 await db.pool.end();
-                console.log('✅ 数据库连接池已关闭');
+                logger.info('✅ 数据库连接池已关闭');
             }
         } catch (err) {
-            console.error('❌ 关闭过程中出错:', err.message);
+            logger.error('❌ 关闭过程中出错:', err.message);
         }
 
         clearTimeout(forceExit);
-        console.log('👋 鑫钱包已退出');
+        logger.info('👋 鑫钱包已退出');
         process.exit(0);
     };
 
@@ -436,11 +436,11 @@ async function start() {
 
     // 未捕获异常 → 立即退出（容器编排器会自动重启）
     process.on('uncaughtException', (err) => {
-        console.error('❌ Uncaught Exception:', err);
+        logger.error('❌ Uncaught Exception:', err);
         shutdown('uncaughtException');
     });
     process.on('unhandledRejection', (reason) => {
-        console.error('❌ Unhandled Rejection:', reason);
+        logger.error('❌ Unhandled Rejection:', reason);
     });
 }
 

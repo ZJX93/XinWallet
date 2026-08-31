@@ -29,11 +29,11 @@ let fail = 0;
 function check(name, cond, detail) {
   if (cond) {
     pass++;
-    console.log(`  \u2713 ${name}`);
+    logger.info(`  \u2713 ${name}`);
   } else {
     fail++;
-    console.log(`  \u2717 ${name}`);
-    if (detail) console.log(`      ${detail}`);
+    logger.info(`  \u2717 ${name}`);
+    if (detail) logger.info(`      ${detail}`);
   }
 }
 
@@ -49,7 +49,7 @@ const harDetail = read(path.join(HAR, 'pages/AccountDetail.ets'));
 const harComp = read(path.join(HAR, 'common/components/Components.ets'));
 const webTx = read(path.join(WEB, 'managers/transaction.js'));
 
-console.log('\n[1] 源文件均可读');
+logger.info('\n[1] 源文件均可读');
 const files = {
   'AccountDetailScreen.kt': andDetail,
   'Components.kt': andComp,
@@ -64,11 +64,11 @@ for (const [n, c] of Object.entries(files)) {
   if (c === null) { missing = true; }
   check(n, c !== null);
 }
-if (missing) { console.log('\n有文件缺失，终止'); process.exit(1); }
+if (missing) { logger.info('\n有文件缺失，终止'); process.exit(1); }
 
 // ============ A. 账户详情页操作入口 ============
 
-console.log('\n[2] 安卓账户详情页：编辑 / 销户 / 删除 入口');
+logger.info('\n[2] 安卓账户详情页：编辑 / 销户 / 删除 入口');
 check('有「编辑」ActionChip', /ActionChip\([^\n]*"编辑"/.test(andDetail));
 check('有「销户」ActionChip', /ActionChip\([^\n]*"销户"/.test(andDetail));
 check('有「删除」ActionChip', /ActionChip\([^\n]*"删除"/.test(andDetail));
@@ -82,7 +82,7 @@ check('调用 UpdateAccountRequest 提交编辑', /UpdateAccountRequest\(/.test(
 check('销户走 accountsVm.close', /accountsVm\.close\(/.test(andDetail));
 check('删除走 accountsVm.delete', /accountsVm\.delete\(/.test(andDetail));
 
-console.log('\n[3] 安卓：AccountFormDialog 跨文件可见');
+logger.info('\n[3] 安卓：AccountFormDialog 跨文件可见');
 // Kotlin 的 private 是**文件级**作用域，同包不同文件也访问不到。
 // 这条断言防止以后有人「顺手」把它改回 private 而导致详情页编译失败。
 check(
@@ -91,12 +91,12 @@ check(
   'private 是文件级作用域，详情页会 Cannot access'
 );
 
-console.log('\n[4] 安卓：删除后必须退出详情页');
+logger.info('\n[4] 安卓：删除后必须退出详情页');
 // 账户已不存在，留在详情页会展示陈旧数据且下次刷新拉空
 check('存在 pendingDeleted 标记', /pendingDeleted/.test(andDetail));
 check('删除成功后 popBackStack', /pendingDeleted\s*\)\s*\{[\s\S]{0,120}popBackStack\(\)/.test(andDetail));
 
-console.log('\n[5] 鸿蒙账户详情页：编辑 / 销户 / 删除 入口');
+logger.info('\n[5] 鸿蒙账户详情页：编辑 / 销户 / 删除 入口');
 check('有「编辑」ActionChip', /ActionChip\(\{[^}]*label:\s*'编辑'/.test(harDetail));
 check('有「销户」ActionChip', /ActionChip\(\{[^}]*label:\s*'销户'/.test(harDetail));
 check('有「删除」ActionChip', /ActionChip\(\{[^}]*label:\s*'删除'/.test(harDetail));
@@ -108,7 +108,7 @@ check('调用 Api.deleteAccount', /Api\.deleteAccount\(/.test(harDetail));
 check('删除成功后 router.back()', /doDelete[\s\S]{0,600}router\.back\(\)/.test(harDetail));
 check('二次确认弹层存在（ConfirmSheet）', /ConfirmSheet\(\)/.test(harDetail));
 
-console.log('\n[6] 鸿蒙：编辑不得提交 opening_balance');
+logger.info('\n[6] 鸿蒙：编辑不得提交 opening_balance');
 // 余额由复式记账推导（server 的 computeAccountBalance），直接改会与流水对不上
 const updBlock = (harDetail.match(/Api\.updateAccount\([\s\S]{0,420}?\}\);/) || [''])[0];
 check(
@@ -118,7 +118,7 @@ check(
 );
 check('当前余额输入框置灰（enabled(false)）', /enabled\(false\)/.test(harDetail));
 
-console.log('\n[7] 两端 ActionChip 为公共组件（不各自复制）');
+logger.info('\n[7] 两端 ActionChip 为公共组件（不各自复制）');
 check('安卓 Components.kt 导出 ActionChip', /^fun ActionChip\(/m.test(andComp));
 check('鸿蒙 Components.ets 导出 ActionChip', /export struct ActionChip/.test(harComp));
 check(
@@ -131,7 +131,7 @@ check('鸿蒙 ActionChip 支持 danger 参数', /struct ActionChip\s*\{[\s\S]{0,
 
 // ============ B. 转账行第二行 A → B ============
 
-console.log('\n[8] 安卓转账行：第一行分类、第二行 A → B');
+logger.info('\n[8] 安卓转账行：第一行分类、第二行 A → B');
 const andRow = (andComp.match(/fun TransactionRow\(item: TransactionItem\)[\s\S]*?\n\}/) || [''])[0];
 check('TransactionRow 已定位', andRow.length > 0);
 // 第一行必须先出现 category，且不能再是 "A → B"
@@ -161,7 +161,7 @@ check(
   '写死常量与左侧 🔄 重复表意，白占一行'
 );
 
-console.log('\n[9] 鸿蒙转账行：第一行分类、第二行 A → B');
+logger.info('\n[9] 鸿蒙转账行：第一行分类、第二行 A → B');
 check('存在 subText() 方法', /private subText\(\)/.test(harComp));
 const harSub = (harComp.match(/private subText\(\)[\s\S]*?\n  \}/) || [''])[0];
 check('subText 拼接 from → to', /transfer\?\.from\?\.name[\s\S]{0,60}→[\s\S]{0,60}transfer\?\.to\?\.name/.test(harSub));
@@ -179,7 +179,7 @@ check(
 );
 check('普通记录右下角仍显示账户名', /!this\.isTransfer\(\) && this\.item\?\.account\?\.name/.test(harRow));
 
-console.log('\n[10] 与 web 端列语义一致（参照基准）');
+logger.info('\n[10] 与 web 端列语义一致（参照基准）');
 // web 是表格：.trans-category 是分类列，.trans-account 是账户列，
 // 转账时账户列渲染 "A → B"。两端两行分别对应这两列。
 check(
@@ -188,11 +188,11 @@ check(
   'web 端基准变了，两端断言需同步复核'
 );
 
-console.log('\n[11] 转账仍保持中性色 / 无正负号');
+logger.info('\n[11] 转账仍保持中性色 / 无正负号');
 check('安卓转账用 onSurface 中性色', /isTransfer -> MaterialTheme\.colorScheme\.onSurface/.test(andComp));
 check('鸿蒙转账金额无正负号', /if \(this\.isTransfer\(\)\) return raw;/.test(harComp));
 
-console.log(`\n${'='.repeat(50)}`);
-console.log(`通过 ${pass} 项，失败 ${fail} 项`);
-console.log('='.repeat(50));
+logger.info(`\n${'='.repeat(50)}`);
+logger.info(`通过 ${pass} 项，失败 ${fail} 项`);
+logger.info('='.repeat(50));
 process.exit(fail === 0 ? 0 : 1);

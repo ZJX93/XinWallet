@@ -20,10 +20,10 @@ let fail = 0;
 const failures = [];
 
 function ok(name, cond, detail) {
-  if (cond) { pass++; console.log(`  \u2713 ${name}`); }
+  if (cond) { pass++; logger.info(`  \u2713 ${name}`); }
   else {
     fail++; failures.push(name);
-    console.log(`  \u2717 ${name}${detail ? '  \u2190 ' + detail : ''}`);
+    logger.info(`  \u2717 ${name}${detail ? '  \u2190 ' + detail : ''}`);
   }
 }
 
@@ -187,7 +187,7 @@ function throwsWith(fn) {
 
 // ---------------------------------------------------------------- 测试
 
-console.log('\n【1】复刻用户当前的失败现场（旧版服务端）');
+logger.info('\n【1】复刻用户当前的失败现场（旧版服务端）');
 {
   const msg = throwsWith(() => parseReportPeriod_OLD('custom', '2026-01~2026-06'));
   eq('旧版收到 type=custom 抛「不支持的报表类型」', msg, '不支持的报表类型');
@@ -197,7 +197,7 @@ console.log('\n【1】复刻用户当前的失败现场（旧版服务端）');
   eq('旧版 top-transactions 收到区间串也抛错', msg2, '周期格式错误');
 }
 
-console.log('\n【2】部署新版后：主报表区间解析');
+logger.info('\n【2】部署新版后：主报表区间解析');
 {
   const r = parseReportPeriod('custom', '2026-01~2026-06');
   eq('2026-01~2026-06 起始日', r.start, '2026-01-01');
@@ -227,7 +227,7 @@ console.log('\n【2】部署新版后：主报表区间解析');
   eq('两侧空格被 trim', r7.start, '2026-01-01');
 }
 
-console.log('\n【3】非法输入必须被拒（不能静默返回错区间）');
+logger.info('\n【3】非法输入必须被拒（不能静默返回错区间）');
 {
   eq('缺少 ~ 分隔符', throwsWith(() => parseReportPeriod('custom', '2026-01')), '自定义区间格式错误');
   eq('三段区间', throwsWith(() => parseReportPeriod('custom', '2026-01~2026-03~2026-06')), '自定义区间格式错误');
@@ -236,7 +236,7 @@ console.log('\n【3】非法输入必须被拒（不能静默返回错区间）'
   eq('空串', throwsWith(() => parseReportPeriod('custom', '')), '自定义区间格式错误');
 }
 
-console.log('\n【3b】月份/日期越界必须被拒 —— \\d{2} 只管位数不管范围');
+logger.info('\n【3b】月份/日期越界必须被拒 —— \\d{2} 只管位数不管范围');
 {
   // 这一组是本轮验收挖出来的真实漏洞。不校验的后果不是抛错，
   // 而是算出一个「看似合法」的日期串直接进 SQL：
@@ -270,7 +270,7 @@ console.log('\n【3b】月份/日期越界必须被拒 —— \\d{2} 只管位�
     throwsWith(() => topTxRange('2026-13~2026-14')), '自定义区间格式错误');
 }
 
-console.log('\n【4】环比区间：必须往前挪「等长区间」而不是减一个月');
+logger.info('\n【4】环比区间：必须往前挪「等长区间」而不是减一个月');
 {
   const p1 = prevPeriod('custom', '2026-01~2026-03');
   eq('3 个月区间 → 前 3 个月', p1.period, '2025-10~2025-12');
@@ -301,7 +301,7 @@ console.log('\n【4】环比区间：必须往前挪「等长区间」而不是�
   eq('环比跨度与原区间等长（5）', span(p4.period), span('2025-11~2026-03'));
 }
 
-console.log('\n【5】明细排行 top-transactions 必须认同样三种形态');
+logger.info('\n【5】明细排行 top-transactions 必须认同样三种形态');
 {
   const a = topTxRange('2026-08');
   eq('按月 起始', a.start, '2026-08-01');
@@ -324,7 +324,7 @@ console.log('\n【5】明细排行 top-transactions 必须认同样三种形态'
   ok('按年时排行区间与主报表一致', b.start === mainY.start && b.end === mainY.end);
 }
 
-console.log('\n【6】按年/按月回归：新版不能把原本能用的弄坏');
+logger.info('\n【6】按年/按月回归：新版不能把原本能用的弄坏');
 {
   // 客户端现在发的是 annual（新旧服务端都认）
   const y = parseReportPeriod('annual', '2026');
@@ -349,7 +349,7 @@ console.log('\n【6】按年/按月回归：新版不能把原本能用的弄坏
   eq('别名 month → monthly', ali3.start, '2026-08-01');
 }
 
-console.log('\n【7】客户端拼串格式与服务端期望必须对得上');
+logger.info('\n【7】客户端拼串格式与服务端期望必须对得上');
 {
   // 鸿蒙 PeriodPickerSheet.ets:395  onConfirm(`${customStart}~${customEnd}`, 'custom')
   // 安卓 ReportsScreen.kt:1211     onConfirm("$customStart~$customEnd", "custom")
@@ -366,7 +366,7 @@ console.log('\n【7】客户端拼串格式与服务端期望必须对得上');
     new URLSearchParams(q.toString()).get('period'));
 }
 
-console.log('\n【8】趋势分桶：自定义区间跨度决定粒度');
+logger.info('\n【8】趋势分桶：自定义区间跨度决定粒度');
 {
   // 客户端 trendBuckets 阈值 62 天：跨度超过就按月聚合
   const days = (s, e) => Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
@@ -390,14 +390,14 @@ console.log('\n【8】趋势分桶：自定义区间跨度决定粒度');
 }
 
 // ---------------------------------------------------------------- 汇总
-console.log('\n' + '='.repeat(58));
-console.log(`  通过 ${pass}  失败 ${fail}`);
+logger.info('\n' + '='.repeat(58));
+logger.info(`  通过 ${pass}  失败 ${fail}`);
 if (fail > 0) {
-  console.log('\n  失败项：');
-  failures.forEach((f) => console.log(`    - ${f}`));
+  logger.info('\n  失败项：');
+  failures.forEach((f) => logger.info(`    - ${f}`));
 }
-console.log('='.repeat(58));
-console.log(
+logger.info('='.repeat(58));
+logger.info(
   fail === 0
     ? '\n结论：部署工作区这版 server/routes/reports.js 后，\n' +
       '      自定义区间在主报表、环比、明细排行三处都能正常工作，\n' +

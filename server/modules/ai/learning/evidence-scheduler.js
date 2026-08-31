@@ -1,3 +1,4 @@
+const logger = require('../../../../../../../../logger');
 /* ============================================
    Evidence Scheduler
    ------------------------------------------------
@@ -133,15 +134,15 @@ function startScheduler(intervalHours = 24) {
     const timer = setInterval(async () => {
         try {
             const result = await runBatchLearning({ forceRun: true, limit: 50 });
-            console.log(`[evidence-scheduler] 批量学习完成: processed=${result.processed}, created=${result.created}, updated=${result.updated}`);
+            logger.info(`[evidence-scheduler] 批量学习完成: processed=${result.processed}, created=${result.created}, updated=${result.updated}`);
         } catch (err) {
-            console.error('[evidence-scheduler] 批量学习异常:', err.message);
+            logger.error('[evidence-scheduler] 批量学习异常:', err.message);
         }
     }, ms);
 
     // 启动时立即运行一次
     runBatchLearning({ forceRun: false }).catch(err => {
-        console.warn('[evidence-scheduler] 启动时批量学习跳过:', err.message);
+        logger.warn('[evidence-scheduler] 启动时批量学习跳过:', err.message);
     });
 
     return timer;

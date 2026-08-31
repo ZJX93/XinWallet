@@ -6,6 +6,7 @@
 const express = require('express');
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, ensureWeeklySnapshots, sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf } = require('./_helpers');
+const logger = require('../logger');
 // 组合指标统一走共享服务（修复 m2 重复实现）
 const { calcPortfolioMetrics } = require('../services/portfolio');
 
@@ -171,7 +172,7 @@ router.get('/dashboard', async (req, res) => {
                  FROM savings_transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
                 [req.userId, req.bookId, currentMonth + '%']
             ).catch(err => {
-                console.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
+                logger.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
                 return null;
             })
         ]);

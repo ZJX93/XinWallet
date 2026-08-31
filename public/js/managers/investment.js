@@ -422,7 +422,7 @@ const InvestmentManager = {
             await this.refresh();
         } catch (err) {
             // 行情刷新后端暂未实现，静默跳过
-            console.warn('[invest] 行情刷新暂不可用:', err.message);
+            logger.warn('[invest] 行情刷新暂不可用:', err.message);
         }
         if (btn) { btn.disabled = false; btn.innerHTML = '🔄 一键刷新'; }
     },

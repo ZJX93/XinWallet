@@ -25,10 +25,10 @@ let fail = 0;
 function check(desc, ok, detail) {
   if (ok) {
     pass++;
-    console.log(`  ✓ ${desc}`);
+    logger.info(`  ✓ ${desc}`);
   } else {
     fail++;
-    console.log(`  ✗ ${desc}${detail ? ` — ${detail}` : ''}`);
+    logger.info(`  ✗ ${desc}${detail ? ` — ${detail}` : ''}`);
   }
 }
 
@@ -40,7 +40,7 @@ function memberBlock(src, structName) {
   return b < 0 ? null : src.slice(i, b);
 }
 
-console.log('== 1. 组件侧：动态属性必须带 @Prop ==');
+logger.info('== 1. 组件侧：动态属性必须带 @Prop ==');
 const comp = fs.readFileSync(COMPONENTS, 'utf8');
 
 // 每项：结构体名 / 属性名 / 该属性为什么必须同步
@@ -63,7 +63,7 @@ for (const [struct, prop, why] of REQUIRED) {
     declared ? '' : '缺 @Prop，ForEach 复用实例后不会同步父状态');
 }
 
-console.log('\n== 2. 调用侧：ForEach 内的动态绑定仍存在 ==');
+logger.info('\n== 2. 调用侧：ForEach 内的动态绑定仍存在 ==');
 // 若这些调用点被移除，上面的校验就失去保护对象，需要同步更新本脚本
 const CALLSITES = [
   ['Search.ets', /Chip\(\{[^}]*active:\s*this\.selBook === b\.id/, '账本单选（用户实测的 bug 现场）'],
@@ -85,7 +85,7 @@ for (const [file, re, desc] of CALLSITES) {
   check(`${file}: ${desc}`, re.test(fs.readFileSync(p, 'utf8')));
 }
 
-console.log('\n== 3. 回归护栏：不得退回无装饰器写法 ==');
+logger.info('\n== 3. 回归护栏：不得退回无装饰器写法 ==');
 // 精确匹配「行首缩进 + 属性名 + : 类型」且前面没有装饰器
 const REGRESSIONS = [
   [/^\s{2}active:\s*boolean/m, 'Chip.active 退回无装饰器'],
@@ -95,5 +95,5 @@ for (const [re, desc] of REGRESSIONS) {
   check(`未出现「${desc}」`, !re.test(comp));
 }
 
-console.log(`\n结果：${pass} 通过 / ${fail} 失败`);
+logger.info(`\n结果：${pass} 通过 / ${fail} 失败`);
 process.exit(fail === 0 ? 0 : 1);

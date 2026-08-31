@@ -23,6 +23,13 @@ captures/
 # Local configuration (SDK path, etc.)
 local.properties
 
+# Signing keys — never commit keystores / release keys (CI injects via secrets)
+*.keystore
+*.jks
+*.p12
+*.pfx
+signing.properties
+
 # Log/OS files
 *.log
 .DS_Store
