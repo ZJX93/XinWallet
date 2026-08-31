@@ -1,4 +1,4 @@
-const logger = require('../../../../../logger');
+const logger = require('./logger');
 /* ============================================
    鑫钱包 · 认证模块 (Auth)
    提供密码哈希、JWT 签发与校验、路由鉴权中间件

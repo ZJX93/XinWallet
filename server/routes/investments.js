@@ -1,4 +1,4 @@
-const logger = require('../../../../../../logger');
+const logger = require('../logger');
 /* ============================================
    鑫钱包 · 理财管理路由模块
    包含：理财类型 CRUD、持仓管理、行情 API

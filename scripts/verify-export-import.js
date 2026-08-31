@@ -15,7 +15,7 @@ const REAL_USER = process.env.REAL_USER || '123456';
 // 真实账号密码通过环境变量传入，避免把真实凭据写进仓库/提交历史
 const REAL_PWD = process.env.REAL_PWD;
 if (!REAL_PWD) {
-    logger.error('✗ 缺少 REAL_PWD 环境变量（真实账号密码，用于导出快照）。\n  用法: REAL_PWD=xxxx node scripts/verify-export-import.js');
+    console.error('✗ 缺少 REAL_PWD 环境变量（真实账号密码，用于导出快照）。\n  用法: REAL_PWD=xxxx node scripts/verify-export-import.js');
     process.exit(2);
 }
 
@@ -24,8 +24,8 @@ const { parseWorkbook } = require(path.join(__dirname, '..', 'server', 'routes',
 let pass = 0, failN = 0;
 const fails = [];
 function ok(name, cond, extra) {
-    if (cond) { pass++; logger.info('  ✅ ' + name + (extra ? '  ' + extra : '')); }
-    else { failN++; fails.push(name); logger.info('  ❌ ' + name + (extra ? '  ' + extra : '')); }
+    if (cond) { pass++; console.info('  ✅ ' + name + (extra ? '  ' + extra : '')); }
+    else { failN++; fails.push(name); console.info('  ❌ ' + name + (extra ? '  ' + extra : '')); }
 }
 const near = (a, b, eps = 0.05) => Math.abs((a || 0) - (b || 0)) < eps;
 
@@ -62,10 +62,10 @@ async function api(p, token, method = 'GET', body) {
 }
 
 async function main() {
-    logger.info(`\n=== 鑫钱包 真实数据 导出→导入→全功能验证 (BASE=${BASE}) ===\n`);
+    console.info(`\n=== 鑫钱包 真实数据 导出→导入→全功能验证 (BASE=${BASE}) ===\n`);
 
     // ---------- 1) 真实账号登录 + 导出快照 + 解析导出侧计数 ----------
-    logger.info('【1】真实账号登录并导出账本快照');
+    console.info('【1】真实账号登录并导出账本快照');
     const login = await api('/api/auth/login', null, 'POST', { username: REAL_USER, password: REAL_PWD });
     ok('真实账号登录 200', login.status === 200, 'status=' + login.status);
     const tokenA = login.data && login.data.token;
@@ -91,10 +91,10 @@ async function main() {
         transactions: (parsed.transactions || []).filter(t => t['类型'] !== '转账').length,
         transfers: (parsed.transactions || []).filter(t => t['类型'] === '转账').length
     };
-    logger.info('  导出侧真实计数:', JSON.stringify(expC));
+    console.info('  导出侧真实计数:', JSON.stringify(expC));
 
     // ---------- 2) 注册隔离测试用户 ----------
-    logger.info('\n【2】注册隔离测试用户');
+    console.info('\n【2】注册隔离测试用户');
     const uname = 'verify_' + Date.now().toString().slice(-8);
     const upwd = 'Test1234';
     const reg = await api('/api/auth/register', null, 'POST', { username: uname, password: upwd });
@@ -104,7 +104,7 @@ async function main() {
     if (!tokenB) { finish(); return; }
 
     // ---------- 3) 把真实快照导入隔离用户（清空+导入） ----------
-    logger.info('\n【3】导入真实快照到隔离用户（清空+导入）');
+    console.info('\n【3】导入真实快照到隔离用户（清空+导入）');
     const form = new FormData();
     form.append('file', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'real_backup.xlsx');
     const impR = await fetch(BASE + '/api/backup/import', { method: 'POST', headers: { Authorization: 'Bearer ' + tokenB }, body: form });
@@ -112,10 +112,10 @@ async function main() {
     ok('导入接口 200', impR.status === 200, 'status=' + impR.status);
     ok('导入 success=true', imp.success === true, imp.message || '');
     const im = imp.data && imp.data.imported;
-    logger.info('  导入统计:', JSON.stringify(im));
+    console.info('  导入统计:', JSON.stringify(im));
 
     // ---------- 4) 往返保真度：导入计数 == 导出侧计数 ----------
-    logger.info('\n【4】导出导入往返保真度（计数一致）');
+    console.info('\n【4】导出导入往返保真度（计数一致）');
     const pairs = [
         ['账户', 'accounts'], ['理财持仓', 'investments'], ['分类', 'categories'],
         ['标签', 'tags'], ['预算', 'budgets'], ['债务', 'debts'],
@@ -127,7 +127,7 @@ async function main() {
     }
 
     // ---------- 5) 各实体列表读取正常 ----------
-    logger.info('\n【5】导入后各实体列表读取正常');
+    console.info('\n【5】导入后各实体列表读取正常');
     const accB = await api('/api/accounts', tokenB);
     const accList = listOf(accB, 'accounts');
     ok('账户列表 200 且含数据', accB.status === 200 && accList.length > 0, 'n=' + accList.length);
@@ -157,7 +157,7 @@ async function main() {
     ok('仪表盘 200', dash.status === 200, 'status=' + dash.status);
 
     // ---------- 6) 理财加仓/减仓 recompute 一致性 ----------
-    logger.info('\n【6】导入后理财加仓/减仓（recompute 一致性）');
+    console.info('\n【6】导入后理财加仓/减仓（recompute 一致性）');
     const H = invList.find(x => parseFloat(x.quantity) > 0) || invList[0];
     ok('选中持仓用于加减仓', !!H, H ? ('#' + H.id + ' ' + H.name) : '');
     if (H) {
@@ -189,7 +189,7 @@ async function main() {
     }
 
     // ---------- 7) 交易/转账 写入验证 ----------
-    logger.info('\n【7】导入后新建交易/转账');
+    console.info('\n【7】导入后新建交易/转账');
     // 选余额最高的账户做写入验证，避免恰好选中低余额账户触发"余额不足"被误判为功能异常
     const sortedAcc = [...accList].sort((a, b) => parseFloat(b.balance || 0) - parseFloat(a.balance || 0));
     const hiAcc = sortedAcc[0];
@@ -208,14 +208,14 @@ async function main() {
             });
             ok('新建转账 200', newTrf.status === 200, 'status=' + newTrf.status + (newTrf.data && newTrf.data.message ? ' ' + newTrf.data.message : ''));
         } else {
-            logger.info('  ⚠️ 账户不足 2 个，跳过转账写入验证');
+            console.info('  ⚠️ 账户不足 2 个，跳过转账写入验证');
         }
     } else {
-        logger.info('  ⚠️ 无账户/分类，跳过交易写入验证');
+        console.info('  ⚠️ 无账户/分类，跳过交易写入验证');
     }
 
     // ---------- 8) 二次往返（再导出→再导入）幂等性 ----------
-    logger.info('\n【8】二次往返：再导出→再导入（幂等/不丢数据/建仓修复仍生效）');
+    console.info('\n【8】二次往返：再导出→再导入（幂等/不丢数据/建仓修复仍生效）');
     const before_acc = (listOf(await api('/api/accounts', tokenB), 'accounts')).length;
     const before_cat = (listOf(await api('/api/categories', tokenB), 'categories')).length;
     const before_inv = (listOf(await api('/api/investments/investments', tokenB), 'investments')).length;
@@ -257,8 +257,8 @@ async function main() {
 }
 
 function finish() {
-    logger.info(`\n=== 结果：通过 ${pass} / 失败 ${failN} ===`);
-    if (failN) { logger.info('失败项：\n - ' + fails.join('\n - ')); process.exitCode = 1; }
-    else logger.info('🎉 全部通过');
+    console.info(`\n=== 结果：通过 ${pass} / 失败 ${failN} ===`);
+    if (failN) { console.info('失败项：\n - ' + fails.join('\n - ')); process.exitCode = 1; }
+    else console.info('🎉 全部通过');
 }
-main().catch(e => { logger.error('💥 脚本异常:', e && e.stack ? e.stack : e); process.exitCode = 1; });
+main().catch(e => { console.error('💥 脚本异常:', e && e.stack ? e.stack : e); process.exitCode = 1; });

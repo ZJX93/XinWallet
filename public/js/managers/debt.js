@@ -167,7 +167,7 @@ const DebtManager = {
         container.querySelectorAll('[data-action="edit-debt"]').forEach(b => { b.addEventListener('click', () => { const d = this._listCache.find(x => x.id === parseInt(b.dataset.id)); if (d) this.openEditModal(d); }); });
         container.querySelectorAll('[data-action="delete-debt"]').forEach(b => b.addEventListener('click', () => this.delete(parseInt(b.dataset.id))));
         } catch (err) {
-            logger.error('DebtManager.refresh error:', err);
+            console.error('DebtManager.refresh error:', err);
             showEmpty(container, '加载失败：' + (err.message || '未知错误'), '⚠️');
         }
     },

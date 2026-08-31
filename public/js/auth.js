@@ -185,7 +185,7 @@ export function bindProfileModal() {
                 renderAvatarPicker(avatar);
             }
         } catch (err) {
-            logger.error('获取用户资料失败:', err);
+            console.error('获取用户资料失败:', err);
             showProfileMsg('加载用户信息失败', 'error');
         }
         modal.classList.add('show');
@@ -256,7 +256,7 @@ export function bindProfileModal() {
                 showProfileMsg(data.message || '保存失败', 'error');
             }
         } catch (err) {
-            logger.error('更新用户资料失败:', err);
+            console.error('更新用户资料失败:', err);
             showProfileMsg('网络错误，请重试', 'error');
         }
     });
@@ -342,7 +342,7 @@ async function loadBooks() {
         });
     } catch (err) {
         if (nameEl) nameEl.textContent = '账本加载失败';
-        logger.error('加载账本失败:', err);
+        console.error('加载账本失败:', err);
     }
 }
 

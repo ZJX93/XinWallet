@@ -201,5 +201,5 @@ sql = '-- MySQL 8.0+\n-- 为确保自增 ID 从足够大的值开始（容纳显
 
 // === 25. 输出 ===
 fs.writeFileSync(myPath, sql, 'utf8');
-logger.info(`✅ MySQL schema 已生成: ${myPath}`);
-logger.info(`   行数: ${sql.split('\n').length}`);
+console.info(`✅ MySQL schema 已生成: ${myPath}`);
+console.info(`   行数: ${sql.split('\n').length}`);

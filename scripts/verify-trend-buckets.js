@@ -94,10 +94,10 @@ function genDays(startY, startM, months, dailyInc, dailyExp) {
 
 let pass = 0, fail = 0;
 function ok(cond, desc) {
-    if (cond) { pass++; logger.info('  \u2705 ' + desc); }
-    else { fail++; logger.info('  \u274C ' + desc); }
+    if (cond) { pass++; console.info('  \u2705 ' + desc); }
+    else { fail++; console.info('  \u274C ' + desc); }
 }
-function head(t) { logger.info('\n' + t); }
+function head(t) { console.info('\n' + t); }
 
 head('【按年 2026 全年 → 应聚合为 12 个月桶】');
 {
@@ -229,7 +229,7 @@ head('【X 轴刻度：极端输入】');
     ok(xTicks(['8月'], 234, measure9).join(',') === '0', '单标签只标 1 个');
 }
 
-logger.info('\n' + (fail === 0
+console.info('\n' + (fail === 0
     ? `\u2705 全部通过（${pass} 项）`
     : `\u274C ${fail} 项失败，${pass} 项通过`));
 process.exit(fail === 0 ? 0 : 1);

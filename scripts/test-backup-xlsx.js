@@ -39,15 +39,15 @@ async function main() {
     // 1) 生成
     const wb = buildWorkbook(sample);
     const buf = await wb.xlsx.writeBuffer();
-    logger.info('✅ 生成工作簿成功，字节数:', buf.length);
+    console.info('✅ 生成工作簿成功，字节数:', buf.length);
 
     // 2) 解析回来
     const parsed = await parseWorkbook(Buffer.from(buf));
-    logger.info('✅ 解析工作簿成功');
+    console.info('✅ 解析工作簿成功');
 
     // 3) 识别标记
     assert.strictEqual(parsed.version, 1, '版本应为 1');
-    logger.info('✅ 识别标记/版本正确');
+    console.info('✅ 识别标记/版本正确');
 
     // 4) 配置页各区段
     assert.ok(parsed.config['账本'] && parsed.config['账本'][0]['名称'] === '我的账本', '账本信息缺失/错');
@@ -56,13 +56,13 @@ async function main() {
     assert.strictEqual(parsed.config['预算'][0]['金额'], '2000' || 2000, '预算金额错');
     assert.strictEqual(parsed.config['债务'][0]['名称'], '招行信用卡', '债务错');
     assert.strictEqual(parsed.config['储蓄目标'][0]['名称'], '旅游基金', '储蓄目标错');
-    logger.info('✅ 配置页各区段解析正确');
+    console.info('✅ 配置页各区段解析正确');
 
     // 5) 账户页各区段
     assert.strictEqual(parsed.accounts['账户'].length, 2, '账户数量错');
     assert.strictEqual(parsed.accounts['账户'][0]['名称'], '现金', '账户顺序/名称错');
     assert.strictEqual(parsed.accounts['理财持仓'][0]['名称'], '沪深300ETF', '理财持仓错');
-    logger.info('✅ 账户页各区段解析正确');
+    console.info('✅ 账户页各区段解析正确');
 
     // 6) 交易页
     assert.strictEqual(parsed.transactions.length, 3, '交易数量错');
@@ -71,7 +71,7 @@ async function main() {
     assert.strictEqual(transfer['对方账户'], '现金', '转账对方账户错');
     const income = parsed.transactions.find(t => t['类型'] === '收入');
     assert.strictEqual(income['金额'], '12000' || 12000, '收入金额错');
-    logger.info('✅ 账单流水页解析正确（含转账行）');
+    console.info('✅ 账单流水页解析正确（含转账行）');
 
     // 7) 非法文件应被拒绝
     const badWb = new (require('exceljs').Workbook)();
@@ -81,8 +81,8 @@ async function main() {
     let rejected = false;
     try { await parseWorkbook(Buffer.from(badBuf)); } catch (e) { rejected = /不是有效的/.test(e.message); }
     assert.ok(rejected, '非法文件未被拒绝');
-    logger.info('✅ 非法/非备份文件被正确拒绝');
+    console.info('✅ 非法/非备份文件被正确拒绝');
 
-    logger.info('\n🎉 全部 round-trip 断言通过');
+    console.info('\n🎉 全部 round-trip 断言通过');
 }
-main().catch(e => { logger.error('❌ 测试失败:', e); process.exit(1); });
+main().catch(e => { console.error('❌ 测试失败:', e); process.exit(1); });

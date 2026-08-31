@@ -33,7 +33,7 @@ const DashboardManager = {
 
         const bar = document.getElementById('dashKpiBar');
         if (!bar) {
-            logger.warn('[Dashboard] dashKpiBar 元素未找到，KPI 卡片点击事件未绑定');
+            console.warn('[Dashboard] dashKpiBar 元素未找到，KPI 卡片点击事件未绑定');
             return;
         }
         // 仪表盘页面是懒加载片段，其中的 .see-all（如「资产负债概览 › 报表 →」）
@@ -171,7 +171,7 @@ const DashboardManager = {
         if (!data) return;
 
         // 各 render 单独 try-catch，失败不影响其他
-        const safe = (name, fn) => { try { fn(); } catch(e) { logger.warn(`[Dashboard] ${name} 渲染失败:`, e); } };
+        const safe = (name, fn) => { try { fn(); } catch(e) { console.warn(`[Dashboard] ${name} 渲染失败:`, e); } };
 
         // === KPI 核心卡 ===
         safe('kpiHero', () => {

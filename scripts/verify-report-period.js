@@ -105,9 +105,9 @@ function parseTopTxPeriod(period) {
 }
 
 let pass = 0, fail = 0;
-const ok = (cond, msg) => { if (cond) { pass++; logger.info('  ✅ ' + msg); } else { fail++; logger.info('  ❌ ' + msg); } };
+const ok = (cond, msg) => { if (cond) { pass++; console.info('  ✅ ' + msg); } else { fail++; console.info('  ❌ ' + msg); } };
 
-logger.info('\n【1】/reports 三种周期形态（客户端实际传参）');
+console.info('\n【1】/reports 三种周期形态（客户端实际传参）');
 for (const [t, p, expStart, expEnd] of [
   ['monthly', '2026-08', '2026-08-01', '2026-08-31'],
   ['yearly', '2026', '2026-01-01', '2026-12-31'],
@@ -124,7 +124,7 @@ for (const [t, p, expStart, expEnd] of [
   } catch (e) { ok(false, `${t}/${p} 抛错「${e.message}」`); }
 }
 
-logger.info('\n【2】非法输入必须仍被拒绝');
+console.info('\n【2】非法输入必须仍被拒绝');
 for (const [t, p] of [
   ['custom', '2026-01'], ['custom', '2026-03~2026-01'],
   ['custom', 'abc~def'], ['weekly', '2026-08'],
@@ -135,7 +135,7 @@ for (const [t, p] of [
   ok(rejected, `拒绝 ${t}/${p}`);
 }
 
-logger.info('\n【3】环比上期必须与本期等长（否则同比失真）');
+console.info('\n【3】环比上期必须与本期等长（否则同比失真）');
 const monthsBetween = (a, b) => {
   const x = a.slice(0, 7).split('-').map(Number), y = b.slice(0, 7).split('-').map(Number);
   return (y[0] * 12 + y[1]) - (x[0] * 12 + x[1]) + 1;
@@ -148,7 +148,7 @@ for (const p of ['2026-01~2026-03', '2026-01~2026-12', '2026-11~2027-02']) {
   ok(a === b, `${p}（${a}月）→ 上期 ${pv.period}（${b}月）`);
 }
 
-logger.info('\n【4】跨年回绕（span > 12 时不能只回绕一次）');
+console.info('\n【4】跨年回绕（span > 12 时不能只回绕一次）');
 {
   const pv = prevPeriod('custom', '2026-01~2027-06'); // 18 个月
   const r = parseReportPeriod('custom', pv.period);
@@ -156,7 +156,7 @@ logger.info('\n【4】跨年回绕（span > 12 时不能只回绕一次）');
   ok(monthsBetween(r.start, r.end) === 18, `上期仍是 18 个月（实际 ${monthsBetween(r.start, r.end)}）`);
 }
 
-logger.info('\n【5】top-transactions 三种周期形态');
+console.info('\n【5】top-transactions 三种周期形态');
 for (const [p, expStart, expEnd] of [
   ['2026-08', '2026-08-01', '2026-08-31'],
   ['2026', '2026-01-01', '2026-12-31'],
@@ -168,13 +168,13 @@ for (const [p, expStart, expEnd] of [
   } catch (e) { ok(false, `period=${p} 抛错「${e.message}」`); }
 }
 
-logger.info('\n【6】缓存 key 归一化（yearly 与 annual 必须命中同一条）');
+console.info('\n【6】缓存 key 归一化（yearly 与 annual 必须命中同一条）');
 const cacheKey = (t, p) => `1:1:${normalizeReportType(t)}:${p}`;
 ok(cacheKey('yearly', '2026') === cacheKey('annual', '2026'),
   `yearly/annual → 同一 key ${cacheKey('yearly', '2026')}`);
 ok(cacheKey('monthly', '2026-08') !== cacheKey('annual', '2026-08'),
   '不同粒度仍是不同 key');
 
-logger.info(`\n${'='.repeat(52)}`);
-logger.info(fail === 0 ? `✅ 全部通过（${pass} 项）` : `❌ ${fail} 项失败 / 共 ${pass + fail} 项`);
+console.info(`\n${'='.repeat(52)}`);
+console.info(fail === 0 ? `✅ 全部通过（${pass} 项）` : `❌ ${fail} 项失败 / 共 ${pass + fail} 项`);
 process.exit(fail === 0 ? 0 : 1);

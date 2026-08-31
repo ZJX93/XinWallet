@@ -28,11 +28,11 @@ let fail = 0;
 function check(name, cond, detail) {
   if (cond) {
     pass++;
-    logger.info(`  \u2713 ${name}`);
+    console.info(`  \u2713 ${name}`);
   } else {
     fail++;
-    logger.info(`  \u2717 ${name}`);
-    if (detail) logger.info(`      ${detail}`);
+    console.info(`  \u2717 ${name}`);
+    if (detail) console.info(`      ${detail}`);
   }
 }
 
@@ -43,17 +43,17 @@ function readCss(file) {
 
 const styles = readCss('styles.css');
 
-logger.info('\n[1] styles.css 存在且可读');
+console.info('\n[1] styles.css 存在且可读');
 check('styles.css 可读', styles !== null && styles.length > 0);
 if (styles === null) {
-  logger.info('\n无法继续，styles.css 缺失');
+  console.info('\n无法继续，styles.css 缺失');
   process.exit(1);
 }
 
 // ---- 2. 背景漂移动画必须彻底移除 ----
 // 注意用「animation 属性引用」而非 @keyframes 定义来判定：
 // 只要没有任何选择器引用它，残留定义也不会生效；但这里两者都不该有。
-logger.info('\n[2] 背景漂移动画已移除');
+console.info('\n[2] 背景漂移动画已移除');
 const driftKeyframes = /@keyframes\s+blobDrift\d/g;
 const driftUsage = /animation\s*:[^;}]*blobDrift\d/g;
 check(
@@ -77,7 +77,7 @@ check(
 
 // ---- 3. body 伪元素上不得挂任何 animation ----
 // 这两层是全屏 fixed 覆盖层，一旦有动画就是全屏背景在动。
-logger.info('\n[3] body::before / body::after 无 animation');
+console.info('\n[3] body::before / body::after 无 animation');
 function pseudoBlocks(css, selector) {
   // 抓取该选择器的所有规则块内容（非贪婪到最近的右花括号）
   const re = new RegExp(
@@ -101,7 +101,7 @@ for (const sel of ['body::before', 'body::after']) {
 
 // ---- 4. 静态光斑背景必须保留 ----
 // 本次只去动态，不是把背景删掉。
-logger.info('\n[4] 静态渐变背景保留');
+console.info('\n[4] 静态渐变背景保留');
 check('body 仍有 4 个 blob 变量引用', (styles.match(/var\(--blob-[1-4]\)/g) || []).length >= 4);
 check('body 静态 radial-gradient 仍在', /radial-gradient\(56vw 56vw/.test(styles));
 check('body::after 叠加层仍保留渐变', /radial-gradient\(40vw 40vw at calc\(100% \+ 4vw\)/.test(styles));
@@ -112,25 +112,25 @@ check('tokens.css 中 --blob-* 变量仍定义', tokens !== null && /--blob-1\s*
 
 // ---- 5. 合理的 infinite 动画不应被误删 ----
 // 这三个跟"背景色移动"无关，属白名单，必须还在。
-logger.info('\n[5] 白名单 infinite 动画未被误删');
+console.info('\n[5] 白名单 infinite 动画未被误删');
 check('骨架屏 shimmer 保留', /animation\s*:\s*shimmer\s/.test(styles));
 check('加载 spin 保留', /animation\s*:\s*spin\s/.test(styles));
 check('空状态 blobFloat 保留', /animation\s*:\s*blobFloat\s/.test(styles));
 
 // ---- 6. CSS 结构完整性 ----
-logger.info('\n[6] CSS 结构完整');
+console.info('\n[6] CSS 结构完整');
 const ob = (styles.match(/\{/g) || []).length;
 const cb = (styles.match(/\}/g) || []).length;
 check(`花括号配平 ({ ${ob} / } ${cb})`, ob === cb, '编辑过程可能破坏了规则块结构');
 
 // ---- 7. reduced-motion 兜底仍在 ----
-logger.info('\n[7] prefers-reduced-motion 兜底保留');
+console.info('\n[7] prefers-reduced-motion 兜底保留');
 check(
   '存在 prefers-reduced-motion 降级块',
   /@media\s*\(prefers-reduced-motion:\s*reduce\)/.test(styles)
 );
 
-logger.info(`\n${'='.repeat(46)}`);
-logger.info(`通过 ${pass} 项，失败 ${fail} 项`);
-logger.info('='.repeat(46));
+console.info(`\n${'='.repeat(46)}`);
+console.info(`通过 ${pass} 项，失败 ${fail} 项`);
+console.info('='.repeat(46));
 process.exit(fail === 0 ? 0 : 1);

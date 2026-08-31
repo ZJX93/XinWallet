@@ -30,15 +30,15 @@ function ok(name, result, expect = true) {
     const pass = expect
         ? (result.ok && result.success === true)
         : (result.success === false);
-    if (pass) { p++; logger.info(`  ✅ ${name}`); }
-    else { f++; logger.info(`  ❌ ${name} — status=${result.status} msg="${result.msg}"`); errors.push(name); }
+    if (pass) { p++; console.info(`  ✅ ${name}`); }
+    else { f++; console.info(`  ❌ ${name} — status=${result.status} msg="${result.msg}"`); errors.push(name); }
     return pass;
 }
 
-function log(msg) { logger.info(`\n${'='.repeat(50)}\n📋 ${msg}\n${'='.repeat(50)}`); }
+function log(msg) { console.info(`\n${'='.repeat(50)}\n📋 ${msg}\n${'='.repeat(50)}`); }
 
 (async () => {
-logger.info('🔬 XinWallet 全功能端到端验证\n');
+console.info('🔬 XinWallet 全功能端到端验证\n');
 
 // ================================================================
 log('模块一：认证 (Auth)');
@@ -47,7 +47,7 @@ log('模块一：认证 (Auth)');
 const login = await call('/auth/demo', 'POST');
 ok('1.1 演示登录', login);
 TOKEN = login.data?.token;
-if (!TOKEN) { logger.info('❌ 无法获取 token，终止'); process.exit(1); }
+if (!TOKEN) { console.info('❌ 无法获取 token，终止'); process.exit(1); }
 
 // 1.2 正常登录
 const login2 = await call('/auth/login', 'POST', { username: 'demo', password: 'demo123456' });
@@ -259,7 +259,7 @@ if (accs.length >= 2) {
         ok('7.4 删除转账', trDelete);
     }
 } else {
-    logger.info('  ⚠️  跳过转账测试（需要至少2个账户）');
+    console.info('  ⚠️  跳过转账测试（需要至少2个账户）');
 }
 
 // ================================================================
@@ -466,7 +466,7 @@ if (aiId) {
 if (aiId) {
     const aiTest = await call('/ai/providers/' + aiId + '/test', 'POST');
     // 测试连接可能成功也可能失败，只要不 500 就行
-    logger.info('  ℹ️  13.5 测试连接 — status=' + aiTest.status + ' msg=' + (aiTest.msg || '').slice(0, 50));
+    console.info('  ℹ️  13.5 测试连接 — status=' + aiTest.status + ' msg=' + (aiTest.msg || '').slice(0, 50));
 }
 
 // 13.6 删除服务商
@@ -491,13 +491,13 @@ ok('14.2 OCR 配置保存(脱敏)', ocrSave);
 
 // ================================================================
 // 结果汇总
-logger.info(`\n${'='.repeat(50)}`);
-logger.info(`🔬 全功能验证结果: ${p} 通过, ${f} 失败`);
+console.info(`\n${'='.repeat(50)}`);
+console.info(`🔬 全功能验证结果: ${p} 通过, ${f} 失败`);
 if (errors.length > 0) {
-    logger.info(`\n失败项:`);
-    errors.forEach(e => logger.info(`  ❌ ${e}`));
+    console.info(`\n失败项:`);
+    errors.forEach(e => console.info(`  ❌ ${e}`));
 }
-logger.info(`${'='.repeat(50)}`);
+console.info(`${'='.repeat(50)}`);
 process.exit(f > 0 ? 1 : 0);
 
-})().catch(e => { logger.error('验证异常:', e.message); process.exit(1); });
+})().catch(e => { console.error('验证异常:', e.message); process.exit(1); });

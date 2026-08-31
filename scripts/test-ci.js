@@ -132,7 +132,7 @@ function truncate(s, n) {
 
 async function main() {
   if (!fs.existsSync(TEST_DIR)) {
-    logger.error(`测试目录不存在: ${TEST_DIR}`);
+    console.error(`测试目录不存在: ${TEST_DIR}`);
     process.exit(1);
   }
 
@@ -140,17 +140,17 @@ async function main() {
     .filter((f) => f.endsWith('.test.js'))
     .sort();
 
-  logger.info(`[test-ci] 共 ${files.length} 个测试文件 | 单用例超时 ${CASE_TIMEOUT_MS}ms | 单文件超时 ${FILE_TIMEOUT_MS}ms`);
+  console.info(`[test-ci] 共 ${files.length} 个测试文件 | 单用例超时 ${CASE_TIMEOUT_MS}ms | 单文件超时 ${FILE_TIMEOUT_MS}ms`);
 
   const failures = [];
   for (const file of files) {
     const started = Date.now();
-    logger.info(`\n[test-ci] === ${file}`);
+    console.info(`\n[test-ci] === ${file}`);
     const res = await runFile(file);
     const cost = Date.now() - started;
 
     if (res.ok) {
-      logger.info(`[test-ci] --- ${file} OK (${cost}ms)`);
+      console.info(`[test-ci] --- ${file} OK (${cost}ms)`);
       continue;
     }
 
@@ -162,28 +162,28 @@ async function main() {
     const leak = (stats.fail || 0) === 0 && (res.killed || (stats.cancelled || 0) > 0);
     const kind = leak ? 'HANDLE-LEAK' : (res.killed ? 'TIMEOUT' : 'FAILED');
 
-    logger.info(`[test-ci] !!! ${file} ${kind} (${cost}ms): ${res.reason} | ${statText || 'no TAP stats'}`);
+    console.info(`[test-ci] !!! ${file} ${kind} (${cost}ms): ${res.reason} | ${statText || 'no TAP stats'}`);
     failures.push({ ...res, cost, stats, cases, statText, kind, leak });
   }
 
-  logger.info('\n================ [test-ci] 汇总 ================');
-  logger.info(`通过 ${files.length - failures.length}/${files.length}，失败 ${failures.length}`);
+  console.info('\n================ [test-ci] 汇总 ================');
+  console.info(`通过 ${files.length - failures.length}/${files.length}，失败 ${failures.length}`);
 
   for (const f of failures.slice(0, MAX_ANNOTATIONS)) {
     const head = `[${f.kind}] test/${f.file}: ${f.reason} | ${f.statText || 'no TAP stats'} (${f.cost}ms)`;
     const detail = f.cases.length
       ? ' | 用例: ' + f.cases.slice(0, 3).map((c) => `${c.name}${c.err ? ' → ' + truncate(c.err, 300) : ''}`).join(' ;; ')
       : (f.leak ? ' | 所有用例均通过但进程未退出，疑似句柄泄漏（连接池未 end / 服务未 close）' : ' | 无 TAP 输出（可能是启动即崩溃或整体超时）');
-    logger.info(`::error file=test/${f.file},title=${f.kind} test/${f.file}::${truncate(head + detail, 1400)}`);
+    console.info(`::error file=test/${f.file},title=${f.kind} test/${f.file}::${truncate(head + detail, 1400)}`);
   }
   if (failures.length > MAX_ANNOTATIONS) {
-    logger.info(`::error title=更多失败文件::另有 ${failures.length - MAX_ANNOTATIONS} 个失败文件未展示（注解上限 ${MAX_ANNOTATIONS}）`);
+    console.info(`::error title=更多失败文件::另有 ${failures.length - MAX_ANNOTATIONS} 个失败文件未展示（注解上限 ${MAX_ANNOTATIONS}）`);
   }
 
   process.exit(failures.length ? 1 : 0);
 }
 
 main().catch((err) => {
-  logger.error('[test-ci] 运行器自身异常:', err);
+  console.error('[test-ci] 运行器自身异常:', err);
   process.exit(1);
 });

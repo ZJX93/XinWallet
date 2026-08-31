@@ -81,7 +81,7 @@ for (const file of jsFiles) {
     }
 }
 
-logger.info(`后端路由: ${allBackend.size} 个, 前端调用: ${frontendCalls.size} 个\n`);
+console.info(`后端路由: ${allBackend.size} 个, 前端调用: ${frontendCalls.size} 个\n`);
 
 // 检查缺失
 const missing = [];
@@ -97,9 +97,9 @@ for (const call of frontendCalls) {
 }
 
 if (missing.length === 0) {
-    logger.info('✅ 所有前端 API 调用均有对应后端路由！');
+    console.info('✅ 所有前端 API 调用均有对应后端路由！');
 } else {
-    logger.info(`❌ 缺失 ${missing.length} 个路由:`);
-    missing.forEach(m => logger.info(`   ${m}`));
+    console.info(`❌ 缺失 ${missing.length} 个路由:`);
+    missing.forEach(m => console.info(`   ${m}`));
     process.exit(1);
 }

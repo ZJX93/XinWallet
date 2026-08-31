@@ -1,4 +1,4 @@
-const logger = require('../../../../../logger');
+const logger = require('./logger');
 /* ============================================
   鑫钱包 · Database Connection Pool（PostgreSQL / MySQL 双方言）
   ------------------------------------------------------------

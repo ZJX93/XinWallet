@@ -17,8 +17,8 @@
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
-    if (cond) { pass++; logger.info(`  ✅ ${name}`); }
-    else { fail++; logger.info(`  ❌ ${name}${extra ? '（' + extra + '）' : ''}`); }
+    if (cond) { pass++; console.info(`  ✅ ${name}`); }
+    else { fail++; console.info(`  ❌ ${name}${extra ? '（' + extra + '）' : ''}`); }
 }
 
 function lastDayOfMonth(y, m) { return new Date(y, m, 0).getDate(); }
@@ -74,13 +74,13 @@ function clientGranularity(periodMode) {
     return 'monthly';
 }
 
-logger.info('\n【修复前：客户端发 yearly，旧服务端拒绝】');
+console.info('\n【修复前：客户端发 yearly，旧服务端拒绝】');
 {
     const r = tryParse(parseOld, 'yearly', '2026');
     ok('旧服务端收到 yearly 会抛错（这就是线上现场）', !r.ok && r.msg === '不支持的报表类型', r.ok ? '竟然通过了' : r.msg);
 }
 
-logger.info('\n【修复后：客户端按年发 annual】');
+console.info('\n【修复后：客户端按年发 annual】');
 {
     ok("periodMode='year' → 'annual'", clientGranularity('year') === 'annual', clientGranularity('year'));
 
@@ -96,7 +96,7 @@ logger.info('\n【修复后：客户端按年发 annual】');
         oldR.ok && newR.ok && oldR.r.start === newR.r.start && oldR.r.end === newR.r.end);
 }
 
-logger.info('\n【按年区间必须覆盖整 12 个月（趋势图分桶的前提）】');
+console.info('\n【按年区间必须覆盖整 12 个月（趋势图分桶的前提）】');
 {
     const r = parseOld('annual', '2026');
     const days = Math.round((new Date(r.end) - new Date(r.start)) / 86400000) + 1;
@@ -115,7 +115,7 @@ logger.info('\n【按年区间必须覆盖整 12 个月（趋势图分桶的前�
     ok('2024（闰年）= 366 天', leapDays === 366, String(leapDays));
 }
 
-logger.info('\n【按月不受影响（回归）】');
+console.info('\n【按月不受影响（回归）】');
 {
     ok("periodMode='month' → 'monthly'", clientGranularity('month') === 'monthly');
     const r = tryParse(parseOld, 'monthly', '2026-08');
@@ -127,7 +127,7 @@ logger.info('\n【按月不受影响（回归）】');
     ok('2026-02 = 28 天（不是 30）', feb.end === '2026-02-28', feb.end);
 }
 
-logger.info('\n【自定义区间：旧服务端确实不支持 → 必须给出明确文案】');
+console.info('\n【自定义区间：旧服务端确实不支持 → 必须给出明确文案】');
 {
     ok("periodMode='custom' → 'custom'", clientGranularity('custom') === 'custom');
     const oldR = tryParse(parseOld, 'custom', '2026-01~2026-06');
@@ -146,7 +146,7 @@ logger.info('\n【自定义区间：旧服务端确实不支持 → 必须给出
     }
 }
 
-logger.info('\n【新服务端仍兼容 yearly（向前兼容，老客户端不被打断）】');
+console.info('\n【新服务端仍兼容 yearly（向前兼容，老客户端不被打断）】');
 {
     const r = tryParse(parseNew, 'yearly', '2026');
     ok('新服务端接受 yearly', r.ok, r.msg);
@@ -155,7 +155,7 @@ logger.info('\n【新服务端仍兼容 yearly（向前兼容，老客户端不�
         r.ok && a.ok && r.r.start === a.r.start && r.r.end === a.r.end);
 }
 
-logger.info('\n【失败时不得保留旧数据（状态机语义）】');
+console.info('\n【失败时不得保留旧数据（状态机语义）】');
 {
     // 复刻修复后的 load()：失败 → data = null + error 非空
     function load(prevData, requestOk) {
@@ -169,5 +169,5 @@ logger.info('\n【失败时不得保留旧数据（状态机语义）】');
     ok('请求成功后 error 复位', okCase.error === '' && okCase.data !== null);
 }
 
-logger.info(`\n${fail === 0 ? '✅ 全部通过' : '❌ 有失败项'}（${pass} 项通过，${fail} 项失败）\n`);
+console.info(`\n${fail === 0 ? '✅ 全部通过' : '❌ 有失败项'}（${pass} 项通过，${fail} 项失败）\n`);
 process.exit(fail === 0 ? 0 : 1);

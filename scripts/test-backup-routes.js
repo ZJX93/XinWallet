@@ -117,7 +117,7 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: f
 const backup = require(path.join(__dirname, '..', 'server', 'routes', 'backup'));
 
 // ---------- 4) 起服务、跑导出/导入 ----------
-function assert(cond, msg) { if (!cond) { logger.error('❌ ' + msg); process.exitCode = 1; } else { logger.info('✅ ' + msg); } }
+function assert(cond, msg) { if (!cond) { console.error('❌ ' + msg); process.exitCode = 1; } else { console.info('✅ ' + msg); } }
 
 (async () => {
     const app = express();
@@ -153,7 +153,7 @@ function assert(cond, msg) { if (!cond) { logger.error('❌ ' + msg); process.ex
         assert(body && body.success, '导入返回 success=true');
 
         const imp = body.data && body.data.imported;
-        logger.info('   导入统计:', JSON.stringify(imp));
+        console.info('   导入统计:', JSON.stringify(imp));
         assert(imp && imp.tags > 0, '导入恢复了标签');
         assert(imp && imp.accounts > 0, '导入恢复了账户');
         assert(imp && imp.categories > 0, '导入恢复了（用户）分类');
@@ -171,12 +171,12 @@ function assert(cond, msg) { if (!cond) { logger.error('❌ ' + msg); process.ex
         assert(txRows.filter(r => r.columns.includes('source_account_id')).length === 2, '转账生成 2 条 transfer_out/transfer_in 台账交易');
 
         // 所有 INSERT 列名均合法
-        logger.info('   [debug] insertLog 表:', [...new Set(insertLog.map(x => x.table))].join(','));
+        console.info('   [debug] insertLog 表:', [...new Set(insertLog.map(x => x.table))].join(','));
         assert(colErrors.length === 0, '所有 INSERT 列名均存在于 schema（' + (colErrors.join('; ') || '无异常') + '）');
 
-        if (process.exitCode) logger.info('\n❌ 路由集成测试存在失败项'); else logger.info('\n🎉 备份路由端到端（无 DB）测试全部通过');
+        if (process.exitCode) console.info('\n❌ 路由集成测试存在失败项'); else console.info('\n🎉 备份路由端到端（无 DB）测试全部通过');
     } catch (e) {
-        logger.error('❌ 测试异常:', e && e.stack ? e.stack : e);
+        console.error('❌ 测试异常:', e && e.stack ? e.stack : e);
         process.exitCode = 1;
     } finally {
         server.close();

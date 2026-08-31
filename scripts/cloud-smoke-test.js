@@ -18,7 +18,7 @@ async function call(method, path, { token, body } = {}) {
 const results = [];
 function record(name, ok, detail) {
   results.push({ name, ok, detail });
-  logger.info(`${ok ? '✅' : '❌'} ${name} — ${detail}`);
+  console.info(`${ok ? '✅' : '❌'} ${name} — ${detail}`);
 }
 
 async function main() {
@@ -32,7 +32,7 @@ async function main() {
   record('demo 登录', demo.status === 200 && !!token,
     demo.status === 200 ? `拿到 token（${token?.slice(0, 12)}…）` : `HTTP ${demo.status} ${demo.raw.slice(0, 120)}`);
   if (!token) {
-    logger.info('\n无法获取 token，终止后续测试');
+    console.info('\n无法获取 token，终止后续测试');
     process.exit(1);
   }
 
@@ -62,8 +62,8 @@ async function main() {
   record('未鉴权拦截', noAuth.status === 401, `HTTP ${noAuth.status}`);
 
   const passed = results.filter(r => r.ok).length;
-  logger.info(`\n=== 冒烟测试结果：${passed}/${results.length} 通过 ===`);
+  console.info(`\n=== 冒烟测试结果：${passed}/${results.length} 通过 ===`);
   process.exit(passed === results.length ? 0 : 2);
 }
 
-main().catch(e => { logger.error('测试脚本异常:', e); process.exit(3); });
+main().catch(e => { console.error('测试脚本异常:', e); process.exit(3); });

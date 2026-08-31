@@ -1,4 +1,4 @@
-const logger = require('../../../../../../logger');
+const logger = require('../logger');
 /* ============================================
    鑫钱包 · AI 服务调用模块
    封装 OpenAI 兼容 / Anthropic 接口调用

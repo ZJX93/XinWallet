@@ -21,10 +21,10 @@
 
 let pass = 0, fail = 0;
 function ok(cond, name, extra) {
-    if (cond) { pass++; logger.info('  ok   ' + name); }
-    else { fail++; logger.info('  FAIL ' + name + (extra ? '  → ' + extra : '')); }
+    if (cond) { pass++; console.info('  ok   ' + name); }
+    else { fail++; console.info('  FAIL ' + name + (extra ? '  → ' + extra : '')); }
 }
-function section(t) { logger.info('\n' + t); }
+function section(t) { console.info('\n' + t); }
 
 /**
  * 复刻 server/routes/transfers.js 的备注拼接。
@@ -140,6 +140,6 @@ section('8. 源码级检查：确认服务端没有把账户名写反');
     ok(!looseLookup, '账户名查询都带 user_id / book_id 过滤');
 }
 
-logger.info('\n' + '─'.repeat(52));
-logger.info(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
+console.info('\n' + '─'.repeat(52));
+console.info(`总计 ${pass + fail} 项：通过 ${pass}，失败 ${fail}`);
 process.exit(fail === 0 ? 0 : 1);

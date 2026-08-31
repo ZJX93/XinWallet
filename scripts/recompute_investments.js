@@ -16,9 +16,9 @@ const recompute = router.recomputeInvestmentPosition;
     const cb = parseFloat(before.total_cost) || 0, ca = parseFloat(after.total_cost) || 0;
     if (Math.abs(cb - ca) > 1e-6) {
       changed++;
-      logger.info(`[变更] id=${inv.id} ${inv.name}: cost ${before.total_cost} -> ${after.total_cost}, qty ${before.quantity} -> ${after.quantity}, status ${before.status} -> ${after.status}`);
+      console.info(`[变更] id=${inv.id} ${inv.name}: cost ${before.total_cost} -> ${after.total_cost}, qty ${before.quantity} -> ${after.quantity}, status ${before.status} -> ${after.status}`);
     }
   }
-  logger.info(`\n完成：共 ${invs.length} 只持仓，成本发生变动 ${changed} 只。`);
+  console.info(`\n完成：共 ${invs.length} 只持仓，成本发生变动 ${changed} 只。`);
   await db.pool.end();
-})().catch(e => { logger.error('ERR', e); process.exit(1); });
+})().catch(e => { console.error('ERR', e); process.exit(1); });
