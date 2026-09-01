@@ -524,35 +524,44 @@ const AccountManager = {
         btn.disabled = true; btn.textContent = '提交中…';
         try {
             if (this._editingInterestTxnId) {
+                // PUT /transactions/:id 后端返回 success(null, …)，api() 返回 data.data 即 null，
+                // 用 `if (res)` 判断会让刷新全被跳过。api() 失败必 throw，成功（含 null）即代表已更新。
                 const acc = getAcc(id);
                 const finalNote = note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`;
-                const res = await api(`/transactions/${this._editingInterestTxnId}`, 'PUT', {
+                await api(`/transactions/${this._editingInterestTxnId}`, 'PUT', {
                     account_id: id, category_id: this._editingInterestCatId, type: 'income',
                     amount: amt, date, note: finalNote, link_type: 'account_interest', link_id: id
                 });
-                if (res) {
-                    showToast('利息已更新', 'success');
-                    this.closeInterestModal();
-                    await this.openDetail(id);
-                } else {
-                    btn.disabled = false; btn.textContent = '确认';
-                }
+                showToast('利息已更新', 'success');
+                this.closeInterestModal();
+                await this.syncAfterInterestChange(id);
                 return;
             }
-            const res = await api(`/accounts/${id}/interest`, 'POST', { amount: amt, date, note: note || undefined });
-            if (res) {
-                showToast('利息已记录', 'success');
-                this.closeInterestModal();
-                await initCache();
-                await this.refresh();
-            } else {
-                btn.disabled = false; btn.textContent = '确认';
-            }
+            await api(`/accounts/${id}/interest`, 'POST', { amount: amt, date, note: note || undefined });
+            showToast('利息已记录', 'success');
+            this.closeInterestModal();
+            await this.syncAfterInterestChange(id);
         } catch (e) {
             btn.disabled = false; btn.textContent = '确认';
             errEl.textContent = (e && e.message) || '提交失败，请重试';
             errEl.style.display = '';
         }
+    },
+
+    /**
+     * 利息新增/编辑后的统一刷新。
+     *
+     * 记利息会生成（或改动）一笔 income 流水并重算账户余额。只刷外层账户列表是不够的：
+     * 用户是从「账户详情弹窗」点开记息弹窗的，提交后关掉的只是记息弹窗、详情弹窗仍叠在下面，
+     * 若不同步 openDetail，详情里的流水列表和余额就还是提交前的旧数据（表现为"记了息却没变化"）。
+     *
+     * 所以三处都要刷：详情弹窗 → 账户缓存 → 外层账户卡片 → Dashboard KPI。
+     */
+    async syncAfterInterestChange(accId) {
+        await this.openDetail(accId);
+        await initCache();
+        await this.refresh();
+        if (window.DashboardManager) await window.DashboardManager.refresh();
     },
 
     /* ---- 账户：全屏网格铺开 ---- */
