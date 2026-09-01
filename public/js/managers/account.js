@@ -492,8 +492,13 @@ const AccountManager = {
     // 走通用 DELETE /transactions/:id，余额由账本重算，删除后刷新详情。
     async deleteAccTxn(txnId, accId) {
         if (!window.confirm('确定删除这笔利息流水？账户余额将回退。')) return;
-        const r = await api(`/transactions/${txnId}`, 'DELETE');
-        if (r) {
+        // 注意：api() 返回的是响应体的 data.data 字段，而 DELETE /transactions/:id
+        // 后端返回 success(null, ...)，data.data 为 null —— 不能用 `if (r)` 判断成功，
+        // 否则刷新逻辑永远被跳过（流水已删却仍留在界面、余额不回退）。
+        // api() 失败一定会 throw（统一 API 层已弹错误 toast），成功（即便返回 null）即代表删除成功，
+        // 因此用 try/catch 包裹、不依赖 r 的真值。
+        try {
+            await api(`/transactions/${txnId}`, 'DELETE');
             showToast('已删除利息流水', 'success');
             await this.openDetail(accId);
             // 余额由账本重算，需刷新账户缓存 + 外层账户列表 + Dashboard KPI，
@@ -501,6 +506,8 @@ const AccountManager = {
             await initCache();
             await this.refresh();
             if (window.DashboardManager) await window.DashboardManager.refresh();
+        } catch (e) {
+            // api() 已在失败时弹错误 toast，这里无需重复提示
         }
     },
     async saveInterest() {
