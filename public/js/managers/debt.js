@@ -213,8 +213,8 @@ const DebtManager = {
         const leftVal = d.paid_total || 0;
         const rightVal = remain > 0 ? remain : 0;
         const actBtn = isRecv
-            ? `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
-            : `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
+            ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
+            : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
         const metaLeft = `${pct}% 进度`;
         const metaRight = d.interest_rate ? `年利率 ${d.interest_rate}%` : methodName;
         return `

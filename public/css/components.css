@@ -422,7 +422,7 @@
 }
 .amt-op-btn:hover { border-color: var(--interactive-default); color: var(--interactive-default); }
 .amt-op-btn.active {
-  color: #fff; background: var(--interactive-default);
+  color: var(--interactive-default); background: var(--surface-hover);
   border-color: var(--interactive-default);
 }
 
@@ -458,8 +458,8 @@
 .amt-apply-btn {
   flex: 1; height: 30px;
   font-size: 12px; font-family: inherit;
-  color: #fff; background: var(--interactive-default);
-  border: 1px solid var(--interactive-default);
+  color: var(--text-primary); background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   cursor: pointer; transition: all var(--duration-150);
 }
@@ -1951,8 +1951,8 @@
 }
 .debt-type-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
 .debt-type-tab.active {
-  background: linear-gradient(135deg, var(--accent-500), var(--accent-700));
-  color: var(--text-on-accent); box-shadow: var(--shadow-md);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 .debt-type-tab.active .dtt-meta { color: rgba(255,255,255,0.7); }
 .dtt-icon { font-size: 15px; }
@@ -2141,7 +2141,7 @@
     font-size: 13px;
 }
 .book-switcher-item:hover { background: var(--surface-hover, rgba(255,255,255,0.08)); }
-.book-switcher-item.active { background: color-mix(in srgb, var(--interactive-default) 20%, transparent); color: var(--interactive-default); font-weight: 600; }
+.book-switcher-item.active { background: var(--surface-hover); color: var(--text-primary); font-weight: 600; }
 .book-switcher-item .book-dot {
     width: 22px; height: 22px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -2255,8 +2255,8 @@
 }
 .ai-insights-tab:hover { color: var(--text-primary, #222); }
 .ai-insights-tab.active {
-  background: var(--interactive-default, #4f46e5);
-  color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18);
+  background: var(--surface-hover);
+  color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,.18);
 }
 
 /* AI Advice：三级 priority 配色 */

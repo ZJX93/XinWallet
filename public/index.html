@@ -122,7 +122,7 @@
                 <div class="glass-card">
                     <h3 class="card-title">我的账户 <span style="font-size:12px;color:var(--text-tertiary)">总资产 <strong id="accTotalAssets" style="color:var(--interactive-default)">¥0</strong></span></h3>
                     <div class="acc-toolbar">
-                        <button class="btn btn-primary" id="addAccountBtn">＋ 新增账户</button>
+                        <button class="btn btn-ghost" id="addAccountBtn">＋ 新增账户</button>
                         <button class="btn btn-ghost" id="reconcileBtn" title="以账本为准，重算并修正账户余额（复式记账防漂移）">🔄 重新对账</button>
                         <label class="acc-toggle"><input type="checkbox" id="showClosedAcc"> <span>显示已销户账户</span></label>
                     </div>
@@ -135,7 +135,7 @@
                 <div class="filter-bar">
                     <div class="filter-bar-top">
                         <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="transSearch" placeholder="搜索交易..."></div>
-                        <button class="btn btn-primary" id="addTransBtn">＋ 新增交易</button>
+                        <button class="btn btn-ghost" id="addTransBtn">＋ 新增交易</button>
                     </div>
                 </div>
                 <div class="trans-list" id="transList">
@@ -181,7 +181,7 @@
                             <label>标签</label>
                             <div class="tag-picker" id="transTagPicker"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="transCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="transCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
                     </form>
                 </div></div>
             </section>
@@ -210,7 +210,7 @@
                                 <option value="year">年度</option>
                             </select>
                             <input type="month" id="budgetBaseMonth" class="filter-select" value="" style="font-size:12px;padding:4px 8px;width:140px">
-                            <button class="btn btn-primary" id="addBudgetBtn" style="font-size:13px;padding:6px 14px">＋ 添加预算</button>
+                            <button class="btn btn-ghost" id="addBudgetBtn" style="font-size:13px;padding:6px 14px">＋ 添加预算</button>
                         </div>
                     </div>
                     <div class="budget-list" id="budgetList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
@@ -231,7 +231,7 @@
                             <div class="form-group"><label>基准月份</label><input type="month" id="budgetBaseMonthSelect" required></div>
                             <div class="form-group"><label>预算金额 (¥)</label><input type="number" id="budgetAmount" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="budgetCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="budgetCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
                     </form>
                 </div></div>
             </section>
@@ -297,7 +297,7 @@
                         </div>
                         <div class="page-toolbar-actions">
                             <span class="see-all" id="debtCount"></span>
-                            <button class="btn btn-primary" id="addDebtBtn">＋ 新增</button>
+                            <button class="btn btn-ghost" id="addDebtBtn">＋ 新增</button>
                         </div>
                     </div>
                     <!-- 列表（账表式） -->
@@ -361,7 +361,7 @@
                             <div class="form-group"><label>最低还款额 (¥)</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
                         </div>
                         <div class="form-group"><label>备注</label><input type="text" id="debtNote" placeholder="可选"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
                     </form>
                 </div></div>
 
@@ -379,7 +379,7 @@
                             <div class="form-group"><label>利息 (¥)</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填"></div>
                         </div>
                         <div class="form-group"><label>备注</label><input type="text" id="repayNote" placeholder="可选"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="repaySubmitBtn">登记</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="repaySubmitBtn">登记</button></div>
                     </form>
                 </div></div>
 
@@ -409,26 +409,26 @@
                     <div class="dc-panel active" id="dcPanel-categories">
                         <div class="dc-toolbar">
                             <select id="catFilterType"><option value="">全部类型</option><option value="expense">支出</option><option value="income">收入</option></select>
-                            <button class="btn btn-primary" id="addCatBtn">＋ 新增分类</button>
+                            <button class="btn btn-ghost" id="addCatBtn">＋ 新增分类</button>
                         </div>
                         <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>类型</th><th>颜色</th><th>排序</th><th>操作</th></tr></thead><tbody id="catTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
                     </div>
 
                     <!-- 理财类型 -->
                     <div class="dc-panel" id="dcPanel-invtypes">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addInvTypeBtn">＋ 新增理财类型</button></div>
+                        <div class="dc-toolbar"><button class="btn btn-ghost" id="addInvTypeBtn">＋ 新增理财类型</button></div>
                         <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>风险等级</th><th>描述</th><th>排序</th><th>操作</th></tr></thead><tbody id="invTypeTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
                     </div>
 
                     <!-- 标签管理 -->
                     <div class="dc-panel" id="dcPanel-tags">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addTagBtn">＋ 新建标签</button></div>
+                        <div class="dc-toolbar"><button class="btn btn-ghost" id="addTagBtn">＋ 新建标签</button></div>
                         <div class="tag-grid" id="tagGrid"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                     </div>
 
                     <!-- 账本管理 -->
                     <div class="dc-panel" id="dcPanel-books">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addBookBtn">＋ 新增账本</button></div>
+                        <div class="dc-toolbar"><button class="btn btn-ghost" id="addBookBtn">＋ 新增账本</button></div>
                         <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>颜色</th><th>默认</th><th>操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📒</div><div class="empty-text">暂无账本</div></div></td></tr></tbody></table></div>
                     </div>
                 </div>
@@ -451,7 +451,7 @@
                         </div>
                         <div class="form-group full-width" id="dcRowDesc" style="display:none"><label>描述</label><input type="text" id="dcEditDesc" placeholder="可选描述"></div>
                         <div class="form-group full-width" id="dcRowColor"><label>颜色</label><div class="color-swatches" id="dcColorSwatches"></div><input type="hidden" id="dcEditColor" value="#6366f1"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="dcEditCancel">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="dcEditCancel">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
                     </form>
                 </div></div>
 
@@ -464,7 +464,7 @@
                             <div class="form-group"><label>图标</label><input type="text" id="tagIcon" value="🏷️" placeholder="emoji"></div>
                         </div>
                         <div class="form-group full-width"><label>颜色</label><div class="color-swatches" id="tagColorSwatches"></div><input type="hidden" id="tagColor" value="#3b82f6"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="tagCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存标签</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="tagCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存标签</button></div>
                     </form>
                 </div></div>
             </section>
@@ -477,7 +477,7 @@
                             <h3 class="card-title">🤖 AI 服务商配置</h3>
                             <p class="card-desc">配置大模型服务商后即可使用 AI 记账、消费洞察和语音转写。建议搭配两个服务商：<b>一个用于对话</b>（如 MiniMax），<b>一个用于语音转写</b>（如 Groq 免费 Whisper）。API Key 仅保存在服务端。</p>
                         </div>
-                        <button class="btn btn-primary" id="aiAddProviderBtn">＋ 添加服务商</button>
+                        <button class="btn btn-ghost" id="aiAddProviderBtn">＋ 添加服务商</button>
                     </div>
                     <!-- 新手引导 -->
                     <div class="ai-guide-hint" style="margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--surface-hover);font-size:var(--text-caption);color:var(--text-secondary);line-height:1.6">
@@ -556,7 +556,7 @@
                             </div>
 
                             <div class="form-actions">
-                                <button type="submit" class="btn btn-primary" id="aiProviderSaveBtn">保存</button>
+                                <button type="submit" class="btn btn-ghost" id="aiProviderSaveBtn">保存</button>
                                 <button type="button" class="btn btn-ghost" id="aiProviderTestBtn">测试连接</button>
                                 <button type="button" class="btn btn-ghost" id="aiProviderCancelBtn">取消</button>
                             </div>
@@ -588,7 +588,7 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">保存 OCR 配置</button>
+                            <button type="submit" class="btn btn-ghost">保存 OCR 配置</button>
                             <button type="button" class="btn btn-ghost" id="ocrTestBtn">测试 OCR</button>
                         </div>
                         <div id="ocrConfigMsg" class="form-msg" style="margin-top:12px"></div>
@@ -636,7 +636,7 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">保存 AI 识别设置</button>
+                            <button type="submit" class="btn btn-ghost">保存 AI 识别设置</button>
                         </div>
                         <div id="aiSettingsMsg" class="form-msg" style="margin-top:12px"></div>
                     </form>
@@ -694,7 +694,7 @@
                 <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="quickBudget"><option value="">不关联</option></select></div>
             </div>
             <div class="form-group"><label>备注</label><input type="text" id="quickNote" placeholder="备注..."></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="quickCancelBtn">取消</button><button type="submit" class="btn btn-primary">记一笔</button></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="quickCancelBtn">取消</button><button type="submit" class="btn btn-ghost">记一笔</button></div>
         </form>
     </div></div>
 
@@ -715,7 +715,7 @@
                 <div class="form-group"><label>计息周期</label><select id="accInterestCycle"><option value="monthly">按月</option><option value="yearly">按年</option><option value="daily">按日</option></select></div>
             </div>
             <div class="form-row"><div class="form-group full-width"><label>实时余额 (¥) <small style="color:var(--text-secondary)">由初始余额与流水自动计算</small></label><input type="number" id="accRealBalance" step="0.01" value="0" readonly tabindex="-1" style="background:var(--surface-hover); cursor:default;"></div></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="accCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="accCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
         </form>
     </div></div>
     <!-- 记一笔利息弹窗（与安卓端 AccountDetailScreen 的 AddInterestDialog 对齐） -->
@@ -732,7 +732,7 @@
                 <div class="form-group full-width"><label>备注 <small style="color:var(--text-secondary)">（可选）</small></label><input type="text" id="interestNote" placeholder="如：2026年7月利息" autocomplete="off"></div>
             </div>
             <div id="interestError" style="display:none;color:var(--status-danger,#dc2626);font-size:13px;margin:8px 0"></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="interestSubmitBtn">确认</button></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn">确认</button></div>
         </form>
     </div></div>
     <div class="modal-overlay" id="accountDetailModal"><div class="modal glass-card">
@@ -800,7 +800,7 @@
             <div class="profile-msg" id="profileMsg"></div>
             <div class="form-actions">
                 <button type="button" class="btn btn-ghost" id="profileCancelBtn">取消</button>
-                <button type="submit" class="btn btn-primary">保存修改</button>
+                <button type="submit" class="btn btn-ghost">保存修改</button>
             </div>
         </form>
     </div></div>

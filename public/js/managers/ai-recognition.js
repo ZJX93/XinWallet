@@ -33,7 +33,7 @@ const AIRecognition = {
     renderNoProvider(containerId) {
         const container = document.getElementById(containerId);
         if (container) {
-            container.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>未配置 AI 服务商</p><button class="btn btn-primary btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
+            container.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>未配置 AI 服务商</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
             // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
             container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
         }
@@ -808,7 +808,7 @@ const AIRecognition = {
         if (!input) return;
         const cat = this.guessCat(input);
         document.getElementById('aiCatResult').style.display = 'block';
-        document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${escapeHtml(cat.icon || "📌")} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-primary" id="aiQuickAddBtn">直接记一笔</button></div>`;
+        document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${escapeHtml(cat.icon || "📌")} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-ghost" id="aiQuickAddBtn">直接记一笔</button></div>`;
         document.getElementById('aiQuickAddBtn').addEventListener('click', () => window.quickAddFromAI && window.quickAddFromAI(cat.id, input));
     }
 };

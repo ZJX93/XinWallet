@@ -606,9 +606,9 @@ header.top-bar.top-bar-sticky {
   height: 30px; padding: 0 12px; font-size: var(--text-caption);
 }
 .provider-presets .btn.preset-active {
-  background: var(--interactive-default);
-  color: #fff;
-  border-color: var(--interactive-default);
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
 }
 
 /* 服务商能力标签 */
@@ -1773,7 +1773,7 @@ header.top-bar.top-bar-sticky {
   font-family: inherit; cursor: pointer; transition: all var(--duration-150);
 }
 .dc-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
-.dc-tab.active { background: var(--interactive-default); color: #fff; font-weight: var(--fw-semibold); }
+.dc-tab.active { background: var(--surface-hover); color: var(--text-primary); font-weight: var(--fw-semibold); }
 
 .dc-panel { display: none; }
 .dc-panel.active { display: block; }
@@ -2151,8 +2151,8 @@ body {
     transition: .2s;
 }
 .book-switcher-item.active {
-    background: var(--interactive-default);
-    color: oklch(14% 0.014 60);
+    background: var(--surface-hover);
+    color: var(--text-primary);
     font-weight: 600;
 }
 .theme-switcher {

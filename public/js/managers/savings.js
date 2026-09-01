@@ -257,8 +257,8 @@ const SavingsGoalManager = {
                 <div class="goal-amounts"><span class="goal-pct">${pct}%</span><span>${g.acc_name ? '关联 ' + escapeHtml(g.acc_name) : '未关联账户'}${g.source_acc_name ? ' · 来源 ' + escapeHtml(g.source_acc_name) : ''}</span></div>
                 ${g.note ? `<div class="goal-note">${escapeHtml(g.note)}</div>` : ''}
                 <div class="goal-actions">
-                    <button class="btn btn-primary" data-alloc="${g.id}">💰 存入</button>
-                    <button class="btn btn-ghost" data-withdraw="${g.id}">↩️ 取回</button>
+                    <button class="btn btn-ghost" data-alloc="${g.id}" title="存入">💰</button>
+                    <button class="btn btn-ghost" data-withdraw="${g.id}" title="取回">↩️</button>
                     <button class="btn btn-ghost" data-history="${g.id}" title="存取流水">📜</button>
                     <button class="btn btn-ghost" data-edit="${g.id}" title="编辑">✏️</button>
                     <button class="btn btn-ghost" data-del="${g.id}" title="删除">🗑️</button>

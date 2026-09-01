@@ -328,7 +328,7 @@ const AIRules = {
             <div class="ai-rules-actions">
                 <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">📜 查看证据</button>
                 ${isDisabled
-                    ? `<button class="btn btn-primary btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✓ 启用'}</button>
+                    ? `<button class="btn btn-ghost btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✓ 启用'}</button>
                         <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>🗑 删除</button>`
                     : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✕ 禁用'}</button>`
                 }

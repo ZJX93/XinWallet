@@ -17,13 +17,13 @@
                     <div class="glass-card chart-card"><h3 class="card-title">类型对比</h3><canvas id="invTypeBarChart" height="220"></canvas></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">持仓明细 <button class="btn btn-primary" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">🔄 一键刷新</button>
+                    <h3 class="card-title">持仓明细 <button class="btn btn-ghost" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">🔄 一键刷新</button>
                         <label class="inv-toggle" title="显示历史已清仓（已隐藏）的持仓"><input type="checkbox" id="invIncludeSold"> 显示已清仓</label>
                     </h3>
                     <div id="investList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">🎯 储蓄目标 <button class="btn btn-primary" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新建目标</button></h3>
+                    <h3 class="card-title">🎯 储蓄目标 <button class="btn btn-ghost" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新建目标</button></h3>
                     <p class="card-desc">为大额支出或心愿设立储蓄罐，从关联账户定投，进度一目了然</p>
                     <div id="savingsGoalList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
@@ -65,7 +65,7 @@
                             <div class="form-group"><label>&nbsp;</label><span class="form-hint" style="font-size:12px;color:var(--text-muted,#888)">同类型下每个产品可单独定风险，不选则继承类型默认值</span></div>
                         </div>
                         <div class="form-group full-width"><label>备注</label><input type="text" id="investNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存持仓</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存持仓</button></div>
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="reduceModal"><div class="modal glass-card modal-quick">
@@ -90,7 +90,7 @@
                             <div class="form-group"><label>成交日期</label><input type="date" id="reduceDate" required></div>
                         </div>
                         <div class="form-group full-width"><label>备注</label><input type="text" id="reduceNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="reduceSubmitBtn">确认卖出</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="reduceSubmitBtn">确认卖出</button></div>
                     </form>
                 </div></div>
 
@@ -116,7 +116,7 @@
                             <div class="form-group"><label>计息日期</label><input type="date" id="interestDate" required></div>
                             <div class="form-group"><label>备注</label><input type="text" id="interestNote" placeholder="备注..."></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="interestSubmitBtn">确认记录</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn">确认记录</button></div>
                     </form>
                 </div></div>
 
@@ -135,7 +135,7 @@
                             <div class="form-group full-width"><label>来源账户 *</label><select id="goalSource"></select></div>
                         </div>
                         <div class="form-group full-width"><label>备注</label><input type="text" id="goalNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="goalCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存目标</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="goalCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存目标</button></div>
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="goalAmountModal"><div class="modal glass-card modal-quick">
@@ -153,7 +153,7 @@
                         <div class="quick-amounts" id="goalQuickAmounts"></div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-ghost" id="goalAmountCancel">取消</button>
-                            <button type="submit" class="btn btn-primary" id="goalAmountConfirm">确认</button>
+                            <button type="submit" class="btn btn-ghost" id="goalAmountConfirm">确认</button>
                         </div>
                     </form>
                 </div></div>

@@ -84,8 +84,8 @@ body {
 }
 
 .auth-tab.active {
-  background: var(--interactive-default);
-  color: var(--text-on-accent);
+  background: var(--surface-hover);
+  color: var(--text-primary);
   box-shadow: var(--shadow-md);
 }
 

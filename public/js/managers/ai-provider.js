@@ -245,7 +245,7 @@ const AIProviderManager = {
                 </div>
                 <div class="provider-card-caps">${capBadges}</div>
                 <div class="provider-card-actions">
-                    ${p.is_active ? '<span class="btn btn-ghost btn-sm" disabled>已启用</span>' : `<button class="btn btn-primary btn-sm ai-provider-activate" data-id="${p.id}">启用</button>`}
+                    ${p.is_active ? '<span class="btn btn-ghost btn-sm" disabled>已启用</span>' : `<button class="btn btn-ghost btn-sm ai-provider-activate" data-id="${p.id}">启用</button>`}
                     <button class="btn btn-ghost btn-sm ai-provider-edit" data-id="${p.id}">编辑</button>
                     <button class="btn btn-ghost btn-sm ai-provider-delete" data-id="${p.id}">删除</button>
                 </div>

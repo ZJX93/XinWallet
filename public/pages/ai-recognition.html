@@ -11,7 +11,7 @@
                         <span class="ai-smart-chip" data-example="工资到账15000元">工资到账15000元</span>
                     </div>
                     <div class="ai-smart-actions">
-                        <button class="btn btn-primary btn-ai" id="aiSmartParseBtn">🪄 解析</button>
+                        <button class="btn btn-ghost btn-ai" id="aiSmartParseBtn">🪄 解析</button>
                         <button class="btn btn-ghost btn-ai" id="aiSmartVoiceBtn" title="语音转写（Whisper）">🎙 按住说话</button>
                         <span class="ai-smart-tip">解析结果需确认后才落账</span>
                     </div>
@@ -30,7 +30,7 @@
                         <div id="aiSmartVerdict" class="ai-smart-verdict"></div>
                         <div id="aiSmartList" class="ai-smart-list"></div>
                         <div class="ai-smart-confirm-actions">
-                            <button class="btn btn-primary" id="aiSmartCommitBtn">✅ 确认并记账</button>
+                            <button class="btn btn-ghost" id="aiSmartCommitBtn">✅ 确认并记账</button>
                             <button class="btn btn-ghost" id="aiSmartDiscardBtn">弃置</button>
                         </div>
                     </div>
@@ -50,7 +50,7 @@
                             </div>
                             <img id="ocrPreview" class="ocr-preview" style="display:none" alt="预览">
                             <div class="ocr-upload-actions">
-                                <button class="btn btn-primary btn-ai" id="ocrRecognizeBtn" disabled>🔍 识别并解析</button>
+                                <button class="btn btn-ghost btn-ai" id="ocrRecognizeBtn" disabled>🔍 识别并解析</button>
                                 <button class="btn btn-ghost" id="ocrClearBtn">重新选择</button>
                             </div>
                         </div>
@@ -70,7 +70,7 @@
                                 <div class="bill-file-meta" id="billFileMeta"></div>
                             </div>
                             <div class="ocr-upload-actions">
-                                <button class="btn btn-primary btn-ai" id="billParseBtn" disabled>🔍 解析账单</button>
+                                <button class="btn btn-ghost btn-ai" id="billParseBtn" disabled>🔍 解析账单</button>
                                 <button class="btn btn-ghost" id="billClearBtn">重新选择</button>
                             </div>
                         </div>
@@ -85,7 +85,7 @@
                     <div class="ocr-text-preview" id="ocrTextPreview" style="display:none"></div>
                     <div id="aiResultsList"></div>
                     <div class="ai-results-actions">
-                    <button class="btn btn-primary" id="aiImportAllBtn">全部导入为交易</button>
+                    <button class="btn btn-ghost" id="aiImportAllBtn">全部导入为交易</button>
                     <button class="btn btn-ghost btn-ai" id="ocrRetranscribeBtn" style="display:none" title="上次识别有误，强制用腾讯 OCR 重新识别">🔄 识别有误？换腾讯 OCR 重试</button>
                 </div>
                 </div>
