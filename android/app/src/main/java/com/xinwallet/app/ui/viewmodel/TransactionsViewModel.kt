@@ -3,6 +3,7 @@ package com.xinwallet.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.model.Account
+import com.xinwallet.app.data.model.CreateTransactionRequest
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.data.model.TxSummary
 import com.xinwallet.app.data.remote.ApiResult
@@ -162,6 +163,28 @@ class TransactionsViewModel(
 
     fun consumeToast() {
         _state.value = _state.value.copy(toast = null)
+    }
+
+    /**
+     * 复制一笔交易：以原交易同账户/分类/类型/金额/备注生成一条【新】记录，
+     * 日期取今天，且去掉 link_type/link_id（避免把利息/关联交易再挂一次）。
+     * 转账不支持复制（它的两条腿需走 /transfers，调用方已禁用）。
+     */
+    fun clone(item: TransactionItem) {
+        viewModelScope.launch {
+            val req = CreateTransactionRequest(
+                accountId = item.account?.id ?: 0,
+                categoryId = item.category?.id ?: 0,
+                type = item.type,
+                amount = item.amount,
+                note = item.note,
+                date = todayDate()
+            )
+            when (val r = repo.createTransaction(req)) {
+                is ApiResult.Success -> _state.value = _state.value.copy(toast = "已复制为新交易")
+                is ApiResult.Error -> _state.value = _state.value.copy(error = r.message)
+            }
+        }
     }
 
     fun consumeError() {

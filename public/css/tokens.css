@@ -12,6 +12,8 @@
     'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
     'Helvetica Neue', system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  /* 按钮专用：中文走华文行楷（系统字体，离线可用），西文/数字回退 Geist */
+  --font-button: '华文行楷', 'STXingkai', '华文行楷 Regular', var(--font-sans);
 
   --fw-light: 300;
   --fw-regular: 400;

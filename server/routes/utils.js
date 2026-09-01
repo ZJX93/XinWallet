@@ -8,6 +8,14 @@
 // 优先匹配「系统预设（user_id IS NULL）」或「当前用户私有（user_id = ?）」
 // 统一唯一权威实现，categories.js / savings.js / utils.js 共用本函数
 // ==========================================
+// 部分分类自动创建时需挂到指定父类下（例如「借出」→ 其他支出，「借入」→ 其他收入），
+// 避免它们散落成「一级叶子」，后续账本/筛选体验与系统预设不一致。
+// key 格式：`<name>|<type>`，value 为父类 id（必须是已存在的系统一级分类）。
+const DEFAULT_PARENT_BY_CAT = {
+    '借出|expense': 14,   // 其他支出
+    '借入|income': 21,    // 其他收入
+};
+
 async function ensureCategory(conn, userId, name, type, icon) {
     // 匹配：系统预设(user_id IS NULL) 或 用户级共享辅助分类(book_id IS NULL)。
     // 多账本下，用户自建的「本账本专属」分类不参与兜底，避免跨账本误复用。
@@ -17,9 +25,10 @@ async function ensureCategory(conn, userId, name, type, icon) {
     );
     if (cat.length === 0) {
         // 自动创建的辅助分类归属「用户级共享」(book_id 默认 NULL)，对所有账本可见
+        const parentId = DEFAULT_PARENT_BY_CAT[`${name}|${type}`] || null;
         const result = await conn.query(
-            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, '#6366f1', TRUE)",
-            [userId, name, type, icon]
+            "INSERT INTO categories (user_id, name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, '#6366f1', ?, TRUE)",
+            [userId, name, type, icon, parentId]
         );
         return result.insertId;
     }

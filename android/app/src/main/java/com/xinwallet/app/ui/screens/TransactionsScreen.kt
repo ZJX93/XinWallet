@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -73,6 +74,7 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.xinwallet.app.data.model.CreateTransactionRequest
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.EmptyState
@@ -199,6 +201,18 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    // 复制：仅普通交易（非转账）支持，复用 createTransaction 生成一条新记录（日期取今天，去掉利息/关联的 link 以免重复挂钩）
+                    if (item.transfer == null && item.transferId == null) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = {
+                            acting = null
+                            vm.clone(item)
+                        }) {
+                            Icon(Icons.Filled.ContentCopy, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("复制这笔")
+                        }
                     }
                 }
             },
@@ -591,7 +605,22 @@ private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) 
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.category?.name ?: "交易", style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(item.category?.name ?: "交易", style = MaterialTheme.typography.bodyLarge)
+                // 利息标记：账户记息产生的交易带 link_type='account_interest'，
+                // 与 web 端一致显示「利息」标签（普通收入不显示）。
+                if (item.linkType == "account_interest") {
+                    Spacer(Modifier.width(6.dp))
+                    Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Text(
+                            "利息",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
             val sub = if (isTransfer) {
                 // 流向放前面、备注放后面：备注长度不可控，保证「A → B」始终完整可见
                 val flow = if (item.transfer != null) {

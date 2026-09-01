@@ -6,7 +6,7 @@
 // 统一通过 ES Module 导入所有 Manager（utils.js 已在 index.html 中先加载，注入 window 全局）
 import ThemeManager from './theme.js';
 import AccountManager from './account.js';
-import TransactionManager from './transaction.js?v=17';
+import TransactionManager from './transaction.js';
 import BudgetManager from './budget.js';
 import InvestmentManager from './investment.js';
 import DebtManager from './debt.js';

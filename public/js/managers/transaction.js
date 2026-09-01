@@ -121,12 +121,17 @@ const TransactionManager = {
                 const isOpen = amtPanel.style.display !== 'none';
                 if (isOpen) { closeAmtPanel(); }
                 else {
-                    // 动态定位面板：fixed 定位，避免被 overflow:hidden 裁剪
-                    const rect = amtBtn.getBoundingClientRect();
-                    amtPanel.style.position = 'fixed';
-                    amtPanel.style.top = (rect.bottom + 4) + 'px';
-                    amtPanel.style.left = rect.left + 'px';
-                    amtPanel.style.minWidth = Math.max(rect.width, 200) + 'px';
+                    // 用 JS 强制设内联 !important 定位，绕过任何缓存/未加载的旧 CSS，
+                    // 无论 CSS 是 fixed/absolute 都没用，这里是最终的权威设置
+                    if (amtPanel.parentElement) {
+                        amtPanel.parentElement.style.position = 'relative'; // 确保定位包含块
+                    }
+                    amtPanel.style.setProperty('position', 'absolute', 'important');
+                    amtPanel.style.setProperty('top', '100%', 'important');
+                    amtPanel.style.setProperty('left', '0', 'important');
+                    amtPanel.style.removeProperty('right');
+                    amtPanel.style.removeProperty('bottom');
+                    amtPanel.style.removeProperty('min-width');
                     amtPanel.style.display = '';
                     amtBtn.classList.add('active');
                 }

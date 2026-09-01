@@ -342,9 +342,19 @@ export struct TransactionRow {
         // 第一行 = 分类名。转账在库里有真实分类（如「一般转账 🏦」），
         // 早前把「A → B」摆在这里、第二行写死「转账」，等于把分类信息挤掉，
         // 同时第二行是个常量、与左侧 🔄 图标重复表意，白占一整行。
-        Text(this.item?.category?.name ?? (this.isTransfer() ? '转账' : '未分类'))
-          .fontSize(15).fontColor(COLORS.textPrimary)
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row() {
+          Text(this.item?.category?.name ?? (this.isTransfer() ? '转账' : '未分类'))
+            .fontSize(15).fontColor(COLORS.textPrimary)
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          // 利息标记：账户记息产生的交易带 link_type='account_interest'，
+          // 与安卓/web 一致显示「利息」标签（普通收入不显示）。
+          if (this.item?.link_type === 'account_interest') {
+            Text('利息')
+              .fontSize(10).fontColor('#FFFFFF').backgroundColor(COLORS.brand)
+              .borderRadius(4).padding({ left: 5, right: 5, top: 1, bottom: 1 })
+              .margin({ left: 6 })
+          }
+        }
         if (this.subText() !== '') {
           Text(this.subText())
             .fontSize(12).fontColor(COLORS.textSecondary)

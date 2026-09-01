@@ -6,6 +6,7 @@ import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.CreateDebtRequest
 import com.xinwallet.app.data.model.CreateRepaymentRequest
 import com.xinwallet.app.data.model.Debt
+import com.xinwallet.app.data.model.UpdateRepaymentRequest
 import com.xinwallet.app.data.model.DebtDetailResponse
 import com.xinwallet.app.data.model.DebtListSummary
 import com.xinwallet.app.data.model.UpdateDebtRequest
@@ -71,6 +72,7 @@ class DebtsViewModel(
     fun repay(id: Int, req: CreateRepaymentRequest) = submit("还款已记录") { repo.createRepayment(id, req) }
 
     fun deleteRepayment(id: Int, rid: Int) = submit("还款记录已删除") { repo.deleteRepayment(id, rid) }
+    fun updateRepayment(id: Int, rid: Int, req: UpdateRepaymentRequest) = submit("还款已更新") { repo.updateRepayment(id, rid, req) }
 
     fun clearDetail() { _state.value = _state.value.copy(detail = null) }
 

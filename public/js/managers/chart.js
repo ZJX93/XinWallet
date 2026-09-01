@@ -271,6 +271,9 @@ const ChartManager = {
         this._pieStack = [];
         const summary = await api(`/transactions/summary?month=${cache.currentMonth}`);
         if (summary && summary.expenseByCategory && summary.expenseByCategory.length > 0) {
+            this._clearPieEmpty('dashPieChart');
+            const hintEl = document.getElementById('dashPieHint');
+            if (hintEl) hintEl.style.display = '';
             this._pieFull = summary.expenseByCategory;
             this._drawDashPie();
             if (!this._pieBackBound) {
@@ -287,7 +290,45 @@ const ChartManager = {
                     this._pieBackBound = true;
                 }
             }
+        } else {
+            // 当月无支出记录：环图整段被跳过、画布留白像“坏了”，改用空状态占位。
+            // 清空旧 chart 并复位下钻栈，保证后续月份有数据时能从一级重新绘制。
+            this.destroy('dashPie');
+            this._pieStack = [];
+            this._pieFull = null;
+            this._showPieEmpty('dashPieChart', '本月暂无支出记录\n记一笔后这里会显示支出构成');
+            const hintEl = document.getElementById('dashPieHint');
+            if (hintEl) hintEl.style.display = 'none';
         }
+    },
+
+    // 当月无支出时给环图卡片一个占位，避免画布空白像渲染失败
+    _showPieEmpty(canvasId, msg) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        canvas.style.display = 'none';
+        const wrap = canvas.parentElement;
+        if (!wrap) return;
+        let empty = wrap.querySelector('.pie-empty');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.className = 'pie-empty';
+            wrap.appendChild(empty);
+        }
+        // 允许用 \n 换行
+        empty.innerHTML = `<div class="empty-icon">🍩</div><div class="empty-text">${
+            String(msg).split('\n').map(l => `<div>${l}</div>`).join('')
+        }</div>`;
+    },
+
+    // 有数据时清掉占位、恢复画布（_drawDashPie 绘制前调用）
+    _clearPieEmpty(canvasId) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        canvas.style.display = '';
+        const wrap = canvas.parentElement;
+        const empty = wrap && wrap.querySelector('.pie-empty');
+        if (empty) empty.remove();
     },
 
     // 仪表盘支出饼图绘制（支持按一级 + 下钻子级）

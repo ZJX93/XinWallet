@@ -10,6 +10,22 @@
   font-size: var(--text-label);
   color: var(--text-tertiary);
 }
+/* 当月无支出记录时的占位：环图整段被跳过，画布留白像“坏了”，用空状态替代 */
+.pie-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  text-align: center;
+  padding: var(--space-3);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.pie-empty .empty-icon { font-size: 2rem; opacity: 0.55; }
+.pie-empty .empty-text { font-size: var(--text-label); line-height: 1.5; }
 #dashPieBack {
   font-size: var(--text-caption);
   font-weight: var(--fw-medium);

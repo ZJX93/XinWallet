@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
@@ -70,6 +71,7 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
     var error by remember { mutableStateOf<String?>(null) }
     var list by remember { mutableStateOf<List<InvestmentTransaction>>(emptyList()) }
     var showDeleteFor by remember { mutableStateOf<InvestmentTransaction?>(null) }
+    var showEditFor by remember { mutableStateOf<InvestmentTransaction?>(null) }
     var showSheet by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -111,7 +113,7 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
                     Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)
                 ) {
                     item { Spacer(Modifier.height(12.dp)) }
-                    items(list) { tx -> TxRow(tx, onDelete = { showDeleteFor = tx }) }
+                    items(list) { tx -> TxRow(tx, onDelete = { showDeleteFor = tx }, onEdit = { showEditFor = tx }) }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
             }
@@ -149,10 +151,21 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
             snackbar = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
         )
     }
+
+    if (showEditFor != null) {
+        InvestmentTxnSheet(
+            invId = id,
+            op = null,
+            editing = showEditFor,
+            onDismiss = { showEditFor = null },
+            onDone = { loadList(); vm.load() },
+            snackbar = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+        )
+    }
 }
 
 @Composable
-private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}) {
+private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}, onEdit: () -> Unit = {}) {
     val dark = LocalIsDark.current
     val isBuy = tx.type == "buy" || tx.type == "reinvest"
     val isSell = tx.type == "sell"
@@ -220,6 +233,9 @@ private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}) {
                     fontWeight = FontWeight.SemiBold,
                     color = amountColor
                 )
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

@@ -141,6 +141,11 @@ export async function deleteInvestmentTransaction(investmentId: number, txnId: n
   return del<object>(`investments/investments/${investmentId}/transactions/${txnId}`);
 }
 
+/** 编辑理财流水（买入/卖出/分红/利息/红利再投）。服务端 PUT /investments/:id/transactions/:txnId */
+export async function updateInvestmentTransaction(investmentId: number, txnId: number, req: object): Promise<ApiResponse<object>> {
+  return put<object>(`investments/investments/${investmentId}/transactions/${txnId}`, req);
+}
+
 /* 仪表盘 / 日历 */
 export async function getDashboard(): Promise<ApiResponse<Dashboard>> {
   return get<Dashboard>('stats/dashboard');
@@ -267,6 +272,11 @@ export async function createRepayment(id: number, req: object): Promise<ApiRespo
 }
 export async function deleteRepayment(id: number, rid: number): Promise<ApiResponse<object>> {
   return del<object>(`debts/${id}/repayments/${rid}`);
+}
+
+/** 编辑还款/收款记录。服务端 PUT /debts/:id/repayments/:rid（按 direction 分叉） */
+export async function updateRepayment(id: number, rid: number, req: object): Promise<ApiResponse<object>> {
+  return put<object>(`debts/${id}/repayments/${rid}`, req);
 }
 
 /* 报表 */

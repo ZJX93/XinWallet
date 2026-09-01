@@ -526,7 +526,8 @@ fun InvestmentTxnSheet(
     op: String?,
     onDismiss: () -> Unit,
     onDone: () -> Unit,
-    snackbar: (String) -> Unit
+    snackbar: (String) -> Unit,
+    editing: com.xinwallet.app.data.model.InvestmentTransaction? = null
 ) {
     val opLabels = mapOf(
         "buy" to "买入 / 加仓",
@@ -534,16 +535,22 @@ fun InvestmentTxnSheet(
         "dividend" to "分红",
         "sell_all" to "清仓"
     )
-    var localOp by remember { mutableStateOf(op) }
+    var localOp by remember { mutableStateOf(op ?: editing?.let {
+        when (it.type) {
+            "reinvest" -> "buy"
+            "interest" -> "dividend"
+            else -> it.type
+        }
+    }) }
     val scope = rememberCoroutineScope()
 
-    var price by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf(editing?.price?.toString() ?: "") }
+    var quantity by remember { mutableStateOf(editing?.quantity?.toString() ?: "") }
+    var amount by remember { mutableStateOf(editing?.amount?.toString() ?: "") }
     var sellPrice by remember { mutableStateOf("") }
-    var fee by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(todayDateTime().take(10)) }
-    var note by remember { mutableStateOf("") }
+    var fee by remember { mutableStateOf(editing?.fee?.toString() ?: "") }
+    var date by remember { mutableStateOf(editing?.date?.take(10) ?: todayDateTime().take(10)) }
+    var note by remember { mutableStateOf(editing?.note ?: "") }
     var submitting by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
@@ -658,7 +665,22 @@ fun InvestmentTxnSheet(
                         if (!valid) { snackbar("请填写有效的金额 / 价格与数量"); return@Button }
                         scope.launch {
                             submitting = true
-                            val res = when (localOp) {
+                            val res = if (editing != null) {
+                                // 编辑已有流水：金额按类型推导（分红/利息用 amount，买卖用 单价×数量）
+                                val amt = if (localOp == "dividend" || localOp == "interest") a else (p * q)
+                                AppContainer.investmentRepository.editTransaction(
+                                    invId, editing.id,
+                                    com.xinwallet.app.data.model.UpdateInvestmentTxnRequest(
+                                        type = localOp ?: "buy",
+                                        amount = amt,
+                                        price = p,
+                                        quantity = q,
+                                        date = date,
+                                        note = note.ifBlank { null },
+                                        fee = f
+                                    )
+                                )
+                            } else when (localOp) {
                                 "buy" -> AppContainer.investmentRepository.reduce(
                                     invId, com.xinwallet.app.data.model.ReduceInvestmentRequest("buy", p, q, f, date, note.ifBlank { null })
                                 )

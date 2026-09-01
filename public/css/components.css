@@ -326,6 +326,8 @@
 
 /* Header cells contain filter controls */
 .trans-th { overflow: hidden; }
+/* 金额列需放行其下拉面板（absolute 定位），其余列保持裁切 */
+.trans-th.trans-col-amount { overflow: visible; }
 
 .trans-thead .filter-select {
   width: 100%; height: 34px;
@@ -374,12 +376,12 @@
   position: relative;
 }
 
-/* 触发按钮 — 外观与其他 filter-select 一致 */
+/* 触发按钮 — 外观与其他 filter-select（<select>）一致，不走华文行楷 */
 .filter-amount-btn-drop {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%; height: 34px;
   padding: 0 8px;
-  font-size: 12px; font-weight: var(--fw-normal); font-family: inherit;
+  font-size: 12px; font-weight: var(--fw-normal); font-family: inherit !important;
   color: var(--text-secondary); background: var(--surface-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
@@ -394,10 +396,14 @@
 .filter-amount-arrow { font-size: 10px; margin-left: 4px; color: var(--text-tertiary); transition: transform var(--duration-150); }
 .filter-amount-btn-drop.active .filter-amount-arrow { transform: rotate(180deg); }
 
-/* 下拉面板 — fixed 定位，JS 动态计算位置 */
+/* 下拉面板 — absolute 定位到 .filter-amount-box（position:relative），
+   作为文档流内元素随页面滚动自然跟随“金额”按钮，无需 JS 定位 */
 .filter-amount-panel {
-  position: fixed;
-  margin-top: 0;
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  margin-top: 4px;
+  min-width: 200px;
   padding: 10px;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
@@ -413,7 +419,7 @@
 .amt-op-btn {
   flex: 0 0 auto;
   padding: 4px 10px;
-  font-size: 12px; font-family: inherit;
+  font-size: 12px; font-family: inherit !important;
   color: var(--text-secondary); background: var(--surface-hover);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
@@ -592,8 +598,11 @@
 
 .tag-card-del {
   border: none; background: transparent; color: var(--text-tertiary);
-  cursor: pointer; font-size: 15px; padding: 4px 6px; border-radius: var(--radius-sm);
+  cursor: pointer; font-family: var(--font-button);
+  font-size: 15px; font-weight: var(--fw-medium); letter-spacing: 0.02em; line-height: 1;
+  padding: 4px 6px; border-radius: var(--radius-sm);
   transition: all var(--duration-150) var(--ease-out-quart);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
 
 .tag-card-del:hover { color: var(--expense); background: var(--expense-soft); }
@@ -2010,7 +2019,10 @@
 .rh-actions { display: inline-flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .rh-edit-btn, .rh-del-btn {
     background: none; border: none; cursor: pointer; opacity: 0.6;
-    font-size: 14px; padding: 2px 5px; border-radius: 4px; line-height: 1;
+    font-family: var(--font-button);
+    font-size: 14px; font-weight: var(--fw-medium); letter-spacing: 0.02em; line-height: 1;
+    padding: 2px 5px; border-radius: 4px;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
 .rh-edit-btn:hover, .rh-del-btn:hover { opacity: 1; background: rgba(128,128,128,0.18); }
 .rh-amount { font-size: 16px; font-weight: 600; color: var(--text); font-feature-settings: 'tnum'; }

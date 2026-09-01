@@ -14,6 +14,7 @@ class InvestmentRepository(private val apiProvider: () -> ApiService) {
     suspend fun deleteInvestment(id: Int) = safeUnitCall { apiProvider().deleteInvestment(id) }
     suspend fun getTransactions(id: Int) = safeApiCall { apiProvider().getInvestmentTransactions(id) }
     suspend fun deleteTransaction(investmentId: Int, txnId: Int) = safeUnitCall { apiProvider().deleteInvestmentTransaction(investmentId, txnId) }
+    suspend fun editTransaction(investmentId: Int, txnId: Int, req: com.xinwallet.app.data.model.UpdateInvestmentTxnRequest) = safeUnitCall { apiProvider().updateInvestmentTransaction(investmentId, txnId, req) }
     suspend fun addTransaction(id: Int, req: com.xinwallet.app.data.model.AddInvestmentTxnRequest) = safeUnitCall { apiProvider().addInvestmentTransaction(id, req) }
     suspend fun reduce(id: Int, req: com.xinwallet.app.data.model.ReduceInvestmentRequest) = safeUnitCall { apiProvider().reduceInvestment(id, req) }
     suspend fun sell(id: Int, req: com.xinwallet.app.data.model.SellInvestmentRequest) = safeUnitCall { apiProvider().sellInvestment(id, req) }
