@@ -1,25 +1,29 @@
 # ============================================
-# 鑫钱包 · Docker Compose
-# 应用容器 + PostgreSQL 容器，数据持久化于命名卷
-# 所有敏感变量均来自同目录 .env（已被 .gitignore 忽略，不会入库）
+# 鑫钱包 · Docker Compose（单文件 · PostgreSQL / MySQL 双数据库适配）
+# ------------------------------------------------------------
+# 一个文件覆盖全部部署形态，通过同目录 .env 的 DB_DIALECT / DB_HOST 切换：
 #
-# 用法：
-#   docker compose up -d            # 拉取 GHCR 预构建镜像并启动
+#   1) 内置 PostgreSQL（默认）  docker compose --profile pg up -d
+#   2) 内置 MySQL 8.0           docker compose --profile mysql up -d
+#   3) 复用已有 / 外部数据库    docker compose up -d        （不启动内置库）
+#
+# app 内置数据库就绪探测（重试 30 次 / 约 60s），无需 depends_on 也能等待内置库就绪。
+# 敏感变量全部来自 .env（已被 .gitignore 忽略，不会入库）。
 # ============================================
 
 services:
-  db:
+  # ---------- 内置 PostgreSQL（--profile pg，默认）----------
+  db-pg:
     image: postgres:16-alpine
     container_name: xinwallet-db
     restart: unless-stopped
+    profiles: ["pg"]
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
       POSTGRES_DB: ${DB_NAME:-xinwallet}
     volumes:
       - xinwallet-db-data:/var/lib/postgresql/data
-    # 默认不将 5432 映射到宿主机（数据库仅内部可达）
-    # 本地调试可取消下一行注释临时暴露：
-    #   - "127.0.0.1:5432:5432"
+    # 本地调试可临时取消注释暴露：- "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -29,6 +33,33 @@ services:
     networks:
       - xinwallet-net
 
+  # ---------- 内置 MySQL 8.0（--profile mysql）----------
+  db-mysql:
+    image: mysql:8.0
+    container_name: xinwallet-mysql
+    restart: unless-stopped
+    profiles: ["mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      MYSQL_DATABASE: ${DB_NAME:-xinwallet}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-log-bin
+      - --skip-slave-start
+    volumes:
+      - xinwallet-mysql-data:/var/lib/mysql
+    # 本地调试可临时取消注释暴露：- "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - xinwallet-net
+
+  # ---------- 应用 ----------
   app:
     build:
       context: .
@@ -36,27 +67,25 @@ services:
     image: ghcr.io/zjx93/xin-wallet/xinwallet:latest
     container_name: xinwallet-app
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 18888
-      DB_DIALECT: pg
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
+      # 方言：pg（默认） / mysql
+      DB_DIALECT: ${DB_DIALECT:-pg}
+      # 内置库时指向容器名（db-pg / db-mysql）；复用外部库时填你已有库的地址
+      DB_HOST: ${DB_HOST:-db-pg}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
       DB_NAME: ${DB_NAME:-xinwallet}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
       # ENCRYPTION_KEY 优先级：环境变量 > 数据卷持久化文件 > 启动时生成
-      # 不传环境变量时，会自动从 /app/data/.encryption-key 读取或生成
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
-      ALLOW_DEMO: ${ALLOW_DEMO}
-      DEMO_PASSWORD: ${DEMO_PASSWORD}
-      CORS_ORIGIN: ${CORS_ORIGIN}
+      ALLOW_DEMO: ${ALLOW_DEMO:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
     volumes:
-      # 加密密钥持久化：与数据库同卷管理，docker-compose down -v 才会清除
+      # 加密密钥持久化：与数据库同卷管理，docker compose down -v 才会清除
       - xinwallet-app-data:/app/data
     ports:
       - "${APP_PORT:-18888}:18888"
@@ -64,30 +93,10 @@ services:
       - xinwallet-net
 
 volumes:
-  xinwallet-db-data:
-  xinwallet-app-data:
+  xinwallet-db-data:      # PostgreSQL 数据（沿用旧卷名，平滑迁移）
+  xinwallet-mysql-data:   # MySQL 数据
+  xinwallet-app-data:     # 应用数据（加密密钥 / /app/data）
 
 networks:
   xinwallet-net:
     driver: bridge
-
-# ============================================
-# NAS / 群晖覆盖示例（默认不生效，按需取消注释）
-# ============================================
-# services:
-#   db:
-#     volumes:
-#       - /volume1/docker/xinwallet/db:/var/lib/postgresql/data
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: '1.0'
-#           memory: 512M
-#   app:
-#     ports:
-#       - "8080:18888"
-#     deploy:
-#       resources:
-#         limits:
-#           cpus: '1.0'
-#           memory: 384M

@@ -118,8 +118,7 @@ xin-wallet/
 │   └── integration.test.js
 ├── .github/workflows/      # CI：pr-test.yml（测试门禁）/ auto-tag.yml（统一版本号 vX.Y.Z，X.Y 锁定为 0.0、仅递增 Z，即 v0.0.Z）/ release-image.yml（镜像构建）/ android-build.yml（APK 构建）
 ├── Dockerfile              # 多阶段构建（生产依赖 + 非 root 运行）
-├── docker-compose.yml      # 应用 + PostgreSQL，数据卷持久化
-├── docker-compose.external.yml  # 仅应用容器，复用已有 PostgreSQL
+├── docker-compose.yml      # 单文件 Compose：内置 PostgreSQL/MySQL 或复用外部库（DB_DIALECT 切换）
 ├── .dockerignore
 ├── .env.example            # 环境变量示例（复制为 .env 使用）
 ├── package.json            # 根依赖清单与启动脚本
@@ -1115,65 +1114,70 @@ AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-2
 
 应用镜像已发布到 GitHub Container Registry（GHCR）：**`ghcr.io/zjx93/xin-wallet/xinwallet:latest`**（含 `linux/amd64` 与 `linux/arm64`，适配 x86 与 ARM 架构的 NAS）。镜像版本号与安卓客户端**完全统一**（同为 `vX.Y.Z`，X.Y 锁定为 0.0、即 v0.0.Z）——仓库只有一套版本线，由 `auto-tag.yml` 在每次发布时派发 `release-image.yml`（构建镜像）与 `android-build.yml`（构建 APK），因此你拉到的镜像版本永远等于安卓 App 里显示的版本。关联仓库为 public，**任何人无需登录即可匿名 `docker pull`**。也可固定到具体版本：`ghcr.io/zjx93/xin-wallet/xinwallet:v0.0.1`。
 
-提供两种部署模式，按需选择：
+部署使用**单文件** `docker-compose.yml`，同时适配 **PostgreSQL / MySQL 双数据库**，通过 `.env` 的 `DB_DIALECT` 与 `DB_HOST` 切换三种形态：
 
-- **模式 A · 一体部署（默认）**：用 `docker-compose.yml`，一条命令跑起「应用 + 内置 PostgreSQL」，数据存命名卷，最省心。适合 NAS 上还没有 PostgreSQL、或想独立隔离的场景。
-- **模式 B · 复用已有 PostgreSQL**：用 `docker-compose.external.yml`，只启动应用容器，连接你 NAS / 服务器上**已经存在的 PostgreSQL**（复用既有数据，不另起库实例）。适合已经在跑 PostgreSQL 的用户。
+- **内置 PostgreSQL（默认）**：`docker compose --profile pg up -d` —— 一条命令跑起「应用 + 内置 PostgreSQL」，数据存命名卷，最省心。
+- **内置 MySQL 8.0**：`docker compose --profile mysql up -d` —— 一条命令跑起「应用 + 内置 MySQL」。
+- **复用已有 / 外部数据库**：`docker compose up -d` —— 只启动应用容器，连接你 NAS / 服务器上**已经存在的 PostgreSQL 或 MySQL**（`.env` 的 `DB_HOST` 指向已有库地址，`DB_DIALECT` 选 `pg` 或 `mysql`），复用既有数据，不另起库实例。
 
-两种模式均通过 `.env` 配置数据库连接；`initDatabase()` 会幂等建库建表（已存在则跳过），因此外部模式接入后**自动复用你已有的 xinwallet 数据**。
+三种形态均通过 `.env` 配置数据库连接；`initDatabase()` 会幂等建库建表（已存在则跳过），因此外部模式接入后**自动复用你已有的 xinwallet 数据**。
 
-### 0. 准备环境变量（两模式通用）
+### 0. 准备环境变量（三种形态通用）
 
 ```bash
 cp .env.example .env
 # 务必修改以下两项（不要使用示例值）：
-#   DB_PASSWORD   —— 一体模式同时作为 PostgreSQL postgres 密码；外部模式填你已有库的密码
+#   DB_PASSWORD   —— 内置模式同时作为数据库密码；外部模式填你已有库的密码
 #   JWT_SECRET    —— 用 `openssl rand -hex 32` 生成一个长随机串
 ```
 
-> 💡 **一键试用**：即使不创建 `.env`，直接 `docker compose up -d`（或模式 B 加 `-f docker-compose.external.yml`）也能拉起——compose 会自动从 GHCR 拉取**公开**预构建镜像，内置了默认密码/密钥。默认凭据**仅用于本地试用**，生产环境务必 `cp .env.example .env` 并改为强密码，否则数据库与 JWT 有泄露风险。
+> 💡 **一键试用**：即使不创建 `.env`，直接 `docker compose --profile pg up -d` 也能拉起——compose 会自动从 GHCR 拉取**公开**预构建镜像，内置了默认密码/密钥。默认凭据**仅用于本地试用**，生产环境务必 `cp .env.example .env` 并改为强密码，否则数据库与 JWT 有泄露风险。
 >
-> 想从源码本地构建（而非拉取镜像），加 `--build` 即可：`docker compose up -d --build`（或模式 B 加 `-f docker-compose.external.yml`）。`app` 服务已同时声明 `image:` 与 `build:`，默认拉取 GHCR 镜像，`--build` 时才走本地源码构建。
+> 想从源码本地构建（而非拉取镜像），加 `--build` 即可（如 `docker compose --profile pg up -d --build`）。`app` 服务已同时声明 `image:` 与 `build:`，默认拉取 GHCR 镜像，`--build` 时才走本地源码构建。
 
-### 1. 模式 A · 一体部署（自带 PostgreSQL）
+### 1. 内置数据库（PostgreSQL 或 MySQL）
 
 ```bash
+# 内置 PostgreSQL（默认）：DB_HOST 自动指向 db-pg
+docker compose --profile pg up -d
+
+# 内置 MySQL 8.0：需在 .env 设置 DB_DIALECT=mysql、DB_HOST=db-mysql、DB_USER=root、DB_PORT=3306
+docker compose --profile mysql up -d
+```
+
+- `DB_HOST` 由 compose 固定指向对应内置库容器（`db-pg` / `db-mysql`），无需手动改 `.env`
+- 应用对外暴露端口：`${APP_PORT:-18888}`（默认 `18888`），浏览器访问 `http://<NAS_IP>:18888/index.html`
+- 数据库仅在内部网络（`db-pg:5432` / `db-mysql:3306`）可达，不对外暴露，更安全
+- 应用容器通过启动前的数据库就绪探测（最多重试 30 次 / 约 60s），避免数据库尚未就绪就连接导致启动失败
+
+### 2. 复用已有 / 外部数据库
+
+编辑 `.env`，把 `DB_HOST` 改成你现有库的主机/IP，并确保 `DB_DIALECT`、`DB_PORT`、`DB_USER`、`DB_PASSWORD`、`DB_NAME` 与既有库一致：
+
+- 同一台 Docker 主机上的其他数据库容器 → 填该容器名（需与它在同一网络）
+- NAS 原生安装的数据库 → 填宿主机局域网 IP；若需从容器访问宿主机，可为 `app` 增加 `extra_hosts: ["host.docker.internal:host-gateway"]`
+- PostgreSQL 填 `DB_DIALECT=pg`（端口默认 5432）；MySQL 填 `DB_DIALECT=mysql`（端口默认 3306）
+
+```bash
+# 复用外部数据库（仅应用容器）
 docker compose up -d
 ```
 
-- `DB_HOST` 会被 compose 固定为 `db`，无需手动改 `.env`
-- 应用对外暴露端口：`${APP_PORT:-18888}`（默认 `18888`），浏览器访问 `http://<NAS_IP>:18888/index.html`
-- PostgreSQL 仅在内部网络（`db:5432`）可达，不对外暴露，更安全
-- 应用容器通过启动前的数据库就绪探测（最多重试 30 次 / 约 60s），避免 PostgreSQL 尚未就绪就连接导致启动失败
-
-### 2. 模式 B · 复用已有 PostgreSQL
-
-编辑 `.env`，把 `DB_HOST` 改成你现有库的主机/IP：
-
-- 同一台 Docker 主机上的其他 PostgreSQL 容器 → 填该容器名（需与它在同一网络）
-- NAS 原生安装的 PostgreSQL → 填宿主机局域网 IP，或 `host.docker.internal`（本 compose 已通过 `extra_hosts` 映射）
-- `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` 填你既有库的对应值
-
-```bash
-# 使用外部 PostgreSQL 的 compose 文件启动（仅应用容器）
-docker compose -f docker-compose.external.yml up -d --build
-```
-
-> ⚠️ 权限要求：应用所用的 `DB_USER` 需具备在目标库上「建表与改表」的权限，即 `CREATE DATABASE`（若库尚未创建）、`CREATE TABLE`、`ALTER`、`INDEX`；`initDatabase` 会自动建库建表，并在每次启动时执行幂等迁移。若账号无建库权限，请先手动执行 `CREATE DATABASE "xinwallet" ENCODING 'UTF8';`。
+> ⚠️ 权限要求：应用所用的 `DB_USER` 需具备在目标库上「建表与改表」的权限，即 `CREATE DATABASE`（若库尚未创建）、`CREATE TABLE`、`ALTER`、`INDEX`；`initDatabase` 会自动建库建表，并在每次启动时执行幂等迁移。若账号无建库权限，请先手动执行 `CREATE DATABASE "xinwallet" ENCODING 'UTF8';`（PG）或 `CREATE DATABASE xinwallet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`（MySQL）。
 
 ### 3. 各 NAS 平台要点
 
-- **群晖 Synology**：Container Manager → 项目 → 新增 → 来源选 compose 文件所在文件夹 → 勾选「启用自动重启」→ 创建；或在 NAS ssh 终端直接 `docker compose up -d`。模式 B 请改用 `docker-compose.external.yml` 作为来源文件。
+- **群晖 Synology**：Container Manager → 项目 → 新增 → 来源选 compose 文件所在文件夹 → 勾选「启用自动重启」→ 创建；或在 NAS ssh 终端直接 `docker compose --profile pg up -d`（内置库）或 `docker compose up -d`（外部库）。
 - **Unraid**：推荐安装 **Compose Manager** 插件后直接加载 compose 文件（比逐个 Add Container 更稳）。
 - **TrueNAS SCALE**：Apps → 自定义 App 上传 compose，或 ssh 进 Apps 池执行 `docker compose up -d`。
 - **QNAP**：Container Station → 应用程序 → 创建 → 粘贴 compose 内容。
 
 ### 4. 数据备份与升级
 
-- **模式 A** 数据库存储在 Docker 命名卷 `xinwallet-db-data`；要固定到 NAS 共享文件夹，可把 `docker-compose.yml` 中 `xinwallet-db-data:/var/lib/postgresql/data` 改为绑定挂载，例如 `/volume1/docker/xinwallet/db:/var/lib/postgresql/data`（群晖路径示例）。
-- **模式 B** 数据就在你已有的 PostgreSQL 中，按你原有的备份策略管理即可（如 `pg_dump`）。
-- 升级：拉取最新代码后重新 `docker compose up -d`（模式 B 加 `-f docker-compose.external.yml`）；schema 幂等（`IF NOT EXISTS`），不会破坏现有数据。
-- 备份（模式 A 示例）：`docker exec xinwallet-db pg_dump -U postgres xinwallet > xinwallet_$(date +%F).sql`。
+- **内置模式**数据库存储在 Docker 命名卷 `xinwallet-db-data`（PG）/ `xinwallet-mysql-data`（MySQL）；要固定到 NAS 共享文件夹，可把 `docker-compose.yml` 中对应卷挂载改为绑定挂载，例如 `/volume1/docker/xinwallet/db:/var/lib/postgresql/data`（群晖路径示例）。
+- **外部模式**数据就在你已有的数据库中，按你原有的备份策略管理即可（如 `pg_dump` / `mysqldump`）。
+- 升级：拉取最新代码后重新执行对应的 `docker compose ... up -d` 命令；schema 幂等（`IF NOT EXISTS`），不会破坏现有数据。
+- 备份（内置 PG 示例）：`docker exec xinwallet-db pg_dump -U postgres xinwallet > xinwallet_$(date +%F).sql`。
 
 > 若 NAS 处于无外网环境，前端所用的 Chart.js（jsdelivr CDN）与 Google Fonts 将无法加载，图表与字体回退为默认。如需完全离线，可将这两类资源改为本地引入（列入后续增强）。
 
