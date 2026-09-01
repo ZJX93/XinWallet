@@ -146,6 +146,14 @@ interface ApiService {
         @Path("txnId") txnId: Int
     ): Response<ApiResponse<Unit>>
 
+    /** 编辑理财流水（买入/卖出/分红/利息/红利再投）。服务端 PUT /investments/:id/transactions/:txnId */
+    @PUT("investments/investments/{id}/transactions/{txnId}")
+    suspend fun updateInvestmentTransaction(
+        @Path("id") id: Int,
+        @Path("txnId") txnId: Int,
+        @Body req: com.xinwallet.app.data.model.UpdateInvestmentTxnRequest
+    ): Response<ApiResponse<Unit>>
+
     /** 新增理财流水（买入/卖出/分红/利息/红利再投） */
     @POST("investments/investments/{id}/transactions")
     suspend fun addInvestmentTransaction(
@@ -287,6 +295,14 @@ interface ApiService {
 
     @DELETE("debts/{id}/repayments/{rid}")
     suspend fun deleteRepayment(@Path("id") id: Int, @Path("rid") rid: Int): Response<ApiResponse<Unit>>
+
+    /** 编辑还款/收款记录。服务端 PUT /debts/:id/repayments/:rid（按 direction 分叉） */
+    @PUT("debts/{id}/repayments/{rid}")
+    suspend fun updateRepayment(
+        @Path("id") id: Int,
+        @Path("rid") rid: Int,
+        @Body req: com.xinwallet.app.data.model.UpdateRepaymentRequest
+    ): Response<ApiResponse<Unit>>
 
     /* 报表 */
     @GET("reports")

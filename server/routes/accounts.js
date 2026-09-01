@@ -163,9 +163,9 @@ router.post('/:id/interest', async (req, res) => {
     } catch (err) { handleServerError(res, err); }
 });
 
-// 利息入账分类：优先「理财收益」，缺失时回退第一个收入分类（沿用理财产品口径）
+// 利息入账分类：优先「分红利息」（被动收入下的银行/账户计息），缺失时回退第一个收入分类
 async function getInterestCategoryId(conn) {
-    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['理财收益', 'income']);
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['分红利息', 'income']);
     if (rows[0]) return rows[0].id;
     const any = await conn.query('SELECT id FROM categories WHERE type = ? ORDER BY id LIMIT 1', ['income']);
     return any[0] ? any[0].id : null;

@@ -812,6 +812,27 @@ data class CreateRepaymentRequest(
     @SerializedName("interest_part") val interestPart: Double? = null
 )
 
+/** 编辑还款/收款记录：字段与新增一致（金额/账户/日期/备注必填，本金与利息拆分可选） */
+data class UpdateRepaymentRequest(
+    val amount: Double,
+    @SerializedName("paid_at") val paidAt: String? = null,
+    val note: String? = null,
+    @SerializedName("account_id") val accountId: Int,
+    @SerializedName("principal_part") val principalPart: Double? = null,
+    @SerializedName("interest_part") val interestPart: Double? = null
+)
+
+/** 编辑理财流水（买入/卖出/分红/利息/红利再投）。服务端 PUT /investments/:id/transactions/:txnId */
+data class UpdateInvestmentTxnRequest(
+    val type: String,
+    val amount: Double,
+    val price: Double = 0.0,
+    val quantity: Double = 0.0,
+    val date: String,
+    val note: String? = null,
+    val fee: Double = 0.0
+)
+
 /* ----------------------------- 仪表盘 ----------------------------- */
 
 data class Dashboard(

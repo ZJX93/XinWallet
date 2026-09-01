@@ -81,7 +81,7 @@ const TagManager = {
                     <div class="tag-card-name">${escapeHtml(t.name)}</div>
                     <div class="tag-card-meta">点击按此标签筛选交易</div>
                 </div>
-                <button class="tag-card-del" data-del="${t.id}" title="删除">🗑️</button>
+                <button class="tag-card-del" data-del="${t.id}" title="删除">删除</button>
             </div>
         `).join('');
     }

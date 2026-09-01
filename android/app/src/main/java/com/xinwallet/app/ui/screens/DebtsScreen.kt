@@ -54,7 +54,9 @@ import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.CreateDebtRequest
 import com.xinwallet.app.data.model.CreateRepaymentRequest
 import com.xinwallet.app.data.model.Debt
+import com.xinwallet.app.data.model.DebtRepayment
 import com.xinwallet.app.data.model.UpdateDebtRequest
+import com.xinwallet.app.data.model.UpdateRepaymentRequest
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.DatePickerField
 import com.xinwallet.app.ui.components.DropdownField
@@ -96,6 +98,9 @@ fun DebtsTab() {
     var confirmDeleteDebt by remember { mutableStateOf<Debt?>(null) }
     var confirmDeleteRepay by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var actionDebt by remember { mutableStateOf<Debt?>(null) }
+    // 编辑还款：长按还款记录进入，回填金额/账户/日期/备注
+    var editRepay by remember { mutableStateOf<DebtRepayment?>(null) }
+    var editRepayDebtId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
@@ -156,6 +161,25 @@ fun DebtsTab() {
         }
     }
 
+    // 编辑还款：长按还款记录进入，回填原值，保存走 updateRepayment
+    editRepay?.let { r ->
+        val debtId = editRepayDebtId
+        val debt = state.detail?.debt ?: state.debts.firstOrNull { it.id == debtId }
+        debt?.let {
+            RepaymentDialog(
+                debt = it,
+                accounts = state.accounts,
+                submitting = state.submitting,
+                editing = r,
+                onDismiss = { editRepay = null },
+                onSubmit = { amount, accId, date, note ->
+                    vm.updateRepayment(debtId ?: it.id, r.id, UpdateRepaymentRequest(amount, date, note, accId))
+                },
+                onDelete = { confirmDeleteRepay = (debtId ?: it.id) to r.id; editRepay = null }
+            )
+        }
+    }
+
     confirmDeleteDebt?.let { d ->
         AlertDialog(
             onDismissRequest = { confirmDeleteDebt = null },
@@ -183,7 +207,10 @@ fun DebtsTab() {
             detail = detail,
             onDismiss = { detailId = null; vm.clearDetail() },
             onRepay = { repayId = id },
-            onLongRepay = { rid -> confirmDeleteRepay = id to rid }
+            onLongRepay = { rid ->
+                val r = state.detail?.repayments?.firstOrNull { it.id == rid }
+                if (r != null) { editRepay = r; editRepayDebtId = id }
+            }
         )
     }
 
@@ -360,19 +387,21 @@ private fun RepaymentDialog(
     debt: Debt,
     accounts: List<Account>,
     submitting: Boolean,
+    editing: DebtRepayment? = null,
     onDismiss: () -> Unit,
-    onSubmit: (amount: Double, accountId: Int, date: String, note: String) -> Unit
+    onSubmit: (amount: Double, accountId: Int, date: String, note: String) -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
-    var amount by remember { mutableStateOf("") }
-    var accId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: 0) }
-    var date by remember { mutableStateOf(todayDate()) }
-    var note by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf(if (editing != null) trimAmount(editing.amount) else "") }
+    var accId by remember { mutableStateOf(editing?.accountId ?: accounts.firstOrNull()?.id ?: 0) }
+    var date by remember { mutableStateOf(editing?.paidAt?.take(10) ?: todayDate()) }
+    var note by remember { mutableStateOf(editing?.note.orEmpty()) }
     var localError by remember { mutableStateOf<String?>(null) }
     val accOptions = accounts.map { "${it.name} ${it.icon ?: ""}" to it.id }
 
     AlertDialog(
         onDismissRequest = { if (!submitting) onDismiss() },
-        title = { Text(if (debt.direction == "receivable") "记一笔收款" else "记一笔还款") },
+        title = { Text(if (editing != null) "编辑还款" else (if (debt.direction == "receivable") "记一笔收款" else "记一笔还款")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 360.dp)) {
                 OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("金额") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -386,6 +415,10 @@ private fun RepaymentDialog(
                 DatePickerField(label = "日期", date = date, onDateChange = { date = it })
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("备注（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (editing != null && onDelete != null) {
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = onDelete) { Text("🗑 删除这条记录", color = MaterialTheme.colorScheme.error) }
+                }
                 localError?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)

@@ -40,7 +40,7 @@ h1, h2, h3, h4, h5, h6 {
 
 a { color: var(--interactive-default); text-decoration: none; }
 a:hover { color: var(--interactive-hover); }
-button { font-family: inherit; cursor: pointer; }
+button { font-family: var(--font-button) !important; cursor: pointer; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 :focus-visible {
   /* 使用 3px 不透明实色焦点环以满足 WCAG 2.1 非文本对比度 (>=3:1) */
@@ -432,11 +432,14 @@ header.top-bar.top-bar-sticky {
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--space-2); height: 38px; padding: 0 var(--space-4);
-  font-size: var(--text-body-sm); font-weight: var(--fw-medium);
+  font-family: var(--font-button);
+  font-size: var(--text-body-sm); font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em; line-height: 1;
   border-radius: var(--radius-md); cursor: pointer;
   border: 1px solid transparent; white-space: nowrap;
   transition: all var(--duration-150) var(--ease-out-quart);
   color: var(--text-on-accent); background: var(--interactive-default);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
 
 .btn:hover { background: var(--interactive-hover); transform: translateY(-1px); }
@@ -1772,7 +1775,7 @@ header.top-bar.top-bar-sticky {
 .dc-tab {
   padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-md);
   background: transparent; color: var(--text-tertiary); font-size: var(--text-body);
-  font-family: inherit; cursor: pointer; transition: all var(--duration-150);
+  font-family: var(--font-button); cursor: pointer; transition: all var(--duration-150);
 }
 .dc-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
 .dc-tab.active { background: var(--surface-hover); color: var(--text-primary); font-weight: var(--fw-semibold); }
@@ -1824,9 +1827,11 @@ header.top-bar.top-bar-sticky {
 .dc-actions { display: flex; gap: var(--space-1); }
 .btn-ghost-sm {
   width: 32px; height: 32px; border: none; border-radius: var(--radius-md);
-  background: transparent; cursor: pointer; font-size: 14px;
+  background: transparent; cursor: pointer; font-family: var(--font-button);
+  font-size: 14px; font-weight: var(--fw-medium); letter-spacing: 0.02em; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-tertiary); transition: all var(--duration-150);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
 .btn-ghost-sm:hover { background: var(--surface-hover); color: var(--text-primary); }
 .btn-danger-sm:hover { background: var(--income-soft); color: var(--expense); }
@@ -2149,7 +2154,7 @@ body {
     color: var(--text-secondary);
     border: none;
     background: transparent;
-    font-family: inherit;
+    font-family: var(--font-button);
     transition: .2s;
 }
 .book-switcher-item.active {
@@ -2330,7 +2335,7 @@ body {
 
 /* ---- 按钮（覆盖真实项目 .btn-primary 等）---- */
 .btn, button.btn {
-    font-family: inherit;
+    font-family: var(--font-button);
     font-size: 14px;
     border: none;
     border-radius: 8px;

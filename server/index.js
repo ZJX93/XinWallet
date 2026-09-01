@@ -11,6 +11,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 
 const db = require('./db');
 const routes = require('./routes');
@@ -130,22 +131,44 @@ app.use((err, req, res, next) => {
 // 静态文件（前端）：白名单只暴露 public/ 目录，根目录的源码与配置文件不会被列出
 // 这彻底避免了黑名单遗漏导致的敏感文件暴露（新加 .env/secrets.json 等无需改 server 代码）
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+
+// 开发期缓存击穿：HTML 入口里引用的本地 css/js 自动追加「文件修改时间」作为版本号。
+// 这样浏览器每次打开都看到不同的 URL，必然重新拉取最新代码，
+// 彻底避免「前端改了、浏览器却一直跑旧 JS」（如金额筛选面板定位 bug）。
+app.use((req, res, next) => {
+    const urlPath = req.path;
+    const isHtml = urlPath === '/' || /\.html$/.test(urlPath);
+    if (req.method !== 'GET' || !isHtml) return next();
+    const filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
+    fs.readFile(filePath, 'utf8', (err, html) => {
+        if (err) return next();
+        const busted = html.replace(
+            /(src|href)="([^"]+\.(?:js|css))(\?v=[^"]*)?"/g,
+            (m, attr, file) => {
+                const abs = path.join(PUBLIC_DIR, file.replace(/^\/+/, ''));
+                try {
+                    const t = (fs.statSync(abs).mtimeMs | 0).toString();
+                    return `${attr}="${file}?v=${t}"`;
+                } catch (e) {
+                    return m; // 文件不存在则保持原样
+                }
+            }
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(busted);
+    });
+});
+
 app.use(express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.includes('vendor')) {
             // 第三方库：长期缓存（先于 .js 匹配）
             res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-        } else if (/\.html$/.test(filePath)) {
-            // 入口 HTML：不缓存，保证部署后始终拉取最新入口（由它再引用当前 css/js）
+        } else {
+            // 应用自身代码（html/css/js/图片等）：一律禁止缓存。
+            // 本地开发时若被代理/IDE 预览层忽略 no-store 而缓存了旧 HTML，
+            // 会导致旧 JS 一直被加载、修改不生效（如金额筛选面板定位 bug）。
             res.setHeader('Cache-Control', 'no-store');
-        } else if (/\.(css|js)$/.test(filePath)) {
-            // 应用代码：无内容哈希指纹，采用较短 max-age + 必须重校验，
-            // 兼顾「减少重复下载」与「部署后不至长期陈旧」。彻底的 immutable 长缓存
-            // 需配合构建期的文件名哈希（属前端重模块化工作，见 review-report.md）。
-            res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
-        } else if (/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/.test(filePath)) {
-            // 静态资源：短期缓存
-            res.setHeader('Cache-Control', 'public, max-age=3600');
         }
         res.removeHeader('Pragma');
         res.removeHeader('Expires');

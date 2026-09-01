@@ -5,7 +5,8 @@ import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney, withAlpha } from '../common/theme';
-import { LoadingBox, TopBar, AppBackground, ConfirmDialog } from '../common/components/Components';
+import { LoadingBox, TopBar, AppBackground, ConfirmDialog, BottomSheet } from '../common/components/Components';
+import { toast, toastLong } from '../common/ui';
 
 interface Tx {
   id: number; type: string; type_label?: string; amount?: number; price?: number;
@@ -24,6 +25,16 @@ struct InvestmentTransactions {
   @State loading: boolean = true;
   @State showDeleteConfirm: boolean = false;
   @State pendingDeleteTxn: Tx | null = null;
+  // 编辑理财流水（对齐安卓 InvestmentTxnSheet 的编辑态）
+  @State showTxEdit: boolean = false;
+  @State editTx: Tx | null = null;
+  @State eType: string = 'buy';
+  @State ePrice: string = '';
+  @State eQuantity: string = '';
+  @State eAmount: string = '';
+  @State eFee: string = '';
+  @State eDate: string = '';
+  @State eNote: string = '';
 
   aboutToAppear(): void {
     const p: ESObject = (router.getParams() as ESObject) || {};
@@ -73,6 +84,51 @@ struct InvestmentTransactions {
     return (tx.note && !SYS_NOTES.includes(tx.note)) ? ('📝 ' + tx.note) : '';
   }
 
+  /** 打开编辑：回填原流水字段（interest→dividend，reinvest→buy） */
+  openEdit(tx: Tx): void {
+    this.editTx = tx;
+    this.eType = tx.type === 'interest' ? 'dividend' : (tx.type === 'reinvest' ? 'buy' : tx.type);
+    this.ePrice = (tx.price ?? 0).toString();
+    this.eQuantity = (tx.quantity ?? 0).toString();
+    this.eAmount = (tx.amount ?? 0).toString();
+    this.eFee = (tx.fee ?? 0).toString();
+    this.eDate = (tx.date ?? '').slice(0, 10);
+    this.eNote = tx.note ?? '';
+    this.showTxEdit = true;
+  }
+
+  /** 保存编辑：PUT /investments/:id/transactions/:txnId（金额按类型推导） */
+  async doTxEdit(): Promise<void> {
+    if (!this.editTx) return;
+    const price = Number(this.ePrice);
+    const quantity = Number(this.eQuantity);
+    const amount = Number(this.eAmount);
+    const fee = Number(this.eFee);
+    if (this.eType === 'dividend') {
+      if (!amount) { toast('请填写金额'); return; }
+    } else if (price <= 0 || quantity <= 0) {
+      toast('请填写有效的价格与数量');
+      return;
+    }
+    const amt = this.eType === 'dividend' ? amount : price * quantity;
+    try {
+      await Api.updateInvestmentTransaction(this.itemId, this.editTx.id, {
+        type: this.eType,
+        amount: amt,
+        price: price,
+        quantity: quantity,
+        date: this.eDate,
+        note: this.eNote || null,
+        fee: fee
+      });
+      this.showTxEdit = false;
+      toast('已更新');
+      this.load();
+    } catch (e) {
+      toastLong('更新失败：' + ((e as ApiError).message || '请检查网络'));
+    }
+  }
+
   @Builder TxRow(tx: Tx) {
     Row({ space: 12 }) {
       Column({ space: 4 }) {
@@ -90,6 +146,10 @@ struct InvestmentTransactions {
       Column({ space: 4 }) {
         Text(`${this.isIncome(tx.type) ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.incomeColor(tx.type))
+        Button('改')
+          .fontSize(11).fontColor('#fff').backgroundColor(COLORS.brand)
+          .width(36).height(24).padding(0)
+          .onClick(() => { this.openEdit(tx); })
         Button('删')
           .fontSize(11).fontColor('#fff').backgroundColor(COLORS.danger)
           .width(36).height(24).padding(0)
@@ -135,6 +195,32 @@ struct InvestmentTransactions {
           onCancel: () => { this.showDeleteConfirm = false; this.pendingDeleteTxn = null; },
           onConfirm: () => { this.doDelete(); }
         })
+        BottomSheet({ show: this.showTxEdit, maxHeight: '85%', onDismiss: () => { this.showTxEdit = false; } }) {
+          Column({ space: 12 }) {
+            Text('编辑流水').fontSize(16).fontWeight(FontWeight.Bold)
+            Row({ space: 8 }) {
+              ForEach(['buy', 'sell', 'dividend'], (t: string) => {
+                Text(t === 'buy' ? '买入' : t === 'sell' ? '卖出' : '分红')
+                  .fontSize(13)
+                  .fontColor(this.eType === t ? '#FFFFFF' : COLORS.textSecondary)
+                  .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+                  .backgroundColor(this.eType === t ? COLORS.brand : COLORS.cardGlass)
+                  .borderRadius(8)
+                  .onClick(() => { this.eType = t; })
+              }, (t: string) => t)
+            }
+            if (this.eType === 'dividend') {
+              TextInput({ placeholder: '金额', text: this.eAmount }).type(InputType.Number).onChange((v: string) => this.eAmount = v)
+            } else {
+              TextInput({ placeholder: '单价', text: this.ePrice }).type(InputType.Number).onChange((v: string) => this.ePrice = v)
+              TextInput({ placeholder: '数量', text: this.eQuantity }).type(InputType.Number).onChange((v: string) => this.eQuantity = v)
+            }
+            TextInput({ placeholder: '手续费', text: this.eFee }).type(InputType.Number).onChange((v: string) => this.eFee = v)
+            TextInput({ placeholder: '日期 yyyy-mm-dd', text: this.eDate }).onChange((v: string) => this.eDate = v)
+            TextInput({ placeholder: '备注', text: this.eNote }).onChange((v: string) => this.eNote = v)
+            Button('确定').width('100%').onClick(() => this.doTxEdit())
+          }.padding(16)
+        }
       }.width('100%').height('100%')
     }.width('100%').height('100%')
   }

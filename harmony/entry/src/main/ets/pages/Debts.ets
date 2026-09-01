@@ -27,6 +27,12 @@ export struct DebtsPage {
   @State fMonthly: string = '';
   @State repayId: number = 0;
   @State repayAmt: string = '';
+  // 债务明细（含还款记录列表）+ 编辑还款
+  @State showDetail: boolean = false;
+  @State detailDebt: Debt | null = null;
+  @State detailRepayments: ESObject[] = [];
+  @State detailLoading: boolean = false;
+  @State editRepay: ESObject | null = null;   // 正在编辑的还款记录（非 null 即编辑态）
 
   aboutToAppear(): void { this.load(); }
 
@@ -74,6 +80,28 @@ export struct DebtsPage {
     }
   }
   openRepay(d: Debt): void { this.repayId = d.id; this.repayAmt = ''; this.showRepay = true; }
+
+  /** 打开债务明细：拉取该债务的还款记录列表（GET /debts/:id） */
+  openDetail(d: Debt): void {
+    this.detailDebt = d;
+    this.showDetail = true;
+    this.loadRepayments(d.id);
+  }
+  async loadRepayments(id: number): Promise<void> {
+    this.detailLoading = true;
+    try {
+      const r = await Api.getDebt(id);
+      const detail = (r.data as ESObject) || {};
+      this.detailRepayments = detail.repayments || [];
+    } catch (e) { /* 读失败静默降级：列表留空 */ }
+    finally { this.detailLoading = false; }
+  }
+  /** 进入编辑还款：回填金额，RepaySheet 切换为编辑态 */
+  openEditRepay(r: ESObject): void {
+    this.editRepay = r;
+    this.repayAmt = String(r['amount'] ?? '');
+    this.showRepay = true;
+  }
   async doRepay(): Promise<void> {
     const amt = Number(this.repayAmt);
     if (!amt) { toast('请填写还款金额'); return; }
@@ -85,6 +113,39 @@ export struct DebtsPage {
     } catch (e) {
       // 还款是写操作，失败必须说明原因 —— 否则用户以为记上了，实际没有
       toastLong('还款失败：' + ((e as ApiError).message || '请检查网络'));
+    }
+  }
+  /** 删除还款记录：DELETE /debts/:id/repayments/:rid */
+  async removeRepay(r: ESObject): Promise<void> {
+    const debtId = (r['debt_id'] ?? this.detailDebt?.id ?? 0) as number;
+    try {
+      await Api.deleteRepayment(debtId, r['id'] as number);
+      toast('已删除还款记录');
+      this.loadRepayments(debtId);
+    } catch (e) {
+      toastLong('删除失败：' + ((e as ApiError).message || '请检查网络'));
+    }
+  }
+  /** 编辑还款：PUT /debts/:id/repayments/:rid，金额可改、其余沿用原记录 */
+  async doEditRepay(): Promise<void> {
+    if (!this.editRepay) return;
+    const amt = Number(this.repayAmt);
+    if (!amt) { toast('请填写还款金额'); return; }
+    const orig = this.editRepay;
+    const debtId = (orig['debt_id'] ?? this.detailDebt?.id ?? 0) as number;
+    try {
+      await Api.updateRepayment(debtId, orig['id'] as number, {
+        amount: amt,
+        paid_at: orig['paid_at'] ?? null,
+        note: orig['note'] ?? null,
+        account_id: (orig['account_id'] ?? 0) as number
+      });
+      this.showRepay = false;
+      this.editRepay = null;
+      toast('已更新还款');
+      this.loadRepayments(debtId);
+    } catch (e) {
+      toastLong('更新失败：' + ((e as ApiError).message || '请检查网络'));
     }
   }
 
@@ -109,6 +170,7 @@ export struct DebtsPage {
         LinearProgress({ value: 1 - (d.remaining ?? 0) / (d.principal || 1), color: COLORS.brand, showPercent: true })
       }
       Row({ space: 12 }) {
+        Text('明细').fontSize(13).fontColor(COLORS.textSecondary).onClick(() => this.openDetail(d))
         Text('还款').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openRepay(d))
         Text('编辑').fontSize(13).fontColor(COLORS.textSecondary).onClick(() => this.openEdit(d))
         Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => this.pendingDelete = d)
@@ -141,10 +203,10 @@ export struct DebtsPage {
 
   @Builder RepaySheet() {
     Column({ space: 12 }) {
-      Text('记还款').fontSize(16).fontWeight(FontWeight.Bold)
+      Text(this.editRepay ? '编辑还款' : '记还款').fontSize(16).fontWeight(FontWeight.Bold)
       TextInput({ placeholder: '还款金额', text: this.repayAmt }).type(InputType.Number).onChange((v: string) => this.repayAmt = v)
-      Button('确定').width('100%').onClick(() => this.doRepay())
-      Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showRepay = false)
+      Button('确定').width('100%').onClick(() => { if (this.editRepay) { this.doEditRepay(); } else { this.doRepay(); } })
+      Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => { this.showRepay = false; this.editRepay = null; })
     }
   }
 
@@ -196,8 +258,28 @@ export struct DebtsPage {
       BottomSheet({ show: this.showEdit, maxHeight: '85%', onDismiss: () => { this.showEdit = false; } }) {
         this.EditSheet()
       }
-      BottomSheet({ show: this.showRepay, maxHeight: '65%', onDismiss: () => { this.showRepay = false; } }) {
+      BottomSheet({ show: this.showRepay, maxHeight: '65%', onDismiss: () => { this.showRepay = false; this.editRepay = null; } }) {
         this.RepaySheet()
+      }
+      BottomSheet({ show: this.showDetail, maxHeight: '80%', onDismiss: () => { this.showDetail = false; } }) {
+        Column({ space: 12 }) {
+          Text((this.detailDebt?.name ?? '债务') + ' · 还款记录').fontSize(16).fontWeight(FontWeight.Bold)
+          if (this.detailLoading) { LoadingBox() }
+          if (!this.detailLoading && this.detailRepayments.length === 0) {
+            EmptyState({ text: '暂无还款记录' })
+          }
+          ForEach(this.detailRepayments, (r: ESObject) => {
+            Row({ space: 8 }) {
+              Column() {
+                Text(fmtMoney(r['amount'] ?? 0)).fontSize(15).fontColor(COLORS.income)
+                Text((r['paid_at'] ? (r['paid_at'] as string).slice(0, 10) : '') + (r['note'] ? ' · ' + (r['note'] as string) : ''))
+                  .fontSize(11).fontColor(COLORS.textSecondary)
+              }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+              Text('编辑').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openEditRepay(r))
+              Text('删除').fontSize(13).fontColor(COLORS.danger).onClick(() => { this.removeRepay(r); })
+            }.padding(10).backgroundColor(COLORS.cardGlass).borderRadius(10)
+          }, (r: ESObject) => (r['id'] ?? '').toString())
+        }.padding(16)
       }
     }.width('100%').height('100%')
   }

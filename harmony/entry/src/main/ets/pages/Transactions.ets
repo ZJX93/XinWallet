@@ -4,8 +4,10 @@
  * 见文件末尾注释与 docs/harmony-style-guide.md 第 11 节。
  */
 import router from '@ohos.router';
+import promptAction from '@ohos.promptAction';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
+import { toast, toastLong } from '../common/ui';
 import { COLORS, fmtMoney, fmtMoneyShort, fmtDayLabel, LAYOUT, RADIUS, TRANSPARENT } from '../common/theme';
 import { TransactionItem, TxSummary, Book, Budget, BooksResponse, Account } from '../common/models';
 import {
@@ -465,12 +467,42 @@ export struct TransactionsPage {
    */
   openRow(it: TransactionItem): void {
     if (it.transfer) { this.editTransferViaPage(it); return; }
-    AlertDialog.show({
+    promptAction.showDialog({
       title: '交易操作',
       message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)}`,
-      primaryButton: { value: '编辑', action: () => { router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); } },
-      secondaryButton: { value: '删除', action: () => { Api.deleteTransaction(it.id).then(() => this.load()); } }
+      buttons: [
+        { text: '复制', color: COLORS.brand },
+        { text: '编辑', color: COLORS.brand },
+        { text: '删除', color: COLORS.danger }
+      ]
+    }, (err: Error, index: number) => {
+      if (index === 0) { this.copyTx(it); }
+      else if (index === 1) { router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); }
+      else if (index === 2) { Api.deleteTransaction(it.id).then(() => this.load()); }
     });
+  }
+
+  /**
+   * 复制交易：以原交易同账户/分类/类型/金额/备注生成一条【新】记录，
+   * 日期取今天，去掉 link_type/link_id（避免利息关联交易再挂一次）。
+   * 转账不支持复制（两条腿需走 /transfers，调用前已拦截）。
+   */
+  async copyTx(it: TransactionItem): Promise<void> {
+    try {
+      const req = {
+        account_id: it.account?.id ?? 0,
+        category_id: it.category?.id ?? 0,
+        type: it.type,
+        amount: it.amount,
+        note: it.note ?? '',
+        date: this.todayDate
+      };
+      await Api.createTransaction(req);
+      toast('已复制为新交易');
+      this.load();
+    } catch (e) {
+      toastLong('复制失败：' + ((e as ApiError).message || '请检查网络'));
+    }
   }
 
   /**

@@ -123,7 +123,7 @@
                     <h3 class="card-title">我的账户 <span style="font-size:12px;color:var(--text-tertiary)">总资产 <strong id="accTotalAssets" style="color:var(--interactive-default)">¥0</strong></span></h3>
                     <div class="acc-toolbar">
                         <button class="btn btn-ghost" id="addAccountBtn">＋ 新增账户</button>
-                        <button class="btn btn-ghost" id="reconcileBtn" title="以账本为准，重算并修正账户余额（复式记账防漂移）">🔄 重新对账</button>
+                        <button class="btn btn-ghost" id="reconcileBtn" title="以账本为准，重算并修正账户余额（复式记账防漂移）">重新对账</button>
                         <label class="acc-toggle"><input type="checkbox" id="showClosedAcc"> <span>显示已销户账户</span></label>
                     </div>
                     <div class="account-list" id="accountList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
@@ -819,7 +819,7 @@
     <script type="module" src="js/auth.js"></script>
     <script src="js/app.js?v=2"></script>
     <!-- 管理器模块：统一通过 index.js 一行入口加载（内含 window.* 桥接 + boot） -->
-    <script type="module" src="js/managers/index.js?v=30"></script>
+    <script type="module" src="js/managers/index.js?v=31"></script>
     <script type="module" src="js/bootstrap.js"></script>
 </body>
 </html>

@@ -9,6 +9,28 @@ const { ensureCategory, syncCreditCardDebt } = require('./utils');
 // 它的 remaining 必须与账户余额严格一致，否则会「账户已还清、债务还挂着余额」。
 const isAutoSyncDebt = (debt) => String(debt.note || '').startsWith('自动同步');
 
+// 判断一笔债务是否为「信用卡 / 花呗」类授信债务。
+// 这类债务还款本质是「储蓄卡 → 信用卡账户」的资金转移，应归入「信用卡还款」
+// （转账 → 一般转账 下），而非普通「还款」（贷款债务下）。
+// 判定优先级：① debt.type === 'credit_card'（同步授信债务会置此类型）；
+//            ② 关联账户是授信账户（信用卡 / 带额度的电子支付如花呗）。
+async function isCreditCardDebt(conn, debt, debtAccId) {
+    if (debt.type === 'credit_card') return true;
+    const accId = debtAccId || debt.account_id;
+    if (accId) {
+        const acc = await conn.queryOne('SELECT type, credit_limit FROM accounts WHERE id = ?', [accId]);
+        if (acc && (acc.type === 'credit_card' || (acc.type === 'electronic_payment' && (acc.credit_limit || 0) > 0))) return true;
+    }
+    return false;
+}
+
+// 选还款交易使用的分类：信用卡/花呗类走「信用卡还款」，其余沿用「还款」/「收还款」
+function chooseRepayCategory(isReceivable, isCreditDebt, crossAccount) {
+    if (isReceivable) return { name: '收还款', type: 'income', icon: '💰' };
+    if (isCreditDebt && crossAccount) return { name: '信用卡还款', type: 'transfer', icon: '💳' };
+    return { name: '还款', type: crossAccount ? 'transfer' : 'expense', icon: '💸' };
+}
+
 // 删除某笔还款生成的全部台账腿。
 // 跨账户还款会写两条腿（付款账户转出 + 债务关联账户转入），只删 transaction_id
 // 指向的那条会漏掉另一条，关联账户的余额/授信额度就回滚不干净。
@@ -407,11 +429,10 @@ router.post('/:id/repayments', async (req, res) => {
         }
         const crossAccount = !isReceivable && !!debtAccId && debtAccId !== accId;
         // 3) 准备分类：跨账户还款是自有账户之间的资金转移，用 transfer 类；
-        //    单边还款沿用 income/expense 类
-        const catName = isReceivable ? '收还款' : '还款';
-        const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
-        const catIcon = isReceivable ? '💰' : '💸';
-        const catId = await ensureCategory(conn, req.userId, catName, catType, catIcon);
+        //    单边还款沿用 income/expense 类。信用卡/花呗类债务还款归入「信用卡还款」。
+        const isCreditDebt = await isCreditCardDebt(conn, debt, debtAccId);
+        const catChoice = chooseRepayCategory(isReceivable, isCreditDebt, crossAccount);
+        const catId = await ensureCategory(conn, req.userId, catChoice.name, catChoice.type, catChoice.icon);
         // 4) 建交易
         //    所有腿统一打 link_type/link_id，删除还款时才能把双腿一起收干净
         const txDate = paid_at || new Date().toISOString();
@@ -511,11 +532,10 @@ router.put('/:id/repayments/:rid', async (req, res) => {
                 if (matched) debtAccId = matched.id;
             }
             const crossAccount = !isReceivable && !!debtAccId && debtAccId !== accId;
-            // 3) 分类
-            const catName = isReceivable ? '收还款' : '还款';
-            const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
-            const catIcon = isReceivable ? '💰' : '💸';
-            const catId = await ensureCategory(conn, req.userId, catName, catType, catIcon);
+            // 3) 分类：信用卡/花呗类债务还款归入「信用卡还款」，其余沿用「还款」/「收还款」
+            const isCreditDebt = await isCreditCardDebt(conn, debt, debtAccId);
+            const catChoice = chooseRepayCategory(isReceivable, isCreditDebt, crossAccount);
+            const catId = await ensureCategory(conn, req.userId, catChoice.name, catChoice.type, catChoice.icon);
             const txDate = paid_at || new Date().toISOString();
             const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
             const affected = new Set([accId]);

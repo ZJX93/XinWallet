@@ -217,8 +217,8 @@ const DebtManager = {
         const leftVal = paidTotal;
         const rightVal = remain;
         const actBtn = isRecv
-            ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
-            : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
+            ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">收款</button>`
+            : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">还款</button>`;
         const metaLeft = `${pct}% 进度`;
         const metaRight = d.interest_rate ? `年利率 ${d.interest_rate}%` : methodName;
         return `
@@ -236,9 +236,9 @@ const DebtManager = {
             <div class="goal-amounts"><span class="goal-pct">${metaLeft}</span><span>${metaRight}</span></div>
             <div class="goal-actions">
                 ${actBtn}
-                <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">📋 明细</button>
-                <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">✏️ 编辑</button>
-                <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">🗑️ 删除</button>
+                <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">明细</button>
+                <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">编辑</button>
+                <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">删除</button>
             </div>
         </div>`;
     },
@@ -532,8 +532,8 @@ const DebtManager = {
                     <span class="rh-amount">${fmt(r.amount)}</span>
                     <span class="rh-date">${r.paid_at || ''}</span>
                     <span class="rh-actions">
-                        <button class="rh-edit-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="修改该还款记录">✏️</button>
-                        <button class="rh-del-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="删除该还款记录">🗑️</button>
+                        <button class="rh-edit-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="修改该还款记录">修改</button>
+                        <button class="rh-del-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="删除该还款记录">删除</button>
                     </span>
                 </div>
                 <div class="rh-row2">
