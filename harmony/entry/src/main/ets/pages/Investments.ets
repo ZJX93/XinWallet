@@ -98,8 +98,8 @@ export struct InvestmentsPage {
     this.fName = ''; this.fCode = ''; this.fBuyPrice = ''; this.fQuantity = '';
     this.fFee = ''; this.fRisk = ''; this.fNote = '';
     this.fAccountId = 0;
-    // 买入日期默认今天：绝大多数记录都是当天录入，省一次选择
-    this.fBuyDate = new Date().toISOString().slice(0, 10);
+    // 买入日期默认当前时间（精确到秒）：绝大多数记录都是当天录入，省一次选择
+    this.fBuyDate = new Date().toISOString().replace('T', ' ').slice(0, 19);
     this.showAdd = true;
 
     if (this.invTypes.length === 0) {
@@ -231,8 +231,7 @@ export struct InvestmentsPage {
         Text(fmtMoney(this.formCost())).fontSize(15).fontWeight(FontWeight.Medium)
           .fontColor(COLORS.textPrimary)
       }.width('100%')
-      TextInput({ placeholder: '买入日期', text: this.fBuyDate })
-        .onChange((v: string) => this.fBuyDate = v)
+      DateTimePickerField({ label: '买入日期', value: this.fBuyDate, onValueChange: (v: string) => { this.fBuyDate = v; } })
       Column({ space: 6 }) {
         Text('风险等级（选填）').fontSize(13).fontColor(COLORS.textSecondary)
         Row({ space: 6 }) {

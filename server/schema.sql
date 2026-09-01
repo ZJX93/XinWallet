@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','closed')),
   annual_rate DECIMAL(8,4) NOT NULL DEFAULT 0,                 -- 年利率（百分比，如 1.5 表示 1.5%）；仅展示与「预计利息」估算
   interest_cycle VARCHAR(10) DEFAULT 'monthly' CHECK (interest_cycle IN ('daily','monthly','quarterly','yearly')),
-  last_interest_date DATE,                                     -- 上次计息日期（记利息时回写）
+  last_interest_date TIMESTAMP,                                 -- 上次计息日期（记利息时回写，精确到秒）
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS investments (
   total_cost DECIMAL(15,2) NOT NULL DEFAULT 0,
   current_value DECIMAL(15,2) NOT NULL DEFAULT 0,
   fee DECIMAL(15,2) NOT NULL DEFAULT 0,
-  buy_date DATE NOT NULL,
+  buy_date TIMESTAMP NOT NULL,                       -- 持仓买入日期（精确到秒）
   expected_rate DECIMAL(8,4) DEFAULT 0,
   actual_rate DECIMAL(8,4) DEFAULT 0,
   nav_date DATE DEFAULT NULL,                         -- 净值日期
@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS investment_transactions (
   amount DECIMAL(15,2) NOT NULL,
   price DECIMAL(15,4) DEFAULT 0,
   quantity DECIMAL(15,4) DEFAULT 0,
-  date DATE NOT NULL,
+  date TIMESTAMP NOT NULL,                               -- 理财交易日期（买/卖/分红/计息，精确到秒）
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -590,7 +590,7 @@ CREATE TABLE IF NOT EXISTS debt_repayments (
   amount DECIMAL(15,2) NOT NULL,
   principal_part DECIMAL(15,2) DEFAULT 0,
   interest_part DECIMAL(15,2) DEFAULT 0,
-  paid_at DATE NOT NULL,
+  paid_at TIMESTAMP NOT NULL,                        -- 还款日期（精确到秒）
   note VARCHAR(200) DEFAULT '',
   transaction_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -606,7 +606,7 @@ CREATE TABLE IF NOT EXISTS savings_transactions (
   account_id INT DEFAULT NULL,
   type VARCHAR(10) NOT NULL CHECK (type IN ('deposit','withdraw')),
   amount DECIMAL(15,2) NOT NULL,
-  date DATE NOT NULL,
+  date TIMESTAMP NOT NULL,                           -- 储蓄流水日期（精确到秒）
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -48,6 +48,16 @@ const failConflict = (msg) => fail(msg, ErrorCodes.CONFLICT);
 const failForbidden = (msg = '无权访问该资源') => fail(msg, ErrorCodes.FORBIDDEN);
 const failBadRequest = (msg) => fail(msg, ErrorCodes.BAD_REQUEST);
 
+/**
+ * 日期归一化为「YYYY-MM-DD HH:MM:SS」（精确到秒）。
+ * 兼容三种前端输入：datetime-local（带 T）、ISO（带 Z/毫秒）、纯日期（YYYY-MM-DD）。
+ * 必须去除 Z 与毫秒——否则直接写入 TIMESTAMP/DATETIME 在 PG/MySQL 下会报格式错误。
+ */
+function normDate(d) {
+    if (!d) return new Date().toISOString().replace('T', ' ').slice(0, 19);
+    return String(d).replace('T', ' ').replace(/\.\d+/, '').replace(/Z$/, '').slice(0, 19);
+}
+
 function fmtDateOnly(v) {
     if (v === null || v === undefined) return null;
     if (v instanceof Date) {
@@ -353,7 +363,7 @@ async function ensureWeeklySnapshots(userId, investments) {
 }
 
 module.exports = {
-    success, fail, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
+    success, fail, normDate, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
     extractJson, stripThinkingTokens, polishChatReply, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,

@@ -392,9 +392,70 @@ async function healSchemaColumns() {
   // 交易流水：每笔买卖的手续费（实在成本），用于记录与展示
   await ensureColumn('investment_transactions', 'fee', 'DECIMAL(15,2) NOT NULL DEFAULT 0');
   // 资金账户计息：年利率 / 计息周期 / 上次计息日期（升级老库时补齐，新库由 CREATE TABLE 覆盖）
+  const liType = DB_DIALECT === 'mysql' ? 'DATETIME' : 'TIMESTAMP';
   await ensureColumn('accounts', 'annual_rate', 'DECIMAL(8,4) NOT NULL DEFAULT 0');
   await ensureColumn('accounts', 'interest_cycle', "VARCHAR(10) DEFAULT 'monthly'");
-  await ensureColumn('accounts', 'last_interest_date', 'DATE');
+  await ensureColumn('accounts', 'last_interest_date', `${liType} DEFAULT NULL`);
+  // 老库 last_interest_date 原为 DATE（只到天），升级为带秒类型，使计息日期精确到秒（幂等，重复执行无害）
+  try {
+    if (DB_DIALECT === 'mysql') {
+      await query('ALTER TABLE accounts MODIFY COLUMN last_interest_date DATETIME');
+    } else {
+      await query('ALTER TABLE accounts ALTER COLUMN last_interest_date TYPE timestamp USING last_interest_date::timestamp');
+    }
+  } catch (e) {
+    if (!/does not exist|already|duplicate|42701|1060|1054|cannot alter/i.test(e.message)) {
+      console.warn('⚠️ 升级 accounts.last_interest_date 类型失败（不影响启动，下次启动重试）:', e.message);
+    }
+  }
+  // 理财交易日期：老库为 DATE（只到天），升级为带秒类型，使买/卖/分红/计息精确到秒（幂等）
+  try {
+    if (DB_DIALECT === 'mysql') {
+      await query('ALTER TABLE investment_transactions MODIFY COLUMN date DATETIME');
+    } else {
+      await query('ALTER TABLE investment_transactions ALTER COLUMN date TYPE timestamp USING date::timestamp');
+    }
+  } catch (e) {
+    if (!/does not exist|already|duplicate|42701|1060|1054|cannot alter/i.test(e.message)) {
+      console.warn('⚠️ 升级 investment_transactions.date 类型失败（不影响启动）:', e.message);
+    }
+  }
+  // 持仓买入日期：老库为 DATE（只到天），升级为带秒类型，使买入时间精确到秒（幂等，重复执行无害）
+  try {
+    if (DB_DIALECT === 'mysql') {
+      await query('ALTER TABLE investments MODIFY COLUMN buy_date DATETIME');
+    } else {
+      await query('ALTER TABLE investments ALTER COLUMN buy_date TYPE timestamp USING buy_date::timestamp');
+    }
+  } catch (e) {
+    if (!/does not exist|already|duplicate|42701|1060|1054|cannot alter/i.test(e.message)) {
+      console.warn('⚠️ 升级 investments.buy_date 类型失败（不影响启动，下次启动重试）:', e.message);
+    }
+  }
+  // 债务还款日期：老库为 DATE（只到天），升级为带秒类型，使还款时间精确到秒（幂等）
+  try {
+    if (DB_DIALECT === 'mysql') {
+      await query('ALTER TABLE debt_repayments MODIFY COLUMN paid_at DATETIME');
+    } else {
+      await query('ALTER TABLE debt_repayments ALTER COLUMN paid_at TYPE timestamp USING paid_at::timestamp');
+    }
+  } catch (e) {
+    if (!/does not exist|already|duplicate|42701|1060|1054|cannot alter/i.test(e.message)) {
+      console.warn('⚠️ 升级 debt_repayments.paid_at 类型失败（不影响启动，下次启动重试）:', e.message);
+    }
+  }
+  // 储蓄流水日期：老库为 DATE（只到天），升级为带秒类型，使存取时间精确到秒（幂等）
+  try {
+    if (DB_DIALECT === 'mysql') {
+      await query('ALTER TABLE savings_transactions MODIFY COLUMN date DATETIME');
+    } else {
+      await query('ALTER TABLE savings_transactions ALTER COLUMN date TYPE timestamp USING date::timestamp');
+    }
+  } catch (e) {
+    if (!/does not exist|already|duplicate|42701|1060|1054|cannot alter/i.test(e.message)) {
+      console.warn('⚠️ 升级 savings_transactions.date 类型失败（不影响启动，下次启动重试）:', e.message);
+    }
+  }
 
   // AI v0.2 Phase 3/4：预测快照的三个新增维度 + 路由记录。
   // ⚠️ 老库的 ai_predictions 由 Phase 1 建成，CREATE TABLE IF NOT EXISTS 不会补列，

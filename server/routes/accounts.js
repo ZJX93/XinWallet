@@ -146,7 +146,11 @@ router.post('/:id/interest', async (req, res) => {
         if (isNaN(amt) || amt <= 0) return res.status(400).json(fail('利息金额必须大于 0'));
         const acc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(404).json(failNotFound('账户不存在'));
-        const interestDate = date || new Date().toISOString().slice(0, 10);
+        // 计息日期精确到秒，与 transactions.date 同格式（YYYY-MM-DD HH:MM:SS）。
+        // 早期实现用 slice(0,10) 截到天，导致 DB(DATE) 与回显都丢失时分秒。
+        const interestDate = date
+          ? String(date).replace('T', ' ').slice(0, 19)
+          : new Date().toISOString().replace('T', ' ').slice(0, 19);
         let newBalance;
         await db.transaction(async (conn) => {
             const catId = await getInterestCategoryId(conn);

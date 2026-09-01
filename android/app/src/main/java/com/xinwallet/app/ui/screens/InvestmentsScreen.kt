@@ -59,6 +59,7 @@ import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
+import com.xinwallet.app.ui.components.DateTimePickerField
 import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
@@ -69,6 +70,7 @@ import com.xinwallet.app.ui.viewmodel.InvestmentsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
 import com.xinwallet.app.util.formatMoneySigned
+import com.xinwallet.app.util.todayDateTime
 
 /**
  * 理财持仓列表主体。
@@ -268,7 +270,7 @@ private fun InvestmentFormDialog(
     var buyPrice by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
     var fee by remember { mutableStateOf("") }
-    var buyDate by remember { mutableStateOf(todayIso()) }
+    var buyDate by remember { mutableStateOf(todayDateTime()) }
     var risk by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -327,9 +329,11 @@ private fun InvestmentFormDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     Text(formatMoney(totalCost), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 }
-                OutlinedTextField(
-                    value = buyDate, onValueChange = { buyDate = it },
-                    label = { Text("买入日期") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                DateTimePickerField(
+                    label = "买入日期",
+                    value = buyDate,
+                    modifier = Modifier.fillMaxWidth(),
+                    onValueChange = { buyDate = it }
                 )
                 DropdownField(
                     label = "风险等级（选填）",

@@ -106,7 +106,7 @@ function buildWorkbook(data) {
     ]);
     const investRows = (data.investments || []).map(i => [
         i.name, i.code || '', i.type_name || '', i.account_name || '', i.buy_price, i.current_price, i.quantity,
-        i.total_cost, i.current_value, i.fee, fmtDate(i.buy_date), i.expected_rate, i.status, i.note || ''
+        i.total_cost, i.current_value, i.fee, fmtDateTime(i.buy_date), i.expected_rate, i.status, i.note || ''
     ]);
     const txRows = (data.transactions || []).map(t => [
         fmtDateTime(t.date) || fmtDate(t.date), t.type_label, t.amount, t.account, t.category || '', t.note || '', t.counterparty || ''

@@ -57,6 +57,7 @@ import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.ActionChip
 import com.xinwallet.app.ui.components.BalanceCard
 import com.xinwallet.app.ui.components.DatePickerField
+import com.xinwallet.app.ui.components.DateTimePickerField
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
@@ -393,7 +394,7 @@ private fun EditInvestmentSheet(
     var buyPrice by remember { mutableStateOf(if (inv.buyPrice > 0) inv.buyPrice.toString() else "") }
     var currentPrice by remember { mutableStateOf(if (inv.currentPrice > 0) inv.currentPrice.toString() else "") }
     var quantity by remember { mutableStateOf(if (inv.quantity > 0) inv.quantity.toString() else "") }
-    var buyDate by remember { mutableStateOf(if (inv.buyDate.isNotBlank()) inv.buyDate.take(10) else todayDateTime().take(10)) }
+    var buyDate by remember { mutableStateOf(if (inv.buyDate.isNotBlank()) inv.buyDate else todayDateTime()) }
     var note by remember { mutableStateOf(inv.note ?: "") }
     var submitting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -441,7 +442,7 @@ private fun EditInvestmentSheet(
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
-            DatePickerField(label = "买入日期", date = buyDate, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), onDateChange = { buyDate = it })
+            DateTimePickerField(label = "买入日期", value = buyDate, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), onValueChange = { buyDate = it })
             OutlinedTextField(
                 value = note, onValueChange = { note = it },
                 label = { Text("备注（可选）") },

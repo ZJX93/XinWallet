@@ -59,6 +59,7 @@ import com.xinwallet.app.data.model.UpdateDebtRequest
 import com.xinwallet.app.data.model.UpdateRepaymentRequest
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.DatePickerField
+import com.xinwallet.app.ui.components.DateTimePickerField
 import com.xinwallet.app.ui.components.DropdownField
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.LinearProgress
@@ -73,6 +74,7 @@ import com.xinwallet.app.ui.viewmodel.DebtsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
 import com.xinwallet.app.util.todayDate
+import com.xinwallet.app.util.todayDateTime
 
 private val DEBT_DIRECTIONS = listOf("我欠别人（应付）" to "payable", "别人欠我（应收）" to "receivable")
 private val DEBT_METHODS = listOf("等额本息" to "equal_installment", "等额本金" to "equal_principal", "先息后本" to "interest_only")
@@ -394,7 +396,7 @@ private fun RepaymentDialog(
 ) {
     var amount by remember { mutableStateOf(if (editing != null) trimAmount(editing.amount) else "") }
     var accId by remember { mutableStateOf(editing?.accountId ?: accounts.firstOrNull()?.id ?: 0) }
-    var date by remember { mutableStateOf(editing?.paidAt?.take(10) ?: todayDate()) }
+    var date by remember { mutableStateOf(editing?.paidAt ?: todayDateTime()) }
     var note by remember { mutableStateOf(editing?.note.orEmpty()) }
     var localError by remember { mutableStateOf<String?>(null) }
     val accOptions = accounts.map { "${it.name} ${it.icon ?: ""}" to it.id }
@@ -412,7 +414,7 @@ private fun RepaymentDialog(
                     DropdownField(label = "账户", value = accOptions.firstOrNull { it.second == accId }?.first ?: "请选择", options = accOptions, onSelected = { accId = it })
                 }
                 Spacer(Modifier.height(12.dp))
-                DatePickerField(label = "日期", date = date, onDateChange = { date = it })
+                DateTimePickerField(label = "日期", value = date, onValueChange = { date = it })
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("备注（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (editing != null && onDelete != null) {

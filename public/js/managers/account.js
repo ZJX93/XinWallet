@@ -469,10 +469,14 @@ const AccountManager = {
         this._interestAccId = id;
         this._editingInterestTxnId = txn ? txn.id : null;
         this._editingInterestCatId = txn ? txn.category_id : null;
-        const today = new Date().toISOString().slice(0, 10);
+        // 默认计息时间精确到秒（datetime-local 格式），使「未填日期」时记录真实时刻而非仅当天
+        const pad = (n) => String(n).padStart(2, '0');
+        const now = new Date();
+        const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         document.getElementById('interestModalTitle').textContent = txn ? `编辑利息 · ${a.icon || ''} ${a.name}` : `记利息 · ${a.icon || ''} ${a.name}`;
         document.getElementById('interestAmount').value = txn ? txn.amount : '';
-        document.getElementById('interestDate').value = txn ? (String(txn.date).slice(0, 10) || today) : today;
+        // 编辑既有利息时回填到秒（transactions.date 可能为 YYYY-MM-DD HH:MM:SS，转 datetime-local 的 T 分隔）
+        document.getElementById('interestDate').value = txn ? String(txn.date || '').replace(' ', 'T').slice(0, 19) : today;
         document.getElementById('interestNote').value = txn ? (txn.note ? String(txn.note).replace(/^利息-[^-]*-?/, '') : '') : '';
         document.getElementById('interestError').style.display = 'none';
         document.getElementById('interestSubmitBtn').disabled = false;

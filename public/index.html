@@ -730,7 +730,7 @@
                 <div class="form-group full-width"><label>利息金额 (¥) <small style="color:var(--text-secondary)">必须大于 0</small></label><input type="number" id="interestAmount" step="0.01" min="0.01" required placeholder="0.00" autocomplete="off"></div>
             </div>
             <div class="form-row">
-                <div class="form-group full-width"><label>计息日期</label><input type="date" id="interestDate" required></div>
+                <div class="form-group full-width"><label>计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
             </div>
             <div class="form-row">
                 <div class="form-group full-width"><label>备注 <small style="color:var(--text-secondary)">（可选）</small></label><input type="text" id="interestNote" placeholder="如：2026年7月利息" autocomplete="off"></div>

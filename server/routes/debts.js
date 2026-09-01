@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit, normDate } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
 
 // 由 syncCreditCardDebt 自动同步出来的债务（信用卡 / 信用支付账户）：
@@ -75,7 +75,7 @@ async function createDebtCreateTxn(db, userId, bookId, accId, direction, princip
     const catResult = await db.query('INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)', [catName, catType, catIcon, '#f59e0b']);
     cat = { id: catResult.insertId };
   }
-  const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
+  const txDate = normDate(dateStr);
   // 复式记账方向：借出=资金从账户流出(source)，借入=资金流入账户(destination)
   const srcAcc = isRecv ? accId : null;
   const dstAcc = isRecv ? null : accId;
@@ -412,7 +412,7 @@ router.post('/:id/repayments', async (req, res) => {
         // 1) 插入还款/收款记录
         const repResult = await conn.query(
             'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [req.userId, req.bookId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString(), note || '']
+            [req.userId, req.bookId, debt.id, accId, amt, pp, ip, normDate(paid_at), note || '']
         );
         const repId = repResult.insertId;
         // 2) 本次还款的付款账户是否就是债务关联账户
@@ -435,7 +435,7 @@ router.post('/:id/repayments', async (req, res) => {
         const catId = await ensureCategory(conn, req.userId, catChoice.name, catChoice.type, catChoice.icon);
         // 4) 建交易
         //    所有腿统一打 link_type/link_id，删除还款时才能把双腿一起收干净
-        const txDate = paid_at || new Date().toISOString();
+        const txDate = normDate(paid_at);
         const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
         const affected = new Set([accId]);
         let txId;
@@ -536,7 +536,7 @@ router.put('/:id/repayments/:rid', async (req, res) => {
             const isCreditDebt = await isCreditCardDebt(conn, debt, debtAccId);
             const catChoice = chooseRepayCategory(isReceivable, isCreditDebt, crossAccount);
             const catId = await ensureCategory(conn, req.userId, catChoice.name, catChoice.type, catChoice.icon);
-            const txDate = paid_at || new Date().toISOString();
+            const txDate = normDate(paid_at);
             const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
             const affected = new Set([accId]);
             let txId;
@@ -578,7 +578,7 @@ router.put('/:id/repayments/:rid', async (req, res) => {
             const newStatus = newRemain <= 0 ? 'paid_off' : 'active';
             await conn.query(
                 'UPDATE debt_repayments SET account_id=?, amount=?, principal_part=?, interest_part=?, paid_at=?, note=?, transaction_id=? WHERE id=?',
-                [accId, amt, pp, ip, paid_at || rep.paid_at || new Date().toISOString(), note || '', txId, rep.id]
+                [accId, amt, pp, ip, normDate(paid_at || rep.paid_at), note || '', txId, rep.id]
             );
             await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
             res.json(success(null, isReceivable ? '收款记录已更新' : '还款记录已更新'));
