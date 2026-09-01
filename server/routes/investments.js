@@ -290,7 +290,7 @@ router.post('/investments', async (req, res) => {
         const costVal = parseFloat(total_cost) || 0;
         const valueVal = parseFloat(current_value) || costVal || 0;
         const accId = parseInt(account_id) || null;
-        const buyDate = buy_date || new Date().toISOString().split('T')[0];
+        const buyDate = buy_date || new Date().toISOString();
         const riskVal = ['low', 'medium', 'high', 'very_high'].includes(risk_level) ? risk_level : null;
 
         const result = await db.transaction(async (conn) => {
@@ -350,7 +350,7 @@ router.put('/investments/:id', async (req, res) => {
         const newAccId = parseInt(account_id) || null;
         const newCost = parseFloat(total_cost) || 0;
         const newName = name || '';
-        const newBuyDate = buy_date || new Date().toISOString().split('T')[0];
+        const newBuyDate = buy_date || new Date().toISOString();
 
         await db.transaction(async (conn) => {
             // 取出旧持仓，用于回滚旧台账交易
@@ -556,6 +556,75 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
         });
 
         res.json(success(null, '已删除'));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// 修改理财交易记录（reverse 旧笔 + 按新值插入 + 重算持仓与账户余额）
+// 采用「删旧 + 插新 + recompute 兜底」的事务策略，持仓始终由全部流水推导，避免口径漂移。
+router.put('/investments/:id/transactions/:txnId', async (req, res) => {
+    try {
+        const { type, amount, price, quantity, date, note, fee } = req.body;
+        const investmentId = parseInt(req.params.id);
+        const txnId = parseInt(req.params.txnId);
+        if (!Number.isInteger(investmentId) || !Number.isInteger(txnId)) return res.status(400).json(fail('参数错误'));
+        if (!['buy', 'sell', 'dividend', 'interest', 'reinvest'].includes(type)) return res.status(400).json(fail('不支持的交易类型'));
+
+        const investment = await db.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [investmentId, req.userId, req.bookId]);
+        if (!investment) return res.status(404).json(fail('持仓不存在'));
+
+        const old = await db.queryOne('SELECT * FROM investment_transactions WHERE id = ? AND investment_id = ? AND user_id = ?', [txnId, investmentId, req.userId]);
+        if (!old) return res.status(404).json(fail('交易记录不存在'));
+
+        let addedQty = parseFloat(quantity) || 0;
+        if (type === 'reinvest') {
+            const nav = parseFloat(price) || parseFloat(investment.current_price) || 0;
+            const amt = parseFloat(amount) || 0;
+            if (!(nav > 0)) return res.status(400).json(fail('红利再投需要有效的单位净值，请在「当前净值」填写'));
+            if (!(amt > 0)) return res.status(400).json(fail('红利再投金额需大于 0'));
+            addedQty = amt / nav;
+        }
+
+        let msg = '已更新';
+        await db.transaction(async (conn) => {
+            // 1) reverse 旧笔：删关联交易 + 删流水 + 用剩余流水重算持仓
+            await conn.query('DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?', [txnId, req.userId, req.bookId]);
+            await conn.query('DELETE FROM investment_transactions WHERE id = ? AND user_id = ?', [txnId, req.userId]);
+            await recomputeInvestmentPosition(conn, investmentId, req.userId);
+
+            // 2) 插入新值
+            const inv = await conn.query(
+                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, parseFloat(fee) || 0, note || '']
+            );
+            const newInvTxnId = inv.insertId;
+
+            // 3) dividend/interest 现金入账（recompute 不处理主账本）
+            if (type === 'dividend' || type === 'interest') {
+                if (investment.account_id) {
+                    const sellCatId = await getInvestmentSellCategoryId(conn);
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+                         VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
+                        [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date, newInvTxnId]
+                    );
+                }
+                msg = type === 'dividend' ? '分红已更新' : '利息已更新';
+            } else if (type === 'reinvest') {
+                msg = '红利再投已更新，持有份额已增加';
+            }
+
+            // 4) 统一重算持仓（含新流水）+ 同步账户余额（单一真相）
+            await recomputeInvestmentPosition(conn, investmentId, req.userId);
+            if (investment.account_id) {
+                const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
+            }
+        });
+
+        res.json(success(null, msg));
     } catch (err) {
         handleServerError(res, err);
     }

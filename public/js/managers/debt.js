@@ -195,9 +195,13 @@ const DebtManager = {
         const typeName = ({ credit_card: '信用卡', loan: '长期借款', personal: '自然人借贷', other: '其他' })[d.type] || d.type;
         const methodName = ({ equal_installment: '等额本息', equal_principal: '等额本金', interest_only: '按期付息到期还本', minimum: '最低还款', lump_sum: '一次性还本', manual: '手动' })[d.method] || d.method;
         const stLabel = ({ active: '正常', paid_off: '已结清', overdue: '逾期' })[d.status] || d.status;
-        const pct = d.principal > 0 ? Math.min(100, Math.round(d.paid_total / d.principal * 100)) : 0;
-        const remain = isRecv ? d.remaining : (d.principal - d.paid_total);
-        const surplus = isRecv ? (d.principal - d.paid_total) : (d.principal - d.paid_total);
+        // 自动同步出来的信用卡/信用支付债务 principal 恒为 0，欠款全部记在 remaining 上。
+        // 若继续拿 principal 当分母，进度恒为 0%、金额全显示 ¥0.00 —— 卡片上看不到任何欠款。
+        // 统一以「剩余 + 已还」作本金基数，两类债务都能正确体现金额。
+        const paidTotal = parseFloat(d.paid_total) || 0;
+        const remain = Math.max(0, parseFloat(d.remaining) || 0);
+        const base = (parseFloat(d.principal) || 0) > 0 ? (parseFloat(d.principal) || 0) : (remain + paidTotal);
+        const pct = base > 0 ? Math.min(100, Math.round(paidTotal / base * 100)) : 0;
         const stTag = d.status === 'paid_off'
             ? '<span class="goal-status done">已结清</span>'
             : d.status === 'overdue'
@@ -210,8 +214,8 @@ const DebtManager = {
         const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
         const leftLabel = isRecv ? '已收回' : '已偿付';
         const rightLabel = isRecv ? '待收' : '剩余';
-        const leftVal = d.paid_total || 0;
-        const rightVal = remain > 0 ? remain : 0;
+        const leftVal = paidTotal;
+        const rightVal = remain;
         const actBtn = isRecv
             ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
             : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
@@ -232,7 +236,7 @@ const DebtManager = {
             <div class="goal-amounts"><span class="goal-pct">${metaLeft}</span><span>${metaRight}</span></div>
             <div class="goal-actions">
                 ${actBtn}
-                <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">📜 明细</button>
+                <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">📋 明细</button>
                 <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">✏️ 编辑</button>
                 <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">🗑️ 删除</button>
             </div>
@@ -411,28 +415,59 @@ const DebtManager = {
         } catch (err) { showToast('删除失败：' + (err.message || '未知错误'), 'error'); }
     },
 
-    openRepayModal(id) {
+    openRepayModal(id, rep = null) {
         document.getElementById('repayModal').classList.add('show');
         document.getElementById('repayDebtId').value = id;
-        ['repayAmount','repayPrincipal','repayInterest','repayNote'].forEach(rid => { const el = document.getElementById(rid); if (el) el.value = ''; });
-        document.getElementById('repayDate').value = new Date().toISOString().slice(0, 10);
         const debt = this._listCache.find(d => d.id === id);
         const isRecv = debt && debt.direction === 'receivable';
+        // 编辑模式：预填原还款记录
+        if (rep) {
+            this._editingRepay = { debtId: id, rid: rep.id };
+            document.getElementById('repayAmount').value = rep.amount || '';
+            document.getElementById('repayPrincipal').value = (rep.principal_part != null ? rep.principal_part : '');
+            document.getElementById('repayInterest').value = (rep.interest_part != null ? rep.interest_part : '');
+            document.getElementById('repayDate').value = rep.paid_at ? fmtDateTimeLocal(rep.paid_at) : fmtDateTimeLocal();
+            document.getElementById('repayNote').value = rep.note || '';
+        } else {
+            this._editingRepay = null;
+            ['repayAmount','repayPrincipal','repayInterest','repayNote'].forEach(rid => { const el = document.getElementById(rid); if (el) el.value = ''; });
+            document.getElementById('repayDate').value = fmtDateTimeLocal();
+        }
         const titleEl = document.getElementById('repayModalTitle');
-        if (titleEl) titleEl.textContent = isRecv ? '登记应收账款回款' : '登记应付账款偿付';
+        if (titleEl) titleEl.textContent = rep ? '修改还款记录' : (isRecv ? '登记应收账款回款' : '登记应付账款偿付');
         const submitBtn = document.getElementById('repaySubmitBtn');
-        if (submitBtn) submitBtn.textContent = isRecv ? '确认收款' : '确认还款';
+        if (submitBtn) submitBtn.textContent = rep ? '保存修改' : (isRecv ? '确认收款' : '确认还款');
         const accLabel = document.querySelector('[data-repay-account-label]');
         if (accLabel) accLabel.textContent = (isRecv ? '收款' : '付款') + '账户 *';
-        // 填充账户下拉
         const sel = document.getElementById('repayAccount');
         sel.innerHTML = '<option value="">-- 请选择账户 * --</option>';
         (cache.accounts || []).forEach(a => { sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}</option>`; });
-        // 若债务已关联账户，默认带入为收/付款账户
-        if (debt && debt.account_id) sel.value = debt.account_id; else sel.value = '';
+        const debtAcc = (cache.accounts || []).find(a => String(a.id) === String(debt && debt.account_id));
+        const isCreditAcc = !!debtAcc && (debtAcc.type === 'credit_card'
+            || (debtAcc.type === 'electronic_payment' && parseFloat(debtAcc.credit_limit) > 0));
+        // 编辑模式优先用还款记录自身的账户；否则预填债务关联账户（授信账户不预填）
+        if (rep && rep.account_id) sel.value = rep.account_id;
+        else if (debt && debt.account_id && !isCreditAcc) sel.value = debt.account_id;
+        else sel.value = '';
+        const hintEl = document.getElementById('repayAccountHint');
+        if (hintEl) {
+            if (!isRecv && isCreditAcc) {
+                hintEl.textContent = `选择实际出钱的账户，还款后「${debtAcc.name}」的已用额度会同步恢复`;
+                hintEl.style.display = '';
+            } else {
+                hintEl.textContent = '';
+                hintEl.style.display = 'none';
+            }
+        }
     },
 
-    closeRepayModal() { document.getElementById('repayModal').classList.remove('show'); },
+    closeRepayModal() {
+        const editing = this._editingRepay;
+        document.getElementById('repayModal').classList.remove('show');
+        this._editingRepay = null;
+        // 编辑模式（从明细弹窗进入）关闭后，重新拉起明细弹窗以刷新内容
+        if (editing && editing.debtId) this.openRepayHistory(editing.debtId);
+    },
 
     async saveRepay() {
         try {
@@ -451,13 +486,21 @@ const DebtManager = {
                 principal_part: ppVal !== '' ? parseFloat(ppVal) : undefined,
                 interest_part: ipVal !== '' ? parseFloat(ipVal) : undefined
             };
+            if (this._editingRepay) {
+                const { debtId: did, rid } = this._editingRepay;
+                await api(`/debts/${did}/repayments/${rid}`, 'PUT', payload);
+                showToast('还款记录已更新', 'success');
+                this.closeRepayModal();
+                await this.refresh();
+                return;
+            }
             const debt = this._listCache.find(d => d.id === parseInt(debtId));
             const isRecv = debt && debt.direction === 'receivable';
             await api(`/debts/${debtId}/repayments`, 'POST', payload);
             showToast(isRecv ? '收款已登记' : '还款已登记', 'success');
             this.closeRepayModal();
             await this.refresh();
-        } catch (e) { showToast('登记失败：' + (e.message || '网络错误'), 'error'); }
+        } catch (e) { showToast('保存失败：' + (e.message || '未知错误'), 'error'); }
     },
 
     // 明细弹窗（保持原结构）
@@ -484,10 +527,14 @@ const DebtManager = {
             return;
         }
         const rows = list.map(r => `
-            <div class="rh-item">
+            <div class="rh-item" data-repay-id="${r.id}">
                 <div class="rh-row1">
                     <span class="rh-amount">${fmt(r.amount)}</span>
                     <span class="rh-date">${r.paid_at || ''}</span>
+                    <span class="rh-actions">
+                        <button class="rh-edit-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="修改该还款记录">✏️</button>
+                        <button class="rh-del-btn" data-repay-id="${r.id}" data-debt-id="${id}" title="删除该还款记录">🗑️</button>
+                    </span>
                 </div>
                 <div class="rh-row2">
                     <span class="rh-tag">本金 ${fmt(r.principal_part)} / 利息 ${fmt(r.interest_part)}</span>
@@ -496,6 +543,34 @@ const DebtManager = {
                 ${safeNote(r.note) ? `<div class="rh-note">📝 ${escapeHtml(safeNote(r.note))}</div>` : ''}
             </div>`).join('');
         body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
+        // 修改：复用登记弹窗预填，保存走 PUT /debts/:debtId/repayments/:rid
+        body.querySelectorAll('.rh-edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const rid = parseInt(btn.dataset.repayId);
+                const did = parseInt(btn.dataset.debtId);
+                const rec = list.find(x => x.id === rid);
+                if (!rec) return;
+                // 先隐藏明细弹窗，避免与修改弹窗重叠被遮挡
+                this.closeRepayHistory();
+                this.openRepayModal(did, rec);
+            });
+        });
+        // 删除：调 DELETE /debts/:debtId/repayments/:rid，后端级联删双腿 + 还款记录并回滚余额
+        body.querySelectorAll('.rh-del-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const rid = parseInt(btn.dataset.repayId);
+                const did = parseInt(btn.dataset.debtId);
+                if (!confirm('确定要删除这条还款记录吗？\n\n会同时撤销该笔产生的两条流水、回滚账户余额与债务剩余本金。此操作不可撤销。')) return;
+                try {
+                    await api(`/debts/${did}/repayments/${rid}`, 'DELETE');
+                    showToast('还款记录已删除', 'warning');
+                    await this.openRepayHistory(did);
+                    await this.refresh();
+                } catch (err) { /* api() 已 toast */ }
+            });
+        });
     },
 
     closeRepayHistory() { document.getElementById('repayHistoryModal').classList.remove('show'); }

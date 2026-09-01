@@ -36,8 +36,9 @@ function fmtSigned(n, type) {
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
     // 注意：_moneyFmt.format() 已对负数自动加 '-'，所以这里用 Math.abs() 避免双符号
-    // type='expense' 强制显示 '-'（即使浮点 0 也按支出）
-    const sign = type === 'expense' ? '-' : type === 'transfer_in' || type === 'transfer_out' ? '' : '+';
+    // 转出腿与支出同为资金流出，统一带 '-'；转入腿与收入带 '+'。
+    // （成对的转账行显式传 'transfer_in'，不受此规则影响）
+    const sign = (type === 'expense' || type === 'transfer_out') ? '-' : '+';
     return sign + '¥' + _moneyFmt.format(Math.abs(v));
 }
 // 无符号 ¥ 前缀的纯数字（用于已含 ¥ 的拼接场景，避免双重符号）
@@ -161,6 +162,24 @@ function mergeTransferPairs(transactions) {
             });
             continue;
         }
+        // 路径 3：跨账户还款折叠腿（link_type='debt_repayment'，服务端给了 counterparty
+        // 但没走 transfers 表，故无 transfer / transfer_id）。直接复用转账的 A→B 渲染模式：
+        // 以自身 account 为 from、counterparty 为 to 合成双端，下游 renderRow 套用转账分支。
+        if (t.link_type === 'debt_repayment' && t.counterparty) {
+            const outIsSelf = t.type === 'transfer_out';
+            const selfAcc = t.account;
+            const peerAcc = { id: null, name: t.counterparty.name, icon: t.counterparty.icon };
+            const outLeg = { ...t, account: outIsSelf ? selfAcc : peerAcc };
+            const inLeg = { ...t, account: outIsSelf ? peerAcc : selfAcc };
+            pairedIds.add(t.id);
+            result.push({
+                ...t,
+                _pairOut: outLeg, _pairIn: inLeg,
+                _transferOut: outLeg, _transferIn: inLeg,
+                amount: Math.abs(t.amount), _merged: true
+            });
+            continue;
+        }
         // 路径 2：旧版服务端返回两条腿，按 transfer_id 在列表内配对
         if ((t.type === 'transfer_in' || t.type === 'transfer_out') && t.transfer_id) {
             const pair = transactions.find(
@@ -230,6 +249,7 @@ function getCat(id) { return cache.categories.find(c => c.id === id) || { id, na
 function getAcc(id) { return cache.accounts.find(a => a.id === id) || { id, name: '未知', icon: '💰' }; }
 function getExpCats() { return cache.categories.filter(c => c.type === 'expense'); }
 function getIncCats() { return cache.categories.filter(c => c.type === 'income'); }
+function getTransferCats() { return cache.categories.filter(c => c.type === 'transfer'); }
 
 // ==========================================
 // 页面标题映射

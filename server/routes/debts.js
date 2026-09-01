@@ -3,6 +3,38 @@ const router = express.Router();
 
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit } = require('./_helpers');
+const { ensureCategory, syncCreditCardDebt } = require('./utils');
+
+// 由 syncCreditCardDebt 自动同步出来的债务（信用卡 / 信用支付账户）：
+// 它的 remaining 必须与账户余额严格一致，否则会「账户已还清、债务还挂着余额」。
+const isAutoSyncDebt = (debt) => String(debt.note || '').startsWith('自动同步');
+
+// 删除某笔还款生成的全部台账腿。
+// 跨账户还款会写两条腿（付款账户转出 + 债务关联账户转入），只删 transaction_id
+// 指向的那条会漏掉另一条，关联账户的余额/授信额度就回滚不干净。
+// 腿统一带 link_type='debt_repayment' + link_id=还款记录id，据此精确定位。
+async function deleteRepaymentLegs(conn, userId, bookId, repayment) {
+    const affected = new Set();
+    const legs = await conn.query(
+        "SELECT id, account_id FROM transactions WHERE user_id = ? AND book_id = ? AND link_type = 'debt_repayment' AND link_id = ?",
+        [userId, bookId, repayment.id]
+    );
+    if (legs.length) {
+        for (const l of legs) {
+            await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [l.id, userId, bookId]);
+            if (l.account_id) affected.add(l.account_id);
+        }
+    } else if (repayment.transaction_id) {
+        // 历史数据没有 link 标记：退化为只删主腿
+        await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [repayment.transaction_id, userId, bookId]);
+        if (repayment.account_id) affected.add(repayment.account_id);
+    }
+    const balances = {};
+    for (const aid of affected) balances[aid] = await computeAccountBalance(conn, userId, aid);
+    for (const aid of affected) await enforceBalanceLimit(conn, userId, aid, balances[aid]);
+    for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+    return affected;
+}
 
 // 创建债务时同步生成台账交易，保持账本一致：
 // - 应收/借出：资金从关联账户流出（支出），扣减余额
@@ -302,10 +334,13 @@ router.delete('/:id', async (req, res) => {
         if (debt.create_transaction_id) {
           await rollbackDebtCreateTxn(conn, req.userId, debt.book_id, debt.create_transaction_id, debt.account_id);
         }
-        // 清理关联的入账交易（还款出账记录）
-        const txs = await conn.query('SELECT transaction_id FROM debt_repayments WHERE debt_id = ? AND user_id = ? AND book_id = ? AND transaction_id IS NOT NULL', [req.params.id, req.userId, debt.book_id]);
-        for (const t of txs) {
-            if (t.transaction_id) await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [t.transaction_id, req.userId, debt.book_id]);
+        // 清理关联的入账交易（还款出账记录，含跨账户还款的两条腿）
+        const reps = await conn.query(
+            'SELECT id, transaction_id, account_id FROM debt_repayments WHERE debt_id = ? AND user_id = ? AND book_id = ?',
+            [req.params.id, req.userId, debt.book_id]
+        );
+        for (const r of reps) {
+            await deleteRepaymentLegs(conn, req.userId, debt.book_id, r);
         }
         await conn.query('DELETE FROM debt_repayments WHERE debt_id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, debt.book_id]);
         await conn.query('DELETE FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, debt.book_id]);
@@ -327,14 +362,17 @@ router.get('/:id', async (req, res) => {
         const schedule = buildDebtSchedule({ ...debt, monthly_payment: monthly });
         res.json(success({
             debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: Math.round(monthly * 100) / 100, min_payment: parseFloat(debt.min_payment), paid_total: repayments.reduce((s, r) => s + parseFloat(r.amount), 0), start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
-            repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: fmtDateOnly(r.paid_at) })),
+            repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: r.paid_at ? new Date(r.paid_at).toISOString().slice(0, 19).replace('T', ' ') : null })),
             schedule
         }));
     } catch (err) { handleServerError(res, err); }
 });
 
 // 添加还款/收款记录（按 direction 分叉）
-// - payable（应付/我欠别人）：从我的账户扣款，建支出交易
+// - payable（应付/我欠别人）：从我的账户扣款
+//   · 付款账户 ≠ 债务关联账户时走「转账」双腿：付款账户转出 + 债务关联账户转入。
+//     少了转入腿，信用卡/花呗这类授信账户的已用额度不会随还款回落 —— 钱还了、额度不恢复。
+//   · 付款账户就是债务关联账户（或债务没关联账户）时，沿用单腿 expense。
 // - receivable（应收/别人欠我）：我的账户入账，建收入交易
 router.post('/:id/repayments', async (req, res) => {
     try {
@@ -352,37 +390,72 @@ router.post('/:id/repayments', async (req, res) => {
         // 1) 插入还款/收款记录
         const repResult = await conn.query(
             'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [req.userId, req.bookId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString().slice(0, 10), note || '']
+            [req.userId, req.bookId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString(), note || '']
         );
         const repId = repResult.insertId;
-        // 2) 准备分类
-        const catName = isReceivable ? '收还款' : '还款';
-        const catType = isReceivable ? 'income' : 'expense';
-        const catIcon = isReceivable ? '💰' : '💸';
-        let cat = await conn.queryOne("SELECT id FROM categories WHERE name=? AND type=?", [catName, catType]);
-        if (!cat) {
-            const catResult = await conn.query("INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)", [catName, catType, catIcon, isReceivable ? '#10b981' : '#ef4444']);
-            cat = { id: catResult.insertId };
+        // 2) 本次还款的付款账户是否就是债务关联账户
+        let debtAccId = debt.account_id ? parseInt(debt.account_id) : null;
+        // 自动同步的信用卡/信用支付债务 account_id 为空（同步时按姓名兜底匹配），
+        // 还款时必须按姓名回填真实授信账户，否则 crossAccount 恒为 false，
+        // 还款只记「出钱账户单腿支出」，信用卡已用额度不会被回血（钱还了、额度不恢复）。
+        if (!debtAccId && isAutoSyncDebt(debt)) {
+            const matched = await conn.queryOne(
+                "SELECT id FROM accounts WHERE user_id = ? AND (book_id = ? OR book_id IS NULL) AND name = ? AND (type = 'credit_card' OR (type = 'electronic_payment' AND credit_limit > 0))",
+                [req.userId, req.bookId, debt.name]
+            );
+            if (matched) debtAccId = matched.id;
         }
-        // 3) 建交易：应收建 income + destination_account_id；应付建 expense + source_account_id
-        const txDate = (paid_at || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
-        const txType = isReceivable ? 'income' : 'expense';
+        const crossAccount = !isReceivable && !!debtAccId && debtAccId !== accId;
+        // 3) 准备分类：跨账户还款是自有账户之间的资金转移，用 transfer 类；
+        //    单边还款沿用 income/expense 类
+        const catName = isReceivable ? '收还款' : '还款';
+        const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
+        const catIcon = isReceivable ? '💰' : '💸';
+        const catId = await ensureCategory(conn, req.userId, catName, catType, catIcon);
+        // 4) 建交易
+        //    所有腿统一打 link_type/link_id，删除还款时才能把双腿一起收干净
+        const txDate = paid_at || new Date().toISOString();
         const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
-        const srcCol = isReceivable ? 'NULL' : '?';
-        const dstCol = isReceivable ? '?' : 'NULL';
-        const insertSQL = `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol})`;
-        const txParams = [req.userId, req.bookId, accId, cat.id, txType, amt, txNote, txDate];
-        if (isReceivable) txParams.push(accId); else txParams.push(accId);
-        const txResult = await conn.query(insertSQL, txParams);
-        await conn.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txResult.insertId, repId]);
-        // 4) 账户余额重算（以账本为准）
-        const newAccBalance = await computeAccountBalance(conn, req.userId, accId);
-        await enforceBalanceLimit(conn, req.userId, accId, newAccBalance);
-        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newAccBalance, accId]);
-        // 5) 更新剩余本金 + 状态
-        const newRemain = isReceivable
-            ? Math.max(0, parseFloat(debt.remaining) - pp)   // 收回 = 减少应收
-            : Math.max(0, parseFloat(debt.remaining) - pp);  // 还款 = 减少应付
+        const affected = new Set([accId]);
+        let txId;
+        if (crossAccount) {
+            const outRes = await conn.query(
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                 VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, NULL, 'debt_repayment', ?)`,
+                [req.userId, req.bookId, accId, catId, amt, txNote, txDate, accId, repId]
+            );
+            txId = outRes.insertId;
+            await conn.query(
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                 VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, NULL, ?, 'debt_repayment', ?)`,
+                [req.userId, req.bookId, debtAccId, catId, amt, txNote, txDate, debtAccId, repId]
+            );
+            affected.add(debtAccId);
+        } else {
+            const srcCol = isReceivable ? 'NULL' : '?';
+            const dstCol = isReceivable ? '?' : 'NULL';
+            const insertSQL = `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol}, 'debt_repayment', ?)`;
+            const txParams = [req.userId, req.bookId, accId, catId, isReceivable ? 'income' : 'expense', amt, txNote, txDate];
+            if (isReceivable) txParams.push(accId); else txParams.push(accId);
+            txParams.push(repId);
+            const txResult = await conn.query(insertSQL, txParams);
+            txId = txResult.insertId;
+        }
+        await conn.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txId, repId]);
+        // 5) 账户余额重算（以账本为准）—— 涉及几个账户就重算几个
+        const balances = {};
+        for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid);
+        for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid]);
+        for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+        // 6) 更新剩余本金 + 状态
+        let newRemain = Math.max(0, parseFloat(debt.remaining) - pp);
+        // 自动同步出来的授信债务以账户余额为唯一真相：还款让余额回升后重新校准，
+        // 避免出现「钱已还清、债务列表还挂着欠款」
+        if (crossAccount && isAutoSyncDebt(debt)) {
+            await syncCreditCardDebt(conn, req.userId, debtAccId);
+            const synced = await conn.queryOne('SELECT remaining FROM debts WHERE id = ?', [debt.id]);
+            if (synced) newRemain = Math.max(0, parseFloat(synced.remaining));
+        }
         const newStatus = newRemain <= 0 ? 'paid_off' : 'active';
         await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
         res.json(success(null, isReceivable ? '收款已记录' : '还款已记录'));
@@ -397,20 +470,98 @@ router.delete('/:id/repayments/:rid', async (req, res) => {
         const rep = await db.queryOne('SELECT * FROM debt_repayments WHERE id = ? AND debt_id = ? AND user_id = ? AND book_id = ?', [req.params.rid, req.params.id, req.userId, req.bookId]);
         if (!debt || !rep) return res.status(404).json(fail('记录不存在'));
         await db.transaction(async (conn) => {
-        // 回滚关联的入账交易（恢复账户余额）
-        if (rep.transaction_id) {
-            await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [rep.transaction_id, req.userId, debt.book_id]);
-            if (rep.account_id) {
-                const restoredBalance = await computeAccountBalance(conn, req.userId, rep.account_id);
-                await enforceBalanceLimit(conn, req.userId, rep.account_id, restoredBalance);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [restoredBalance, rep.account_id]);
-            }
-        }
+        // 回滚关联的入账交易（恢复账户余额，含跨账户还款的两条腿）
+        await deleteRepaymentLegs(conn, req.userId, debt.book_id, rep);
         const newRemain = parseFloat(debt.remaining) + parseFloat(rep.principal_part || 0);
         const newStatus = newRemain > 0 ? 'active' : 'paid_off';
         await conn.query('DELETE FROM debt_repayments WHERE id = ?', [req.params.rid]);
         await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
         res.json(success(null, '还款记录已删除'));
+        });
+    } catch (err) { handleServerError(res, err); }
+});
+
+// 修改还款记录：撤销旧双腿 → 按新参数建新双腿 → 重算账户余额 + 剩余本金 / 状态。
+// 采用「删旧建新」而非原地改：还款的两条腿关联到不同账户，金额/账户一变
+// 涉及的余额与额度回滚面都变了，重头走一遍建腿逻辑最稳，且复用 deleteRepaymentLegs。
+router.put('/:id/repayments/:rid', async (req, res) => {
+    try {
+        const { amount, paid_at, note, principal_part, interest_part, account_id } = req.body;
+        const amt = parseFloat(amount);
+        if (!amt || amt <= 0) return res.status(400).json(fail('金额必填'));
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+        const rep = await db.queryOne('SELECT * FROM debt_repayments WHERE id = ? AND debt_id = ? AND user_id = ? AND book_id = ?', [req.params.rid, req.params.id, req.userId, req.bookId]);
+        if (!debt || !rep) return res.status(404).json(fail('记录不存在'));
+        const accId = account_id ? parseInt(account_id) : null;
+        if (!accId) return res.status(400).json(fail('请选择账户'));
+        await db.transaction(async (conn) => {
+            const isReceivable = (debt.direction === 'receivable');
+            const pp = principal_part !== undefined && principal_part !== '' && principal_part !== null ? parseFloat(principal_part) : amt;
+            const ip = interest_part !== undefined && interest_part !== '' && interest_part !== null ? parseFloat(interest_part) : 0;
+            // 1) 撤销旧双腿 + 旧账户余额回滚，并先还原剩余本金
+            await deleteRepaymentLegs(conn, req.userId, debt.book_id, rep);
+            let remain = parseFloat(debt.remaining) + parseFloat(rep.principal_part || 0);
+            // 2) 计算 crossAccount（与 POST 一致）
+            let debtAccId = debt.account_id ? parseInt(debt.account_id) : null;
+            if (!debtAccId && isAutoSyncDebt(debt)) {
+                const matched = await conn.queryOne(
+                    "SELECT id FROM accounts WHERE user_id = ? AND (book_id = ? OR book_id IS NULL) AND name = ? AND (type = 'credit_card' OR (type = 'electronic_payment' AND credit_limit > 0))",
+                    [req.userId, req.bookId, debt.name]
+                );
+                if (matched) debtAccId = matched.id;
+            }
+            const crossAccount = !isReceivable && !!debtAccId && debtAccId !== accId;
+            // 3) 分类
+            const catName = isReceivable ? '收还款' : '还款';
+            const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
+            const catIcon = isReceivable ? '💰' : '💸';
+            const catId = await ensureCategory(conn, req.userId, catName, catType, catIcon);
+            const txDate = paid_at || new Date().toISOString();
+            const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
+            const affected = new Set([accId]);
+            let txId;
+            if (crossAccount) {
+                const outRes = await conn.query(
+                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                     VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, NULL, 'debt_repayment', ?)`,
+                    [req.userId, req.bookId, accId, catId, amt, txNote, txDate, accId, rep.id]
+                );
+                txId = outRes.insertId;
+                await conn.query(
+                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                     VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, NULL, ?, 'debt_repayment', ?)`,
+                    [req.userId, req.bookId, debtAccId, catId, amt, txNote, txDate, debtAccId, rep.id]
+                );
+                affected.add(debtAccId);
+            } else {
+                const srcCol = isReceivable ? 'NULL' : '?';
+                const dstCol = isReceivable ? '?' : 'NULL';
+                const insertSQL = `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol}, 'debt_repayment', ?)`;
+                const txParams = [req.userId, req.bookId, accId, catId, isReceivable ? 'income' : 'expense', amt, txNote, txDate];
+                if (isReceivable) txParams.push(accId); else txParams.push(accId);
+                txParams.push(rep.id);
+                const txResult = await conn.query(insertSQL, txParams);
+                txId = txResult.insertId;
+            }
+            // 4) 账户余额重算（含旧账户 + 新账户）
+            const balances = {};
+            for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid);
+            for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid]);
+            for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+            // 5) 更新还款主记录 + 剩余本金 / 状态
+            let newRemain = Math.max(0, remain - pp);
+            if (crossAccount && isAutoSyncDebt(debt)) {
+                await syncCreditCardDebt(conn, req.userId, debtAccId);
+                const synced = await conn.queryOne('SELECT remaining FROM debts WHERE id = ?', [debt.id]);
+                if (synced) newRemain = Math.max(0, parseFloat(synced.remaining));
+            }
+            const newStatus = newRemain <= 0 ? 'paid_off' : 'active';
+            await conn.query(
+                'UPDATE debt_repayments SET account_id=?, amount=?, principal_part=?, interest_part=?, paid_at=?, note=?, transaction_id=? WHERE id=?',
+                [accId, amt, pp, ip, paid_at || rep.paid_at || new Date().toISOString(), note || '', txId, rep.id]
+            );
+            await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
+            res.json(success(null, isReceivable ? '收款记录已更新' : '还款记录已更新'));
         });
     } catch (err) { handleServerError(res, err); }
 });

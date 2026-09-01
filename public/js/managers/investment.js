@@ -73,10 +73,13 @@ const InvestmentManager = {
         document.getElementById('interestForm').addEventListener('submit', (e) => { e.preventDefault(); this.recordInterest(); });
         document.getElementById('interestModalClose').addEventListener('click', () => this.closeInterestModal());
         document.getElementById('interestCancelBtn').addEventListener('click', () => this.closeInterestModal());
+        document.getElementById('invEditTxnForm').addEventListener('submit', (e) => { e.preventDefault(); this.saveInvEditTxn(); });
+        document.getElementById('invEditTxnClose').addEventListener('click', () => this.closeInvEditTxn());
+        document.getElementById('invEditCancelBtn').addEventListener('click', () => this.closeInvEditTxn());
         document.querySelectorAll('input[name="interestMode"]').forEach(radio => {
             radio.addEventListener('change', (e) => this.updateInterestUI(e.target.value));
         });
-        document.getElementById('investBuyDate').value = fmtDate();
+        document.getElementById('investBuyDate').value = fmtDateTimeLocal();
         // 新增持仓按钮
         const addBtn = document.getElementById('addInvestBtn');
         if (addBtn) addBtn.addEventListener('click', () => this.openModal());
@@ -109,6 +112,8 @@ const InvestmentManager = {
         });
         const txnsModal = document.getElementById('invTxnsModal');
         if (txnsModal) txnsModal.addEventListener('click', (e) => { if (e.target === txnsModal) this.closeInvTxns(); });
+        const invEditTxnModal = document.getElementById('invEditTxnModal');
+        if (invEditTxnModal) invEditTxnModal.addEventListener('click', (e) => { if (e.target === invEditTxnModal) this.closeInvEditTxn(); });
         const txnsClose = document.getElementById('invTxnsClose');
         if (txnsClose) txnsClose.addEventListener('click', () => this.closeInvTxns());
         document.addEventListener('keydown', (e) => {
@@ -159,7 +164,7 @@ const InvestmentManager = {
         document.getElementById('investFee').value = '';
         document.getElementById('investTotalCost').value = '';
         document.getElementById('investCurrentValue').value = '';
-        document.getElementById('investBuyDate').value = fmtDate();
+        document.getElementById('investBuyDate').value = fmtDateTimeLocal();
         document.getElementById('investExpectedRate').value = '';
         document.getElementById('investRisk').value = '';
         document.getElementById('investNote').value = '';
@@ -187,7 +192,7 @@ const InvestmentManager = {
         document.getElementById('investFee').value = inv.fee || '';
         document.getElementById('investTotalCost').value = inv.total_cost || '';
         document.getElementById('investCurrentValue').value = inv.current_value || '';
-        document.getElementById('investBuyDate').value = inv.buy_date ? inv.buy_date.slice(0, 10) : fmtDate();
+        document.getElementById('investBuyDate').value = inv.buy_date ? fmtDateTimeLocal(inv.buy_date) : fmtDateTimeLocal();
         document.getElementById('investExpectedRate').value = inv.expected_rate || '';
         document.getElementById('investRisk').value = inv.risk_level || '';
         document.getElementById('investNote').value = inv.note || '';
@@ -282,7 +287,7 @@ const InvestmentManager = {
         const inv = data && data.find(i => i.id === id);
         if (!inv) { showToast('持仓不存在', 'error'); return; }
         document.getElementById('reduceInvestId').value = id;
-        document.getElementById('reduceModalTitle').textContent = `💰 加仓/减仓 · ${inv.name}`;
+        document.getElementById('reduceModalTitle').textContent = `⚖️ 加仓/减仓 · ${inv.name}`;
         document.getElementById('reduceMeta').innerHTML = `当前持有 <b>${inv.quantity}</b>，市值 ${fmt(inv.current_value)}`;
         // 默认选中减仓
         const sellRadio = document.querySelector('input[name="reduceAction"][value="sell"]');
@@ -291,7 +296,7 @@ const InvestmentManager = {
         document.getElementById('reduceSellPrice').value = inv.current_price || inv.buy_price || '';
         document.getElementById('reduceQuantity').value = inv.quantity || '';
         document.getElementById('reduceFee').value = '0';
-        document.getElementById('reduceDate').value = fmtDate();
+        document.getElementById('reduceDate').value = fmtDateTimeLocal();
         document.getElementById('reduceNote').value = '';
         document.getElementById('reduceModal').classList.add('show');
     },
@@ -327,14 +332,14 @@ const InvestmentManager = {
         const inv = (cache.investments || []).find(i => i.id === id);
         if (!inv) { showToast('持仓不存在', 'error'); return; }
         document.getElementById('interestInvestId').value = id;
-        document.getElementById('interestModalTitle').textContent = `📊 记一笔利息 · ${inv.name}`;
+        document.getElementById('interestModalTitle').textContent = `💵 记一笔利息 · ${inv.name}`;
         document.getElementById('interestMeta').innerHTML = `当前持有 <b>${inv.quantity}</b> 份，市值 ${fmt(inv.current_value)}`;
         const reinvestRadio = document.querySelector('input[name="interestMode"][value="reinvest"]');
         if (reinvestRadio) reinvestRadio.checked = true;
         this.updateInterestUI('reinvest');
         document.getElementById('interestAmount').value = '';
         document.getElementById('interestNav').value = inv.current_price || inv.buy_price || '';
-        document.getElementById('interestDate').value = fmtDate();
+        document.getElementById('interestDate').value = fmtDateTimeLocal();
         document.getElementById('interestNote').value = '';
         document.getElementById('interestModal').classList.add('show');
     },
@@ -352,6 +357,61 @@ const InvestmentManager = {
     closeInterestModal() {
         document.getElementById('interestModal').classList.remove('show');
         this.interestId = null;
+    },
+    closeInvEditTxn() {
+        const m = document.getElementById('invEditTxnModal');
+        if (m) m.classList.remove('show');
+        this._editTxnInvId = null;
+        this._editTxnId = null;
+        this._editTxnType = null;
+    },
+    openInvEditTxn(invId, txn) {
+        this._editTxnInvId = invId;
+        this._editTxnId = txn.id;
+        this._editTxnType = txn.type;
+        const TYPE_LABEL = { buy: '买入', sell: '卖出', dividend: '分红', interest: '利息', reinvest: '红利再投' };
+        document.getElementById('invEditTxnId').value = txn.id;
+        document.getElementById('invEditInvId').value = invId;
+        document.getElementById('invEditTxnType').textContent = `交易类型：${TYPE_LABEL[txn.type] || txn.type}`;
+        document.getElementById('invEditAmount').value = txn.amount;
+        document.getElementById('invEditPrice').value = txn.price || '';
+        document.getElementById('invEditQty').value = txn.quantity || '';
+        document.getElementById('invEditFee').value = txn.fee || 0;
+        document.getElementById('invEditDate').value = (txn.date || '').replace(' ', 'T').slice(0, 16);
+        document.getElementById('invEditNote').value = txn.note || '';
+        const showPQ = ['buy', 'sell', 'reinvest'].includes(txn.type);
+        const pg = document.getElementById('invEditPriceGroup');
+        const qg = document.getElementById('invEditQtyGroup');
+        if (pg) pg.style.display = showPQ ? '' : 'none';
+        if (qg) qg.style.display = showPQ ? '' : 'none';
+        document.getElementById('invEditTxnModal').classList.add('show');
+    },
+    async saveInvEditTxn() {
+        const invId = this._editTxnInvId;
+        const txnId = this._editTxnId;
+        const type = this._editTxnType;
+        if (!invId || !txnId || !type) return;
+        const amount = parseFloat(document.getElementById('invEditAmount').value);
+        if (!(amount > 0)) { showToast('请填写大于 0 的金额', 'error'); return; }
+        const price = parseFloat(document.getElementById('invEditPrice').value) || 0;
+        const quantity = parseFloat(document.getElementById('invEditQty').value) || 0;
+        const fee = parseFloat(document.getElementById('invEditFee').value) || 0;
+        const date = document.getElementById('invEditDate').value;
+        const note = document.getElementById('invEditNote').value || '';
+        const submitBtn = document.getElementById('invEditSubmitBtn');
+        submitBtn.disabled = true; submitBtn.textContent = '保存中…';
+        try {
+            const res = await api(`/investments/investments/${invId}/transactions/${txnId}`, 'PUT', { type, amount, price, quantity, fee, date, note });
+            if (res) {
+                showToast('已保存修改', 'success');
+                this.closeInvEditTxn();
+                await this.openInvTxns(invId);
+            } else {
+                submitBtn.disabled = false; submitBtn.textContent = '保存修改';
+            }
+        } catch (e) {
+            submitBtn.disabled = false; submitBtn.textContent = '保存修改';
+        }
     },
     async recordInterest() {
         const id = this.interestId;
@@ -480,10 +540,7 @@ const InvestmentManager = {
                 <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}" title="详情">🔍</button>
-                    <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>
                     <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}" title="编辑">✏️</button>
-                    <button class="btn btn-ghost" data-action="reduce-inv" data-id="${i.id}" title="加仓/减仓">💰</button>
-                    <button class="btn btn-ghost" data-action="interest-inv" data-id="${i.id}" title="记一笔利息">📊</button>
                     <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}" title="删除">🗑️</button>
                 </div>
             </div>`;
@@ -561,18 +618,9 @@ const InvestmentManager = {
             });
         });
 
-        // 事件委托：刷新、编辑、减持和删除按钮
-        container.querySelectorAll('[data-action="refresh-quote"]').forEach(btn => {
-            btn.addEventListener('click', () => this.refreshQuote(parseInt(btn.dataset.id), btn));
-        });
+        // 事件委托：编辑、详情、删除按钮（其他操作统一在详情页操作）
         container.querySelectorAll('[data-action="edit-inv"]').forEach(btn => {
             btn.addEventListener('click', () => this.edit(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('[data-action="reduce-inv"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openReduceModal(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('[data-action="interest-inv"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openInterestModal(parseInt(btn.dataset.id)));
         });
         container.querySelectorAll('[data-action="delete-inv"]').forEach(btn => {
             btn.addEventListener('click', () => this.delete(parseInt(btn.dataset.id)));
@@ -690,7 +738,10 @@ const InvestmentManager = {
                 <div class="inv-txn-main">
                     <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(t.type_label || t.type)}</span>
                     <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
-                    <button class="inv-txn-del" title="删除">🗑</button>
+                    <span class="inv-txn-actions">
+                        <button class="inv-txn-edit" title="修改">✏️</button>
+                        <button class="inv-txn-del" title="删除">🗑️</button>
+                    </span>
                 </div>
                 <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>
                 <div class="inv-txn-meta">${parts.join(' · ')}</div>
@@ -698,6 +749,14 @@ const InvestmentManager = {
         }).join('');
         body.innerHTML = `<div class="inv-txn-list" id="invTxnList">${rows}</div>`;
         document.getElementById('invTxnList').addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('.inv-txn-edit');
+            if (editBtn) {
+                const row = editBtn.closest('.inv-txn-row');
+                const tid = row && row.dataset.txnId;
+                const txn = list.find(t => String(t.id) === String(tid));
+                if (txn) this.openInvEditTxn(id, txn);
+                return;
+            }
             const btn = e.target.closest('.inv-txn-del');
             if (!btn) return;
             const row = btn.closest('.inv-txn-row');

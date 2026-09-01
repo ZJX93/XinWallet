@@ -51,28 +51,52 @@ async function resolveNote(conn, userId, categoryId, note, merchant) {
 }
 
 // ==========================================
-// 信用卡债务自动同步（交易后自动更新 debts 表）
+// 授信账户债务自动同步（交易后自动更新 debts 表）
+//
+// 适用范围：信用卡 + 带信用额度的电子支付账户（花呗 / 微粒贷 / 月付等）。
+// 这两类账户的共同点是「余额可以为负，负值即占用授信」，占用就必须体现为债务，
+// 否则用户看到的负债会凭空少一块。原先只认 credit_card，电子支付账户设了额度
+// 却刷成负数时债务列表里什么都没有。
 // ==========================================
+
+// 判断账户是否属于「占用授信」类：信用卡，或带信用额度的电子支付账户
+function isCreditAccount(account) {
+    if (!account) return false;
+    if (account.type === 'credit_card') return true;
+    return account.type === 'electronic_payment' && (parseFloat(account.credit_limit) || 0) > 0;
+}
+
 async function syncCreditCardDebt(conn, userId, accountId) {
     const acctRows = await conn.query(
-        'SELECT name, type, balance, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
+        'SELECT name, type, balance, credit_limit, book_id FROM accounts WHERE id = ? AND user_id = ?',
         [accountId, userId]
     );
     const account = acctRows[0];
-    if (!account || account.type !== 'credit_card') return;
+    if (!isCreditAccount(account)) return;
 
     const balance = parseFloat(account.balance);
-    const limit = parseFloat(account.credit_limit) || 0;
-    // 欠款：余额为负时 = -balance（欠款额）；余额为正时 = limit - balance（可用额度）
-    const owes = balance <= 0
-        ? Math.max(0, -balance)
-        : Math.max(0, limit - balance);
+    // 欠款只发生在余额为负（已占用授信）时；余额 >= 0（含溢缴款 / 充值余额）不属于欠款
+    const owes = balance < 0 ? Math.max(0, -balance) : 0;
 
-    // 查找已关联的债务（按名称匹配）
-    const debtRows = await conn.query(
-        "SELECT id FROM debts WHERE user_id = ? AND type = 'credit_card' AND name = ?",
-        [userId, account.name]
+    const isCard = account.type === 'credit_card';
+    // debts.type 受 CHECK 约束（credit_card/loan/personal/other），
+    // 电子支付类授信账户落在 'other' 上
+    const debtType = isCard ? 'credit_card' : 'other';
+    // 归属账本取自账户自身：债务列表按 book_id 过滤，写 NULL 会让同步出来的债务不显示
+    const bookId = (account.book_id === undefined || account.book_id === null) ? null : account.book_id;
+    const syncNote = isCard ? '自动同步：信用卡账户' : '自动同步：信用支付账户';
+
+    // 查找已关联的债务：优先按关联账户定位；回退到同名匹配（历史同步记录没写 account_id）
+    let debtRows = await conn.query(
+        'SELECT id FROM debts WHERE user_id = ? AND account_id = ? AND type = ? LIMIT 1',
+        [userId, accountId, debtType]
     );
+    if (debtRows.length === 0) {
+        debtRows = await conn.query(
+            'SELECT id FROM debts WHERE user_id = ? AND type = ? AND name = ? AND account_id IS NULL LIMIT 1',
+            [userId, debtType, account.name]
+        );
+    }
     const debt = debtRows[0];
 
     if (owes <= 0) {
@@ -88,9 +112,9 @@ async function syncCreditCardDebt(conn, userId, accountId) {
             );
         } else {
             await conn.query(
-                `INSERT INTO debts (user_id, name, type, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, billing_day, payment_day, min_payment, status, note)
-                 VALUES (?, ?, 'credit_card', ?, 0, ?, 18.25, 0, 'minimum', 0, 15, 5, ?, 'active', '自动同步：信用卡账户')`,
-                [userId, account.name, account.name, owes, minPmt]
+                `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, billing_day, payment_day, min_payment, status, note)
+                 VALUES (?, ?, ?, ?, ?, 'payable', ?, 0, ?, 18.25, 0, 'minimum', 0, 15, 5, ?, 'active', ?)`,
+                [userId, bookId, accountId, account.name, debtType, account.name, owes, minPmt, syncNote]
             );
         }
     }
@@ -99,5 +123,6 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 module.exports = {
     ensureCategory,
     syncCreditCardDebt,
+    isCreditAccount,
     resolveNote
 };

@@ -5,7 +5,7 @@
 // 原始位置：第 3960 行 ~ 第 4070 行（共 111 行）
 // 拆分日期：2026-07-22
 // 拆分原因：将单体 app.js 按职责拆分为 ES Module，便于按需加载与维护
-// 依赖（运行时全局）：api、escapeHtml、fmt、getExpCats、getIncCats、
+// 依赖（运行时全局）：api、escapeHtml、fmt、getExpCats、getIncCats、getTransferCats、
 //                    showToast、initCache、DashboardManager、
 //                    cache（cache.accounts）、DOM 元素（quickAddBtn、quickAddForm、
 //                    quickAddModal、quickCategory、quickAccount、quickAmount、
@@ -35,6 +35,7 @@ const QuickAdd = {
             normal.style.display = 'none';
             transfer.style.display = '';
             this.updateAccSelects();
+            this.updateCatSelect('transfer');
         } else {
             normal.style.display = '';
             transfer.style.display = 'none';
@@ -43,16 +44,23 @@ const QuickAdd = {
         }
     },
     updateCatSelect(type) {
-        const cats = type === 'expense' ? getExpCats() : getIncCats();
+        // 转账有自己的分类（一般转账 / 还信用卡 / 取现 …）
+        const cats = type === 'transfer' ? getTransferCats() : (type === 'expense' ? getExpCats() : getIncCats());
         const parents = cats.filter(c => !c.parent_id);
         const children = cats.filter(c => c.parent_id);
-        document.getElementById('quickCategory').innerHTML = parents.map(p => {
+        const sel = document.getElementById('quickCategory');
+        sel.innerHTML = parents.map(p => {
             const subs = children.filter(c => c.parent_id === p.id);
             if (subs.length > 0) {
                 return `<optgroup label="${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${escapeHtml(s.icon || "📌")} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
             }
             return `<option value="${p.id}">${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}</option>`;
         }).join('');
+        // 没有可用分类时给出可提交占位并摘掉 required，让服务端兜底归类
+        // （空 select + required 会让表单永远 invalid，记一笔直接卡住）
+        const hasCats = sel.options.length > 0;
+        sel.required = hasCats;
+        if (!hasCats) sel.innerHTML = '<option value="">（暂无类别，将由系统自动归类）</option>';
     },
     updateAccSelect() {
         document.getElementById('quickAccount').innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
@@ -100,8 +108,9 @@ const QuickAdd = {
             const date = document.getElementById('quickDate').value;
             if (!amount || amount <= 0) { showToast('请输入有效金额', 'error'); return; }
             if (fromId === toId) { showToast('转出和转入不能是同一账户', 'error'); return; }
-
-            await api('/transfers', 'POST', { from_account_id: fromId, to_account_id: toId, amount, note, date: date || undefined });
+            // 为空时服务端兜底「一般转账」，不阻塞提交
+            const catId = parseInt(document.getElementById('quickCategory').value) || null;
+            await api('/transfers', 'POST', { from_account_id: fromId, to_account_id: toId, amount, note, date: date || undefined, category_id: catId });
             showToast('转账记录成功！', 'success');
         } else {
             // ---- 收支模式 ----

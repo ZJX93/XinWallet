@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, addAmounts, subtractAmounts, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
+const { syncCreditCardDebt } = require('./utils');
 
 // 获取所有账户。默认只返回正常账户；?all=1 时连已销户账户一起返回（总资产仍只累计正常账户）
 router.get('/', async (req, res) => {
@@ -87,6 +88,9 @@ router.put('/:id', async (req, res) => {
             [name, type, icon, newBalance, newOpening, limitRes.limit,
              parseFloat(annual_rate) || 0, interest_cycle || 'monthly', id, req.userId, req.bookId]
         );
+        // 改额度 / 改类型后，授信账户（信用卡 + 带额度的电子支付）的已用额度可能变化，
+        // 同步一次债务，避免存量负余额一直进不了债务管理
+        await syncCreditCardDebt(db, req.userId, id);
         res.json(success({ balance: newBalance, opening_balance: newOpening, credit_limit: limitRes.limit }, '账户已更新'));
     } catch (err) {
         handleServerError(res, err);
@@ -147,10 +151,10 @@ router.post('/:id/interest', async (req, res) => {
         await db.transaction(async (conn) => {
             const catId = await getInterestCategoryId(conn);
             await conn.query(
-                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date)
-                 VALUES (?, ?, ?, ?, 'income', ?, ?, ?)`,
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, link_type, link_id)
+                 VALUES (?, ?, ?, ?, 'income', ?, ?, ?, 'account_interest', ?)`,
                 [req.userId, req.bookId, accId, catId, amt,
-                 note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`, interestDate]
+                 note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`, interestDate, accId]
             );
             newBalance = await computeAccountBalance(conn, req.userId, accId);
             await conn.query('UPDATE accounts SET balance = ?, last_interest_date = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, interestDate, accId, req.userId, req.bookId]);
@@ -245,8 +249,8 @@ router.get('/:id/transactions', async (req, res) => {
 
         // 1) 关联该账户的交易（收入/支出/转账，account_id 即展示账户）
         const txns = await db.query(
-            `SELECT t.id, t.type, t.amount, t.note, t.date,
-                    c.name as cat_name, c.icon as cat_icon,
+            `SELECT t.id, t.type, t.amount, t.note, t.date, t.link_type, t.link_id,
+                    c.id as cat_id, c.name as cat_name, c.icon as cat_icon,
                     tr.from_account_id as tr_from, tr.to_account_id as tr_to,
                     fa.name as tr_from_name, fa.icon as tr_from_icon,
                     ta.name as tr_to_name, ta.icon as tr_to_icon
@@ -262,12 +266,22 @@ router.get('/:id/transactions', async (req, res) => {
         );
 
         // 2) 该账户作为还款来源的还款流水
+        // 去重：跨账户/单腿还款的「付款账户」侧，transactions 表已有一笔 transfer_out 或 expense
+        // 作为资金变动条目（带 note=还款·XXX），若再把 debt_repayments 这条也并入显示，
+        // 同一笔还款会被计为两笔变动。这里排除「对应 transaction 腿已落在本账户」的还款记录。
+        // 收款账户（债务关联账户）的 debt_repayments.account_id 永远是付款账户，本来就不会
+        // 出现在这里，所以这个去重只对付款账户生效。
         const reps = await db.query(
             `SELECT r.id, r.amount, r.principal_part, r.interest_part, r.note, r.paid_at,
                     d.name as debt_name, ('💳') as debt_icon
              FROM debt_repayments r
              LEFT JOIN debts d ON r.debt_id = d.id
              WHERE r.user_id = ? AND r.book_id = ? AND r.account_id = ?
+               AND r.transaction_id IS NOT NULL
+               AND NOT EXISTS (
+                   SELECT 1 FROM transactions t
+                   WHERE t.id = r.transaction_id AND t.account_id = r.account_id
+               )
              ORDER BY r.paid_at DESC, r.id DESC
              LIMIT ? OFFSET ?`,
             [req.userId, req.bookId, accId, lim, off]
@@ -282,11 +296,13 @@ router.get('/:id/transactions', async (req, res) => {
                 date: fmtDateTime(t.date),
                 note: t.note || '',
                 category: (t.cat_name || t.cat_icon) ? { name: t.cat_name, icon: t.cat_icon } : null,
+                category_id: t.cat_id || null,
                 counterparty: t.type === 'transfer_out'
                     ? (t.tr_to_name ? { dir: '→', name: t.tr_to_name, icon: t.tr_to_icon } : null)
                     : t.type === 'transfer_in'
                     ? (t.tr_from_name ? { dir: '←', name: t.tr_from_name, icon: t.tr_from_icon } : null)
                     : null,
+                link_type: t.link_type || null,
                 debt: null
             })),
             ...reps.map(r => ({

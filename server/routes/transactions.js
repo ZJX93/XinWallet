@@ -143,13 +143,26 @@ router.get('/', async (req, res) => {
         // ⚠️ 必须在 SQL 层折叠，不能拿到结果后在 JS 里 filter：
         // 下方分页用的是 SQL 的 LIMIT/OFFSET，JS 过滤会让 limit=20 实际只显示 14 条，
         // 且「还有没有下一页」的判断全错。
+        // ⚠️ 必须在 SQL 层折叠，不能拿到结果后在 JS 里 filter：
+        // 下方分页用的是 SQL 的 LIMIT/OFFSET，JS 过滤会让 limit=20 实际只显示 14 条，
+        // 且「还有没有下一页」的判断全错。
+        //
+        // 配对判据覆盖两种「两条腿」语义：
+        //   1. 普通转账（同 transfer_id）—— /transfers 创建的双腿
+        //   2. 跨账户还款（同 link_type='debt_repayment' + link_id）—— debts.js 跨账户还款
+        //      写 transfer_out + transfer_in 两条腿，但不经过 transfers 表，只靠 link_id 关联
+        //   两种情况都折叠 transfer_in 腿、保留 transfer_out 腿展示。
         sql += ` AND NOT (
-        t.type = 'transfer_in' AND t.transfer_id IS NOT NULL
-        AND EXISTS (
+        t.type = 'transfer_in' AND EXISTS (
           SELECT 1 FROM transactions x
-          WHERE x.transfer_id = t.transfer_id
-            AND x.type = 'transfer_out'
+          WHERE x.type = 'transfer_out'
             AND x.user_id = t.user_id AND x.book_id = t.book_id
+            AND (
+              (t.transfer_id IS NOT NULL AND x.transfer_id = t.transfer_id)
+              OR
+              (t.link_type = 'debt_repayment' AND t.link_id IS NOT NULL
+                 AND x.link_type = 'debt_repayment' AND x.link_id = t.link_id)
+            )
         )
       )`;
 
@@ -280,6 +293,29 @@ router.get('/', async (req, res) => {
             });
         }
 
+        // 跨账户还款（debts.js 跨账户还款分支）会写 transfer_out + transfer_in 两条腿但不经过
+        // transfers 表，主 SELECT LEFT JOIN transfers 拿不到对端账户。这里批量补一次「同 link_id
+        // 的 transfer_in 腿账户信息」，用于给折叠后的 transfer_out 腿补 counterparty。
+        const peerLinkIds = transactions
+            .filter(t => t.link_type === 'debt_repayment' && t.type === 'transfer_out' && !t.transfer_id)
+            .map(t => t.link_id);
+        let peerMap = {};
+        if (peerLinkIds.length) {
+            const placeholders = peerLinkIds.map(() => '?').join(',');
+            const peerRows = await db.query(
+                `SELECT t.link_id, t.account_id, a.name, a.icon
+                 FROM transactions t
+                 LEFT JOIN accounts a ON t.account_id = a.id
+                 WHERE t.user_id = ? AND t.book_id = ?
+                   AND t.link_type = 'debt_repayment' AND t.type = 'transfer_in'
+                   AND t.link_id IN (${placeholders})`,
+                [req.userId, req.bookId, ...peerLinkIds]
+            );
+            peerRows.forEach(r => {
+                peerMap[r.link_id] = { id: r.account_id, name: r.name, icon: r.icon };
+            });
+        }
+
         // 格式化
         const formatted = transactions.map(t => ({
             id: t.id,
@@ -296,11 +332,17 @@ router.get('/', async (req, res) => {
             destination: t.destination_account_id ? { id: t.destination_account_id, name: t.dst_name, icon: t.dst_icon } : null,
             // 转账对方账户（复式记账：每笔转账展示借贷对方）
             counterparty: t.type === 'transfer_out'
-                ? (t.tr_to_name ? { dir: '→', name: t.tr_to_name, icon: t.tr_to_icon } : null)
+                ? (t.tr_to_name
+                    ? { dir: '→', name: t.tr_to_name, icon: t.tr_to_icon }
+                    : (!t.transfer_id && t.link_type === 'debt_repayment' && peerMap[t.link_id]
+                        ? { dir: '→', name: peerMap[t.link_id].name, icon: peerMap[t.link_id].icon }
+                        : null))
                 : t.type === 'transfer_in'
                 ? (t.tr_from_name ? { dir: '←', name: t.tr_from_name, icon: t.tr_from_icon } : null)
                 : null,
             transfer_id: t.transfer_id,
+            // 理财操作生成的台账流水，改/删必须回到理财管理
+            investment_txn_id: t.investment_txn_id || null,
             /**
              * 折叠后的转账双端信息。列表里一笔转账只出一条记录（见上方 SQL 的
              * 转账折叠条件），这条记录必须能自己表达完整的「A → B」，
@@ -357,6 +399,7 @@ router.get('/ledger', async (req, res) => {
             date: t.date,
             note: t.note || '',
             transfer_id: t.transfer_id,
+            investment_txn_id: t.investment_txn_id || null,
             category: { name: t.cat_name, icon: t.cat_icon },
             source: t.source_account_id ? { name: t.src_name, icon: t.src_icon } : null,
             destination: t.destination_account_id ? { name: t.dst_name, icon: t.dst_icon } : null

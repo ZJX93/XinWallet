@@ -259,7 +259,7 @@ const SavingsGoalManager = {
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-alloc="${g.id}" title="存入">💰</button>
                     <button class="btn btn-ghost" data-withdraw="${g.id}" title="取回">↩️</button>
-                    <button class="btn btn-ghost" data-history="${g.id}" title="存取流水">📜</button>
+                    <button class="btn btn-ghost" data-history="${g.id}" title="存取流水">📋</button>
                     <button class="btn btn-ghost" data-edit="${g.id}" title="编辑">✏️</button>
                     <button class="btn btn-ghost" data-del="${g.id}" title="删除">🗑️</button>
                 </div>

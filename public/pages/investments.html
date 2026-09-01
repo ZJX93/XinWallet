@@ -51,7 +51,7 @@
                             <div class="form-group"><label>当前市值 (¥)</label><input type="number" id="investCurrentValue" step="0.01" readonly></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>买入日期</label><input type="date" id="investBuyDate" required></div>
+                            <div class="form-group"><label>买入日期</label><input type="datetime-local" id="investBuyDate" step="1" required></div>
                             <div class="form-group"><label>预期年化收益率 (%)</label><input type="number" id="investExpectedRate" step="0.01"></div>
                         </div>
                         <div class="form-row">
@@ -69,7 +69,7 @@
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="reduceModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="reduceModalTitle">💰 加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="reduceModalTitle">⚖️ 加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
                     <form class="trans-form" id="reduceForm"><input type="hidden" id="reduceInvestId">
                         <div class="reduce-meta" id="reduceMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
@@ -87,7 +87,7 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>手续费 (¥)</label><input type="number" id="reduceFee" step="0.01" min="0" value="0"></div>
-                            <div class="form-group"><label>成交日期</label><input type="date" id="reduceDate" required></div>
+                            <div class="form-group"><label>成交日期</label><input type="datetime-local" id="reduceDate" step="1" required></div>
                         </div>
                         <div class="form-group full-width"><label>备注</label><input type="text" id="reduceNote" placeholder="备注..."></div>
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="reduceSubmitBtn">确认卖出</button></div>
@@ -96,7 +96,7 @@
 
                 <!-- 记一笔利息弹窗 -->
                 <div class="modal-overlay" id="interestModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="interestModalTitle">📊 记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="interestModalTitle">💵 记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
                     <form class="trans-form" id="interestForm"><input type="hidden" id="interestInvestId">
                         <div class="reduce-meta" id="interestMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
@@ -104,7 +104,7 @@
                                 <label>计息方式</label>
                                 <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
                                     <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span>🔁 红利再投</span></label>
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>💰 现金入账</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>💵 现金入账</span></label>
                                 </div>
                             </div>
                         </div>
@@ -113,7 +113,7 @@
                             <div class="form-group" id="interestNavGroup"><label>当前净值 (¥)</label><input type="number" id="interestNav" step="0.0001" min="0" placeholder="单位净值"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>计息日期</label><input type="date" id="interestDate" required></div>
+                            <div class="form-group"><label>计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
                             <div class="form-group"><label>备注</label><input type="text" id="interestNote" placeholder="备注..."></div>
                         </div>
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn">确认记录</button></div>
@@ -172,18 +172,38 @@
                     <div class="modal-header"><h3 id="invDetailTitle">持仓详情</h3><button class="modal-close" id="invDetailClose" aria-label="关闭">✕</button></div>
                     <div class="modal-body" id="invDetailBody"></div>
                     <div class="form-actions" id="invDetailActions" style="margin-top:var(--space-4)">
-                        <button class="btn btn-ghost" data-detail-action="refresh" title="刷新行情">🔄 刷新行情</button>
-                        <button class="btn btn-ghost" data-detail-action="txns" title="交易记录">📋 交易记录</button>
-                        <button class="btn btn-ghost" data-detail-action="edit" title="编辑">✏️ 编辑</button>
-                        <button class="btn btn-ghost" data-detail-action="reduce" title="加仓/减仓">💰 加仓/减仓</button>
-                        <button class="btn btn-ghost" data-detail-action="interest" title="记一笔利息">📊 记息</button>
-                        <button class="btn btn-ghost" data-detail-action="delete" title="删除" style="color:var(--expense)">🗑️ 删除</button>
+                        <button class="btn btn-ghost" data-detail-action="refresh" title="刷新">🔄</button>
+                        <button class="btn btn-ghost" data-detail-action="txns" title="记录">📋</button>
+                        <button class="btn btn-ghost" data-detail-action="edit" title="编辑">✏️</button>
+                        <button class="btn btn-ghost" data-detail-action="reduce" title="加/减仓">⚖️</button>
+                        <button class="btn btn-ghost" data-detail-action="interest" title="计息">💵</button>
+                        <button class="btn btn-ghost" data-detail-action="delete" title="删除" style="color:var(--expense)">🗑️</button>
                     </div>
                 </div></div>
                 <!-- 理财：交易记录弹窗 -->
                 <div class="modal-overlay" id="invTxnsModal"><div class="modal glass-card modal-detail">
                     <div class="modal-header"><h3 id="invTxnsTitle">交易记录</h3><button class="modal-close" id="invTxnsClose" aria-label="关闭">✕</button></div>
                     <div class="modal-body" id="invTxnsBody"></div>
+                </div></div>
+                <!-- 理财：编辑交易记录弹窗 -->
+                <div class="modal-overlay" id="invEditTxnModal"><div class="modal glass-card modal-quick">
+                    <div class="modal-header"><h3 id="invEditTxnTitle">编辑交易</h3><button class="modal-close" id="invEditTxnClose">✕</button></div>
+                    <form class="trans-form" id="invEditTxnForm"><input type="hidden" id="invEditTxnId"><input type="hidden" id="invEditInvId">
+                        <div class="reduce-meta" id="invEditTxnType"></div>
+                        <div class="form-row">
+                            <div class="form-group"><label>金额 (¥)</label><input type="number" id="invEditAmount" step="0.01" min="0" required></div>
+                            <div class="form-group" id="invEditPriceGroup"><label>单价 (¥)</label><input type="number" id="invEditPrice" step="0.0001" min="0" placeholder="单位净值/单价"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" id="invEditQtyGroup"><label>数量</label><input type="number" id="invEditQty" step="0.0001" min="0" placeholder="数量"></div>
+                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="invEditFee" step="0.01" min="0" value="0"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>日期</label><input type="datetime-local" id="invEditDate" step="1" required></div>
+                            <div class="form-group"><label>备注</label><input type="text" id="invEditNote" placeholder="备注..."></div>
+                        </div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="invEditCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="invEditSubmitBtn">保存修改</button></div>
+                    </form>
                 </div></div>
                 <!-- 理财：全屏网格铺开 -->
                 <div class="modal-overlay" id="invGridOverlay"><div class="inv-grid-panel">

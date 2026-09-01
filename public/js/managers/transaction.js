@@ -241,11 +241,15 @@ const TransactionManager = {
         document.querySelectorAll('#transForm .transfer-only').forEach(el => el.style.display = isTransfer ? '' : 'none');
         document.getElementById('transAccountLabel').textContent = isTransfer ? '转出账户' : '账户';
         document.getElementById('transToAccount').required = isTransfer;
-        document.getElementById('transCategory').required = !isTransfer;
+        // 转账也要选类别（一般转账 / 还信用卡 / 取现 …），与支出收入保持一致
+        document.getElementById('transCategory').required = true;
+        // 转账时预算那列被隐藏，类别拉通整行，别留半行空白
+        document.getElementById('transCategory')?.closest('.form-group')?.classList.toggle('full-width', isTransfer);
         const submitBtn = document.querySelector('#transForm button[type="submit"]');
         const hint = document.getElementById('transSingleAccountHint');
         const toRow = document.getElementById('transToAccount')?.closest('.form-row');
         if (isTransfer) {
+            this.updateCatSelect('transfer');
             this.updateTransferAccSelect();
             const accounts = cache.accounts || [];
             if (accounts.length < 2) {
@@ -273,9 +277,11 @@ const TransactionManager = {
         populate(document.getElementById('transToAccount'));
     },
     updateCatSelect(type) {
-        if (type === 'transfer') return;
         const sel = document.getElementById('transCategory');
-        const cats = type === 'expense' ? getExpCats() : getIncCats();
+        // 转账有自己的分类体系（一般转账 / 还信用卡 / 取现 …），别拿支出分类顶上
+        const cats = type === 'transfer'
+            ? getTransferCats()
+            : (type === 'expense' ? getExpCats() : getIncCats());
         // 构建树形选项：一级分类作为 optgroup，二级分类作为 option
         const parents = cats.filter(c => !c.parent_id);
         const children = cats.filter(c => c.parent_id);
@@ -286,6 +292,12 @@ const TransactionManager = {
             }
             return `<option value="${p.id}">${p.icon} ${escapeHtml(p.name)}</option>`;
         }).join('');
+        // 极端情况：一类分类都没有（新账本 / 分类被清空）时给出可提交占位并摘掉
+        // required —— 空 select 带 required 会让表单永远 invalid，保存按钮直接点不动。
+        // 此时不传 category_id，由服务端兜底归类。
+        const hasCats = sel.options.length > 0;
+        sel.required = hasCats;
+        if (!hasCats) sel.innerHTML = '<option value="">（暂无类别，将由系统自动归类）</option>';
     },
     updateAccSelect() {
         const sel = document.getElementById('transAccount');
@@ -358,6 +370,8 @@ const TransactionManager = {
                             if (full) document.getElementById('transToAccount').value = full.to_account_id;
                         } catch (e) { /* ignore */ }
                     }
+                    // 回填转账类别：下拉此刻已被 setFormMode('transfer') 换成转账分类
+                    document.getElementById('transCategory').value = t.category?.id || '';
                 } else {
                     // 清掉转账缓存：否则先编转账再编普通交易时，
                     // resolveTransferId 的 ① 会命中上一笔的 transfer_id
@@ -462,7 +476,9 @@ const TransactionManager = {
             const toId = parseInt(document.getElementById('transToAccount').value);
             if (!fromId || !toId) { showToast('请选择转出和转入账户', 'error'); return; }
             if (fromId === toId) { showToast('转出和转入账户不能相同', 'error'); return; }
-            const tBody = { from_account_id: fromId, to_account_id: toId, amount, date, note };
+            // 为空时服务端兜底「一般转账」，不阻塞提交
+            const catVal = parseInt(document.getElementById('transCategory').value) || null;
+            const tBody = { from_account_id: fromId, to_account_id: toId, amount, date, note, category_id: catVal };
             if (editId) {
                 const tid = await this.resolveTransferId(editId);
                 if (!tid) {
@@ -613,7 +629,10 @@ const TransactionManager = {
                 ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
                 : '';
 
-                        if (isTransfer) {
+                        // 只有配成对的转账（有 transfer 主记录）才渲染成「A → B」。
+                // 债务还款生成的跨账户流水没有 transfer 主记录，拿不到双端账户名，
+                // 硬走这个分支会显示成「? → ?」，退化成普通行按自身账户展示。
+                if (isTransfer && (t._transferOut || t._transferIn)) {
                 const outAcc = t._transferOut ? t._transferOut.account : null;
                 const inAcc = t._transferIn ? t._transferIn.account : null;
                 const fromName = outAcc ? `${escapeHtml(outAcc.name || '')}` : '?';
@@ -631,25 +650,34 @@ const TransactionManager = {
                         <div class="trans-td trans-tags">${tagsHtml}</div>
                         <div class="trans-td trans-desc">${escapeHtml(noteText)}</div>
                         <div class="trans-td trans-actions">
-                            <button data-action="edit-trans" data-id="${id}" title="编辑">✏️</button>
-                            <button data-action="delete-trans" data-id="${id}" title="删除">🗑️</button>
+                            <button data-action="edit-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="编辑">✏️</button>
+                            <button data-action="copy-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="复制">📄</button>
+                            <button data-action="delete-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="删除">🗑️</button>
                         </div>
                     </div>`;
             }
 
             const accountName = `${escapeHtml(t.account?.name || '-')}`;
+            // 由债务还款/理财操作生成的流水：改/删都必须回到对应管理页，
+            // 直接动这类关联流水会让账户余额与债务剩余本金/持仓脱节
+            const linked = t.link_type === 'debt_repayment'
+                ? ` data-link="${escapeHtml(t.link_type)}"`
+                : (t.link_type === 'account_interest'
+                    ? ' data-link="account_interest"'
+                    : (t.investment_txn_id != null ? ' data-link="investment"' : ''));
             return `
-                <div class="trans-row ${t.type}" data-id="${t.id}">
+                <div class="trans-row ${typeClass}" data-id="${t.id}">
                     <div class="trans-td trans-time">${time}</div>
                     <div class="trans-td trans-type">${typeLabel}</div>
                     <div class="trans-td trans-category">${categoryHtml}</div>
-                    <div class="trans-td trans-amount ${t.type}">${fmtSigned(t.amount, t.type)}</div>
+                    <div class="trans-td trans-amount ${typeClass}">${fmtSigned(t.amount, t.type)}</div>
                     <div class="trans-td trans-account">${accountName}</div>
                     <div class="trans-td trans-tags">${tagsHtml}</div>
                     <div class="trans-td trans-desc">${escapeHtml(t.note || '')}</div>
                     <div class="trans-td trans-actions">
-                        <button data-action="edit-trans" data-id="${t.id}" title="编辑">✏️</button>
-                        <button data-action="delete-trans" data-id="${t.id}" title="删除">🗑️</button>
+                        <button data-action="edit-trans" data-id="${t.id}"${linked} title="编辑">✏️</button>
+                        <button data-action="copy-trans" data-id="${t.id}"${linked} title="复制">📄</button>
+                        <button data-action="delete-trans" data-id="${t.id}"${linked} title="删除">🗑️</button>
                     </div>
                 </div>`;
         };
@@ -668,12 +696,108 @@ const TransactionManager = {
         this.renderPager(filtered.length, totalPages);
 
         // 事件委托：编辑和删除按钮
+        // 债务还款生成的流水必须从债务管理入口改，否则余额与债务剩余本金会脱节
         tbodyEl.querySelectorAll('[data-action="edit-trans"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openModal(parseInt(btn.dataset.id)));
+            btn.addEventListener('click', () => {
+                if (btn.dataset.link === 'debt_repayment') {
+                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中修改', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'investment') {
+                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中修改', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'account_interest') {
+                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中修改', 'info');
+                    return;
+                }
+                this.openModal(parseInt(btn.dataset.id));
+            });
         });
         tbodyEl.querySelectorAll('[data-action="delete-trans"]').forEach(btn => {
-            btn.addEventListener('click', () => this.delete(parseInt(btn.dataset.id)));
+            btn.addEventListener('click', () => {
+                if (btn.dataset.link === 'debt_repayment') {
+                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中删除', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'investment') {
+                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中删除', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'account_interest') {
+                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中删除', 'info');
+                    return;
+                }
+                this.delete(parseInt(btn.dataset.id));
+            });
         });
+        // 复制按钮：克隆一笔完全相同的交易记录
+        // 关联流水（债务还款/理财/计息）同样必须回对应管理页处理，否则会脱离管理页成为游离交易
+        tbodyEl.querySelectorAll('[data-action="copy-trans"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (btn.dataset.link === 'debt_repayment') {
+                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中处理', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'investment') {
+                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中处理', 'info');
+                    return;
+                }
+                if (btn.dataset.link === 'account_interest') {
+                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中处理', 'info');
+                    return;
+                }
+                await this.duplicate(parseInt(btn.dataset.id));
+            });
+        });
+    },
+
+    /**
+     * 克隆一笔交易：取原记录全部字段，新增一条一模一样的记录。
+     * 转账走 /transfers（双腿），普通交易走 /transactions。
+     */
+    async duplicate(id) {
+        const numId = parseInt(id);
+        if (!numId) return;
+        let t;
+        try {
+            t = await api(`/transactions/${numId}`, 'GET', null, { silent: true });
+        } catch (e) {
+            showToast('找不到该交易，请刷新页面后重试', 'warning');
+            return;
+        }
+        if (!t) { showToast('找不到该交易，请刷新页面后重试', 'warning'); return; }
+        try {
+            if (t.transfer) {
+                const body = {
+                    from_account_id: t.transfer.from_account_id,
+                    to_account_id: t.transfer.to_account_id,
+                    amount: t.amount,
+                    date: t.date,
+                    note: t.note || '',
+                    category_id: t.category_id || null
+                };
+                await api('/transfers', 'POST', body);
+            } else {
+                const body = {
+                    account_id: t.account_id ?? (t.account && t.account.id) ?? null,
+                    category_id: t.category_id ?? (t.category && t.category.id) ?? null,
+                    budget_id: t.budget_id ?? null,
+                    type: t.type,
+                    amount: t.amount,
+                    date: t.date,
+                    note: t.note || '',
+                    tags: Array.isArray(t.tags) ? t.tags.map(x => x.id ?? x) : []
+                };
+                await api('/transactions', 'POST', body);
+            }
+            showToast('已复制并新增一笔相同交易', 'success');
+            await initCache();
+            await this.refresh();
+        } catch (e) {
+            // api() 已显示错误 toast
+        }
     },
 
     /**
@@ -749,3 +873,4 @@ const TransactionManager = {
 };
 
 export default TransactionManager;
+

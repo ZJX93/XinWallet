@@ -6,7 +6,21 @@ const {
     success, handleServerError, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict
 } = require('./_helpers');
-const { ensureCategory } = require('./utils');
+const { ensureCategory, syncCreditCardDebt } = require('./utils');
+
+// 转账分类解析：用户选定的优先，未选 / 非法则兜底「一般转账」。
+// 校验点有两个：必须是 transfer 类型（不能把支出分类挂到转账上），
+// 且必须是系统分类或本人分类（防止传别人的 category_id）。
+async function resolveTransferCategory(conn, userId, categoryId) {
+    const fallback = () => ensureCategory(conn, userId, '一般转账', 'transfer', '🏦');
+    const cid = parseInt(categoryId);
+    if (!cid) return fallback();
+    const rows = await conn.query(
+        "SELECT id FROM categories WHERE id = ? AND type = 'transfer' AND (user_id IS NULL OR user_id = ?) LIMIT 1",
+        [cid, userId]
+    );
+    return rows[0] ? rows[0].id : fallback();
+}
 
 // 业务错误 → HTTP code 智能映射（用于 catch 块）
 // 仅白名单的已知业务错误使用 err.message；未识别错误统一返回通用提示，避免泄露数据库堆栈/内部细节
@@ -54,7 +68,7 @@ router.get('/', async (req, res) => {
 // 执行转账
 router.post('/', async (req, res) => {
     try {
-        const { from_account_id, to_account_id, amount, note, date } = req.body;
+        const { from_account_id, to_account_id, amount, note, date, category_id } = req.body;
 
         const amountNum = toNumber(amount);
         // 参数缺失 → 400（请求格式错误）
@@ -72,8 +86,8 @@ router.post('/', async (req, res) => {
             const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [from_account_id, req.userId, req.bookId]);
             if (!fromAcc[0]) throw new Error('转出账户不存在');
 
-            // 转账分类兜底：优先复用种子「一般转账」(id=22, type=transfer)，缺失则自动创建，避免硬编码 category_id
-            const transferCatId = await ensureCategory(conn, req.userId, '一般转账', 'transfer', '🏦');
+            // 转账分类：用户选定优先，缺省兜底「一般转账」
+            const transferCatId = await resolveTransferCategory(conn, req.userId, category_id);
 
             // 创建转账记录
             const insertResult = await conn.query(
@@ -118,6 +132,11 @@ router.post('/', async (req, res) => {
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, from_account_id]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, to_account_id]);
 
+            // 转账会改变授信账户（信用卡 / 带额度的电子支付）的已用额度，
+            // 债务必须跟着变，否则会出现「钱已还进信用卡、债务列表还挂着欠款」
+            await syncCreditCardDebt(conn, req.userId, from_account_id);
+            await syncCreditCardDebt(conn, req.userId, to_account_id);
+
             return insertResult.insertId;
         });
 
@@ -133,7 +152,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { from_account_id, to_account_id, amount, note, date } = req.body;
+        const { from_account_id, to_account_id, amount, note, date, category_id } = req.body;
 
         const amountNum = toNumber(amount);
         if (!from_account_id || !to_account_id) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('请选择转出和转入账户'));
@@ -147,8 +166,8 @@ router.put('/:id', async (req, res) => {
         const affectedAccounts = new Set([old.from_account_id, old.to_account_id, from_account_id, to_account_id]);
 
         await db.transaction(async (conn) => {
-            // 转账分类兜底（同 post 路由）
-            const transferCatId = await ensureCategory(conn, req.userId, '一般转账', 'transfer', '🏦');
+            // 转账分类（同 post 路由）
+            const transferCatId = await resolveTransferCategory(conn, req.userId, category_id);
             await conn.query(
                 `UPDATE transfers SET from_account_id=?, to_account_id=?, amount=?, note=?, date=? WHERE id=? AND user_id = ? AND book_id = ?`,
                 [from_account_id, to_account_id, amountNum, note || '', transferDate, id, req.userId, req.bookId]
@@ -190,6 +209,10 @@ router.put('/:id', async (req, res) => {
             for (const aid of affectedAccounts) {
                 await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
             }
+            // 改后的余额同样要同步授信账户债务（见 POST 处说明）
+            for (const aid of affectedAccounts) {
+                await syncCreditCardDebt(conn, req.userId, aid);
+            }
         });
 
         res.json(success(null, '转账已更新'));
@@ -215,6 +238,9 @@ router.delete('/:id', async (req, res) => {
             await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, transfer.from_account_id]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, transfer.to_account_id]);
+            // 删掉转账后授信账户的已用额度回退，债务也要跟着回退
+            await syncCreditCardDebt(conn, req.userId, transfer.from_account_id);
+            await syncCreditCardDebt(conn, req.userId, transfer.to_account_id);
         });
 
         res.json(success(null, '转账已删除'));

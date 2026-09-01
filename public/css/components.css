@@ -932,8 +932,12 @@
 .inv-txn-amount.expense { color: var(--expense); }
 .inv-txn-amount.income { color: var(--income); }
 .inv-txn-meta { grid-area: meta; font-size: var(--text-caption); color: var(--text-muted); }
-.inv-txn-del { margin-left: auto; background: transparent; border: none; cursor: pointer; font-size: 14px; color: var(--text-tertiary); padding: 2px 6px; border-radius: var(--radius-sm); line-height: 1; }
-.inv-txn-del:hover { color: var(--expense); background: var(--surface-hover); }
+.inv-txn-actions { display: inline-flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.inv-txn-edit, .inv-txn-del {
+    background: none; border: none; cursor: pointer; opacity: 0.6;
+    font-size: 14px; padding: 2px 5px; border-radius: 4px; line-height: 1;
+}
+.inv-txn-edit:hover, .inv-txn-del:hover { opacity: 1; background: rgba(128,128,128,0.18); }
 .bs-empty { padding: var(--space-6) var(--space-3); text-align: center; color: var(--text-muted); font-size: var(--text-body-sm); }
 
 /* ============ 理财：单卡详情弹窗 ============ */
@@ -946,19 +950,20 @@
 .inv-detail-val { font-size: var(--text-body-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .inv-detail-note { font-size: var(--text-body-sm); color: var(--text-muted); background: var(--surface-subtle); border-left: 3px solid var(--accent-500); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
 
-/* 理财详情弹窗底部操作按钮：5 个在一行放不下，改用自适应网格 */
+/* 理财详情弹窗底部操作按钮：6 个纯 emoji 图标固定 6 列，挤在一行 */
 #invDetailActions.form-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--space-2);
-  justify-content: stretch;
   margin-top: var(--space-4);
 }
 #invDetailActions.form-actions .btn {
   width: 100%;
+  min-width: 0;
   justify-content: center;
-  padding: 0 var(--space-2);
+  padding: 0;
   white-space: nowrap;
+  font-size: 18px;
 }
 
 /* 详情弹窗需叠在「全屏网格」与牌堆之上（牌堆 z-index 可达 999+） */
@@ -2000,8 +2005,14 @@
   transition: background 0.15s;
 }
 .rh-item:hover { background: var(--surface-hover, rgba(255,255,255,0.05)); }
-.rh-row1 { display: flex; justify-content: space-between; align-items: baseline; }
+.rh-row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .rh-row2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.rh-actions { display: inline-flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+.rh-edit-btn, .rh-del-btn {
+    background: none; border: none; cursor: pointer; opacity: 0.6;
+    font-size: 14px; padding: 2px 5px; border-radius: 4px; line-height: 1;
+}
+.rh-edit-btn:hover, .rh-del-btn:hover { opacity: 1; background: rgba(128,128,128,0.18); }
 .rh-amount { font-size: 16px; font-weight: 600; color: var(--text); font-feature-settings: 'tnum'; }
 .rh-amount.positive { color: var(--income); }
 .rh-amount.negative { color: var(--expense); }

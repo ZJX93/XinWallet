@@ -169,9 +169,9 @@
                         <div class="form-row transfer-only" id="transSingleAccountHint" style="display:none">
                             <div class="form-group full-width transfer-hint">⚠️ 当前只有一个账户，无法转账。请先添加至少一个账户。</div>
                         </div>
-                        <div class="form-row non-transfer">
-                            <div class="form-group"><label>类别</label><select id="transCategory" required></select></div>
-                            <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="transBudget"><option value="">不关联</option></select></div>
+                        <div class="form-row">
+                            <div class="form-group"><label id="transCategoryLabel">类别 <span class="req">*</span></label><select id="transCategory" required></select></div>
+                            <div class="form-group non-transfer"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="transBudget"><option value="">不关联</option></select></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
@@ -365,15 +365,23 @@
                     </form>
                 </div></div>
 
-                <!-- 收/还款 模态框 -->
+                <!-- 明细弹窗（保持原状） -->
+                <div class="modal-overlay" id="repayHistoryModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3>收/还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
+                    <div class="repay-history" id="repayHistoryBody"></div>
+                </div></div>
+
+                <!-- 收/还款 模态框（放在明细弹窗之后，保证 DOM 顺序下 z-index 天然在上层） -->
                 <div class="modal-overlay" id="repayModal"><div class="modal glass-card">
                     <div class="modal-header"><h3 id="repayModalTitle">登记收/还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
                     <form class="repay-form" id="repayForm"><input type="hidden" id="repayDebtId">
                         <div class="form-row">
                             <div class="form-group"><label>金额 (¥) <span class="req">*</span></label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
-                            <div class="form-group"><label>日期 <span class="req">*</span></label><input type="date" id="repayDate" required></div>
+                            <div class="form-group"><label>日期 <span class="req">*</span></label><input type="datetime-local" id="repayDate" step="1" required></div>
                         </div>
-                        <div class="form-group"><label data-repay-account-label>收/付款账户 <span class="req">*</span></label><select id="repayAccount" required></select></div>
+                        <div class="form-group"><label data-repay-account-label>收/付款账户 <span class="req">*</span></label><select id="repayAccount" required></select>
+                            <small class="field-hint" id="repayAccountHint" style="display:none"></small>
+                        </div>
                         <div class="form-row">
                             <div class="form-group"><label>本金 (¥)</label><input type="number" id="repayPrincipal" step="0.01" min="0" placeholder="留空=全部冲减本金"></div>
                             <div class="form-group"><label>利息 (¥)</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填"></div>
@@ -381,12 +389,6 @@
                         <div class="form-group"><label>备注</label><input type="text" id="repayNote" placeholder="可选"></div>
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="repaySubmitBtn">登记</button></div>
                     </form>
-                </div></div>
-
-                <!-- 明细弹窗（保持原状） -->
-                <div class="modal-overlay" id="repayHistoryModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3>收/还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
-                    <div class="repay-history" id="repayHistoryBody"></div>
                 </div></div>
             </section>
 
@@ -673,11 +675,10 @@
         <form class="trans-form" id="quickAddForm">
             <div class="form-group"><label>类型</label><div class="type-switch" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false">转账</button></div></div>
 
-            <!-- 收支模式：金额 + 单账户 + 类别 -->
+            <!-- 收支模式：金额 + 单账户 -->
             <div id="quickNormalFields">
                 <div class="form-group"><label>金额 (¥)</label><input type="number" id="quickAmount" step="0.01" min="0" required autocomplete="off"></div>
                 <div class="form-group"><label>账户</label><select id="quickAccount" required></select></div>
-                <div class="form-group"><label>类别</label><select id="quickCategory" required></select></div>
             </div>
 
             <!-- 转账模式：转出/转入账户 + 金额 -->
@@ -688,6 +689,9 @@
                 </div>
                 <div class="form-group"><label>转账金额 (¥)</label><input type="number" id="quickTransferAmount" step="0.01" min="0.01" required autocomplete="off"></div>
             </div>
+
+            <!-- 类别：三类交易共用，转账时自动切到转账分类 -->
+            <div class="form-group"><label>类别</label><select id="quickCategory" required></select></div>
 
             <div class="form-row">
                 <div class="form-group"><label>日期时间</label><input type="datetime-local" id="quickDate" step="1" required></div>

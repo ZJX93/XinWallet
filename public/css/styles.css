@@ -732,6 +732,8 @@ header.top-bar.top-bar-sticky {
 .modal-overlay.show {
   display: flex; animation: fadeIn var(--duration-150) var(--ease-out-quart);
 }
+/* 收/还款修改弹窗层级高于明细弹窗，保证从明细进入修改时始终在最顶层 */
+#repayModal { z-index: calc(var(--z-modal-backdrop) + 10); }
 
 .modal {
   width: 100%; max-width: 520px; max-height: 85dvh;

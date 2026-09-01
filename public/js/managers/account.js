@@ -96,8 +96,16 @@ const AccountManager = {
         const buildRow = (a, idx, n) => {
             const tlabel = typeLabels[a.type] || a.type || '';
             const nameHasType = tlabel && a.name && a.name.includes(tlabel);
-            const rate = Number(a.annual_rate) || 0;
             const limit = Number(a.credit_limit) || 0;
+            // 授信账户（信用卡 / 带额度的电子支付）：余额为负即占用授信，
+            // 可用额度 = 额度 - 已用。只显示「总额度」的话，还款后数字纹丝不动，
+            // 用户会以为额度没恢复。
+            const bal = Number(a.balance) || 0;
+            const owes = bal <= 0 ? Math.max(0, -bal) : Math.max(0, limit - bal);
+            const avail = limit > 0 ? Math.max(0, limit - owes) : 0;
+            const limitText = limit > 0
+                ? `可用 <strong>${fmt(avail)}</strong> / 额度 ${fmt(limit)}`
+                : '';
             return `
             <div class="goal-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
                 <div class="acc-card-top">
@@ -107,8 +115,7 @@ const AccountManager = {
                         ${nameHasType ? '' : `<span class="goal-status type">${escapeHtml(tlabel)}</span>`}
                     </div>
                     <div class="goal-amounts inv-cover-meta">
-                        <span>${rate > 0 ? `年利率 <strong>${rate.toFixed(2)}%</strong>` : '年利率 <strong>—</strong>'}</span>
-                        <span>${limit > 0 ? `额度 <strong>${fmt(limit)}</strong>` : ''}</span>
+                        <span>${limitText}</span>
                     </div>
                 </div>
                 <div class="acc-card-mid">
@@ -116,8 +123,8 @@ const AccountManager = {
                     <div class="acc-card-amount">${fmt(a.balance)}</div>
                 </div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
-                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}" title="记一笔利息">💰</button>
+                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="明细">🔍</button>
+                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}" title="计息">💵</button>
                     <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
                     <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="销户/删除">🗑️</button>
                 </div>
@@ -191,7 +198,7 @@ const AccountManager = {
                         <div class="acc-card-amount is-closed">${fmt(a.balance)}</div>
                     </div>
                     <div class="goal-actions">
-                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
+                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="明细">🔍</button>
                         <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
                         <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="彻底删除">🗑️</button>
                     </div>
@@ -387,7 +394,7 @@ const AccountManager = {
         const actions = isClosed ? `
             <button class="btn btn-ghost btn-sm" data-detail-action="close" data-id="${id}">关闭</button>
         ` : `
-            <button class="btn btn-ghost btn-sm" data-detail-action="interest" data-id="${id}">💰 记利息</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="interest" data-id="${id}">💵 记利息</button>
             <button class="btn btn-ghost btn-sm" data-detail-action="edit" data-id="${id}">✏️ 编辑</button>
             <button class="btn btn-ghost btn-sm" data-detail-action="close-acct" data-id="${id}">🗑️ 销户</button>
         `;
@@ -417,6 +424,7 @@ const AccountManager = {
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
                         <span class="rh-date">${t.date || ''}</span>
+                        ${t.link_type === 'account_interest' ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改此利息">✏️</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除此利息">🗑️</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
@@ -428,7 +436,7 @@ const AccountManager = {
         }
         // 操作按钮事件委托：编辑、销户、关闭、计息
         body.querySelectorAll('[data-detail-action]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const aid = parseInt(btn.dataset.id);
                 if (isNaN(aid)) return;
                 switch (btn.dataset.detailAction) {
@@ -442,6 +450,12 @@ const AccountManager = {
                         this.openDeleteModal(aid);
                         break;
                     case 'close': this.closeDetail(); break;
+                    case 'delete-txn': await this.deleteAccTxn(parseInt(btn.dataset.id), id); break;
+                    case 'edit-txn': {
+                        const txn = list.find(t => t.id === parseInt(btn.dataset.id));
+                        if (txn) this.openInterestModal(id, txn);
+                        break;
+                    }
                 }
             });
         });
@@ -449,15 +463,17 @@ const AccountManager = {
     closeDetail() { document.getElementById('accountDetailModal').classList.remove('show'); },
 
     /* ---- 记一笔利息（与安卓端 AccountDetailScreen.AddInterestDialog 对齐） ---- */
-    openInterestModal(id) {
+    openInterestModal(id, txn = null) {
         const a = getAcc(id);
         if (!a) return;
         this._interestAccId = id;
+        this._editingInterestTxnId = txn ? txn.id : null;
+        this._editingInterestCatId = txn ? txn.category_id : null;
         const today = new Date().toISOString().slice(0, 10);
-        document.getElementById('interestModalTitle').textContent = `记利息 · ${a.icon || ''} ${a.name}`;
-        document.getElementById('interestAmount').value = '';
-        document.getElementById('interestDate').value = today;
-        document.getElementById('interestNote').value = '';
+        document.getElementById('interestModalTitle').textContent = txn ? `编辑利息 · ${a.icon || ''} ${a.name}` : `记利息 · ${a.icon || ''} ${a.name}`;
+        document.getElementById('interestAmount').value = txn ? txn.amount : '';
+        document.getElementById('interestDate').value = txn ? (String(txn.date).slice(0, 10) || today) : today;
+        document.getElementById('interestNote').value = txn ? (txn.note ? String(txn.note).replace(/^利息-[^-]*-?/, '') : '') : '';
         document.getElementById('interestError').style.display = 'none';
         document.getElementById('interestSubmitBtn').disabled = false;
         document.getElementById('interestSubmitBtn').textContent = '确认';
@@ -467,6 +483,16 @@ const AccountManager = {
     closeInterestModal() {
         document.getElementById('interestModal').classList.remove('show');
         this._interestAccId = null;
+    },
+    // 删除账户详情里某笔利息流水（与记利息同源：删交易 + 余额回退）。
+    // 走通用 DELETE /transactions/:id，余额由账本重算，删除后刷新详情。
+    async deleteAccTxn(txnId, accId) {
+        if (!window.confirm('确定删除这笔利息流水？账户余额将回退。')) return;
+        const r = await api(`/transactions/${txnId}`, 'DELETE');
+        if (r) {
+            showToast('已删除利息流水', 'success');
+            await this.openDetail(accId);
+        }
     },
     async saveInterest() {
         const id = this._interestAccId;
@@ -481,6 +507,22 @@ const AccountManager = {
         errEl.style.display = 'none';
         btn.disabled = true; btn.textContent = '提交中…';
         try {
+            if (this._editingInterestTxnId) {
+                const acc = getAcc(id);
+                const finalNote = note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`;
+                const res = await api(`/transactions/${this._editingInterestTxnId}`, 'PUT', {
+                    account_id: id, category_id: this._editingInterestCatId, type: 'income',
+                    amount: amt, date, note: finalNote, link_type: 'account_interest', link_id: id
+                });
+                if (res) {
+                    showToast('利息已更新', 'success');
+                    this.closeInterestModal();
+                    await this.openDetail(id);
+                } else {
+                    btn.disabled = false; btn.textContent = '确认';
+                }
+                return;
+            }
             const res = await api(`/accounts/${id}/interest`, 'POST', { amount: amt, date, note: note || undefined });
             if (res) {
                 showToast('利息已记录', 'success');
