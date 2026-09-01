@@ -230,6 +230,17 @@ export interface UpdateTransactionRequest {
   merchant?: string;
 }
 
+/* ----------------------------- 债务明细 ----------------------------- */
+export interface RepaymentItem {
+  id?: number;
+  debt_id?: number;
+  amount?: number;
+  paid_at?: string;
+}
+export interface DebtDetail {
+  repayments?: RepaymentItem[];
+}
+
 /* ----------------------------- 汇总/报表 ----------------------------- */
 
 export interface CategoryTotal {

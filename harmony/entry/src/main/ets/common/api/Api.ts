@@ -8,7 +8,7 @@ import {
   Account, AccountsResponse, CreateAccountRequest, UpdateAccountRequest,
   AddAccountInterestRequest, AddAccountInterestResult,
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
-  Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse,
+  Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse, DebtDetail,
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
   TranscribeRequest, TranscribeResponse, IdResponse,
   AiParseRequest, AiParseResponse, AiPredictionSnapshot,
@@ -264,8 +264,8 @@ export async function updateDebt(id: number, req: object): Promise<ApiResponse<o
 export async function deleteDebt(id: number): Promise<ApiResponse<object>> {
   return del<object>(`debts/${id}`);
 }
-export async function getDebt(id: number): Promise<ApiResponse<object>> {
-  return get<object>(`debts/${id}`);
+export async function getDebt(id: number): Promise<ApiResponse<DebtDetail>> {
+  return get<DebtDetail>(`debts/${id}`);
 }
 export async function createRepayment(id: number, req: object): Promise<ApiResponse<object>> {
   return post<object>(`debts/${id}/repayments`, req);

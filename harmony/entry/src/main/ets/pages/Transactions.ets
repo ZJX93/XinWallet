@@ -465,9 +465,9 @@ export struct TransactionsPage {
    * transfer 字段要求 transfer_id + 双端账户名三者齐全才由服务端构造，账户被删导致
    * JOIN 不到名字时它是 null，此时退回普通路径（至少能删掉）。
    */
-  openRow(it: TransactionItem): void {
+  async openRow(it: TransactionItem): Promise<void> {
     if (it.transfer) { this.editTransferViaPage(it); return; }
-    promptAction.showDialog({
+    const data = await promptAction.showDialog({
       title: '交易操作',
       message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)}`,
       buttons: [
@@ -475,11 +475,10 @@ export struct TransactionsPage {
         { text: '编辑', color: COLORS.brand },
         { text: '删除', color: COLORS.danger }
       ]
-    }, (err: Error, index: number) => {
-      if (index === 0) { this.copyTx(it); }
-      else if (index === 1) { router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); }
-      else if (index === 2) { Api.deleteTransaction(it.id).then(() => this.load()); }
     });
+    if (data.index === 0) { this.copyTx(it); }
+    else if (data.index === 1) { router.pushUrl({ url: 'pages/AddTransaction', params: { editId: it.id, month: this.month } }); }
+    else if (data.index === 2) { Api.deleteTransaction(it.id).then(() => this.load()); }
   }
 
   /**
@@ -489,15 +488,14 @@ export struct TransactionsPage {
    */
   async copyTx(it: TransactionItem): Promise<void> {
     try {
-      const req = {
+      await Api.createTransaction({
         account_id: it.account?.id ?? 0,
         category_id: it.category?.id ?? 0,
         type: it.type,
         amount: it.amount,
         note: it.note ?? '',
         date: this.todayDate
-      };
-      await Api.createTransaction(req);
+      });
       toast('已复制为新交易');
       this.load();
     } catch (e) {

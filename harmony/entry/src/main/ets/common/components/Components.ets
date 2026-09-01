@@ -1228,7 +1228,6 @@ export struct SectionTitleV2 {
  * 与 pageBg（#FDFBFA）混合，呈现「自然光质感」，避免单调冷灰底。
  */
 @Component
-@Component
 export struct AppBackground {
   /**
    * 单个柔光团。

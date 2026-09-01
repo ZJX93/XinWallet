@@ -2,7 +2,7 @@
  * 债务管理（对齐安卓 DebtsScreen.kt）：汇总 4 卡 + 应付/应收分组 + 还款/编辑/删除。
  */
 import router from '@ohos.router';
-import { DebtRequest } from '../common/models';
+import { DebtRequest, DebtDetail, RepaymentItem } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { toast, toastLong } from '../common/ui';
@@ -30,9 +30,9 @@ export struct DebtsPage {
   // 债务明细（含还款记录列表）+ 编辑还款
   @State showDetail: boolean = false;
   @State detailDebt: Debt | null = null;
-  @State detailRepayments: ESObject[] = [];
+  @State detailRepayments: RepaymentItem[] = [];
   @State detailLoading: boolean = false;
-  @State editRepay: ESObject | null = null;   // 正在编辑的还款记录（非 null 即编辑态）
+  @State editRepay: RepaymentItem | null = null;   // 正在编辑的还款记录（非 null 即编辑态）
 
   aboutToAppear(): void { this.load(); }
 
@@ -91,13 +91,12 @@ export struct DebtsPage {
     this.detailLoading = true;
     try {
       const r = await Api.getDebt(id);
-      const detail = (r.data as ESObject) || {};
-      this.detailRepayments = detail.repayments || [];
+      this.detailRepayments = r.data?.repayments ?? [];
     } catch (e) { /* 读失败静默降级：列表留空 */ }
     finally { this.detailLoading = false; }
   }
   /** 进入编辑还款：回填金额，RepaySheet 切换为编辑态 */
-  openEditRepay(r: ESObject): void {
+  openEditRepay(r: RepaymentItem): void {
     this.editRepay = r;
     this.repayAmt = String(r['amount'] ?? '');
     this.showRepay = true;
@@ -116,7 +115,7 @@ export struct DebtsPage {
     }
   }
   /** 删除还款记录：DELETE /debts/:id/repayments/:rid */
-  async removeRepay(r: ESObject): Promise<void> {
+  async removeRepay(r: RepaymentItem): Promise<void> {
     const debtId = (r['debt_id'] ?? this.detailDebt?.id ?? 0) as number;
     try {
       await Api.deleteRepayment(debtId, r['id'] as number);
@@ -131,7 +130,7 @@ export struct DebtsPage {
     if (!this.editRepay) return;
     const amt = Number(this.repayAmt);
     if (!amt) { toast('请填写还款金额'); return; }
-    const orig = this.editRepay;
+    const orig: RepaymentItem = this.editRepay as RepaymentItem;
     const debtId = (orig['debt_id'] ?? this.detailDebt?.id ?? 0) as number;
     try {
       await Api.updateRepayment(debtId, orig['id'] as number, {
