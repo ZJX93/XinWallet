@@ -497,8 +497,9 @@ router.delete('/:id/repayments/:rid', async (req, res) => {
         const newStatus = newRemain > 0 ? 'active' : 'paid_off';
         await conn.query('DELETE FROM debt_repayments WHERE id = ?', [req.params.rid]);
         await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
-        res.json(success(null, '还款记录已删除'));
         });
+        // 事务提交后再响应：避免事务回滚时已写响应头，前端拿到 200 OK 但数据未变
+        res.json(success(null, '还款记录已删除'));
     } catch (err) { handleServerError(res, err); }
 });
 
@@ -515,8 +516,8 @@ router.put('/:id/repayments/:rid', async (req, res) => {
         if (!debt || !rep) return res.status(404).json(fail('记录不存在'));
         const accId = account_id ? parseInt(account_id) : null;
         if (!accId) return res.status(400).json(fail('请选择账户'));
+        const isReceivable = (debt.direction === 'receivable');
         await db.transaction(async (conn) => {
-            const isReceivable = (debt.direction === 'receivable');
             const pp = principal_part !== undefined && principal_part !== '' && principal_part !== null ? parseFloat(principal_part) : amt;
             const ip = interest_part !== undefined && interest_part !== '' && interest_part !== null ? parseFloat(interest_part) : 0;
             // 1) 撤销旧双腿 + 旧账户余额回滚，并先还原剩余本金
@@ -581,8 +582,9 @@ router.put('/:id/repayments/:rid', async (req, res) => {
                 [accId, amt, pp, ip, normDate(paid_at || rep.paid_at), note || '', txId, rep.id]
             );
             await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
-            res.json(success(null, isReceivable ? '收款记录已更新' : '还款记录已更新'));
         });
+        // 事务提交后再响应：避免事务回滚时已写响应头，前端拿到 200 OK 但数据未变
+        res.json(success(null, isReceivable ? '收款记录已更新' : '还款记录已更新'));
     } catch (err) { handleServerError(res, err); }
 });
 

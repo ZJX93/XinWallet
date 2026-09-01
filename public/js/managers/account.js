@@ -496,6 +496,11 @@ const AccountManager = {
         if (r) {
             showToast('已删除利息流水', 'success');
             await this.openDetail(accId);
+            // 余额由账本重算，需刷新账户缓存 + 外层账户列表 + Dashboard KPI，
+            // 否则账户卡片/Dashboard 仍显示旧余额，需手动切页才更新。
+            await initCache();
+            await this.refresh();
+            if (window.DashboardManager) await window.DashboardManager.refresh();
         }
     },
     async saveInterest() {

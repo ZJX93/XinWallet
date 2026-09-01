@@ -568,6 +568,10 @@ const DebtManager = {
                     showToast('还款记录已删除', 'warning');
                     await this.openRepayHistory(did);
                     await this.refresh();
+                    // 还款回滚了账户余额（后端已重算），需刷新账户缓存/账户列表/Dashboard
+                    await initCache();
+                    if (window.AccountManager) await window.AccountManager.refresh();
+                    if (window.DashboardManager) await window.DashboardManager.refresh();
                 } catch (err) { /* api() 已 toast */ }
             });
         });
