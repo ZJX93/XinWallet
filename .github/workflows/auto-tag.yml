@@ -10,8 +10,9 @@
 # 版本规则（简化）：
 #   版本号固定为 v0.1.X —— 锁死 MAJOR.MINOR = 0.1，每次发布仅递增 PATCH(X)。
 #   例：v0.1.1 → v0.1.2 → v0.1.3 …（不再做 major/minor 跳变）。
-#   是否发布仍取决于提交类型：docs/chore/ci 提交跳过打标签；
-#   feat/fix/refactor/perf/build/style 提交才会触发一次 X+1 发布。
+#   是否发布：仅 docs/chore/ci/test 及 Merge/Revert 提交跳过打标签；
+#   其余提交（含中文标题的修复/重构/UI 调整等）都会触发一次 X+1 发布，
+#   保证「push main → 自动打标 → 自动出镜像/APK/HAP」链路对中文提交同样生效。
 # 注意：如需调整锁定的 X.Y，改下方 MAJOR/MINOR 两个常量即可。
 # ============================================
 name: Auto Tag
@@ -123,10 +124,11 @@ jobs:
           echo "$COMMITS"
           echo ""
 
-          # 如果只有 docs/chore/ci 类型的 commit，跳过打标签（不发布）
-          if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build|style)(\(.+\))?!?:"; then
+          # 仅当自上次 tag 以来【全部】提交都是 docs/chore/ci/test/Merge/Revert 时才跳过发布；
+          # 其余提交（包括中文标题）都会触发打标签，确保镜像/APK/HAP 正常出包。
+          if ! echo "$COMMITS" | grep -vE "^(docs|chore|ci|test)(\(.+\))?!?:|^Merge |^Revert " | grep -q .; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Only docs/chore/ci commits since last tag, skipping"
+            echo "Only docs/chore/ci/test/Merge/Revert commits since last tag, skipping"
             exit 0
           fi
 
