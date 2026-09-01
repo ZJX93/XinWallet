@@ -297,7 +297,7 @@ const TransactionManager = {
         const sel = new Set(selectedIds);
         const tags = cache.tags || [];
         if (tags.length === 0) { picker.innerHTML = '<span class="empty-hint">暂无标签，去「标签管理」创建</span>'; return; }
-        picker.innerHTML = tags.map(tg => `<span class="tag-chip ${sel.has(tg.id) ? 'selected' : ''}" data-id="${tg.id}" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('');
+        picker.innerHTML = tags.map(tg => `<span class="tag-chip ${sel.has(tg.id) ? 'selected' : ''}" data-id="${tg.id}" style="--tag-color:${escapeHtml(tg.color)}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('');
         picker.querySelectorAll('.tag-chip').forEach(chip => chip.addEventListener('click', () => chip.classList.toggle('selected')));
     },
     async openModal(editId = null) {

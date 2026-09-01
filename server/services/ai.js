@@ -37,18 +37,22 @@ function describeProviderError(body, statusCode) {
 // AI Provider 的 base_url 由用户配置，本地 Ollama（127.0.0.1）及局域网自定义服务商是合法场景，
 // 故放行回环与私有内网地址；链路本地 169.254.0.0/16（含云 metadata）仍始终拦截。
 // 关键修正：非 2xx 视为调用失败，抛 AiProviderError 携带真实错误，避免被当成成功响应解析。
+// ⚠️ SSRF 闭环：assertPublicUrl 校验后返回锁定 IP（v.ip），这里直连该 IP 并带原 Host / TLS SNI（v.host），
+// 不再二次 DNS 解析，彻底杜绝 DNS Rebinding 时序绕过（TOCTOU）。
 async function httpsPostJson(url, headers, body) {
-    await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
+    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
     return new Promise((resolve, reject) => {
-        const u = new URL(url);
+        const u = v.url;
         const mod = u.protocol === 'https:' ? https : http;
         const data = JSON.stringify(body);
         const opts = {
-            hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+            hostname: v.ip, port: u.port || (u.protocol === 'https:' ? 443 : 80),
             path: u.pathname + u.search, method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers },
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'Host': v.host, ...headers },
             timeout: 60000
         };
+        // 直连 IP 时必须显式指定 SNI 为原域名，否则 TLS 校验 / 虚拟主机名匹配会失败
+        if (u.protocol === 'https:') opts.servername = v.host;
         const req = mod.request(opts, (res) => {
             let buf = '';
             res.on('data', c => buf += c);
@@ -314,16 +318,17 @@ function isMiniMaxHost(url) {
 
 // 发送原始字节 body（multipart 等），用于语音转写
 async function httpsPostRaw(url, headers, bufferBody) {
-    await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
+    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
     return new Promise((resolve, reject) => {
-        const u = new URL(url);
+        const u = v.url;
         const mod = u.protocol === 'https:' ? https : http;
         const opts = {
-            hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+            hostname: v.ip, port: u.port || (u.protocol === 'https:' ? 443 : 80),
             path: u.pathname + u.search, method: 'POST',
-            headers: { 'Content-Length': Buffer.byteLength(bufferBody), ...headers },
+            headers: { 'Content-Length': Buffer.byteLength(bufferBody), 'Host': v.host, ...headers },
             timeout: 60000
         };
+        if (u.protocol === 'https:') opts.servername = v.host;
         const req = mod.request(opts, (res) => {
             let buf = '';
             res.on('data', c => buf += c);

@@ -104,39 +104,47 @@ async function assertPublicUrl(urlStr, opts = {}) {
         || (net.isIP(host) === 4 && host.startsWith('127.'));
     if (isLoopback) {
         if (!allowLoopback) throw new Error('禁止访问 localhost');
-        return u;
+        // ⚠️ SSRF 闭环：返回锁定后的连接目标，调用方直连该地址且不再二次 DNS 解析，
+        // 杜绝 DNS Rebinding 时序绕过（TOCTOU）。回环地址即原 host。
+        return { url: u, host: u.hostname, ip: host };
     }
     if (net.isIP(host) === 4) {
         if (isLinkLocalIPv4(host)) throw new Error(`禁止访问链路本地地址: ${host}`);
         if (!allowPrivate && isPrivateIPv4(host)) throw new Error(`禁止访问内网地址: ${host}`);
-        return u;
+        return { url: u, host: u.hostname, ip: host };
     }
     if (net.isIP(host) === 6) {
         if (isLinkLocalIPv6(host)) throw new Error(`禁止访问链路本地地址: ${host}`);
         if (!allowPrivate && isPrivateIPv6(host)) throw new Error(`禁止访问内网地址: ${host}`);
-        return u;
+        return { url: u, host: u.hostname, ip: host };
     }
 
-    // 域名：解析所有 A/AAAA 记录，任意一条指向内网即拒绝
+    // 域名：解析所有 A/AAAA 记录，任意一条指向内网即拒绝。
+    // ⚠️ SSRF 闭环：校验通过后锁定一个「通过校验」的 IP（chosen），调用方必须用它直连并带
+    // Host/SNI，禁止再次 DNS 解析，否则攻击者可借 DNS Rebinding 在「校验(公网)」与「连接(内网)」之间
+    // 切换地址，绕过上面全部拦截。只要解析结果含任一内网/链路本地地址即整体拒绝（强防护）。
     try {
         const records = await dns.lookup(host, { all: true });
         if (!records.length) throw new Error(`域名无法解析: ${host}`);
+        let chosen = null;
         for (const r of records) {
             if (net.isIPv4(r.address)) {
                 if (isLinkLocalIPv4(r.address)) throw new Error(`域名 ${host} 解析到链路本地地址: ${r.address}`);
                 if (!allowPrivate && isPrivateIPv4(r.address)) throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
+                if (!chosen) chosen = r.address;
             }
             if (net.isIPv6(r.address)) {
                 if (isLinkLocalIPv6(r.address)) throw new Error(`域名 ${host} 解析到链路本地地址: ${r.address}`);
                 if (!allowPrivate && isPrivateIPv6(r.address)) throw new Error(`域名 ${host} 解析到内网地址: ${r.address}`);
+                if (!chosen) chosen = r.address;
             }
         }
+        if (!chosen) throw new Error(`域名 ${host} 无可用的 IP 地址`);
+        return { url: u, host: u.hostname, ip: chosen };
     } catch (err) {
         if (err.code === 'ENOTFOUND') throw new Error(`域名无法解析: ${host}`);
         throw err;
     }
-
-    return u;
 }
 
 module.exports = { assertPublicUrl, isPrivateIPv4, isPrivateIPv6 };

@@ -54,13 +54,15 @@ function signToken(user) {
         { algorithm: 'HS256', expiresIn: JWT_EXPIRES }
     );
 }
-// 签发 Refresh Token（默认 7 天、独立 secret、payload 带 type='refresh' 区分）
+// 签发 Refresh Token（默认 30 天、独立 secret、payload 带 type='refresh' 区分）
+// ⚠️ 注释曾误写「7 天」而代码为 30d；时长现可由 JWT_REFRESH_EXPIRES 覆盖，避免注释与代码不一致。
 function signRefreshToken(user) {
     const refreshSecret = process.env.JWT_REFRESH_SECRET || EFFECTIVE_SECRET;
+    const refreshExpires = process.env.JWT_REFRESH_EXPIRES || '30d';
     return jwt.sign(
         { id: Number(user.id), type: 'refresh' },
         refreshSecret,
-        { algorithm: 'HS256', expiresIn: '30d' }
+        { algorithm: 'HS256', expiresIn: refreshExpires }
     );
 }
 

@@ -351,19 +351,24 @@ async function start() {
     }
 
     // 确保演示账号存在（使用 bcrypt 真实哈希，避免明文占位符）
-    try {
-        const demo = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");
-        if (!demo) {
-            const demoPw = process.env.DEMO_PASSWORD || 'demo123456';
-            const demoHash = await hashPassword(demoPw);
-            await db.query(
-                'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
-                ['demo', demoHash, '演示用户']
-            );
-            console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);
+    // 安全收紧：仅 ALLOW_DEMO=true 且非 production 时创建，避免误部署暴露可被登录的 demo 账号
+    if (process.env.ALLOW_DEMO === 'true' && process.env.NODE_ENV !== 'production') {
+        try {
+            const demo = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");
+            if (!demo) {
+                const demoPw = process.env.DEMO_PASSWORD || 'demo123456';
+                const demoHash = await hashPassword(demoPw);
+                await db.query(
+                    'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
+                    ['demo', demoHash, '演示用户']
+                );
+                console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);
+            }
+        } catch (err) {
+            console.warn('⚠️ 创建演示账号时出错:', err.message);
         }
-    } catch (err) {
-        console.warn('⚠️ 创建演示账号时出错:', err.message);
+    } else {
+        console.log('ℹ️ 演示账号未启用（设置 ALLOW_DEMO=true 且仅非生产环境会自动创建）');
     }
 
     // 演示账号：自动注入种子数据（覆盖所有功能模块）
@@ -440,7 +445,12 @@ async function start() {
         shutdown('uncaughtException');
     });
     process.on('unhandledRejection', (reason) => {
-        console.error('❌ Unhandled Rejection:', reason);
+        // 增强：打印堆栈（含来源位置），便于定位未捕获的 async 错误。
+        // 注：Express 4 不会把 async 路由内未捕获的 rejection 自动转发到错误中间件，
+        // 业务路由普遍已 try/catch，此处仅兜底日志，避免无堆栈时难以排查。
+        const stack = reason && reason.stack ? reason.stack
+            : (reason instanceof Error ? reason.message : String(reason));
+        console.error('❌ Unhandled Rejection:', stack);
     });
 }
 
