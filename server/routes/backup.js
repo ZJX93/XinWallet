@@ -642,6 +642,18 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 }
             }
 
+            // 7.5) 导入后回填投资台账的 investment_txn_id 指针。
+            // 账单流水页把投资台账当作普通 income/expense 恢复（无指针），理财流水页又重建了
+            // investment_transactions（新 id）。若不重建关联，删除投资流水时后台账会再次残留、
+            // 余额不回退——正是本次修复的问题场景。按「账户 + 收支方向 + 金额 + 同日」唯一命中才回填，
+            // 歧义或金额差 1 分等无法唯一命中的跳过，绝不猜测。
+            // try/catch 包裹：回填失败只影响"删除时能否精确清理后台账"，绝不阻断已恢复的账本。
+            try {
+              await backfillInvestmentLinks(conn, userId, bookId);
+            } catch (e) {
+              console.error('[导入] 回填投资台账指针异常（不影响已恢复账本）:', e && e.message);
+            }
+
             // 8) 以账本为准重算所有导入账户余额，避免直接写入导致漂移
             for (const name of Object.keys(acMap)) {
                 const newBal = await computeAccountBalance(conn, userId, acMap[name]);
@@ -652,6 +664,39 @@ router.post('/import', upload.single('file'), async (req, res) => {
         res.json(success({ imported }, '已在清空当前账本后恢复备份（干净账本）'));
     } catch (err) { handleServerError(res, err, '账本导入'); }
 });
+
+// 导入后重建投资台账与理财流水的关联指针（防删除后孤儿残留）。
+// 仅按「账户 + 收支方向 + 金额 + 同日」唯一命中时才回填；多条歧义一律跳过，绝不猜测。
+// DATE(date)=DATE(?) 跨 PG/MySQL 兼容，容忍台账与流水之间的时分秒差异。
+async function backfillInvestmentLinks(conn, userId, bookId) {
+  const invTxns = await conn.query(
+    `SELECT it.id, it.type, it.amount, CAST(it.date AS CHAR(10)) AS date, inv.account_id
+       FROM investment_transactions it
+       JOIN investments inv ON inv.id = it.investment_id
+      WHERE it.user_id = ? AND it.book_id = ?`,
+    [userId, bookId]
+  );
+  for (const it of invTxns) {
+    if (!it.account_id) continue; // 持仓未绑定账户时不会生成台账，跳过
+    const dir = (it.type === 'sell' || it.type === 'dividend' || it.type === 'interest') ? 'income' : 'expense';
+    const cands = await conn.query(
+      `SELECT id FROM transactions
+        WHERE user_id = ? AND book_id = ? AND account_id = ?
+          AND type = ? AND amount = ? AND DATE(date) = DATE(?) AND investment_txn_id IS NULL
+          AND (note LIKE '买入·%' OR note LIKE '加仓%' OR note LIKE '卖出%'
+               OR note LIKE '分红-%' OR note LIKE '利息-%' OR note LIKE '建仓%')
+        ORDER BY id`,
+      [userId, bookId, it.account_id, dir, it.amount, it.date]
+    );
+    // 仅唯一命中时回填；多条歧义不猜（避免误关联），后续仍可手动或 heal 脚本处理
+    if (cands.length === 1) {
+      await conn.query(
+        'UPDATE transactions SET investment_txn_id = ? WHERE id = ? AND investment_txn_id IS NULL',
+        [it.id, cands[0].id]
+      );
+    }
+  }
+}
 
 module.exports = router;
 // 附加纯函数，便于单测（不影响 router.use 挂载）
