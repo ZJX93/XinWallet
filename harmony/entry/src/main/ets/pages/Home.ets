@@ -81,6 +81,20 @@ export struct HomePage {
     this.bootstrap();
   }
 
+  /**
+   * 切回首页时刷新 KPI。
+   *
+   * 在别处改动余额后（账户详情记利息 / 删利息流水、账单页记账、转账），
+   * 首页的总资产与本月收支会过期；tab 内嵌组件切走再切回不会重新触发
+   * aboutToAppear，只有 onPageShow 会再触发（与账单页 Transactions.ets 同款写法）。
+   *
+   * 这里只调 load() 而非 bootstrap()：卡片开关的本地偏好没变，不值得再读一遍，
+   * 而 load() 已经覆盖 Dashboard / 日历 / 本月流水三个数据源。
+   */
+  onPageShow(): void {
+    this.load();
+  }
+
   /** 先读卡片配置，再按配置决定要拉哪些数据（关掉的卡片不产生请求） */
   async bootstrap(): Promise<void> {
     await this.loadCardPrefs();

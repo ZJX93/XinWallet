@@ -163,6 +163,40 @@ export struct AccountDetailPage {
     }
   }
 
+  /**
+   * 删除某笔利息流水（对齐 web 端 AccountManager.deleteAccTxn）。
+   *
+   * 账户详情页此前没有任何流水级操作入口 —— 记完息只能看着、删不掉，
+   * 而 web 端账户详情是有删除按钮的，两端能力不一致。
+   * 利息流水由「记利息」生成（link_type='account_interest'），
+   * 走通用 DELETE /transactions/:id，后端按账本重算账户余额。
+   */
+  confirmDeleteTxn(it: TransactionItem): void {
+    AlertDialog.show({
+      title: '删除这笔利息流水？',
+      message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)} —— 账户余额将按账本回退，此操作不可恢复。`,
+      primaryButton: {
+        value: '删除',
+        action: () => { this.deleteTxn(it.id); }
+      },
+      secondaryButton: {
+        value: '取消',
+        action: () => {}
+      }
+    });
+  }
+
+  async deleteTxn(id: number): Promise<void> {
+    try {
+      await Api.deleteTransaction(id);
+      toast('已删除利息流水');
+      // 余额由账本重算，整页重拉即可同步顶部余额卡片与流水列表
+      await this.load();
+    } catch (e) {
+      toastLong('删除失败：' + ((e as ApiError).message || '请检查网络'));
+    }
+  }
+
   @Builder InterestSheet() {
     Column({ space: 12 }) {
       Text('记利息').fontSize(16).fontWeight(FontWeight.Bold)
@@ -295,7 +329,20 @@ export struct AccountDetailPage {
               EmptyState({ text: '该账户暂无交易' })
             } else {
               ForEach(this.txs, (it: TransactionItem) => {
-                TransactionRow({ item: it })
+                if (it.link_type === 'account_interest') {
+                  // 利息流水可删：这是账户详情里「计息记录」的管理入口。
+                  // compact 行不画自己的背景/边框，由外层 Row 统一提供，
+                  // 视觉上与下方普通交易卡片保持一致。
+                  Row() {
+                    TransactionRow({ item: it, compact: true, showTopDivider: false }).layoutWeight(1)
+                    Text('🗑️').fontSize(17).padding({ left: 6, right: 10 })
+                      .onClick(() => this.confirmDeleteTxn(it))
+                  }.width('100%')
+                    .backgroundColor(COLORS.card)
+                    .border({ width: 1, color: COLORS.divider })
+                } else {
+                  TransactionRow({ item: it })
+                }
               }, (it: TransactionItem) => it.id.toString())
             }
             Blank().height(20)

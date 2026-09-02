@@ -42,6 +42,15 @@ export struct AccountsPage {
 
   aboutToAppear(): void { this.load(); }
 
+  /**
+   * 从账户详情返回时刷新。
+   *
+   * 详情页里可能刚记过一笔利息、或删掉了利息流水，账户余额已经变了；
+   * 而 tab 内嵌组件切走再切回不会重新触发 aboutToAppear，只有 onPageShow 会再触发
+   * （与账单页 Transactions.ets 同款写法）。
+   */
+  onPageShow(): void { this.load(); }
+
   async load(): Promise<void> {
     this.loading = true;
     try {
