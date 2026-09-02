@@ -175,7 +175,7 @@ async function findInvestmentLedgerTxns(conn, { userId, bookId, txnId, accountId
     const orphan = await conn.query(
         `SELECT id, account_id FROM transactions
          WHERE user_id = ? AND book_id = ? AND account_id = ?
-           AND type = ? AND amount = ? AND date = ? AND investment_txn_id IS NULL
+           AND type = ? AND amount = ? AND DATE(date) = DATE(?) AND investment_txn_id IS NULL
          ORDER BY id DESC LIMIT 1`,
         [userId, bookId, accountId, dir, amount, date]
     );

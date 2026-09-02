@@ -46,7 +46,7 @@ const NOTE_PATTERNS = ['加仓', '卖出', '分红-', '利息-', '买入·', '�
     const cands = await db.query(
       `SELECT id, note FROM transactions
         WHERE user_id = ? AND book_id = ? AND account_id = ?
-          AND type = ? AND amount = ? AND date = ? AND investment_txn_id IS NULL
+          AND type = ? AND amount = ? AND DATE(date) = DATE(?) AND investment_txn_id IS NULL
         ORDER BY id`,
       [it.user_id, it.book_id, it.account_id, dir, it.amount, it.date]
     );
