@@ -18,9 +18,9 @@ router.post('/advice', async (req, res) => {
             db.query(
                 `SELECT c.name AS category, t.type, SUM(t.amount) AS total, COUNT(*) AS cnt
                  FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND t.book_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
+                 WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
                  GROUP BY c.name, t.type ORDER BY total DESC`,
-                [req.userId, req.bookId, currentMonth]
+                [req.userId, req.bookId, currentMonth + '%']
             ),
             db.query(
                 'SELECT name, amount FROM budgets WHERE user_id = ? AND book_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
@@ -49,9 +49,9 @@ router.post('/advice', async (req, res) => {
         const prevSummary = await db.query(
             `SELECT c.name AS category, t.type, SUM(t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.book_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
+             WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
              GROUP BY c.name, t.type ORDER BY total DESC`,
-            [req.userId, req.bookId, prevMonth]
+            [req.userId, req.bookId, prevMonth + '%']
         );
 
         const curExpense = summary.filter(r => r.type === 'expense').reduce((s, r) => s + parseFloat(r.total), 0);

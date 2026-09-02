@@ -234,12 +234,12 @@ async function buildReport(userId, bookId, type, period) {
             [userId, bookId, start, end]
         ),
         db.query(
-            `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date,
+            `SELECT CAST(date AS CHAR(10)) as date,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
              FROM transactions
              WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
-             GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
+             GROUP BY CAST(date AS CHAR(10)) ORDER BY date`,
             [userId, bookId, start, end]
         ),
         // 分类金额「子级向父级汇总」——在数据库层用递归 CTE 完成，语义同财务成本科目：

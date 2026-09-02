@@ -61,8 +61,8 @@ router.post('/', async (req, res) => {
         const TYPE_COLOR = { expense: '#22c55e', income: '#ef4444', transfer: '#3b82f6' };
         const defaultColor = TYPE_COLOR[type] || '#6366f1';
         const maxSort = await db.queryOne(
-            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NOT DISTINCT FROM ? AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
-            [type, parent_id || null, req.userId, req.bookId]
+            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND (parent_id = ? OR (parent_id IS NULL AND ? IS NULL)) AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
+            [type, parent_id || null, parent_id || null, req.userId, req.bookId]
         );
         const result = await db.query(
             'INSERT INTO categories (parent_id, user_id, book_id, name, icon, type, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE)',

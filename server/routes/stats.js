@@ -77,11 +77,11 @@ router.get('/dashboard', async (req, res) => {
             ),
             // 最近6月趋势
             db.query(
-                `SELECT TO_CHAR(date, 'YYYY-MM') as month,
+                `SELECT LEFT(CAST(date AS CHAR(10)), 7) as month,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
        FROM transactions WHERE user_id = ? AND book_id = ?
-       GROUP BY month ORDER BY month DESC LIMIT 6`,
+       GROUP BY LEFT(CAST(date AS CHAR(10)), 7) ORDER BY month DESC LIMIT 6`,
                 [req.userId, req.bookId]
             ),
             // 账户总览
