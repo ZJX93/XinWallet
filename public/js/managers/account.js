@@ -452,8 +452,15 @@ const AccountManager = {
                     case 'close': this.closeDetail(); break;
                     case 'delete-txn': await this.deleteAccTxn(parseInt(btn.dataset.id), id); break;
                     case 'edit-txn': {
-                        const txn = list.find(t => t.id === parseInt(btn.dataset.id));
-                        if (txn) this.openInterestModal(id, txn);
+                        // 用 Number() 双侧兜底：避免后端把 id 序列化成字符串时
+                        // t.id === parseInt(...) 因严格相等失败，导致整个分支静默跳过。
+                        const targetId = parseInt(btn.dataset.id, 10);
+                        const txn = list.find(t => Number(t.id) === targetId);
+                        if (txn) {
+                            this.openInterestModal(id, txn);
+                        } else {
+                            console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id, 'list ids=', list.map(t => t.id));
+                        }
                         break;
                     }
                 }
