@@ -12,8 +12,10 @@
     'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
     'Helvetica Neue', system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-  /* 按钮专用：中文走华文行楷（系统字体，离线可用），西文/数字回退 Geist */
-  --font-button: '华文行楷', 'STXingkai', '华文行楷 Regular', var(--font-sans);
+  /* 按钮专用字体：优先免费开源行楷 web font「志莽行书」(Zhi Mang Xing, Google Fonts, OFL 授权)，
+     其次回退系统华文行楷，最后回退黑体。注意：华文行楷是商业字体且非系统默认字体，
+     多数环境根本没有该字体 → 必须依赖 web font 才能稳定显示行楷（原「系统字体，离线可用」说法有误）。 */
+  --font-button: 'Zhi Mang Xing', '华文行楷', 'STXingkai', '华文行楷 Regular', var(--font-sans);
 
   --fw-light: 300;
   --fw-regular: 400;
