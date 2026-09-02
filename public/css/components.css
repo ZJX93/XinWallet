@@ -404,6 +404,11 @@
   left: 0 !important;
   margin-top: 4px;
   min-width: 200px;
+  /* ⛔ 不写固定 width：旧版 min-width:200px + 无 width，面板被父容器宽度限制为 ~100px，
+     导致下面 7 个按钮按 flex 内容硬堆成 3 行。改为 width: max-content 让面板宽度
+     跟内层 grid 内容走；max-width 防止窄屏（<432px）溢出视口。 */
+  width: max-content;
+  max-width: calc(100vw - 32px);
   padding: 10px;
   background: var(--surface-card);
   border: 1px solid var(--border-default);
@@ -412,9 +417,16 @@
   z-index: 1000;
 }
 
-/* 操作符按钮组 */
+/* 操作符按钮组 —— 拉平自适应，只有面板宽度放不下时才换行。
+   旧版只有 flex + flex-wrap，按钮按内容硬堆不主动撑满 → 总是分行。
+   改为 grid + repeat(auto-fit, minmax(60px, 1fr))：
+     • 桌面端面板宽 ~420-490px → 7 个按钮在一行等分平铺
+     • 中屏面板宽 ~300-400px  → 5-6 列平铺，超出自动换行
+     • 窄屏 max-width 截断到视口内 → 列数自适应减少 */
 .filter-amount-panel-ops {
-  display: flex; flex-wrap: wrap; gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 4px;
 }
 .amt-op-btn {
   flex: 0 0 auto;
