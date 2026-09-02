@@ -107,12 +107,12 @@ router.post('/:id/allocate', async (req, res) => {
                 "INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)",
                 [req.userId, req.bookId, goal.account_id, catId, amount, `存入「${goal.name}」`, opDate, tid, goal.account_id]
             );
-            const srcBal = await computeAccountBalance(conn, req.userId, srcId);
-            const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
-            await enforceBalanceLimit(conn, req.userId, srcId, srcBal);
-            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [srcBal, srcId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
+            const srcBal = await computeAccountBalance(conn, req.userId, srcId, req.bookId);
+            const savBal = await computeAccountBalance(conn, req.userId, goal.account_id, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, srcId, srcBal, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal, req.bookId);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [srcBal, srcId, req.userId, req.bookId]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, ?, \'deposit\', ?, ?, ?)',
                 [req.userId, req.bookId, id, srcId, amount, opDate, `存入「${goal.name}」`]);
@@ -152,12 +152,12 @@ router.post('/:id/withdraw', async (req, res) => {
                 "INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)",
                 [req.userId, req.bookId, destId, catId, amount, `取回「${goal.name}」`, opDate, tid, destId]
             );
-            const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
-            const destBal = await computeAccountBalance(conn, req.userId, destId);
-            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
-            await enforceBalanceLimit(conn, req.userId, destId, destBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [destBal, destId]);
+            const savBal = await computeAccountBalance(conn, req.userId, goal.account_id, req.bookId);
+            const destBal = await computeAccountBalance(conn, req.userId, destId, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, destId, destBal, req.bookId);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [destBal, destId, req.userId, req.bookId]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, ?, \'withdraw\', ?, ?, ?)',
                 [req.userId, req.bookId, id, destId, amount, opDate, `取出「${goal.name}」`]);

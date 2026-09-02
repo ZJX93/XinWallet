@@ -1080,8 +1080,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
             // 8) 以账本为准重算所有导入账户余额，避免直接写入导致漂移
             for (const name of Object.keys(acMap)) {
-                const newBal = await computeAccountBalance(conn, userId, acMap[name]);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, acMap[name]]);
+                const newBal = await computeAccountBalance(conn, userId, acMap[name], bookId);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBal, acMap[name], userId, bookId]);
             }
         });
 

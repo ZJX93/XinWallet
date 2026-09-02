@@ -403,10 +403,10 @@ ${accRef}`;
                     );
                     const affected = new Set([parseInt(old.account_id), accountId]);
                     const newBalances = {};
-                    for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
-                    for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                    for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
+                    for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
                     for (const aid of affected) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });
@@ -435,7 +435,7 @@ ${accRef}`;
                     for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affectedAccounts) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
                     for (const aid of affectedAccounts) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });
