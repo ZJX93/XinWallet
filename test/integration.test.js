@@ -323,7 +323,7 @@ dbTest('rollbackInvestmentCreateTxn: 删除持仓时恢复关联账户余额', a
         assert.strictEqual(await computeAccountBalance(db, user.id, accId), 7000);
 
         await db.transaction(async (conn) => {
-            await rollbackInvestmentCreateTxn(conn, user.id, txId, accId);
+            await rollbackInvestmentCreateTxn(conn, user.id, user.bookId, txId, accId);
         });
 
         // 交易已删除，余额恢复
