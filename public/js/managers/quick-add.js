@@ -6,7 +6,7 @@
 // 拆分日期：2026-07-22
 // 拆分原因：将单体 app.js 按职责拆分为 ES Module，便于按需加载与维护
 // 依赖（运行时全局）：api、escapeHtml、fmt、getExpCats、getIncCats、getTransferCats、
-//                    showToast、initCache、DashboardManager、
+//                    showToast、initCache、DashboardManager、TransactionManager、
 //                    cache（cache.accounts）、DOM 元素（quickAddBtn、quickAddForm、
 //                    quickAddModal、quickCategory、quickAccount、quickAmount、
 //                    quickNote、quickBudget、quickFromAcc、quickToAcc、
@@ -130,6 +130,8 @@ const QuickAdd = {
         this.close();
         await initCache();
         await DashboardManager.refresh();
+        // 快捷记账会新增一笔交易/转账，账单页列表需同步，否则要切页才更新
+        if (window.TransactionManager) await window.TransactionManager.refresh();
     }
 };
 

@@ -518,6 +518,8 @@ const TransactionManager = {
         this.closeModal();
         await initCache();
         await this.refresh({ syncUrl: true });
+        // 记账/转账会改变本月收支与账户余额，Dashboard KPI 需同步，否则要切页才更新
+        if (window.DashboardManager) await window.DashboardManager.refresh();
         } finally {
             this._saving = false;
             if (submitBtn) submitBtn.disabled = false;
@@ -529,6 +531,7 @@ const TransactionManager = {
             showToast('交易已删除', 'warning');
             await initCache();
             await this.refresh();
+            if (window.DashboardManager) await window.DashboardManager.refresh();
         } catch (err) {
             // api() 已显示错误 toast
         }

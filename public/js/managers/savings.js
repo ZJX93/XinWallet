@@ -192,6 +192,9 @@ const SavingsGoalManager = {
         this.closeAmountModal();
         await initCache();
         await this.refresh();
+        // 存入/取回会真实划转账户资金（账户余额已变），账户卡片与 Dashboard KPI 需同步
+        if (window.AccountManager) await window.AccountManager.refresh();
+        if (window.DashboardManager) await window.DashboardManager.refresh();
     },
     async showHistory(id) {
         const g = (this.goals || []).find(x => x.id === id);
