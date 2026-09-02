@@ -548,11 +548,52 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
         if (!txn) return res.status(404).json(fail('交易记录不存在'));
 
         await db.transaction(async (conn) => {
-            // 删除该流水在主账本生成的收入/支出交易
-            await conn.query(
-                'DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
+            /*
+             * 先定位该流水对应的台账交易，再按 id 精确删除。
+             *
+             * 不能只靠 `DELETE ... WHERE investment_txn_id = ?` 一把梭：
+             * investment_txn_id 是后来 ALTER 补上的列（见 schema.sql 的兼容补列），
+             * 补列之前创建的老流水没有回填这个指针，按它删除会漏掉台账 ——
+             * 表现正是「理财流水删掉了，账户明细里那条还在，余额也不回退」。
+             * 因此指针查不到时，用「账户 + 金额 + 日期 + 收支方向」兜底反查孤儿台账。
+             */
+            const affected = new Set();
+            if (investment.account_id) affected.add(parseInt(investment.account_id));
+
+            let linked = await conn.query(
+                'SELECT id, account_id FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
                 [txnId, req.userId, req.bookId]
             );
+            if (!linked || linked.length === 0) {
+                // 兜底：指针缺失的老数据。由流水类型推导台账是 income 还是 expense，
+                // 再按「账户 + 金额 + 日期」定位；限定 investment_txn_id IS NULL，避免误伤已关联的台账。
+                const dir = (txn.type === 'sell' || txn.type === 'dividend' || txn.type === 'interest') ? 'income' : 'expense';
+                linked = await conn.query(
+                    `SELECT id, account_id FROM transactions
+                     WHERE user_id = ? AND book_id = ? AND account_id = ?
+                       AND type = ? AND amount = ? AND date = ? AND investment_txn_id IS NULL
+                     ORDER BY id DESC LIMIT 1`,
+                    [req.userId, req.bookId, investment.account_id, dir, txn.amount, txn.date]
+                );
+            }
+            // 余额要按「台账实际所属账户」重算，而不只是持仓当前绑定的账户
+            (linked || []).forEach((t) => { if (t.account_id) affected.add(parseInt(t.account_id)); });
+
+            const ledgerIds = (linked || []).map((t) => t.id);
+            if (ledgerIds.length) {
+                const ph = ledgerIds.map(() => '?').join(',');
+                await conn.query(
+                    `DELETE FROM transactions WHERE id IN (${ph}) AND user_id = ? AND book_id = ?`,
+                    [...ledgerIds, req.userId, req.bookId]
+                );
+            } else {
+                // 指针查不到、兜底也没命中（如跨账本等边界）：仍按指针删一次，保持原有行为
+                await conn.query(
+                    'DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
+                    [txnId, req.userId, req.bookId]
+                );
+            }
+
             // 删除理财流水
             await conn.query(
                 'DELETE FROM investment_transactions WHERE id = ? AND user_id = ?',
@@ -561,9 +602,9 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
             // 用剩余流水重算持仓（做T：数量归0也保持holding，隔夜自动归档）
             await recomputeInvestmentPosition(conn, investmentId, req.userId);
             // 关联账户余额重算（单一真相）
-            if (investment.account_id) {
-                const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
+            for (const aid of affected) {
+                const newBalance = await computeAccountBalance(conn, req.userId, aid);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, aid]);
             }
         });
 
