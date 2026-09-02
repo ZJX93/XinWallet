@@ -494,23 +494,37 @@ router.post('/investments/:id/transactions', async (req, res) => {
             );
         }
 
-        // 如果是分红/利息，记录到主交易（现金入账）
-        if (type === 'dividend' || type === 'interest') {
+        // 现金类流水（买入/卖出/分红/利息）同步记账到主交易（账户明细），并重算关联账户余额。
+        // buy/sell/dividend/interest 均需落主账本；红利再投不进现金、无台账。
+        if (['buy', 'sell', 'dividend', 'interest'].includes(type)) {
             const investment = ownedInv;
             if (investment && investment.account_id) {
                 await db.transaction(async (conn) => {
-                    const sellCatId = await getInvestmentSellCategoryId(conn);
-                    await conn.query(
+                    if (type === 'buy') {
+                        const isIns = await isInsuranceType(conn, investment.investment_type_id);
+                        const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
+                        await conn.query(
                             `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
-             VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
-                            [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, dateNorm, invTxn.insertId]
+                             VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?)`,
+                            [req.userId, req.bookId, investment.account_id, buyCatId, parseFloat(amount), `买入·${investment.name}`, dateNorm, invTxn.insertId]
                         );
-                        // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
-                        const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
+                    } else {
+                        const sellCatId = await getInvestmentSellCategoryId(conn);
+                        const txnNote = type === 'sell'
+                            ? `卖出·${investment.name}`
+                            : `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`;
+                        await conn.query(
+                            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+                             VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
+                            [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), txnNote, dateNorm, invTxn.insertId]
+                        );
+                    }
+                    // 以账本为准重算关联账户余额（单一真相，避免直接加减导致漂移）
+                    const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
                 });
             }
-            msg = type === 'dividend' ? '分红已记录' : '利息已记录';
+            msg = type === 'buy' ? '买入已记录' : type === 'sell' ? '卖出已记录' : type === 'dividend' ? '分红已记录' : '利息已记录';
         }
 
         // 如果是红利再投，增加持有份额（不进现金、不动账户余额）
