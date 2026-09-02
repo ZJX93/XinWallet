@@ -125,12 +125,12 @@ router.post('/', async (req, res) => {
                 [req.userId, req.bookId, to_account_id, transferCatId, amountNum, userNote || `来自${fromAcc[0].name}`, transferDate, insertResult.insertId, to_account_id]
             );
 
-            const fromBal = await computeAccountBalance(conn, req.userId, from_account_id);
-            const toBal = await computeAccountBalance(conn, req.userId, to_account_id);
-            await enforceBalanceLimit(conn, req.userId, from_account_id, fromBal);
-            await enforceBalanceLimit(conn, req.userId, to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, from_account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, to_account_id]);
+            const fromBal = await computeAccountBalance(conn, req.userId, from_account_id, req.bookId);
+            const toBal = await computeAccountBalance(conn, req.userId, to_account_id, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, from_account_id, fromBal, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, to_account_id, toBal, req.bookId);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, from_account_id, req.userId, req.bookId]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, to_account_id, req.userId, req.bookId]);
 
             // 转账会改变授信账户（信用卡 / 带额度的电子支付）的已用额度，
             // 债务必须跟着变，否则会出现「钱已还进信用卡、债务列表还挂着欠款」
@@ -201,13 +201,13 @@ router.put('/:id', async (req, res) => {
 
             const newBalances = {};
             for (const aid of affectedAccounts) {
-                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
             }
             for (const aid of affectedAccounts) {
-                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
             }
             // 改后的余额同样要同步授信账户债务（见 POST 处说明）
             for (const aid of affectedAccounts) {
@@ -232,12 +232,12 @@ router.delete('/:id', async (req, res) => {
         await db.transaction(async (conn) => {
             await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
             await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
-            const fromBal = await computeAccountBalance(conn, req.userId, transfer.from_account_id);
-            const toBal = await computeAccountBalance(conn, req.userId, transfer.to_account_id);
-            await enforceBalanceLimit(conn, req.userId, transfer.from_account_id, fromBal);
-            await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, transfer.from_account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, transfer.to_account_id]);
+            const fromBal = await computeAccountBalance(conn, req.userId, transfer.from_account_id, req.bookId);
+            const toBal = await computeAccountBalance(conn, req.userId, transfer.to_account_id, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, transfer.from_account_id, fromBal, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal, req.bookId);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, transfer.from_account_id, req.userId, req.bookId]);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, transfer.to_account_id, req.userId, req.bookId]);
             // 删掉转账后授信账户的已用额度回退，债务也要跟着回退
             await syncCreditCardDebt(conn, req.userId, transfer.from_account_id);
             await syncCreditCardDebt(conn, req.userId, transfer.to_account_id);

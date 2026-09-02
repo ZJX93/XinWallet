@@ -18,7 +18,7 @@ async function isCreditCardDebt(conn, debt, debtAccId) {
     if (debt.type === 'credit_card') return true;
     const accId = debtAccId || debt.account_id;
     if (accId) {
-        const acc = await conn.queryOne('SELECT type, credit_limit FROM accounts WHERE id = ?', [accId]);
+        const acc = await conn.queryOne('SELECT type, credit_limit FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, debt.user_id, debt.book_id]);
         if (acc && (acc.type === 'credit_card' || (acc.type === 'electronic_payment' && (acc.credit_limit || 0) > 0))) return true;
     }
     return false;
@@ -52,9 +52,9 @@ async function deleteRepaymentLegs(conn, userId, bookId, repayment) {
         if (repayment.account_id) affected.add(repayment.account_id);
     }
     const balances = {};
-    for (const aid of affected) balances[aid] = await computeAccountBalance(conn, userId, aid);
-    for (const aid of affected) await enforceBalanceLimit(conn, userId, aid, balances[aid]);
-    for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+    for (const aid of affected) balances[aid] = await computeAccountBalance(conn, userId, aid, bookId);
+    for (const aid of affected) await enforceBalanceLimit(conn, userId, aid, balances[aid], bookId);
+    for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [balances[aid], aid, userId, bookId]);
     return affected;
 }
 
@@ -84,9 +84,9 @@ async function createDebtCreateTxn(db, userId, bookId, accId, direction, princip
     [userId, bookId, accId, cat.id, txType, principal, txNote, txDate, srcAcc, dstAcc]
   );
   // 以账本为准重算关联账户余额
-  const newBalance = await computeAccountBalance(db, userId, accId);
-  await enforceBalanceLimit(db, userId, accId, newBalance);
-  await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+  const newBalance = await computeAccountBalance(db, userId, accId, bookId);
+  await enforceBalanceLimit(db, userId, accId, newBalance, bookId);
+  await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, userId, bookId]);
   return txResult.insertId;
 }
 
@@ -95,9 +95,9 @@ async function rollbackDebtCreateTxn(db, userId, bookId, txId, accId) {
   if (!txId) return;
   await db.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [txId, userId, bookId]);
   if (accId) {
-    const newBalance = await computeAccountBalance(db, userId, accId);
-    await enforceBalanceLimit(db, userId, accId, newBalance);
-    await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+    const newBalance = await computeAccountBalance(db, userId, accId, bookId);
+    await enforceBalanceLimit(db, userId, accId, newBalance, bookId);
+    await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, userId, bookId]);
   }
 }
 
@@ -289,6 +289,11 @@ router.post('/', async (req, res) => {
         }
         const rem = b.remaining !== undefined && b.remaining !== '' && b.remaining !== null ? parseFloat(b.remaining) : P;
         const accId = b.account_id ? parseInt(b.account_id) : null;
+        // 关联账户归属校验：若指定了账户，必须属于当前用户 + 当前账本（防越权篡改他人账户余额）
+        if (b.account_id && accId > 0) {
+            const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+            if (!acc) return res.status(404).json(fail('关联账户不存在'));
+        }
         await db.transaction(async (conn) => {
         const result = await conn.query(
             `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
@@ -463,11 +468,11 @@ router.post('/:id/repayments', async (req, res) => {
             txId = txResult.insertId;
         }
         await conn.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txId, repId]);
-        // 5) 账户余额重算（以账本为准）—— 涉及几个账户就重算几个
+        // 5) 账户余额重算（以账本为准，严格按当前账本隔离）—— 涉及几个账户就重算几个
         const balances = {};
-        for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid);
-        for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid]);
-        for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+        for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
+        for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid], req.bookId);
+        for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [balances[aid], aid, req.userId, req.bookId]);
         // 6) 更新剩余本金 + 状态
         let newRemain = Math.max(0, parseFloat(debt.remaining) - pp);
         // 自动同步出来的授信债务以账户余额为唯一真相：还款让余额回升后重新校准，
@@ -564,11 +569,11 @@ router.put('/:id/repayments/:rid', async (req, res) => {
                 const txResult = await conn.query(insertSQL, txParams);
                 txId = txResult.insertId;
             }
-            // 4) 账户余额重算（含旧账户 + 新账户）
+            // 4) 账户余额重算（含旧账户 + 新账户，严格按当前账本隔离）
             const balances = {};
-            for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid);
-            for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid]);
-            for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [balances[aid], aid]);
+            for (const aid of affected) balances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
+            for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, balances[aid], req.bookId);
+            for (const aid of affected) await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [balances[aid], aid, req.userId, req.bookId]);
             // 5) 更新还款主记录 + 剩余本金 / 状态
             let newRemain = Math.max(0, remain - pp);
             if (crossAccount && isAutoSyncDebt(debt)) {
