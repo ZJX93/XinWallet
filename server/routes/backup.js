@@ -1,7 +1,7 @@
 /* ============================================
-   鑫钱包 · 账本备份（xlsx 3 工作表）
-   导出：账本配置页 / 账户页 / 账单流水页（像微信账单，可识别、可恢复）
-   导入：解析上述 3 工作表，事务内完整恢复（账户/分类/标签/预算/债务/储蓄目标/交易/转账）
+   鑫钱包 · 账本备份（xlsx 多工作表：配置页/账户页/预算表/理财表/债务表/储蓄表/账单流水页）
+   导出：各模块独立成表，深色表头 + 斑马纹 + 全格边框的专业制表样式
+   导入：解析上述工作表，事务内完整恢复（账户/分类/标签/预算/债务/储蓄目标/交易/转账）
    ============================================ */
 
 const express = require('express');
@@ -19,10 +19,11 @@ const BACKUP_MARK = '鑫钱包账本备份';
 const BACKUP_VERSION = 3;
 
 // 工作表名称（导出/导入均依赖，改名需同步）
-// v3 结构：账本配置页（账本/分类/标签/预算/AI配置）｜账户页（账户）｜理财表（理财持仓+理财流水）
-//         ｜债务表（债务+债务还款）｜储蓄表（储蓄目标+储蓄流水）｜账单流水页（交易）
+// v3 结构：账本配置页（账本/分类/标签/AI配置）｜账户页（账户）｜预算表（预算）
+//         ｜理财表（理财持仓+理财流水）｜债务表（债务+债务还款）｜储蓄表（储蓄目标+储蓄流水）｜账单流水页（交易）
 const SHEET_CONFIG = '账本配置页';
 const SHEET_ACCOUNTS = '账户页';
+const SHEET_BUDGET = '预算表';
 const SHEET_INV = '理财表';
 const SHEET_DEBT = '债务表';
 const SHEET_SAVINGS = '储蓄表';
@@ -30,14 +31,15 @@ const SHEET_TX = '账单流水页';
 const SHEET_INV_TX = '理财流水页'; // v2 遗留可选表：旧备份无「理财表」时据此解析理财流水
 
 // v3 各工作表内的「区段标题」（解析时据此切换区块）
-const CONFIG_SECTIONS = ['账本', '分类', '标签', '预算', 'AI配置'];
+const CONFIG_SECTIONS = ['账本', '分类', '标签', 'AI配置'];
 const ACCOUNT_SECTIONS = ['账户'];
+const BUDGET_SECTIONS = ['预算'];
 const INV_SECTIONS = ['理财持仓', '理财流水'];
 const DEBT_SECTIONS = ['债务', '债务还款'];
 const SAVINGS_SECTIONS = ['储蓄目标', '储蓄流水'];
 const TX_SECTION = '交易';
 
-// v2 兼容：旧备份区段布局（账本配置页含债务/储蓄目标、账户页含理财持仓）
+// v2 兼容：旧备份区段布局（账本配置页含预算/债务/储蓄目标、账户页含理财持仓）
 const CONFIG_SECTIONS_V2 = ['账本', '分类', '标签', '预算', '债务', '储蓄目标'];
 const ACCOUNT_SECTIONS_V2 = ['账户', '理财持仓'];
 
@@ -85,36 +87,49 @@ function fmtDateTime(v) {
 // ==========================================
 // 构建工作簿（纯函数，便于单测，不依赖 DB）
 // ==========================================
-// 表格样式常量（与品牌色协调的浅靛蓝）
-const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF1FF' } };
+// 表格样式常量（品牌靛蓝，专业制表：深色表头 + 斑马纹 + 全格边框）
+const BRAND_ARGB = 'FF3742C6';
+const SUBTITLE_ARGB = 'FF5B63E8';
+const ZEBRA_ARGB = 'FFF2F4FB';
 const THIN = { style: 'thin', color: { argb: 'FFD0D5E0' } };
 const CELL_BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
-const TITLE_COLOR = { argb: 'FF3742C6' };
+const TITLE_COLOR = { argb: BRAND_ARGB };
+const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_ARGB } };
+const SUBTITLE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUBTITLE_ARGB } };
+const ZEBRA_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA_ARGB } };
 
-// 给表头行套样式（加粗 + 底色 + 边框 + 居中）
+// 给表头行套样式（白字 + 深靛蓝底 + 边框 + 居中）
 function styleHeaderRow(row) {
-    row.font = { bold: true, color: { argb: 'FF1F2A44' }, size: 11 };
+    row.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
     row.fill = HEADER_FILL;
-    row.alignment = { vertical: 'middle', horizontal: 'left' };
+    row.alignment = { vertical: 'middle', horizontal: 'center' };
     row.eachCell(c => { c.border = CELL_BORDER; });
 }
 
-// 添加「区段」：空行 + 标题行 + 表头行 + 数据行；标题/表头均套样式，数据行加细边框
+// 添加「区段」：空行 + 标题行（合并+浅靛蓝底白字） + 表头行（深底白字） + 数据行（斑马纹+全格边框）
 function addSection(ws, title, headers, rows) {
     ws.addRow([]);
     const titleRow = ws.addRow([title]);
-    titleRow.font = { bold: true, size: 12, color: TITLE_COLOR };
-    titleRow.alignment = { vertical: 'middle' };
+    titleRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    titleRow.fill = SUBTITLE_FILL;
+    titleRow.alignment = { vertical: 'middle', indent: 1 };
+    if (headers.length > 1) ws.mergeCells(titleRow.number, 1, titleRow.number, headers.length);
     const headerRow = ws.addRow(headers);
     styleHeaderRow(headerRow);
-    for (const r of (rows || [])) {
+    (rows || []).forEach((r, idx) => {
         const dr = ws.addRow(r);
         dr.alignment = { vertical: 'middle', wrapText: false };
-        dr.eachCell(c => { c.border = CELL_BORDER; });
-    }
+        const fill = (idx % 2 === 1) ? ZEBRA_FILL : null;
+        // 按表头列数给每一列都加边框，确保空单元格也有「格子」，避免出现白表
+        for (let c = 1; c <= headers.length; c++) {
+            const cell = dr.getCell(c);
+            cell.border = CELL_BORDER;
+            if (fill) cell.fill = fill;
+        }
+    });
 }
 
-// 统一收尾：列宽自适应（限幅）、冻结首行（sheet 标题）、首行大标题样式，消除白表散乱
+// 统一收尾：列宽自适应（限幅）、首行大标题（深底白字+合并）、冻结首行
 function finalizeSheet(ws) {
     let maxCols = 0;
     ws.eachRow(row => { maxCols = Math.max(maxCols, row.cellCount); });
@@ -123,8 +138,10 @@ function finalizeSheet(ws) {
         if (!col.width) col.width = 16;
     }
     const first = ws.getRow(1);
-    first.font = { bold: true, size: 14, color: TITLE_COLOR };
-    first.alignment = { vertical: 'middle' };
+    first.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+    first.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_ARGB } };
+    first.alignment = { vertical: 'middle', indent: 1 };
+    if (maxCols > 1) ws.mergeCells(1, 1, 1, maxCols);
     ws.views = [{ state: 'frozen', ySplit: 1 }];
 }
 
@@ -185,7 +202,7 @@ function buildWorkbook(data) {
     const aiSettingRows = Object.keys(aiSettings).map(k => ['识别设置', k, '', '', '', aiSettings[k] === true ? '是' : (aiSettings[k] === false ? '否' : String(aiSettings[k] != null ? aiSettings[k] : ''))]);
     const aiConfigRows = [...aiProviderRows, ...aiOcrRow, ...aiSettingRows];
 
-    // ---- Sheet 1: 账本配置页（账本/分类/标签/预算/AI配置）----
+    // ---- Sheet 1: 账本配置页（账本/分类/标签/AI配置）----
     // 首行保留 BACKUP_MARK 作为文件识别标记（解析时校验），与 v2 兼容
     const cfg = wb.addWorksheet(SHEET_CONFIG);
     cfg.addRow([BACKUP_MARK]);
@@ -196,7 +213,6 @@ function buildWorkbook(data) {
         [[book.name || '默认账本', book.icon || '📒', book.color || '#6366f1', book.is_default ? '是' : '否']]);
     addSection(cfg, '分类', ['编码', '名称', '类型', '图标', '颜色', '系统预设', '父分类'], catRows);
     addSection(cfg, '标签', ['名称', '颜色', '图标'], tagRows);
-    addSection(cfg, '预算', ['名称', '周期', '金额', '开始日期', '结束日期'], budgetRows);
     addSection(cfg, 'AI配置', ['类别', '名称', 'Base URL', '模型', '启用', '参数/值'], aiConfigRows);
 
     // ---- Sheet 2: 账户页（仅账户）----
@@ -227,8 +243,13 @@ function buildWorkbook(data) {
     tx.addRow([SHEET_TX]);
     addSection(tx, TX_SECTION, ['时间', '类型', '金额', '账户', '分类', '备注', '对方账户', '关联类型', '关联对象', '标签'], txRows);
 
-    // 统一套用表格样式（列宽/边框/冻结首行），消除白表散乱
-    [cfg, acc, inv, debt, sav, tx].forEach(finalizeSheet);
+    // ---- Sheet 7: 预算表（预算，独立）----
+    const budget = wb.addWorksheet(SHEET_BUDGET);
+    budget.addRow([SHEET_BUDGET]);
+    addSection(budget, '预算', ['名称', '周期', '金额', '开始日期', '结束日期'], budgetRows);
+
+    // 统一套用表格样式（列宽/边框/斑马纹/冻结首行），确保每张表都是专业制表
+    [cfg, acc, budget, inv, debt, sav, tx].forEach(finalizeSheet);
     return wb;
 }
 
@@ -283,7 +304,7 @@ function parseWorkbook(buf) {
         const tx = parseSections(txWs, [TX_SECTION, '债务还款']);
 
         // 归一化到 import 统一字段
-        let investRows = [], invTxRows = [], debts = [], debtRepayments = [], savings = [], savingsTxns = [], aiConfig = null;
+        let investRows = [], invTxRows = [], debts = [], debtRepayments = [], savings = [], savingsTxns = [], budgets = [], aiConfig = null;
 
         if (isV3) {
             const invWs = wb.getWorksheet(SHEET_INV);
@@ -301,9 +322,19 @@ function parseWorkbook(buf) {
             savings = s['储蓄目标'] || [];
             savingsTxns = s['储蓄流水'] || [];
 
+            // 预算优先从独立「预算表」解析；兼容旧 v3（预算仍在配置页）时回退读取配置页预算区段
+            const bWs = wb.getWorksheet(SHEET_BUDGET);
+            if (bWs) {
+                const b = parseSections(bWs, BUDGET_SECTIONS);
+                budgets = b['预算'] || [];
+            } else {
+                const bc = parseSections(cfgWs, ['预算']);
+                budgets = bc['预算'] || [];
+            }
+
             aiConfig = parseAiConfig(config['AI配置']);
         } else {
-            // v2 兼容：理财持仓在账户页、理财流水在遗留「理财流水页」；债务/储蓄目标在配置页；债务还款在账单流水页
+            // v2 兼容：理财持仓在账户页、理财流水在遗留「理财流水页」；债务/储蓄目标/预算在配置页；债务还款在账单流水页
             investRows = accounts['理财持仓'] || [];
             const invTxWs = wb.getWorksheet(SHEET_INV_TX);
             const invTx = invTxWs ? parseSections(invTxWs, ['理财流水']) : {};
@@ -311,12 +342,14 @@ function parseWorkbook(buf) {
             debts = config['债务'] || [];
             debtRepayments = tx['债务还款'] || [];
             savings = config['储蓄目标'] || [];
+            budgets = config['预算'] || [];
             savingsTxns = [];
         }
 
-        // 归一到 import 现有消费路径：债务/储蓄目标塞回 config，理财持仓塞回 accounts
+        // 归一到 import 现有消费路径：债务/储蓄目标/预算塞回 config，理财持仓塞回 accounts
         config['债务'] = debts;
         config['储蓄目标'] = savings;
+        config['预算'] = budgets;
         accounts['理财持仓'] = investRows;
 
         return {
