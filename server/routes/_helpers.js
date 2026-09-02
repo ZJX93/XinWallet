@@ -326,8 +326,12 @@ async function ensureWeeklySnapshots(userId, investments) {
         const value = parseFloat(inv.current_value);
         const cost = parseFloat(inv.total_cost);
 
-        // 本周快照
-        rows.push([userId, inv.id, value, cost, lastSundayStr]);
+        // 本周快照 —— book_id 必须与持仓所属账本一致。
+        // 早期实现漏写 book_id（列在 schema 里是后补的），导致快照全部为 NULL；
+        // 而 stats.js /stats/investments 按 book_id 过滤，NULL 永远不匹配，
+        // 「市值趋势」折线图就一直是空。book_id 用 inv.book_id 而非入参，
+        // 是为了让函数对多账本用户也能按持仓账本正确归属快照。
+        rows.push([userId, inv.book_id, inv.id, value, cost, lastSundayStr]);
 
         // 回填历史周快照
         const firstDate = firstTxMap.get(Number(inv.id));
@@ -339,23 +343,23 @@ async function ensureWeeklySnapshots(userId, investments) {
         end.setDate(end.getDate() - 7);
 
         while (start <= end) {
-            rows.push([userId, inv.id, value, cost, start.toISOString().slice(0, 10)]);
+            rows.push([userId, inv.book_id, inv.id, value, cost, start.toISOString().slice(0, 10)]);
             start.setDate(start.getDate() + 7);
         }
     }
     if (rows.length === 0) return;
 
-    // 分批多值 INSERT：每批 500 行 = 2500 个绑定参数，远低于 PostgreSQL 65535 上限
+    // 分批多值 INSERT：每批 500 行 = 3000 个绑定参数，远低于 PostgreSQL 65535 上限
     const CHUNK_SIZE = 500;
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
         const chunk = rows.slice(i, i + CHUNK_SIZE);
-        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
         // INSERT IGNORE = MySQL 等价幂等写；ON CONFLICT = PG 幂等写（schema 双方言都有 UNIQUE (investment_id, nav_date)）
         const suffix = db.DB_DIALECT === 'mysql'
             ? ''   // INSERT IGNORE 无需 ON CONFLICT
             : ' ON CONFLICT (investment_id, nav_date) DO NOTHING';
         await db.query(
-            `INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
+            `INSERT INTO investment_snapshots (user_id, book_id, investment_id, total_value, total_cost, nav_date)
              VALUES ${placeholders}${suffix}`,
             chunk.flat()
         );
