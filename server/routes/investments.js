@@ -122,7 +122,10 @@ async function getInvestmentSellCategoryId(conn) {
     const parent = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['被动收入', 'income']);
     const parentId = parent[0] ? parent[0].id : null;
     const result = await conn.query(
-        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
+        // 列 6 个 → 占位符 5 个 + is_system 的 TRUE 字面量。
+        // 早期这里多写了一个 `?`（6 个占位符 + TRUE = 7 个值对 6 列），
+        // 一旦「理财收益」种子缺失、走到这条兜底补建路径就会直接 SQL 报错、拖垮卖出/减仓。
+        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, TRUE)',
         ['理财收益', 'income', '📊', '#22c55e', parentId]
     );
     return result.insertId;
@@ -698,7 +701,7 @@ router.put('/investments/:id/sell', async (req, res) => {
             // 记录卖出
             const sellTxn = await conn.query(
                 `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
-         VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, 'sell', ?, ?, ?, ?, ?, ?)`,
                 [req.userId, req.bookId, id, sellAmount, parseFloat(sell_price), parseFloat(investment.quantity), normDate(date), parseFloat(fee) || 0, note || '清仓卖出']
             );
 
