@@ -425,12 +425,19 @@ const AccountManager = {
                 // 债务还款去各自页面管理，不在此提供。
                 const showActions = t.link_type === 'account_interest'
                     || (t.note && t.note.indexOf('利息') >= 0);
+                // 把 txn 关键字段序列化到按钮 dataset：「修改」处理优先从这里取，
+                // 避免依赖闭包 list.find 在 id 类型/序列化不一致时返回 undefined 而静默失败
+                const txnAttr = showActions ? escapeHtml(JSON.stringify({
+                    id: t.id, amount: t.amount, date: t.date, note: t.note || '',
+                    category_id: t.category_id, type: t.type,
+                    link_type: t.link_type || null, link_id: t.link_id || null
+                })) : '';
                 return `
                 <div class="rh-item">
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
                         <span class="rh-date">${t.date || ''}</span>
-                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
+                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
@@ -458,10 +465,20 @@ const AccountManager = {
                     case 'close': this.closeDetail(); break;
                     case 'delete-txn': await this.deleteAccTxn(parseInt(btn.dataset.id), id); break;
                     case 'edit-txn': {
-                        const targetId = parseInt(btn.dataset.id, 10);
-                        const txn = list.find(t => Number(t.id) === targetId);
+                        // 优先从按钮 dataset 读取（渲染时序列化），兜底再用 list.find。
+                        // 此前仅依赖 list.find 出现点击无反应（流水能从「删除」处理找到、
+                        // 但因 id 来源/序列化差异 list.find 返回 undefined 时会静默 break）。
+                        let txn = null;
+                        if (btn.dataset.txn) {
+                            try { txn = JSON.parse(btn.dataset.txn); } catch (e) { /* fallthrough to list.find */ }
+                        }
+                        if (!txn) {
+                            const targetId = parseInt(btn.dataset.id, 10);
+                            txn = list.find(t => Number(t.id) === targetId) || null;
+                        }
                         if (!txn) {
                             console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id);
+                            showToast('无法编辑该流水，请关闭后重新打开', 'error');
                             break;
                         }
                         // 账户明细中仅利息流水有修改入口，直接用账户利息弹窗编辑
