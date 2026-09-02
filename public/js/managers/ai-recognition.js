@@ -177,7 +177,7 @@ const AIRecognition = {
             const name = this.billFile.name.toLowerCase();
             const isCsv = name.endsWith('.csv');
             if (!isCsv) {
-                // XLS/XLSX：按需动态加载 xlsx.full.min.js（默认已 preload）
+                // XLS/XLSX：按需动态加载 xlsx.full.min.js（未在 index.html 预载，避免无用 preload 警告）
                 if (typeof XLSX === 'undefined') {
                     await new Promise((resolve, reject) => {
                         const s = document.createElement('script');
