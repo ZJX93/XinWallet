@@ -95,12 +95,14 @@ router.get('/dashboard', async (req, res) => {
        FROM investments WHERE user_id = ? AND book_id = ? AND status = 'holding'`,
                 [req.userId, req.bookId]
             ),
-            // 预算执行
+            // 预算执行（口径与 budgets.js 列表接口一致：周期内分类名=预算名 或 直接 budget_id 关联）
             db.query(
                 `SELECT b.*,
-                    (SELECT COALESCE(SUM(amount), 0) FROM transactions
-                      WHERE user_id = b.user_id AND book_id = b.book_id AND type = 'expense'
-                        AND date BETWEEN b.start_date AND b.end_date) as actual
+                    (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t
+                       LEFT JOIN categories c ON t.category_id = c.id
+                       WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
+                         AND CAST(t.date AS CHAR(10)) BETWEEN b.start_date AND b.end_date
+                         AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))) as actual
              FROM budgets b
              WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?
              ORDER BY b.start_date`,

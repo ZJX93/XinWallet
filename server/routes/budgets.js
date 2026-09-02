@@ -45,11 +45,23 @@ function calcPeriodRange(type, baseDate) {
 router.get('/', async (req, res) => {
     try {
         const { period, period_type } = req.query; // period 可选 YYYY-MM-DD；period_type 按周期类型筛选
-        let sql = `SELECT b.*, COALESCE(SUM(t.amount), 0) as actual
+        // 预算 actual 计算口径（修复：原实现用 LEFT JOIN t.budget_id 且完全不限日期，
+        // 既要求交易显式带 budget_id（多数记账不会带），又累计预算周期外的全部历史支出，
+        // 导致进度条要么恒为 0、要么虚高）。
+        // 现统一为：周期内「分类名 == 预算名」的支出 + 直接关联 budget_id 的支出（OR 覆盖两种记账习惯）。
+        // 日期用 CAST(date AS CHAR(10)) BETWEEN，跨方言且与 monthData 口径一致，且包含月末当天非零点时刻。
+        let sql = `SELECT b.*,
+             COALESCE((
+               SELECT SUM(t.amount) FROM transactions t
+               LEFT JOIN categories c ON t.category_id = c.id
+               WHERE t.user_id = b.user_id AND t.book_id = b.book_id
+                 AND t.type = 'expense'
+                 AND CAST(t.date AS CHAR(10)) BETWEEN b.start_date AND b.end_date
+                 AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
+             ), 0) as actual
              FROM budgets b
-             LEFT JOIN transactions t ON b.id = t.budget_id AND t.type = 'expense' AND t.book_id = ?
              WHERE b.user_id = ? AND b.book_id = ?`;
-        const params = [req.bookId, req.userId, req.bookId];
+        const params = [req.userId, req.bookId];
         // 如果传了 period，筛选时间范围重叠的预算
         if (period) {
             sql += ' AND ? BETWEEN b.start_date AND b.end_date';

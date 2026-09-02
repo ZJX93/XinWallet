@@ -7,7 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
-    success, handleServerError, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
+    success, handleServerError, fmtDateTime, normDate, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
 const { syncCreditCardDebt, resolveNote } = require('./utils');
@@ -418,34 +418,43 @@ router.post('/', async (req, res) => {
         const amountNum = toAmount(amount);
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
         if (!account_id) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('请选择账户'));
+        const accId = parseInt(account_id);
+        if (!Number.isInteger(accId) || accId <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('账户无效'));
+        if (!category_id) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('请选择分类'));
+        const catId = parseInt(category_id);
+        if (!Number.isInteger(catId) || catId <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('分类无效'));
         if (!TRANSACTION_TYPES.includes(type)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('交易类型不合法'));
 
-        const transDate = date || new Date().toISOString().replace('T', ' ').slice(0, 19);
+        // 账户归属校验：必须属于当前用户 + 当前账本（防越权篡改他人账户余额）
+        const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        if (!acc) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('账户不存在'));
+
+        // 日期归一化（兼容 datetime-local / ISO / 纯日期；缺省回退 now）
+        const transDate = normDate(date);
         // 复式记账：支出/转出(source=扣款账户)，收入/转入(dest=入账账户)
-        const src = (type === 'expense' || type === 'transfer_out') ? parseInt(account_id) : null;
-        const dst = (type === 'income' || type === 'transfer_in') ? parseInt(account_id) : null;
+        const src = (type === 'expense' || type === 'transfer_out') ? accId : null;
+        const dst = (type === 'income' || type === 'transfer_in') ? accId : null;
         const bId = budget_id ? parseInt(budget_id) : null;
         const loc = location || null;
         const lt = link_type || null;
         const li = link_id ? parseInt(link_id) : null;
 
-        // 使用事务确保余额一致
         const result = await db.transaction(async (conn) => {
             // 备注：尊重调用方给定的 note（AI 流程由 AI 自填；手动记账由用户填），无则 fallback 到 merchant，再无则用类目名
-            const finalNote = await resolveNote(conn, req.userId, parseInt(category_id), note, merchant);
+            const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
             const insertResult = await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id, location, link_type, link_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, parseInt(account_id), parseInt(category_id), bId, type, amountNum, finalNote, transDate, src, dst, loc, lt, li]
+                [req.userId, req.bookId, accId, catId, bId, type, amountNum, finalNote, transDate, src, dst, loc, lt, li]
             );
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
-            const newBalance = await computeAccountBalance(conn, req.userId, parseInt(account_id));
-            await enforceBalanceLimit(conn, req.userId, parseInt(account_id), newBalance);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, parseInt(account_id)]);
+            const newBalance = await computeAccountBalance(conn, req.userId, accId, req.bookId);
+            await enforceBalanceLimit(conn, req.userId, accId, newBalance, req.bookId);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, req.userId, req.bookId]);
 
             // 自动同步信用卡债务
-            await syncCreditCardDebt(conn, req.userId, parseInt(account_id));
+            await syncCreditCardDebt(conn, req.userId, accId);
 
             // 写入交易标签
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
@@ -475,24 +484,34 @@ router.put('/:id', async (req, res) => {
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
         if (!TRANSACTION_TYPES.includes(type)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('交易类型不合法'));
 
-        // 先获取原交易信息用于回滚余额
+        // 先获取原交易信息用于回滚余额（已按 user+book 限定，防越权）
         const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!old) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
 
-        const src = (type === 'expense' || type === 'transfer_out') ? parseInt(account_id) : null;
-        const dst = (type === 'income' || type === 'transfer_in') ? parseInt(account_id) : null;
+        const accId = parseInt(account_id);
+        if (!Number.isInteger(accId) || accId <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('账户无效'));
+        const catId = parseInt(category_id);
+        if (!Number.isInteger(catId) || catId <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('分类无效'));
+        // 新账户归属校验（必须属于当前用户 + 当前账本，防越权篡改他人账户余额）
+        const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        if (!acc) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('账户不存在'));
+
+        const src = (type === 'expense' || type === 'transfer_out') ? accId : null;
+        const dst = (type === 'income' || type === 'transfer_in') ? accId : null;
         const bId = budget_id ? parseInt(budget_id) : null;
         const loc = location || null;
         const lt = link_type || null;
         const li = link_id ? parseInt(link_id) : null;
+        // 日期：提供则归一化（兼容 datetime-local/ISO/纯日期），未提供则保留原值
+        const finalDate = date ? normDate(date) : old.date;
 
         await db.transaction(async (conn) => {
             // 备注：尊重调用方给定的 note，无则 fallback 到 merchant，再无则用类目名
-            const finalNote = await resolveNote(conn, req.userId, parseInt(category_id), note, merchant);
+            const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
             // 更新交易记录（含复式记账借贷双方字段 + location/link）
             await conn.query(
                 `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
-                [parseInt(account_id), parseInt(category_id), bId, type, amountNum, finalNote, date, src, dst, loc, lt, li, id, req.userId, req.bookId]
+                [accId, catId, bId, type, amountNum, finalNote, finalDate, src, dst, loc, lt, li, id, req.userId, req.bookId]
             );
 
             // 重置交易标签
@@ -505,17 +524,17 @@ router.put('/:id', async (req, res) => {
                 );
             }
 
-            // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移
-            const affected = new Set([parseInt(old.account_id), parseInt(account_id)]);
+            // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移；严格按当前账本隔离
+            const affected = new Set([parseInt(old.account_id), accId]);
             const newBalances = {};
             for (const aid of affected) {
-                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
             }
             for (const aid of affected) {
-                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
             for (const aid of affected) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                 // 自动同步信用卡债务
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -552,16 +571,16 @@ router.delete('/:id', async (req, res) => {
             }
             // 若该台账交易由理财操作生成，回滚对应持仓（删除理财流水 + 按剩余流水重算）
             await reverseLinkedInvestmentTxn(conn, req.userId, old.investment_txn_id);
-            // 余额由账本重算，避免增量回滚的漂移
+            // 余额由账本重算（严格按当前账本隔离），避免增量回滚的漂移
             const newBalances = {};
             for (const aid of affectedAccounts) {
-                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
             }
             for (const aid of affectedAccounts) {
-                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                 // 自动同步信用卡债务（删除交易后余额变化）
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -576,12 +595,13 @@ router.delete('/:id', async (req, res) => {
 // 交易月份列表
 router.get('/months', async (req, res) => {
     try {
-        const months = await db.query(
-            `SELECT DISTINCT TO_CHAR(date, 'YYYY-MM') as month
-       FROM transactions WHERE user_id = ? AND book_id = ? ORDER BY month DESC`,
+        const rows = await db.query(
+            `SELECT DISTINCT CAST(date AS CHAR(10)) as d FROM transactions WHERE user_id = ? AND book_id = ?`,
             [req.userId, req.bookId]
         );
-        res.json(success(months.map(m => m.month)));
+        // 跨方言：CAST(date AS CHAR(10)) 在 PG/MySQL 均返回 YYYY-MM-DD，按前缀取月份
+        const months = [...new Set(rows.map(r => String(r.d).slice(0, 7)))].sort().reverse();
+        res.json(success(months));
     } catch (err) {
         handleServerError(res, err);
     }

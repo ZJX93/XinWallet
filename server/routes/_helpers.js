@@ -237,9 +237,9 @@ function extractJson(text) {
 }
 
 // 复式记账：仅账本流水净额（不含期初）
-async function sumLedgerEffects(conn, userId, accountId) {
-    const rows = await conn.query(
-        `SELECT COALESCE(SUM(
+// ⚠️ bookId 为可选参数：传则严格按账本隔离（多账本安全），不传则回退旧行为（兼容 seed/AI 等内部调用）。
+async function sumLedgerEffects(conn, userId, accountId, bookId) {
+    const sql = `SELECT COALESCE(SUM(
             CASE
                 WHEN source_account_id = ? THEN -amount
                 WHEN destination_account_id = ? THEN amount
@@ -248,9 +248,12 @@ async function sumLedgerEffects(conn, userId, accountId) {
                 ELSE 0
             END), 0) AS bal
         FROM transactions
-        WHERE user_id = ? AND (source_account_id = ? OR destination_account_id = ? OR account_id = ?)`,
-        [accountId, accountId, accountId, accountId, userId, accountId, accountId, accountId]
-    );
+        WHERE user_id = ?${bookId != null ? ' AND book_id = ?' : ''}
+          AND (source_account_id = ? OR destination_account_id = ? OR account_id = ?)`;
+    const params = [accountId, accountId, accountId, accountId, userId];
+    if (bookId != null) params.push(bookId);
+    params.push(accountId, accountId, accountId);
+    const rows = await conn.query(sql, params);
     return parseFloat(rows[0] && rows[0].bal != null ? rows[0].bal : 0);
 }
 
@@ -259,10 +262,13 @@ async function sumLedgerEffects(conn, userId, accountId) {
 // 金额精度修复（审核报告 M3）：本函数的返回值会被写回 accounts.balance 列，
 // 是"计算 → 落库 → 再读出参与下一轮计算"的闭环起点，也是浮点误差被放大
 // 并永久固化的关键链路。此处改用整数分精确加法，杜绝分位漂移。
-async function computeAccountBalance(conn, userId, accountId) {
-    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
+// ⚠️ bookId 可选：传入后余额重算严格限定在当前账本流水（多账本隔离的关键链路）。
+async function computeAccountBalance(conn, userId, accountId, bookId) {
+    const accSql = 'SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?' + (bookId != null ? ' AND book_id = ?' : '');
+    const accParams = bookId != null ? [accountId, userId, bookId] : [accountId, userId];
+    const acc = await conn.query(accSql, accParams);
     const opening = acc[0] ? acc[0].opening_balance : 0;
-    const effects = await sumLedgerEffects(conn, userId, accountId);
+    const effects = await sumLedgerEffects(conn, userId, accountId, bookId);
     // 储蓄目标现已镜像关联账户的余额（current_amount = 账户余额），
     // 不再从账户可用余额中扣减 allocated，避免"账户余额 = 自身 - 自身"的循环抵消。
     return addAmounts(opening || 0, effects);
@@ -270,11 +276,11 @@ async function computeAccountBalance(conn, userId, accountId) {
 
 // 校验账户余额不能低于 -credit_limit（无信用额度则不允许负数）
 // 用于交易/转账/还款/储蓄等可能改变余额的操作
-async function enforceBalanceLimit(conn, userId, accountId, balance) {
-    const rows = await conn.query(
-        'SELECT name, type, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
-        [accountId, userId]
-    );
+// ⚠️ bookId 可选：传入后账户查询严格按账本隔离（与余额重算口径一致）。
+async function enforceBalanceLimit(conn, userId, accountId, balance, bookId) {
+    const sql = 'SELECT name, type, credit_limit FROM accounts WHERE id = ? AND user_id = ?' + (bookId != null ? ' AND book_id = ?' : '');
+    const params = bookId != null ? [accountId, userId, bookId] : [accountId, userId];
+    const rows = await conn.query(sql, params);
     const acc = rows[0];
     if (!acc) return;
     const limit = parseFloat(acc.credit_limit) || 0;
