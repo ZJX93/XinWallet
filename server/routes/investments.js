@@ -513,10 +513,13 @@ router.post('/investments/:id/transactions', async (req, res) => {
                         const txnNote = type === 'sell'
                             ? `卖出·${investment.name}`
                             : `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`;
+                        // 利息需在账户明细提供修改/删除入口（link_type=account_interest），
+                        // 卖出/分红属理财联动，去投资页管理，link_type 保持 NULL。
+                        const linkType = type === 'interest' ? 'account_interest' : null;
                         await conn.query(
-                            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
-                             VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
-                            [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), txnNote, dateNorm, invTxn.insertId]
+                            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id, link_type)
+                             VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?, ?)`,
+                            [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), txnNote, dateNorm, invTxn.insertId, linkType]
                         );
                     }
                     // 以账本为准重算关联账户余额（单一真相，避免直接加减导致漂移）

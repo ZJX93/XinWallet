@@ -671,7 +671,7 @@ const TransactionManager = {
             // 直接动这类关联流水会让账户余额与债务剩余本金/持仓脱节
             const linked = t.link_type === 'debt_repayment'
                 ? ` data-link="${escapeHtml(t.link_type)}"`
-                : (t.link_type === 'account_interest'
+                : (t.link_type === 'account_interest' || (t.note && t.note.indexOf('利息') >= 0)
                     ? ' data-link="account_interest"'
                     : (t.investment_txn_id != null ? ' data-link="investment"' : ''));
             return `

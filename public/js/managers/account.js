@@ -415,21 +415,22 @@ const AccountManager = {
             };
             const rows = list.map(t => {
                 const m = typeMeta[t.type] || { dir: '', cls: '', label: t.type };
-                // 利息（账户记利息 / 利息·收益·分红类收入）、投资关联（investment_txn_id）、
-                // 债务还款（kind='repayment'）均有各自来源模块/交易页管理，账户明细不提供行内
-                // 修改/删除；仅普通手动记账流水（餐饮、购物、工资等）保留行内修改/删除。
-                const isInterest = t.link_type === 'account_interest'
-                    || (t.type === 'income' && t.category && /(利息|收益|分红)/.test(t.category.name || ''));
+                // 账户明细仅「账户利息（link_type=account_interest）」提供行内修改/删除；理财/债务去各自页面管理。
                 const sub = t.kind === 'repayment'
                     ? (t.debt ? `还 ${escapeHtml(t.debt.name || '债务')}` : '还款')
                     : (t.category ? `${escapeHtml(t.category.icon || '')} ${escapeHtml(t.category.name || '')}` : '')
                         + (t.counterparty ? ` ${t.counterparty.dir} ${escapeHtml(t.counterparty.name || '')}` : '');
+                // 仅「利息」在账户明细提供修改/删除：账户记利息（link_type=account_interest）
+                // 或投资页记的利息（investment_txn_id 非空且备注含"利息"）；理财买入/卖出/分红、
+                // 债务还款去各自页面管理，不在此提供。
+                const showActions = t.link_type === 'account_interest'
+                    || (t.note && t.note.indexOf('利息') >= 0);
                 return `
                 <div class="rh-item">
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
                         <span class="rh-date">${t.date || ''}</span>
-                        ${(!t.investment_txn_id && !isInterest) ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
+                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
@@ -463,14 +464,8 @@ const AccountManager = {
                             console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id);
                             break;
                         }
-                        if (txn.link_type === 'account_interest') {
-                            // 仅账户记利息流水用专用弹窗（利息入口隐藏后通常不会走到这里）
-                            this.openInterestModal(id, txn);
-                        } else {
-                            // 普通流水：账户页无通用流水编辑器，转「交易」页修改，
-                            // 避免 openInterestModal 把普通流水误标为账户利息。
-                            showToast('该流水请在「交易」页修改', 'info');
-                        }
+                        // 账户明细中仅利息流水有修改入口，直接用账户利息弹窗编辑
+                        this.openInterestModal(id, txn);
                         break;
                     }
                 }

@@ -306,7 +306,9 @@ router.get('/:id/transactions', async (req, res) => {
                     : t.type === 'transfer_in'
                     ? (t.tr_from_name ? { dir: '←', name: t.tr_from_name, icon: t.tr_from_icon } : null)
                     : null,
-                link_type: t.link_type || null,
+                // 投资页记的历史利息曾漏写 link_type，这里兼容补标 account_interest，
+                // 使其在账户明细显示修改/删除按钮（与账户页记利息一致）；新数据已由 investments 路由写入。
+                link_type: t.link_type || (/利息/.test(t.note || '') ? 'account_interest' : null),
                 investment_txn_id: t.investment_txn_id || null,
                 debt: null
             })),

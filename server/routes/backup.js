@@ -16,18 +16,30 @@ const { recomputeInvestmentPosition } = require('./transactions');
 
 // 备份文件识别标记：导入时校验，避免误读普通 xlsx
 const BACKUP_MARK = '鑫钱包账本备份';
-const BACKUP_VERSION = 1;
+const BACKUP_VERSION = 3;
 
 // 工作表名称（导出/导入均依赖，改名需同步）
+// v3 结构：账本配置页（账本/分类/标签/预算/AI配置）｜账户页（账户）｜理财表（理财持仓+理财流水）
+//         ｜债务表（债务+债务还款）｜储蓄表（储蓄目标+储蓄流水）｜账单流水页（交易）
 const SHEET_CONFIG = '账本配置页';
 const SHEET_ACCOUNTS = '账户页';
+const SHEET_INV = '理财表';
+const SHEET_DEBT = '债务表';
+const SHEET_SAVINGS = '储蓄表';
 const SHEET_TX = '账单流水页';
-const SHEET_INV_TX = '理财流水页'; // 可选工作表：原始理财交易流水（导入时据此复现，而非只写计算快照）
+const SHEET_INV_TX = '理财流水页'; // v2 遗留可选表：旧备份无「理财表」时据此解析理财流水
 
-// 各工作表内的「区段标题」（解析时据此切换区块）
-const CONFIG_SECTIONS = ['账本', '分类', '标签', '预算', '债务', '储蓄目标'];
-const ACCOUNT_SECTIONS = ['账户', '理财持仓'];
+// v3 各工作表内的「区段标题」（解析时据此切换区块）
+const CONFIG_SECTIONS = ['账本', '分类', '标签', '预算', 'AI配置'];
+const ACCOUNT_SECTIONS = ['账户'];
+const INV_SECTIONS = ['理财持仓', '理财流水'];
+const DEBT_SECTIONS = ['债务', '债务还款'];
+const SAVINGS_SECTIONS = ['储蓄目标', '储蓄流水'];
 const TX_SECTION = '交易';
+
+// v2 兼容：旧备份区段布局（账本配置页含债务/储蓄目标、账户页含理财持仓）
+const CONFIG_SECTIONS_V2 = ['账本', '分类', '标签', '预算', '债务', '储蓄目标'];
+const ACCOUNT_SECTIONS_V2 = ['账户', '理财持仓'];
 
 // 仅接受 xlsx（基于内容类型或扩展名），5MB 上限，内存暂存不落盘
 const upload = multer({
@@ -73,12 +85,47 @@ function fmtDateTime(v) {
 // ==========================================
 // 构建工作簿（纯函数，便于单测，不依赖 DB）
 // ==========================================
+// 表格样式常量（与品牌色协调的浅靛蓝）
+const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF1FF' } };
+const THIN = { style: 'thin', color: { argb: 'FFD0D5E0' } };
+const CELL_BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+const TITLE_COLOR = { argb: 'FF3742C6' };
+
+// 给表头行套样式（加粗 + 底色 + 边框 + 居中）
+function styleHeaderRow(row) {
+    row.font = { bold: true, color: { argb: 'FF1F2A44' }, size: 11 };
+    row.fill = HEADER_FILL;
+    row.alignment = { vertical: 'middle', horizontal: 'left' };
+    row.eachCell(c => { c.border = CELL_BORDER; });
+}
+
+// 添加「区段」：空行 + 标题行 + 表头行 + 数据行；标题/表头均套样式，数据行加细边框
 function addSection(ws, title, headers, rows) {
-    // 段间留一空行
     ws.addRow([]);
-    ws.addRow([title]);
-    ws.addRow(headers);
-    for (const r of (rows || [])) ws.addRow(r);
+    const titleRow = ws.addRow([title]);
+    titleRow.font = { bold: true, size: 12, color: TITLE_COLOR };
+    titleRow.alignment = { vertical: 'middle' };
+    const headerRow = ws.addRow(headers);
+    styleHeaderRow(headerRow);
+    for (const r of (rows || [])) {
+        const dr = ws.addRow(r);
+        dr.alignment = { vertical: 'middle', wrapText: false };
+        dr.eachCell(c => { c.border = CELL_BORDER; });
+    }
+}
+
+// 统一收尾：列宽自适应（限幅）、冻结首行（sheet 标题）、首行大标题样式，消除白表散乱
+function finalizeSheet(ws) {
+    let maxCols = 0;
+    ws.eachRow(row => { maxCols = Math.max(maxCols, row.cellCount); });
+    for (let i = 1; i <= maxCols; i++) {
+        const col = ws.getColumn(i);
+        if (!col.width) col.width = 16;
+    }
+    const first = ws.getRow(1);
+    first.font = { bold: true, size: 14, color: TITLE_COLOR };
+    first.alignment = { vertical: 'middle' };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
 }
 
 function buildWorkbook(data) {
@@ -109,15 +156,37 @@ function buildWorkbook(data) {
         i.total_cost, i.current_value, i.fee, fmtDateTime(i.buy_date), i.expected_rate, i.status, i.note || ''
     ]);
     const txRows = (data.transactions || []).map(t => [
-        fmtDateTime(t.date) || fmtDate(t.date), t.type_label, t.amount, t.account, t.category || '', t.note || '', t.counterparty || ''
+        fmtDateTime(t.date) || fmtDate(t.date), t.type_label, t.amount, t.account, t.category || '', t.note || '', t.counterparty || '',
+        t.link_type || '', t.link_obj || '', t.tags || ''
     ]);
     // 理财交易流水：原始买卖/红利记录，导入时据此复现（而非合成单笔建仓）。
     const invTxRows = (data.investmentTxns || []).map(t => [
         t.investment_name || '', t.account_name || '', t.type, fmtDate(t.date) || fmtDate(t.date),
         t.amount, t.price, t.quantity, t.fee, t.note || ''
     ]);
+    // 债务还款流水（含跨账户还款）：导出原始还款记录，导入时重建 debt_repayments + 台账腿。
+    const debtRepayRows = (data.debtRepayments || []).map(r => [
+        r.debt_name || '', r.account_name || '', r.amount,
+        r.principal_part || '', r.interest_part || '',
+        fmtDateTime(r.paid_at) || fmtDate(r.paid_at), r.note || ''
+    ]);
+    // 储蓄流水（v3 新增独立表内容）：导出原始存取记录，导入时重建 savings_transactions。
+    const savingsTxRows = (data.savingsTxns || []).map(t => [
+        t.goal_name || '', t.account_name || '', t.type, t.amount,
+        fmtDateTime(t.date) || fmtDate(t.date), t.note || ''
+    ]);
+    // AI 配置（v3 新增「账本配置页」区段）：仅导出非敏感字段，api_key / OCR 密钥不落盘。
+    const ai = data.aiConfig || {};
+    const aiProviders = ai.providers || [];
+    const aiProviderRows = aiProviders.map(p => ['服务商', p.name || '', p.base_url || '', p.model || '', p.is_active ? '是' : '否', `type=${p.api_type || 'openai'}`]);
+    const aiOcr = ai.ocr || {};
+    const aiOcrRow = [['OCR', aiOcr.provider || 'tencent', aiOcr.region || 'ap-guangzhou', '', aiOcr.configured ? '已配置' : '未配置', '密钥需在原设备重新填写']];
+    const aiSettings = ai.settings || {};
+    const aiSettingRows = Object.keys(aiSettings).map(k => ['识别设置', k, '', '', '', aiSettings[k] === true ? '是' : (aiSettings[k] === false ? '否' : String(aiSettings[k] != null ? aiSettings[k] : ''))]);
+    const aiConfigRows = [...aiProviderRows, ...aiOcrRow, ...aiSettingRows];
 
-    // ---- Sheet 1: 账本配置页 ----
+    // ---- Sheet 1: 账本配置页（账本/分类/标签/预算/AI配置）----
+    // 首行保留 BACKUP_MARK 作为文件识别标记（解析时校验），与 v2 兼容
     const cfg = wb.addWorksheet(SHEET_CONFIG);
     cfg.addRow([BACKUP_MARK]);
     cfg.addRow(['版本', BACKUP_VERSION]);
@@ -128,25 +197,38 @@ function buildWorkbook(data) {
     addSection(cfg, '分类', ['编码', '名称', '类型', '图标', '颜色', '系统预设', '父分类'], catRows);
     addSection(cfg, '标签', ['名称', '颜色', '图标'], tagRows);
     addSection(cfg, '预算', ['名称', '周期', '金额', '开始日期', '结束日期'], budgetRows);
-    addSection(cfg, '债务', ['名称', '类型', '方向', '债权人', '本金', '剩余', '利率', '期数', '还款方式', '月供', '开始日期', '到期日', '账单日', '还款日', '最低还款', '状态', '备注', '关联账户'], debtRows);
-    addSection(cfg, '储蓄目标', ['名称', '目标金额', '当前金额', '关联账户', '图标', '备注', '状态'], goalRows);
+    addSection(cfg, 'AI配置', ['类别', '名称', 'Base URL', '模型', '启用', '参数/值'], aiConfigRows);
 
-    // ---- Sheet 2: 账户页 ----
+    // ---- Sheet 2: 账户页（仅账户）----
     const acc = wb.addWorksheet(SHEET_ACCOUNTS);
     acc.addRow([SHEET_ACCOUNTS]);
     addSection(acc, '账户', ['编码', '名称', '类型', '图标', '余额', '期初余额', '信用额度', '默认', '状态'], accountRows);
-    addSection(acc, '理财持仓', ['名称', '代码', '类型', '关联账户', '买入价', '现价', '数量', '成本价', '现值', '手续费', '买入日期', '预期收益率', '状态', '备注'], investRows);
 
-    // ---- Sheet 3: 账单流水页 ----
+    // ---- Sheet 3: 理财表（理财持仓 + 理财流水，合并）----
+    const inv = wb.addWorksheet(SHEET_INV);
+    inv.addRow([SHEET_INV]);
+    addSection(inv, '理财持仓', ['名称', '代码', '类型', '关联账户', '买入价', '现价', '数量', '成本价', '现值', '手续费', '买入日期', '预期收益率', '状态', '备注'], investRows);
+    addSection(inv, '理财流水', ['持仓名称', '关联账户', '类型', '日期', '金额', '价格', '数量', '手续费', '备注'], invTxRows);
+
+    // ---- Sheet 4: 债务表（债务 + 债务还款，独立）----
+    const debt = wb.addWorksheet(SHEET_DEBT);
+    debt.addRow([SHEET_DEBT]);
+    addSection(debt, '债务', ['名称', '类型', '方向', '债权人', '本金', '剩余', '利率', '期数', '还款方式', '月供', '开始日期', '到期日', '账单日', '还款日', '最低还款', '状态', '备注', '关联账户'], debtRows);
+    addSection(debt, '债务还款', ['债务名称', '账户', '金额', '本金部分', '利息部分', '日期', '备注'], debtRepayRows);
+
+    // ---- Sheet 5: 储蓄表（储蓄目标 + 储蓄流水，独立）----
+    const sav = wb.addWorksheet(SHEET_SAVINGS);
+    sav.addRow([SHEET_SAVINGS]);
+    addSection(sav, '储蓄目标', ['名称', '目标金额', '当前金额', '关联账户', '图标', '备注', '状态'], goalRows);
+    addSection(sav, '储蓄流水', ['储蓄目标名称', '关联账户', '类型', '金额', '日期', '备注'], savingsTxRows);
+
+    // ---- Sheet 6: 账单流水页（交易 + 转账）----
     const tx = wb.addWorksheet(SHEET_TX);
     tx.addRow([SHEET_TX]);
-    addSection(tx, TX_SECTION, ['时间', '类型', '金额', '账户', '分类', '备注', '对方账户'], txRows);
+    addSection(tx, TX_SECTION, ['时间', '类型', '金额', '账户', '分类', '备注', '对方账户', '关联类型', '关联对象', '标签'], txRows);
 
-    // ---- Sheet 4: 理财流水页（可选，旧备份无此表则导入时回退到合成建仓）----
-    const invTx = wb.addWorksheet(SHEET_INV_TX);
-    invTx.addRow([SHEET_INV_TX]);
-    addSection(invTx, '理财流水', ['持仓名称', '关联账户', '类型', '日期', '金额', '价格', '数量', '手续费', '备注'], invTxRows);
-
+    // 统一套用表格样式（列宽/边框/冻结首行），消除白表散乱
+    [cfg, acc, inv, debt, sav, tx].forEach(finalizeSheet);
     return wb;
 }
 
@@ -192,21 +274,90 @@ function parseWorkbook(buf) {
         if (mark !== BACKUP_MARK) {
             throw new Error('不是有效的鑫钱包账本备份文件');
         }
-        const config = parseSections(cfgWs, CONFIG_SECTIONS);
-        const accounts = parseSections(accWs, ACCOUNT_SECTIONS);
-        const tx = parseSections(txWs, [TX_SECTION]);
-        // 理财流水页为可选工作表：旧备份（无此表）导入时回退到合成建仓。
-        const invTxWs = wb.getWorksheet(SHEET_INV_TX);
-        const invTx = invTxWs ? parseSections(invTxWs, ['理财流水']) : {};
+        const version = cellNum(cfgWs.getRow(2).getCell(2).value) || BACKUP_VERSION;
+        // 探测是否为 v3 新结构：理财表/债务表/储蓄表 三者皆存在即视为 v3，否则回退 v2 兼容解析。
+        const isV3 = !!(wb.getWorksheet(SHEET_INV) && wb.getWorksheet(SHEET_DEBT) && wb.getWorksheet(SHEET_SAVINGS));
+
+        const config = parseSections(cfgWs, isV3 ? CONFIG_SECTIONS : CONFIG_SECTIONS_V2);
+        const accounts = parseSections(accWs, isV3 ? ACCOUNT_SECTIONS : ACCOUNT_SECTIONS_V2);
+        const tx = parseSections(txWs, [TX_SECTION, '债务还款']);
+
+        // 归一化到 import 统一字段
+        let investRows = [], invTxRows = [], debts = [], debtRepayments = [], savings = [], savingsTxns = [], aiConfig = null;
+
+        if (isV3) {
+            const invWs = wb.getWorksheet(SHEET_INV);
+            const inv = parseSections(invWs, INV_SECTIONS);
+            investRows = inv['理财持仓'] || [];
+            invTxRows = inv['理财流水'] || [];
+
+            const debtWs = wb.getWorksheet(SHEET_DEBT);
+            const d = parseSections(debtWs, DEBT_SECTIONS);
+            debts = d['债务'] || [];
+            debtRepayments = d['债务还款'] || [];
+
+            const savWs = wb.getWorksheet(SHEET_SAVINGS);
+            const s = parseSections(savWs, SAVINGS_SECTIONS);
+            savings = s['储蓄目标'] || [];
+            savingsTxns = s['储蓄流水'] || [];
+
+            aiConfig = parseAiConfig(config['AI配置']);
+        } else {
+            // v2 兼容：理财持仓在账户页、理财流水在遗留「理财流水页」；债务/储蓄目标在配置页；债务还款在账单流水页
+            investRows = accounts['理财持仓'] || [];
+            const invTxWs = wb.getWorksheet(SHEET_INV_TX);
+            const invTx = invTxWs ? parseSections(invTxWs, ['理财流水']) : {};
+            invTxRows = invTx['理财流水'] || [];
+            debts = config['债务'] || [];
+            debtRepayments = tx['债务还款'] || [];
+            savings = config['储蓄目标'] || [];
+            savingsTxns = [];
+        }
+
+        // 归一到 import 现有消费路径：债务/储蓄目标塞回 config，理财持仓塞回 accounts
+        config['债务'] = debts;
+        config['储蓄目标'] = savings;
+        accounts['理财持仓'] = investRows;
+
         return {
-            version: cellNum(cfgWs.getRow(2).getCell(2).value) || BACKUP_VERSION,
+            version,
             bookName: (config['账本'] && config['账本'][0] && config['账本'][0]['名称']) || '',
             config,
             accounts,
-            investmentTxns: (invTx['理财流水'] || []),
+            investmentTxns: invTxRows,
+            debtRepayments,
+            savingsTxns,
+            aiConfig,
             transactions: (tx[TX_SECTION] || [])
         };
     });
+}
+
+// 从「账本配置页」的 AI配置 区段解析出结构化 AI 配置（仅非敏感字段；密钥不导出故不解析）
+function parseAiConfig(rows) {
+    if (!rows || !rows.length) return null;
+    const providers = [];
+    let ocr = { provider: 'tencent', region: 'ap-guangzhou', configured: false };
+    const settings = {};
+    for (const r of rows) {
+        const cat = String(r['类别'] || '').trim();
+        const name = String(r['名称'] || '').trim();
+        const base = String(r['Base URL'] || '').trim();
+        const en = String(r['启用'] || '').trim();
+        const param = String(r['参数/值'] || '').trim();
+        if (cat === '服务商') {
+            if (name) providers.push({ name, api_type: param.replace(/^type=/, ''), base_url: base, model: r['模型'] != null ? String(r['模型']) : '', is_active: en === '是' });
+        } else if (cat === 'OCR') {
+            ocr = { provider: name || 'tencent', region: base || 'ap-guangzhou', configured: en === '已配置' };
+        } else if (cat === '识别设置') {
+            if (name) {
+                if (param === '是') settings[name] = true;
+                else if (param === '否') settings[name] = false;
+                else if (param !== '') settings[name] = param;
+            }
+        }
+    }
+    return { providers, ocr, settings };
 }
 
 // ==========================================
@@ -217,7 +368,8 @@ router.get('/export', async (req, res) => {
         const userId = req.userId;
         const bookId = req.bookId;
 
-        const [book, cats, tags, budgets, debts, goals, accounts, investments, investmentTxns, incExp, transfers] = await Promise.all([
+        const [book, cats, tags, budgets, debts, goals, accounts, investments, investmentTxns, incExp, transfers, debtRepayments,
+                aiProviders, aiSettingsRow, aiOcrRow, savingsTxns] = await Promise.all([
             db.queryOne('SELECT name, icon, color, is_default FROM books WHERE id = ? AND user_id = ?', [bookId, userId]),
             db.query(
                 `SELECT c.code, c.name, c.type, c.icon, c.color, c.is_system,
@@ -267,9 +419,12 @@ router.get('/export', async (req, res) => {
                 [userId, bookId]
             ),
             db.query(
-                `SELECT CAST(t.date AS CHAR(19)) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note
+                `SELECT CAST(t.date AS CHAR(19)) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note,
+                        t.id AS tid, t.link_type,
+                        d.name AS debt_name
                    FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
                    LEFT JOIN categories c ON t.category_id = c.id
+                   LEFT JOIN debts d ON t.link_id = d.id AND t.link_type = 'debt_repayment'
                   WHERE t.user_id = ? AND t.book_id = ? AND t.type IN ('income','expense')
                   ORDER BY t.date DESC, t.id DESC`,
                 [userId, bookId]
@@ -282,21 +437,80 @@ router.get('/export', async (req, res) => {
                   WHERE t.user_id = ? AND t.book_id = ?
                   ORDER BY t.date DESC, t.id DESC`,
                 [userId, bookId]
+            ),
+            // 债务还款流水（含跨账户还款）：导出原始还款记录，导入时重建 debt_repayments + 台账腿，
+            // 否则跨账户还款的 transfer_out/in 腿不落盘，备份恢复后债务还款历史完全丢失。
+            db.query(
+                `SELECT d.name AS debt_name, a.name AS account_name, r.amount,
+                        r.principal_part, r.interest_part,
+                        CAST(r.paid_at AS CHAR(19)) AS paid_at, r.note
+                   FROM debt_repayments r
+                   LEFT JOIN debts d ON r.debt_id = d.id
+                   LEFT JOIN accounts a ON r.account_id = a.id
+                  WHERE r.user_id = ? AND r.book_id = ?
+                  ORDER BY r.paid_at DESC, r.id DESC`,
+                [userId, bookId]
+            ),
+            // AI 服务商配置（仅非密钥字段，api_key 加密存储不导出）
+            db.query('SELECT name, api_type, base_url, model, is_active FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [userId]),
+            // AI 识别行为设置（JSON 列，无密钥，安全导出）
+            db.queryOne('SELECT settings FROM ai_settings WHERE user_id = ?', [userId]),
+            // OCR 配置（仅 provider/region，secret 加密不导出）
+            db.queryOne('SELECT provider, region FROM ai_ocr_config WHERE user_id = ?', [userId]),
+            // 储蓄流水（v3 独立表内容）：导出原始存取记录，导入时重建 savings_transactions
+            db.query(
+                `SELECT st.type, st.amount, CAST(st.date AS CHAR(19)) AS date, st.note,
+                        g.name AS goal_name, a.name AS account_name
+                   FROM savings_transactions st
+                   LEFT JOIN savings_goals g ON st.goal_id = g.id
+                   LEFT JOIN accounts a ON st.account_id = a.id
+                  WHERE st.user_id = ? AND (g.id IS NULL OR g.book_id = ? OR g.book_id IS NULL)
+                  ORDER BY st.date ASC, st.id ASC`,
+                [userId, bookId]
             )
         ]);
+
+        // 交易标签映射：一次查出本账本全部 income/expense 交易的标签，避免逐行查询。
+        const tidList = incExp.map(r => r.tid).filter(Boolean);
+        const tagMap = {};
+        if (tidList.length) {
+            const tagRows = await db.query(
+                `SELECT tt.transaction_id AS tid, tg.name
+                   FROM transaction_tags tt
+                   JOIN tags tg ON tt.tag_id = tg.id
+                   JOIN transactions t ON t.id = tt.transaction_id
+                  WHERE t.user_id = ? AND t.book_id = ? AND t.type IN ('income','expense')`,
+                [userId, bookId]
+            );
+            tagRows.forEach(r => { (tagMap[r.tid] = tagMap[r.tid] || []).push(r.name); });
+        }
 
         const transactions = [
             ...incExp.map(r => ({
                 date: r.date, type_label: r.type === 'income' ? '收入' : '支出',
                 amount: Math.round(parseFloat(r.amount) * 100) / 100,
-                account: r.account || '', category: r.category || '', note: r.note || '', counterparty: ''
+                account: r.account || '', category: r.category || '', note: r.note || '', counterparty: '',
+                link_type: r.link_type || '', link_obj: r.debt_name || '',
+                tags: (tagMap[r.tid] || []).join(',')
             })),
             ...transfers.map(r => ({
                 date: r.date, type_label: '转账',
                 amount: Math.round(parseFloat(r.amount) * 100) / 100,
-                account: r.from_account || '', category: '', note: r.note || '', counterparty: r.to_account || ''
+                account: r.from_account || '', category: '', note: r.note || '', counterparty: r.to_account || '',
+                tags: ''
             }))
         ];
+
+        // AI 配置归一（仅非敏感字段；api_key / OCR 密钥加密存储，不导出）
+        let aiSettingsObj = {};
+        if (aiSettingsRow && aiSettingsRow.settings) {
+            try { aiSettingsObj = typeof aiSettingsRow.settings === 'string' ? JSON.parse(aiSettingsRow.settings) : aiSettingsRow.settings; } catch (e) { aiSettingsObj = {}; }
+        }
+        const aiConfig = {
+            providers: (aiProviders || []).map(p => ({ name: p.name, api_type: p.api_type, base_url: p.base_url, model: p.model, is_active: !!p.is_active })),
+            settings: aiSettingsObj,
+            ocr: aiOcrRow ? { provider: aiOcrRow.provider || 'tencent', region: aiOcrRow.region || 'ap-guangzhou', configured: true } : { provider: 'tencent', region: 'ap-guangzhou', configured: false }
+        };
 
         const wb = buildWorkbook({
             book: book || { name: '默认账本', icon: '📒', color: '#6366f1', is_default: true },
@@ -308,6 +522,9 @@ router.get('/export', async (req, res) => {
             accounts: accounts,
             investments: investments,
             investmentTxns: investmentTxns,
+            debtRepayments: debtRepayments || [],
+            savingsTxns: savingsTxns || [],
+            aiConfig,
             transactions
         });
 
@@ -325,13 +542,15 @@ router.get('/export', async (req, res) => {
 router.post('/import', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json(fail('请上传 .xlsx 备份文件'));
+        // 导入模式：replace（默认，清空后恢复干净账本）/ merge（不清空，仅补入备份里缺失的主数据与流水）
+        const mergeMode = String((req.body && req.body.mode) || 'replace').trim() === 'merge';
         let parsed;
         try {
             parsed = await parseWorkbook(req.file.buffer);
         } catch (e) {
             return res.status(400).json(fail(e.message || '备份文件解析失败'));
         }
-        const { config, accounts, transactions, investmentTxns } = parsed;
+        const { config, accounts, transactions, investmentTxns, debtRepayments, savingsTxns, aiConfig } = parsed;
         const userId = req.userId;
         const bookId = req.bookId;
 
@@ -343,10 +562,18 @@ router.post('/import', upload.single('file'), async (req, res) => {
         );
         const transferCatId = transferCat ? transferCat.id : 22;
 
+        // 合并模式辅助：按唯一键查找已存在记录 id（表名/列名为硬编码常量，非用户输入，安全）
+        const findExistingId = async (table, whereCols, whereVals) => {
+            const where = whereCols.map(c => `${c} = ?`).join(' AND ');
+            const rows = await conn.query(`SELECT id FROM ${table} WHERE ${where}`, whereVals);
+            return rows.length ? rows[0].id : null;
+        };
+
         await db.transaction(async (conn) => {
-            // 0) 先清空当前账本全部数据，保证导入后是「干净账本」（替换而非合并）。
-            //    仅删除本用户本账本的数据；系统预设分类(user_id IS NULL)全局共享，保留不删。
+            // 0) 替换模式：先清空当前账本全部数据，保证导入后是「干净账本」。
+            //    合并模式：不清空，仅把备份里缺失的主数据/流水补进来（按名/去重跳过已存在的）。
             //    这些表之间没有外键约束，按依赖逻辑先删子表再删父表；分类含自引用，逐级删叶子后清顶层。
+            if (!mergeMode) {
             await conn.query('DELETE FROM transaction_tags WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = ? AND book_id = ?)', [userId, bookId]);
             await conn.query('DELETE FROM transactions WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM transfers WHERE user_id = ? AND book_id = ?', [userId, bookId]);
@@ -373,18 +600,21 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 [userId, bookId, userId, bookId]
             );
             await conn.query('DELETE FROM categories WHERE user_id = ? AND book_id = ?', [userId, bookId]);
+            }
 
-            // 1) 标签
+            // 1) 标签（同时建立 名称→id 映射，供后续交易标签关联）
+            const tagNameToId = {};
             for (const t of (config['标签'] || [])) {
                 if (!t || !String(t['名称'] || '').trim()) continue;
                 const e = await conn.query('SELECT id FROM tags WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, t['名称']]);
-                if (!e || !e.length) {
-                    await conn.query(
-                        'INSERT INTO tags (user_id, book_id, name, color, icon) VALUES (?, ?, ?, ?, ?)',
-                        [userId, bookId, t['名称'], typeof t['颜色'] === 'string' ? t['颜色'] : '#6366f1', typeof t['图标'] === 'string' ? t['图标'] : '🏷️']
-                    );
-                    imported.tags++;
-                }
+                if (e && e.length) { tagNameToId[t['名称']] = e[0].id; continue; }
+                const ins = await conn.query(
+                    'INSERT INTO tags (user_id, book_id, name, color, icon) VALUES (?, ?, ?, ?, ?)',
+                    [userId, bookId, t['名称'], typeof t['颜色'] === 'string' ? t['颜色'] : '#6366f1', typeof t['图标'] === 'string' ? t['图标'] : '🏷️']
+                );
+                const got = await conn.query('SELECT id FROM tags WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, t['名称']]);
+                if (got.length) tagNameToId[t['名称']] = got[0].id;
+                imported.tags++;
             }
 
             // 1.5) 分类：仅导入「用户自建」分类（系统预设全局共享，跳过），并建立 名称→id 映射，
@@ -493,6 +723,10 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
             for (const i of (accounts['理财持仓'] || [])) {
                 if (!i || !String(i['名称'] || '').trim()) continue;
+                if (mergeMode) {
+                    const ex = await findExistingId('investments', ['user_id', 'book_id', 'name'], [userId, bookId, i['名称']]);
+                    if (ex != null) continue; // 持仓已存在则整体跳过（含其原始流水），避免重复建仓
+                }
                 const aid = i['关联账户'] ? acMap[i['关联账户']] : null;
                 const it = await conn.query('SELECT id FROM investment_types WHERE name = ?', [String(i['类型'] || '其他')]);
                 const ins = await conn.query(
@@ -549,6 +783,10 @@ router.post('/import', upload.single('file'), async (req, res) => {
             // 4) 预算
             for (const b of (config['预算'] || [])) {
                 if (!b || !String(b['名称'] || '').trim()) continue;
+                if (mergeMode) {
+                    const ex = await findExistingId('budgets', ['user_id', 'book_id', 'name'], [userId, bookId, b['名称']]);
+                    if (ex != null) continue;
+                }
                 await conn.query(
                     db.insertIgnoreSql('budgets', ['user_id', 'book_id', 'name', 'period_type', 'amount', 'start_date', 'end_date']),
                     [userId, bookId, b['名称'], ['month', 'quarter', 'half', 'year'].includes(b['周期']) ? b['周期'] : 'month', cellNum(b['金额']) || 0, fmtDate(b['开始日期']), fmtDate(b['结束日期']) || fmtDate(b['开始日期'])]
@@ -557,8 +795,13 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
 
             // 5) 债务
+            const debtNameToId = {};
             for (const d of (config['债务'] || [])) {
                 if (!d || !String(d['名称'] || '').trim()) continue;
+                if (mergeMode) {
+                    const ex = await findExistingId('debts', ['user_id', 'book_id', 'name'], [userId, bookId, d['名称']]);
+                    if (ex != null) { debtNameToId[d['名称']] = ex; continue; }
+                }
                 const aid = d['关联账户'] ? acMap[d['关联账户']] : null;
                 await conn.query(
                     db.insertIgnoreSql('debts', ['user_id', 'book_id', 'account_id', 'name', 'type', 'direction', 'creditor', 'principal', 'remaining', 'interest_rate', 'term_months', 'method', 'monthly_payment', 'start_date', 'due_date', 'billing_day', 'payment_day', 'min_payment', 'status', 'note']),
@@ -578,12 +821,18 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         String(d['备注'] || '')
                     ]
                 );
+                const drow = await conn.query('SELECT id FROM debts WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, d['名称']]);
+                if (drow.length) debtNameToId[d['名称']] = drow[0].id;
                 imported.debts++;
             }
 
             // 6) 储蓄目标
             for (const g of (config['储蓄目标'] || [])) {
                 if (!g || !String(g['名称'] || '').trim()) continue;
+                if (mergeMode) {
+                    const ex = await findExistingId('savings_goals', ['user_id', 'book_id', 'name'], [userId, bookId, g['名称']]);
+                    if (ex != null) continue;
+                }
                 const aid = g['关联账户'] ? acMap[g['关联账户']] : null;
                 await conn.query(
                     db.insertIgnoreSql('savings_goals', ['user_id', 'book_id', 'name', 'target_amount', 'current_amount', 'account_id', 'icon', 'note', 'status']),
@@ -598,6 +847,38 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 imported.savings_goals++;
             }
 
+            // 6.5) 储蓄流水（v3 独立表）：重建 savings_transactions，使储蓄存取历史可恢复。
+            //      储蓄目标的当前金额已在上面用快照覆盖，此处补入流水明细，不做重算（保持与线上快照一致）。
+            for (const st of (savingsTxns || [])) {
+                const goalName = String(st['储蓄目标名称'] || '').trim();
+                const acctName = String(st['关联账户'] || '').trim();
+                const type = st['类型'] === 'withdraw' ? 'withdraw' : 'deposit';
+                const amt = toAmount(st['金额']);
+                if (amt == null || amt <= 0) continue;
+                let goalId = null;
+                if (goalName) {
+                    const gq = await conn.query('SELECT id FROM savings_goals WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, goalName]);
+                    goalId = gq.length ? gq[0].id : null;
+                }
+                const aid = acctName ? acMap[acctName] : null;
+                const date = fmtDateTime(st['日期']) || fmtDate(st['日期']) || new Date().toISOString().slice(0, 19);
+                // 合并模式去重：按 目标+类型+金额+同日 判定（goal_id 为 NULL 时走 IS NULL 分支）
+                if (mergeMode) {
+                    const params = [userId, bookId, type, amt, date];
+                    const sql = goalId == null
+                        ? 'SELECT id FROM savings_transactions WHERE user_id=? AND book_id=? AND goal_id IS NULL AND type=? AND amount=? AND DATE(date)=DATE(?)'
+                        : 'SELECT id FROM savings_transactions WHERE user_id=? AND book_id=? AND goal_id=? AND type=? AND amount=? AND DATE(date)=DATE(?)';
+                    if (goalId != null) params.splice(2, 0, goalId);
+                    const exRows = await conn.query(sql, params);
+                    if (exRows.length) continue;
+                }
+                await conn.query(
+                    'INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [userId, bookId, goalId, aid, type, amt, date, String(st['备注'] || '')]
+                );
+                imported.savings_transactions = (imported.savings_transactions || 0) + 1;
+            }
+
             // 7) 交易 + 转账
             for (const t of (transactions || [])) {
                 const typeLabel = String(t['类型'] || '').trim();
@@ -608,6 +889,12 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     const fa = acMap[t['账户']];
                     const ta = acMap[t['对方账户']];
                     if (!fa || !ta) continue;
+                    // 合并模式：同付款/收款账户+金额+日期已存在则跳过
+                    if (mergeMode) {
+                        const dateT = fmtDateTime(t['时间']) || fmtDate(t['时间']) || new Date().toISOString().slice(0, 19);
+                        const ex = await findExistingId('transfers', ['user_id', 'book_id', 'from_account_id', 'to_account_id', 'amount', 'date'], [userId, bookId, fa, ta, amount, dateT]);
+                        if (ex != null) continue;
+                    }
                     const date = fmtDateTime(t['时间']) || fmtDate(t['时间']) || new Date().toISOString().slice(0, 19);
                     const note = String(t['备注'] || '');
                     const ins = await conn.query(
@@ -630,16 +917,91 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 } else {
                     const aid = acMap[t['账户']];
                     if (!aid) continue;
+                    // 合并模式：同账户+日期+金额+备注+类型已存在则跳过，避免重复追加
+                    if (mergeMode) {
+                        const ex = await findExistingId('transactions', ['user_id', 'book_id', 'account_id', 'type', 'amount', 'date', 'note'], [userId, bookId, aid, typeLabel === '收入' ? 'income' : 'expense', amount, fmtDateTime(t['时间']) || fmtDate(t['时间']) || new Date().toISOString().slice(0, 19), String(t['备注'] || '')]);
+                        if (ex != null) continue;
+                    }
                     const catId = await resolveCategoryId(t['分类']);
                     const typeVal = typeLabel === '收入' ? 'income' : 'expense';
                     const date = fmtDateTime(t['时间']) || fmtDate(t['时间']) || new Date().toISOString().slice(0, 19);
-                    await conn.query(
-                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [userId, bookId, aid, catId, typeVal, amount, String(t['备注'] || ''), date]
+                    // 关联流水保真：账户计息 / 债务还款的 link_type 与 link_id 一并恢复，
+                    // 否则导入后退化成普通交易，破坏「利息/债务去各自页面」的约束一致性。
+                    const linkType = String(t['关联类型'] || '').trim();
+                    let linkId = null;
+                    if (linkType === 'account_interest') {
+                        linkId = aid; // 计息流水归属自身账户
+                    } else if (linkType === 'debt_repayment') {
+                        const dn = String(t['关联对象'] || '').trim();
+                        linkId = debtNameToId[dn] != null ? debtNameToId[dn] : null;
+                    }
+                    const insTx = await conn.query(
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, link_type, link_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [userId, bookId, aid, catId, typeVal, amount, String(t['备注'] || ''), date, linkType || null, linkId]
                     );
+                    const newTxId = insTx.insertId;
+                    // 交易标签关联：按标签名解析 id 写入 transaction_tags
+                    const tagStr = String(t['标签'] || '').trim();
+                    if (newTxId && tagStr) {
+                        for (const tn of tagStr.split(',').map(s => s.trim()).filter(Boolean)) {
+                            const tgid = tagNameToId[tn];
+                            if (tgid != null) {
+                                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [newTxId, tgid]);
+                            }
+                        }
+                    }
                     imported.transactions++;
                 }
+            }
+
+            // 7.x) 债务还款流水恢复：重建 debt_repayments 记录 + 台账腿（含跨账户还款的两条腿），
+            //      使导入后债务还款历史完整、约束可达（交易页按 debt_repayment 拦截去债务页）。
+            for (const r of (debtRepayments || [])) {
+                const dn = String(r['债务名称'] || '').trim();
+                const an = String(r['账户'] || '').trim();
+                const debtId = debtNameToId[dn] != null ? debtNameToId[dn] : null;
+                const accId = acMap[an];
+                const amt = toAmount(r['金额']);
+                if (!debtId || !accId || amt == null || amt <= 0) continue;
+                const paidAt = fmtDateTime(r['日期']) || fmtDate(r['日期']) || new Date().toISOString().slice(0, 19);
+                // 合并模式：同债务+金额+还款日已存在则跳过
+                if (mergeMode && debtId != null) {
+                    const ex = await findExistingId('debt_repayments', ['user_id', 'book_id', 'debt_id', 'amount', 'paid_at'], [userId, bookId, debtId, amt, paidAt]);
+                    if (ex != null) continue;
+                }
+                const pp = cellNum(r['本金部分']) || amt;
+                const ip = cellNum(r['利息部分']) || 0;
+                const repIns = await conn.query(
+                    'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [userId, bookId, debtId, accId, amt, pp, ip, paidAt, String(r['备注'] || '')]
+                );
+                const repId = repIns.insertId;
+                // 重建台账腿（复刻债务还款创建逻辑，简化版）
+                const drow = await conn.query('SELECT account_id, direction FROM debts WHERE id = ?', [debtId]);
+                const debtAccId = drow.length ? drow[0].account_id : null;
+                const isReceivable = drow.length && drow[0].direction === 'receivable';
+                const crossAccount = debtAccId != null && debtAccId !== accId;
+                const txNote = String(r['备注'] || '');
+                if (crossAccount && debtAccId != null) {
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                         VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, NULL, 'debt_repayment', ?)`,
+                        [userId, bookId, accId, transferCatId, amt, txNote, paidAt, accId, repId]
+                    );
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                         VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, NULL, ?, 'debt_repayment', ?)`,
+                        [userId, bookId, debtAccId, transferCatId, amt, txNote, paidAt, debtAccId, repId]
+                    );
+                } else {
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'debt_repayment', ?)`,
+                        [userId, bookId, accId, transferCatId, isReceivable ? 'income' : 'expense', amt, txNote, paidAt, accId, accId, repId]
+                    );
+                }
+                imported.transactions++;
             }
 
             // 7.5) 导入后回填投资台账的 investment_txn_id 指针。
@@ -652,6 +1014,34 @@ router.post('/import', upload.single('file'), async (req, res) => {
               await backfillInvestmentLinks(conn, userId, bookId);
             } catch (e) {
               console.error('[导入] 回填投资台账指针异常（不影响已恢复账本）:', e && e.message);
+            }
+
+            // 7.8) AI 配置恢复（仅非敏感字段；api_key / OCR 密钥加密存储，不导出也不覆盖，需用户在原设备重填）
+            if (aiConfig) {
+                // 识别行为设置：直接覆盖（JSON 列，无密钥，安全）
+                if (aiConfig.settings && Object.keys(aiConfig.settings).length) {
+                    const sJson = typeof aiConfig.settings === 'string' ? aiConfig.settings : JSON.stringify(aiConfig.settings);
+                    await conn.query(db.upsertSql('ai_settings', ['user_id'], ['settings']), [userId, sJson]);
+                }
+                // 服务商：目标无同名则插入（密钥留空，导入后需重填）
+                for (const p of (aiConfig.providers || [])) {
+                    if (!p || !String(p.name || '').trim()) continue;
+                    const ex = await conn.query('SELECT id FROM ai_providers WHERE user_id = ? AND name = ?', [userId, p.name]);
+                    if (ex.length) continue;
+                    await conn.query(
+                        'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        [userId, p.name, p.api_type || 'openai', p.base_url || '', null, p.model || '', p.is_active ? 1 : 0, 0]
+                    );
+                    imported.ai_providers = (imported.ai_providers || 0) + 1;
+                }
+                // OCR：目标无配置则插入 provider/region（密钥留空）
+                if (aiConfig.ocr) {
+                    const ex = await conn.query('SELECT id FROM ai_ocr_config WHERE user_id = ?', [userId]);
+                    if (!ex.length) {
+                        await conn.query(db.insertIgnoreSql('ai_ocr_config', ['user_id', 'provider', 'secret_id', 'secret_key', 'region']), [userId, aiConfig.ocr.provider || 'tencent', null, null, aiConfig.ocr.region || 'ap-guangzhou']);
+                        imported.ai_ocr = (imported.ai_ocr || 0) + 1;
+                    }
+                }
             }
 
             // 8) 以账本为准重算所有导入账户余额，避免直接写入导致漂移

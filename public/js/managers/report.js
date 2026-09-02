@@ -917,12 +917,15 @@ const ReportManager = {
         // 导入会先清空当前账本全部数据再恢复（干净账本），属破坏性操作，
         // 用自定义模态框确认（不使用原生 confirm()，其在「先选文件再确认」流程里易被
         // 浏览器弹窗拦截策略/广告拦截扩展拦截，拦截后静默返回 false 导致导入无声失败）。
-        const ok = await confirmClearImport();
+        const mergeChk = document.getElementById('mergeImportChk');
+        const merge = !!(mergeChk && mergeChk.checked);
+        const ok = await confirmClearImport(merge ? 'merge' : 'replace');
         if (!ok) { document.getElementById('importFullInput').value = ''; return; }
-        showToast('正在清空并导入账本，请稍候...', 'info');
+        showToast('正在' + (merge ? '合并' : '清空并') + '导入账本，请稍候...', 'info');
         try {
             const fd = new FormData();
             fd.append('file', file, file.name);
+            fd.append('mode', merge ? 'merge' : 'replace');
             const token = localStorage.getItem('xin_token');
             const res = await fetch(`${API}/backup/import`, {
                 method: 'POST',
@@ -952,7 +955,7 @@ const ReportManager = {
     },
 
     // 导入前破坏性确认：返回 Promise<boolean>。自建 DOM 模态框，不被浏览器弹窗拦截。
-    confirmClearImport() { return confirmClearImport(); },
+    confirmClearImport(mode) { return confirmClearImport(mode); },
 
     print() {
         // 打印前：强制重绘所有 Chart.js 图表以适应新的容器尺寸
@@ -962,14 +965,30 @@ const ReportManager = {
     }
 };
 
-// 导入前破坏性确认：自建 DOM 模态框（不用原生 confirm，避免被浏览器弹窗拦截）。
-// 返回 Promise<boolean>：用户点「清空并导入」为 true，取消/关闭为 false。
-function confirmClearImport() {
+// 导入前确认：自建 DOM 模态框（不用原生 confirm，避免被浏览器弹窗拦截）。
+// 返回 Promise<boolean>：用户点确认按钮为 true，取消/关闭为 false。
+// mode：'replace'（默认，清空当前账本后恢复）；'merge'（不清空，仅补入缺失数据）。
+function confirmClearImport(mode) {
+    const merge = mode === 'merge';
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay show';
         overlay.style.zIndex = '2000';
-        overlay.innerHTML = `
+        overlay.innerHTML = merge ? `
+            <div class="modal glass-card" style="max-width:440px">
+                <div class="modal-header">
+                    <h3>🔀 合并导入</h3>
+                    <button class="modal-close" aria-label="关闭">✕</button>
+                </div>
+                <div class="modal-body" style="padding:12px 16px 4px;line-height:1.6">
+                    <p>合并导入会<strong>保留当前账本现有数据</strong>，仅把备份中缺失的账户 / 分类 / 交易等补进来（按名称或去重跳过已存在的）。</p>
+                    <p style="color:var(--text-secondary);font-size:var(--text-caption)">不会删除或覆盖现有数据，适合在多处导出的备份间累加。同名已存在的主数据、相同交易/转账将被跳过。</p>
+                </div>
+                <div style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
+                    <button class="btn btn-ghost" data-act="cancel">取消</button>
+                    <button class="btn btn-primary" data-act="ok">合并导入</button>
+                </div>
+            </div>` : `
             <div class="modal glass-card" style="max-width:440px">
                 <div class="modal-header">
                     <h3>⚠️ 导入将清空当前账本</h3>
