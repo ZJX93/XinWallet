@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, addAmounts, subtractAmounts, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
+const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, normDate, sumAmounts, addAmounts, subtractAmounts, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
 const { syncCreditCardDebt } = require('./utils');
 
 // 获取所有账户。默认只返回正常账户；?all=1 时连已销户账户一起返回（总资产仍只累计正常账户）
@@ -76,7 +76,7 @@ router.put('/:id', async (req, res) => {
 
         // 用户编辑的是「初始余额」，实时余额由账本流水动态算出
         const newOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
-        const effects = await sumLedgerEffects(db, req.userId, id);
+        const effects = await sumLedgerEffects(db, req.userId, id, req.bookId);
         // 金额精度（M3）：newBalance 是展示给用户的实时余额，用整数分精确加法
         const newBalance = addAmounts(newOpening, effects);
         if (newBalance < -limitRes.limit - 0.005) {
@@ -146,32 +146,34 @@ router.post('/:id/interest', async (req, res) => {
         if (isNaN(amt) || amt <= 0) return res.status(400).json(fail('利息金额必须大于 0'));
         const acc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(404).json(failNotFound('账户不存在'));
-        // 计息日期精确到秒，与 transactions.date 同格式（YYYY-MM-DD HH:MM:SS）。
-        // 早期实现用 slice(0,10) 截到天，导致 DB(DATE) 与回显都丢失时分秒。
-        const interestDate = date
-          ? String(date).replace('T', ' ').slice(0, 19)
-          : new Date().toISOString().replace('T', ' ').slice(0, 19);
+        // 计息日期归一化（兼容 datetime-local / ISO / 纯日期），精确到秒
+        const interestDate = normDate(date);
         let newBalance;
         await db.transaction(async (conn) => {
-            const catId = await getInterestCategoryId(conn);
+            const catId = await getInterestCategoryId(conn, req.userId, req.bookId);
             await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, link_type, link_id)
                  VALUES (?, ?, ?, ?, 'income', ?, ?, ?, 'account_interest', ?)`,
                 [req.userId, req.bookId, accId, catId, amt,
                  note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`, interestDate, accId]
             );
-            newBalance = await computeAccountBalance(conn, req.userId, accId);
+            newBalance = await computeAccountBalance(conn, req.userId, accId, req.bookId);
             await conn.query('UPDATE accounts SET balance = ?, last_interest_date = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, interestDate, accId, req.userId, req.bookId]);
+            // 授信账户（信用卡/带额度电子支付）记利息后余额回升，需同步信用卡债务，
+            // 否则会出现「钱已进账、债务列表还挂着欠款」
+            await syncCreditCardDebt(conn, req.userId, accId);
         });
         res.json(success({ balance: newBalance, last_interest_date: interestDate }, '利息已记录'));
     } catch (err) { handleServerError(res, err); }
 });
 
-// 利息入账分类：优先「分红利息」（被动收入下的银行/账户计息），缺失时回退第一个收入分类
-async function getInterestCategoryId(conn) {
-    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['分红利息', 'income']);
+// 利息入账分类：优先「分红利息」（被动收入下的银行/账户计息），缺失时回退当前账本的第一个收入分类
+// ⚠️ 必须按 user_id + book_id 过滤，否则会取到别人/别账本的分类（越权或分类错配）。
+// 系统全局分类（user_id IS NULL / book_id IS NULL）通过 OR 条件兼容。
+async function getInterestCategoryId(conn, userId, bookId) {
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ? AND (user_id IS NULL OR user_id = ?) AND (book_id IS NULL OR book_id = ?)', ['分红利息', 'income', userId, bookId]);
     if (rows[0]) return rows[0].id;
-    const any = await conn.query('SELECT id FROM categories WHERE type = ? ORDER BY id LIMIT 1', ['income']);
+    const any = await conn.query('SELECT id FROM categories WHERE type = ? AND (user_id IS NULL OR user_id = ?) AND (book_id IS NULL OR book_id = ?) ORDER BY id LIMIT 1', ['income', userId, bookId]);
     return any[0] ? any[0].id : null;
 }
 
@@ -223,7 +225,7 @@ router.post('/reconcile', async (req, res) => {
         let fixed = 0;
         const diffs = [];
         for (const acc of accounts) {
-            const computed = await computeAccountBalance(db, req.userId, acc.id);
+            const computed = await computeAccountBalance(db, req.userId, acc.id, req.bookId);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
                 await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [computed, acc.id, req.userId, req.bookId]);

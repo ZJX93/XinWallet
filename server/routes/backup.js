@@ -595,14 +595,15 @@ router.post('/import', upload.single('file'), async (req, res) => {
         );
         const transferCatId = transferCat ? transferCat.id : 22;
 
-        // 合并模式辅助：按唯一键查找已存在记录 id（表名/列名为硬编码常量，非用户输入，安全）
-        const findExistingId = async (table, whereCols, whereVals) => {
-            const where = whereCols.map(c => `${c} = ?`).join(' AND ');
-            const rows = await conn.query(`SELECT id FROM ${table} WHERE ${where}`, whereVals);
-            return rows.length ? rows[0].id : null;
-        };
-
         await db.transaction(async (conn) => {
+            // 合并模式辅助：按唯一键查找已存在记录 id（表名/列名为硬编码常量，非用户输入，安全）。
+            // ⚠️ 必须定义在事务回调内，才能捕获事务连接 conn；原先定义在外部，
+            // 运行时 conn 未定义 → merge 导入直接崩溃（ReferenceError: conn is not defined）。
+            const findExistingId = async (table, whereCols, whereVals) => {
+                const where = whereCols.map(c => `${c} = ?`).join(' AND ');
+                const rows = await conn.query(`SELECT id FROM ${table} WHERE ${where}`, whereVals);
+                return rows.length ? rows[0].id : null;
+            };
             // 0) 替换模式：先清空当前账本全部数据，保证导入后是「干净账本」。
             //    合并模式：不清空，仅把备份里缺失的主数据/流水补进来（按名/去重跳过已存在的）。
             //    这些表之间没有外键约束，按依赖逻辑先删子表再删父表；分类含自引用，逐级删叶子后清顶层。
@@ -980,7 +981,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         for (const tn of tagStr.split(',').map(s => s.trim()).filter(Boolean)) {
                             const tgid = tagNameToId[tn];
                             if (tgid != null) {
-                                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [newTxId, tgid]);
+                                await conn.query(db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']), [newTxId, tgid]);
                             }
                         }
                     }
@@ -1011,7 +1012,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 );
                 const repId = repIns.insertId;
                 // 重建台账腿（复刻债务还款创建逻辑，简化版）
-                const drow = await conn.query('SELECT account_id, direction FROM debts WHERE id = ?', [debtId]);
+                const drow = await conn.query('SELECT account_id, direction FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [debtId, userId, bookId]);
                 const debtAccId = drow.length ? drow[0].account_id : null;
                 const isReceivable = drow.length && drow[0].direction === 'receivable';
                 const crossAccount = debtAccId != null && debtAccId !== accId;
