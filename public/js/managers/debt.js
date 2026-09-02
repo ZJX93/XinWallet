@@ -492,6 +492,7 @@ const DebtManager = {
                 showToast('还款记录已更新', 'success');
                 this.closeRepayModal();
                 await this.refresh();
+                await this.syncAccountsAfterRepayChange();
                 return;
             }
             const debt = this._listCache.find(d => d.id === parseInt(debtId));
@@ -500,7 +501,20 @@ const DebtManager = {
             showToast(isRecv ? '收款已登记' : '还款已登记', 'success');
             this.closeRepayModal();
             await this.refresh();
+            await this.syncAccountsAfterRepayChange();
         } catch (e) { showToast('保存失败：' + (e.message || '未知错误'), 'error'); }
+    },
+
+    /**
+     * 登记 / 修改还款后的账户侧统一刷新（与「删除还款」那条分支保持对称）。
+     *
+     * 还款会从付款账户扣款、收款方向入账，后端已重算账户余额。
+     * 只刷债务列表的话，账户页卡片余额与 Dashboard KPI 仍是旧值（要切页才自愈）。
+     */
+    async syncAccountsAfterRepayChange() {
+        await initCache();
+        if (window.AccountManager) await window.AccountManager.refresh();
+        if (window.DashboardManager) await window.DashboardManager.refresh();
     },
 
     // 明细弹窗（保持原结构）

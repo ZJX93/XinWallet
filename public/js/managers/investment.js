@@ -270,12 +270,15 @@ const InvestmentManager = {
         }
         this.closeModal();
         await this.refresh();
+        // 新建买入会从账户扣款并落一笔流水，账户余额与 Dashboard KPI 需同步
+        await this.refreshAccountsAfterInvChange();
     },
     async delete(id) {
         try {
             await api(`/investments/investments/${id}`, 'DELETE');
             showToast('持仓已删除', 'warning');
             await this.refresh();
+            await this.refreshAccountsAfterInvChange();
         } catch (err) {
             // api() 已显示错误 toast
         }
@@ -401,14 +404,15 @@ const InvestmentManager = {
         const submitBtn = document.getElementById('invEditSubmitBtn');
         submitBtn.disabled = true; submitBtn.textContent = '保存中…';
         try {
-            const res = await api(`/investments/investments/${invId}/transactions/${txnId}`, 'PUT', { type, amount, price, quantity, fee, date, note });
-            if (res) {
-                showToast('已保存修改', 'success');
-                this.closeInvEditTxn();
-                await this.openInvTxns(invId);
-            } else {
-                submitBtn.disabled = false; submitBtn.textContent = '保存修改';
-            }
+            // PUT 后端返回 success(null, …)，api() 返回 data.data 即 null ——
+            // 不能用 `if (res)` 判断成功：那样 Toast 不弹、弹窗不关、刷新不执行，
+            // 而后端其实已改完（删旧流水 → 插新流水 → 重算持仓 → UPDATE 账户余额）。
+            // api() 失败必 throw，成功（即便返回 null）即代表已保存。
+            await api(`/investments/investments/${invId}/transactions/${txnId}`, 'PUT', { type, amount, price, quantity, fee, date, note });
+            showToast('已保存修改', 'success');
+            this.closeInvEditTxn();
+            // 改流水会重算持仓（数量/成本/市值）并改动账户余额，持仓卡片与账户/Dashboard 都要刷
+            await this.syncAfterInvTxnChange(invId);
         } catch (e) {
             submitBtn.disabled = false; submitBtn.textContent = '保存修改';
         }
@@ -434,6 +438,8 @@ const InvestmentManager = {
             showToast(result?.message || (mode === 'reinvest' ? '红利再投已记录' : '利息已记录'), 'success');
             this.closeInterestModal();
             await this.refresh();
+            // 分红/利息会入账到账户并重算余额，账户卡片与 Dashboard KPI 需同步
+            await this.refreshAccountsAfterInvChange();
         } catch (err) {
             // api() 已显示错误 toast
         }
@@ -456,10 +462,33 @@ const InvestmentManager = {
             showToast(result?.message || (action === 'buy' ? '加仓成功' : '卖出成功'), 'success');
             this.closeReduceModal();
             await this.refresh();
+            // 加仓扣款 / 卖出回款都会改账户余额并落一笔流水，账户卡片与 Dashboard KPI 需同步
+            await this.refreshAccountsAfterInvChange();
         } catch (err) {
             // api() 已在 catch 中显示错误 toast，这里无需重复
         }
     },
+    /**
+     * 理财操作后的账户侧统一刷新。
+     *
+     * 新建/编辑持仓、加仓、减仓、分红利息、删除流水这些操作，后端都会
+     * recomputeInvestmentPosition 重算持仓，并 computeAccountBalance + UPDATE accounts.balance
+     * 改动账户余额。只刷理财列表是不够的 —— 账户页卡片余额与 Dashboard KPI 会停在旧值
+     * （要切到别的页再切回来才自愈，用户当下看到的就是错的）。
+     */
+    async refreshAccountsAfterInvChange() {
+        await initCache();
+        if (window.AccountManager) await window.AccountManager.refresh();
+        if (window.DashboardManager) await window.DashboardManager.refresh();
+    },
+
+    /** 流水弹窗内改动（编辑/删除某笔流水）后的统一刷新：先重拉流水弹窗，再刷持仓列表与账户/Dashboard */
+    async syncAfterInvTxnChange(invId) {
+        await this.openInvTxns(invId);
+        await this.refresh();
+        await this.refreshAccountsAfterInvChange();
+    },
+
     // 单条刷新行情
     async refreshQuote(id, btn) {
         if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
@@ -765,7 +794,9 @@ const InvestmentManager = {
             try {
                 await api(`/investments/investments/${id}/transactions/${txnId}`, 'DELETE');
                 showToast('已删除');
-                this.openInvTxns(id);
+                // 只重拉流水弹窗不够：后端已 recomputeInvestmentPosition 重算持仓（数量/成本/市值）
+                // 并改了账户余额，持仓卡片/账户余额/Dashboard 都要刷，否则关掉弹窗后看到的是旧值
+                await this.syncAfterInvTxnChange(id);
             } catch (err) {
                 // api 已处理错误提示
             }
