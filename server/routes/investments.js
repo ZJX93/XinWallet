@@ -158,6 +158,51 @@ async function rollbackInvestmentCreateTxn(conn, userId, txId, accId) {
     }
 }
 
+// 定位某笔理财流水对应的主账本台账交易（账户明细里那条）。
+// 老数据可能没回填 investment_txn_id 指针（该列是 schema.sql 后补的兼容列），
+// 只按指针删会漏掉台账——表现即「理财流水删了，账户明细那条还在、余额不回退」。
+// 因此指针查不到时，用「账户 + 金额 + 日期 + 收支方向」兜底反查孤儿台账，
+// 并限定 investment_txn_id IS NULL，避免误伤已关联的台账。
+async function findInvestmentLedgerTxns(conn, { userId, bookId, txnId, accountId, type, amount, date }) {
+    const linked = await conn.query(
+        'SELECT id, account_id FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
+        [txnId, userId, bookId]
+    );
+    if (linked && linked.length) return linked;
+    if (!accountId) return [];
+    // 由流水类型推导台账是 income 还是 expense
+    const dir = (type === 'sell' || type === 'dividend' || type === 'interest') ? 'income' : 'expense';
+    const orphan = await conn.query(
+        `SELECT id, account_id FROM transactions
+         WHERE user_id = ? AND book_id = ? AND account_id = ?
+           AND type = ? AND amount = ? AND date = ? AND investment_txn_id IS NULL
+         ORDER BY id DESC LIMIT 1`,
+        [userId, bookId, accountId, dir, amount, date]
+    );
+    return orphan || [];
+}
+
+// 删除某笔理财流水对应的台账交易：能定位到就按 id 精确删除；
+// 指针缺失、兜底也没命中（如跨账本等边界）时仍按指针删一次，保持原有行为。
+// 返回被删除台账行的 { id, account_id }，供调用方按「台账实际所属账户」重算余额。
+async function deleteInvestmentLedgerTxns(conn, ctx) {
+    const linked = await findInvestmentLedgerTxns(conn, ctx);
+    const ids = (linked || []).map((t) => t.id);
+    if (ids.length) {
+        const ph = ids.map(() => '?').join(',');
+        await conn.query(
+            `DELETE FROM transactions WHERE id IN (${ph}) AND user_id = ? AND book_id = ?`,
+            [...ids, ctx.userId, ctx.bookId]
+        );
+    } else {
+        await conn.query(
+            'DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
+            [ctx.txnId, ctx.userId, ctx.bookId]
+        );
+    }
+    return linked || [];
+}
+
 // 更新理财类型
 router.put('/:id', async (req, res) => {
     try {
@@ -551,51 +596,23 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
         if (!txn) return res.status(404).json(fail('交易记录不存在'));
 
         await db.transaction(async (conn) => {
-            /*
-             * 先定位该流水对应的台账交易，再按 id 精确删除。
-             *
-             * 不能只靠 `DELETE ... WHERE investment_txn_id = ?` 一把梭：
-             * investment_txn_id 是后来 ALTER 补上的列（见 schema.sql 的兼容补列），
-             * 补列之前创建的老流水没有回填这个指针，按它删除会漏掉台账 ——
-             * 表现正是「理财流水删掉了，账户明细里那条还在，余额也不回退」。
-             * 因此指针查不到时，用「账户 + 金额 + 日期 + 收支方向」兜底反查孤儿台账。
-             */
+            // 先定位该流水对应的台账交易再精确删除；指针缺失的老数据走
+            // 「账户 + 金额 + 日期」兜底（findInvestmentLedgerTxns），
+            // 避免出现「理财流水删掉了、账户明细那条还在、余额不回退」。
             const affected = new Set();
             if (investment.account_id) affected.add(parseInt(investment.account_id));
 
-            let linked = await conn.query(
-                'SELECT id, account_id FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
-                [txnId, req.userId, req.bookId]
-            );
-            if (!linked || linked.length === 0) {
-                // 兜底：指针缺失的老数据。由流水类型推导台账是 income 还是 expense，
-                // 再按「账户 + 金额 + 日期」定位；限定 investment_txn_id IS NULL，避免误伤已关联的台账。
-                const dir = (txn.type === 'sell' || txn.type === 'dividend' || txn.type === 'interest') ? 'income' : 'expense';
-                linked = await conn.query(
-                    `SELECT id, account_id FROM transactions
-                     WHERE user_id = ? AND book_id = ? AND account_id = ?
-                       AND type = ? AND amount = ? AND date = ? AND investment_txn_id IS NULL
-                     ORDER BY id DESC LIMIT 1`,
-                    [req.userId, req.bookId, investment.account_id, dir, txn.amount, txn.date]
-                );
-            }
+            const ledgerRows = await deleteInvestmentLedgerTxns(conn, {
+                userId: req.userId,
+                bookId: req.bookId,
+                txnId,
+                accountId: investment.account_id,
+                type: txn.type,
+                amount: txn.amount,
+                date: txn.date,
+            });
             // 余额要按「台账实际所属账户」重算，而不只是持仓当前绑定的账户
-            (linked || []).forEach((t) => { if (t.account_id) affected.add(parseInt(t.account_id)); });
-
-            const ledgerIds = (linked || []).map((t) => t.id);
-            if (ledgerIds.length) {
-                const ph = ledgerIds.map(() => '?').join(',');
-                await conn.query(
-                    `DELETE FROM transactions WHERE id IN (${ph}) AND user_id = ? AND book_id = ?`,
-                    [...ledgerIds, req.userId, req.bookId]
-                );
-            } else {
-                // 指针查不到、兜底也没命中（如跨账本等边界）：仍按指针删一次，保持原有行为
-                await conn.query(
-                    'DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
-                    [txnId, req.userId, req.bookId]
-                );
-            }
+            (ledgerRows || []).forEach((t) => { if (t.account_id) affected.add(parseInt(t.account_id)); });
 
             // 删除理财流水
             await conn.query(
@@ -619,6 +636,8 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
 
 // 修改理财交易记录（reverse 旧笔 + 按新值插入 + 重算持仓与账户余额）
 // 采用「删旧 + 插新 + recompute 兜底」的事务策略，持仓始终由全部流水推导，避免口径漂移。
+// 旧台账清理与删除接口同口径（指针缺失的老数据走「账户+金额+日期」兜底）；
+// buy/sell 修改后按新值重建台账，否则只删不重建会令「改了加仓/卖出，账户明细与余额没跟上」。
 router.put('/investments/:id/transactions/:txnId', async (req, res) => {
     try {
         const { type, amount, price, quantity, date, note, fee } = req.body;
@@ -645,8 +664,21 @@ router.put('/investments/:id/transactions/:txnId', async (req, res) => {
         const dateNorm = normDate(date);
         let msg = '已更新';
         await db.transaction(async (conn) => {
-            // 1) reverse 旧笔：删关联交易 + 删流水 + 用剩余流水重算持仓
-            await conn.query('DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?', [txnId, req.userId, req.bookId]);
+            // 1) reverse 旧笔：先清旧台账（含指针缺失老数据的兜底），再删旧流水重算持仓
+            const affected = new Set();
+            if (investment.account_id) affected.add(parseInt(investment.account_id));
+
+            const oldLedger = await deleteInvestmentLedgerTxns(conn, {
+                userId: req.userId,
+                bookId: req.bookId,
+                txnId,
+                accountId: investment.account_id,
+                type: old.type,
+                amount: old.amount,
+                date: old.date,
+            });
+            // 旧台账可能挂在其它账户（持仓换绑过账户），余额重算要覆盖它
+            (oldLedger || []).forEach((t) => { if (t.account_id) affected.add(parseInt(t.account_id)); });
             await conn.query('DELETE FROM investment_transactions WHERE id = ? AND user_id = ?', [txnId, req.userId]);
             await recomputeInvestmentPosition(conn, investmentId, req.userId);
 
@@ -658,26 +690,41 @@ router.put('/investments/:id/transactions/:txnId', async (req, res) => {
             );
             const newInvTxnId = inv.insertId;
 
-            // 3) dividend/interest 现金入账（recompute 不处理主账本）
-            if (type === 'dividend' || type === 'interest') {
+            // 3) 按新值重建主账本（recompute 不处理主账本）：
+            //    买入 → 现金流出(expense)；卖出/分红/利息 → 现金入账(income)；红利再投不进现金、无台账。
+            if (type === 'buy' || type === 'sell' || type === 'dividend' || type === 'interest') {
                 if (investment.account_id) {
-                    const sellCatId = await getInvestmentSellCategoryId(conn);
-                    await conn.query(
-                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
-                         VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
-                        [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, dateNorm, newInvTxnId]
-                    );
+                    if (type === 'buy') {
+                        const isIns = await isInsuranceType(conn, investment.investment_type_id);
+                        const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
+                        await conn.query(
+                            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+                             VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?)`,
+                            [req.userId, req.bookId, investment.account_id, buyCatId, parseFloat(amount), `买入·${investment.name}`, dateNorm, newInvTxnId]
+                        );
+                    } else {
+                        const sellCatId = await getInvestmentSellCategoryId(conn);
+                        // 卖出被改后本笔盈亏上下文已失效，备注不再输出「盈亏±x」，只保留流水事实
+                        const txnNote = type === 'sell'
+                            ? `卖出·${investment.name}`
+                            : `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`;
+                        await conn.query(
+                            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+                             VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
+                            [req.userId, req.bookId, investment.account_id, sellCatId, parseFloat(amount), txnNote, dateNorm, newInvTxnId]
+                        );
+                    }
                 }
-                msg = type === 'dividend' ? '分红已更新' : '利息已更新';
+                msg = type === 'buy' ? '买入记录已更新' : type === 'sell' ? '卖出记录已更新' : type === 'dividend' ? '分红已更新' : '利息已更新';
             } else if (type === 'reinvest') {
                 msg = '红利再投已更新，持有份额已增加';
             }
 
-            // 4) 统一重算持仓（含新流水）+ 同步账户余额（单一真相）
+            // 4) 统一重算持仓（含新流水）+ 同步受影响账户余额（单一真相）
             await recomputeInvestmentPosition(conn, investmentId, req.userId);
-            if (investment.account_id) {
-                const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, investment.account_id]);
+            for (const aid of affected) {
+                const newBalance = await computeAccountBalance(conn, req.userId, aid);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, aid]);
             }
         });
 
