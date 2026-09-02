@@ -415,6 +415,11 @@ const AccountManager = {
             };
             const rows = list.map(t => {
                 const m = typeMeta[t.type] || { dir: '', cls: '', label: t.type };
+                // 利息（账户记利息 / 利息·收益·分红类收入）、投资关联（investment_txn_id）、
+                // 债务还款（kind='repayment'）均有各自来源模块/交易页管理，账户明细不提供行内
+                // 修改/删除；仅普通手动记账流水（餐饮、购物、工资等）保留行内修改/删除。
+                const isInterest = t.link_type === 'account_interest'
+                    || (t.type === 'income' && t.category && /(利息|收益|分红)/.test(t.category.name || ''));
                 const sub = t.kind === 'repayment'
                     ? (t.debt ? `还 ${escapeHtml(t.debt.name || '债务')}` : '还款')
                     : (t.category ? `${escapeHtml(t.category.icon || '')} ${escapeHtml(t.category.name || '')}` : '')
@@ -424,7 +429,7 @@ const AccountManager = {
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
                         <span class="rh-date">${t.date || ''}</span>
-                        ${t.link_type === 'account_interest' ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改此利息">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除此利息">删除</button></span>` : ''}
+                        ${(!t.investment_txn_id && !isInterest) ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
@@ -452,14 +457,19 @@ const AccountManager = {
                     case 'close': this.closeDetail(); break;
                     case 'delete-txn': await this.deleteAccTxn(parseInt(btn.dataset.id), id); break;
                     case 'edit-txn': {
-                        // 用 Number() 双侧兜底：避免后端把 id 序列化成字符串时
-                        // t.id === parseInt(...) 因严格相等失败，导致整个分支静默跳过。
                         const targetId = parseInt(btn.dataset.id, 10);
                         const txn = list.find(t => Number(t.id) === targetId);
-                        if (txn) {
+                        if (!txn) {
+                            console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id);
+                            break;
+                        }
+                        if (txn.link_type === 'account_interest') {
+                            // 仅账户记利息流水用专用弹窗（利息入口隐藏后通常不会走到这里）
                             this.openInterestModal(id, txn);
                         } else {
-                            console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id, 'list ids=', list.map(t => t.id));
+                            // 普通流水：账户页无通用流水编辑器，转「交易」页修改，
+                            // 避免 openInterestModal 把普通流水误标为账户利息。
+                            showToast('该流水请在「交易」页修改', 'info');
                         }
                         break;
                     }

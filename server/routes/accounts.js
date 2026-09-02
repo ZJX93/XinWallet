@@ -253,7 +253,7 @@ router.get('/:id/transactions', async (req, res) => {
 
         // 1) 关联该账户的交易（收入/支出/转账，account_id 即展示账户）
         const txns = await db.query(
-            `SELECT t.id, t.type, t.amount, t.note, t.date, t.link_type, t.link_id,
+            `SELECT t.id, t.type, t.amount, t.note, t.date, t.link_type, t.link_id, t.investment_txn_id,
                     c.id as cat_id, c.name as cat_name, c.icon as cat_icon,
                     tr.from_account_id as tr_from, tr.to_account_id as tr_to,
                     fa.name as tr_from_name, fa.icon as tr_from_icon,
@@ -307,6 +307,7 @@ router.get('/:id/transactions', async (req, res) => {
                     ? (t.tr_from_name ? { dir: '←', name: t.tr_from_name, icon: t.tr_from_icon } : null)
                     : null,
                 link_type: t.link_type || null,
+                investment_txn_id: t.investment_txn_id || null,
                 debt: null
             })),
             ...reps.map(r => ({
