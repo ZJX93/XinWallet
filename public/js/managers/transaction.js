@@ -75,6 +75,7 @@ const TransactionManager = {
             const isBetween = op === 'bt' || op === 'nb';
             amtInputs.style.display = showInputs ? '' : 'none';
             amtActions.style.display = showInputs ? '' : 'none';
+            amtInputs.classList.toggle('between-input', isBetween);
             this._amtVal.placeholder = isBetween ? '最低' : '金额';
             this._amtVal2.style.display = isBetween ? '' : 'none';
             amtSep.style.display = isBetween ? '' : 'none';

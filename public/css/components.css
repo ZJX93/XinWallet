@@ -403,10 +403,10 @@
   top: 100% !important;
   left: 0 !important;
   margin-top: 4px;
+  display: grid; grid-template-rows: auto auto; gap: 8px;
   min-width: 200px;
-  /* ⛔ 不写固定 width：旧版 min-width:200px + 无 width，面板被父容器宽度限制为 ~100px，
-     导致下面 7 个按钮按 flex 内容硬堆成 3 行。改为 width: max-content 让面板宽度
-     跟内层 grid 内容走；max-width 防止窄屏（<432px）溢出视口。 */
+  /* 面板宽度 = 第一行比较按钮的自然总宽（max-content），
+     第二行输入框/按钮在面板宽内排列，与第一行对齐；max-width 防窄屏溢出视口 */
   width: max-content;
   max-width: calc(100vw - 32px);
   padding: 10px;
@@ -424,10 +424,13 @@
      • 中屏面板宽 ~300-400px  → 5-6 列平铺，超出自动换行
      • 窄屏 max-width 截断到视口内 → 列数自适应减少 */
 .filter-amount-panel-ops {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 4px;
 }
+
+.filter-amount-panel-ops button { white-space: nowrap; }
+
 .amt-op-btn {
   flex: 0 0 auto;
   padding: 4px 10px;
@@ -446,10 +449,11 @@
 
 /* 输入区域 */
 .filter-amount-panel-inputs {
-  display: flex; align-items: center; gap: 4px; margin-top: 8px;
+  display: flex; align-items: center; gap: 4px; margin-top: 0;
+  min-width: 0; width: 100%; box-sizing: border-box;
 }
 .filter-amount-panel-inputs input {
-  flex: 1 1 0; min-width: 0; height: 32px;
+  flex: 1 1 0; min-width: 72px; height: 32px;
   padding: 0 8px;
   font-size: 12px; font-family: inherit;
   color: var(--text-primary); background: var(--surface-hover);
@@ -468,13 +472,19 @@
 .filter-amount-panel-inputs .filter-amount-sep {
   font-size: 11px; color: var(--text-tertiary); flex: 0 0 auto;
 }
+/* 介于/不介于时两框固定 100px，不再均分撑大 */
+.filter-amount-panel-inputs.between-input input {
+  flex: 0 0 115px; min-width: 115px;
+}
 
 /* 操作按钮 */
 .filter-amount-panel-actions {
-  display: flex; gap: 6px; margin-top: 8px;
+  display: flex; align-items: center; gap: 6px; margin-top: 0;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .amt-apply-btn {
-  flex: 1; height: 30px;
+  flex: 0 0 auto; height: 30px; padding: 0 8px;
   font-size: 12px; font-family: inherit;
   color: var(--text-primary); background: var(--surface-hover);
   border: 1px solid var(--border-subtle);
@@ -483,7 +493,7 @@
 }
 .amt-apply-btn:hover { opacity: 0.85; }
 .amt-clear-btn {
-  flex: 0 0 auto; height: 30px; padding: 0 12px;
+  flex: 0 0 auto; height: 30px; padding: 0 8px;
   font-size: 12px; font-family: inherit;
   color: var(--text-secondary); background: transparent;
   border: 1px solid var(--border-default);
