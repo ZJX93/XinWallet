@@ -101,7 +101,7 @@ router.get('/dashboard', async (req, res) => {
                     (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t
                        LEFT JOIN categories c ON t.category_id = c.id
                        WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
-                         AND CAST(t.date AS CHAR(10)) BETWEEN b.start_date AND b.end_date
+                         AND DATE(t.date) BETWEEN b.start_date AND b.end_date
                          AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))) as actual
              FROM budgets b
              WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?

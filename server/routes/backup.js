@@ -1072,7 +1072,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (aiConfig.ocr) {
                     const ex = await conn.query('SELECT id FROM ai_ocr_config WHERE user_id = ?', [userId]);
                     if (!ex.length) {
-                        await conn.query(db.insertIgnoreSql('ai_ocr_config', ['user_id', 'provider', 'secret_id', 'secret_key', 'region']), [userId, aiConfig.ocr.provider || 'tencent', null, null, aiConfig.ocr.region || 'ap-guangzhou']);
+                        await conn.query(db.insertIgnoreSql('ai_ocr_config', ['user_id', 'provider', 'secret_id', 'secret_key', 'region']), [userId, aiConfig.ocr.provider || 'tencent', '', '', aiConfig.ocr.region || 'ap-guangzhou']);
                         imported.ai_ocr = (imported.ai_ocr || 0) + 1;
                     }
                 }
