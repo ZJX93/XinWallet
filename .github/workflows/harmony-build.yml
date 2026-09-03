@@ -142,8 +142,39 @@ jobs:
           # HarmonyOS NEXT (API12)：ArkTS 运行时 + JS + 工具链。组件名以 list 输出为准，逐候选尝试。
           "$SDKMGR" install --accept-license ets:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
             || "$SDKMGR" install --accept-license arkts:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
-            || true
+            || "$SDKMGR" install --accept-license js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR"
+
+      - name: 'Resolve SDK home & export DEVECO_SDK_HOME'
+        run: |
+          set -e
+          # sdkmgr 可能把 SDK 装到 $SDK_DIR，也可能装到 Command Line Tools 自带的
+          # $HOME/commandline-tools/sdk（取决于 sdkmgr 版本是否遵守 --sdk-directory）。
+          # 这里不写死，而是动态定位「含 ets/ 或 toolchains/ 子目录」的真实 SDK 目录，
+          # 并把 DEVECO_SDK_HOME / OHOS_SDK_HOME / OHOS_BASE_SDK_HOME 统一指向它，
+          # 避免 hvigor 因指向空目录而报 00303217 Configuration Error。
+          CANDIDATES=(
+            "$SDK_DIR"
+            "$HOME/commandline-tools/sdk"
+            "$HOME/commandline-tools/command-line-tools/sdk"
+            "$GITHUB_WORKSPACE/ohos-sdk"
+          )
+          FOUND=""
+          for d in "${CANDIDATES[@]}"; do
+            if [ -d "$d" ] && { [ -d "$d/ets" ] || [ -d "$d/toolchains" ]; }; then
+              FOUND="$d"
+              break
+            fi
+          done
+          if [ -z "$FOUND" ]; then
+            echo "::error::未找到已安装的 HarmonyOS SDK（需含 ets/ 或 toolchains/ 子目录）。候选目录均无效：${CANDIDATES[*]}。请检查『Install SDK components via sdkmgr』是否成功（依赖 HARMONY_COMMANDLINE_TOOLS_URL 或 Release 资产 harmony-cli，且组件名 ets:${OHOS_API_VERSION} 须存在于镜像）。"
+            echo "--- $SDK_DIR 内容 ---"; ls -la "$SDK_DIR" 2>/dev/null || true
+            echo "--- $HOME/commandline-tools 内容 ---"; ls -la "$HOME/commandline-tools" 2>/dev/null || true
+            exit 1
+          fi
+          echo "找到 HarmonyOS SDK: $FOUND"
+          echo "DEVECO_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
+          echo "OHOS_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
+          echo "OHOS_BASE_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
 
       - name: 'Configure .npmrc (resolve @ohos plugin)'
         run: |
