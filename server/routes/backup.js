@@ -1064,7 +1064,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     if (ex.length) continue;
                     await conn.query(
                         'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        [userId, p.name, p.api_type || 'openai', p.base_url || '', null, p.model || '', p.is_active ? 1 : 0, 0]
+                        [userId, p.name, p.api_type || 'openai', p.base_url || '', null, p.model || '', p.is_active ? true : false, 0]
                     );
                     imported.ai_providers = (imported.ai_providers || 0) + 1;
                 }

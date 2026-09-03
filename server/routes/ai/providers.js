@@ -39,7 +39,7 @@ router.post('/providers', async (req, res) => {
         const encryptedKey = api_key ? encrypt(api_key.trim()) : null;
         const result = await db.query(
             'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [req.userId, name.trim(), api_type, base_url.trim(), encryptedKey, model.trim(), is_active ? 1 : 0, sort_order || 0]
+            [req.userId, name.trim(), api_type, base_url.trim(), encryptedKey, model.trim(), is_active ? true : false, sort_order || 0]
         );
         if (is_active) {
             await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ? AND id != ?', [req.userId, result.insertId]);
@@ -59,7 +59,7 @@ router.put('/providers/:id', async (req, res) => {
 
         const updates = {
             name: name.trim(), api_type, base_url: base_url.trim(),
-            model: model.trim(), is_active: is_active ? 1 : 0, sort_order: sort_order || 0
+            model: model.trim(), is_active: is_active ? true : false, sort_order: sort_order || 0
         };
         if (typeof api_key === 'string' && api_key.trim()) {
             updates.api_key = encrypt(api_key.trim());
