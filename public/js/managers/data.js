@@ -352,10 +352,15 @@ const DataManager = {
         const kind = document.getElementById('dcEditKind').value;
         const id = document.getElementById('dcEditId').value;
         if (kind === 'category') {
+            const nameVal = document.getElementById('dcEditName').value.trim();
+            if (!nameVal) {
+                if (typeof showToast === 'function') showToast('请填写分类名称', 'error');
+                return;
+            }
             const parentVal = document.getElementById('dcEditParentId').value;
             const body = {
                 parent_id: parentVal ? parseInt(parentVal) : null,
-                name: document.getElementById('dcEditName').value,
+                name: nameVal,
                 icon: document.getElementById('dcEditIcon').value,
                 type: document.getElementById('dcEditCatType').value,
                 color: document.getElementById('dcEditColor').value,
