@@ -26,6 +26,10 @@ jobs:
       SDK_DIR: '${{ github.workspace }}/ohos-sdk'
       OHOS_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
       OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
+      # hvigor（及项目 harmony/hvigorw 的 ensure_sdk_home）依赖 DEVECO_SDK_HOME，
+      # CI 中只有 OHOS_SDK_HOME 会导致 00303217 Configuration Error: Invalid value of 'DEVECO_SDK_HOME'。
+      # SDK 由 sdkmgr 安装到 SDK_DIR（即下方目录），此处与之一致即可。
+      DEVECO_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
 
     steps:
       - name: 'Checkout'
