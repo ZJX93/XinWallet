@@ -13,6 +13,7 @@ const db = require('../db');
 const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
 const { toAmount } = require('../validate');
 const { recomputeInvestmentPosition } = require('./transactions');
+const { ensureCategory, syncCreditCardDebt } = require('./utils');
 
 // 备份文件识别标记：导入时校验，避免误读普通 xlsx
 const BACKUP_MARK = '鑫钱包账本备份';
@@ -415,9 +416,16 @@ router.get('/export', async (req, res) => {
             db.query('SELECT name, color, icon FROM tags WHERE user_id = ? AND book_id = ?', [userId, bookId]),
             db.query('SELECT name, period_type, amount, start_date, end_date FROM budgets WHERE user_id = ? AND book_id = ?', [userId, bookId]),
             db.query(
+                // account_id 为空的自动同步债务（同步时按姓名兜底匹配出来的）会把「关联账户」导成空，
+                // 导入后便无法判定跨账户还款。故为空时按债务名回填同名授信账户，保证导出保真。
                 `SELECT d.name, d.type, direction, creditor, principal, remaining, interest_rate, term_months,
                         method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment,
-                        d.status, note, a.name AS account_name
+                        d.status, note,
+                        COALESCE(a.name, (SELECT a2.name FROM accounts a2
+                                           WHERE a2.user_id = d.user_id AND (a2.book_id = d.book_id OR a2.book_id IS NULL)
+                                             AND a2.name = d.name
+                                             AND (a2.type = 'credit_card' OR (a2.type = 'electronic_payment' AND a2.credit_limit > 0))
+                                           LIMIT 1)) AS account_name
                    FROM debts d LEFT JOIN accounts a ON d.account_id = a.id
                   WHERE d.user_id = ? AND d.book_id = ?`,
                 [userId, bookId]
@@ -705,11 +713,27 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
 
             // 2) 账户（建立 名称→id 映射，供后续引用）
+            //    ⚠️ 名称首尾空格在 Excel 单元格里极常见（实测存在 ' 工行信用卡（9408）'）。
+            //    若「建映射用的键」与「查找用的键」trim 处理不一致，交易/债务还款就会匹配不到
+            //    而被静默跳过。故统一以 trim 后的名称为准；查库用 TRIM(name) 兼容库内既有的
+            //    带空格记录，避免重复建出同名账户。
             const acMap = {};
+            const creditAccNames = new Set();
+            const normName = (v) => String(v == null ? '' : v).trim();
+            // code 全局唯一（schema idx_accounts_code），不同用户间也可能撞 code。
+            // 若文件里的编码已被占用，插入时置空，避免唯一约束冲突中断整次导入。
+            const usedCodes = new Set(
+                (await conn.query('SELECT code FROM accounts WHERE code IS NOT NULL')).map(r => r.code)
+            );
             for (const a of (accounts['账户'] || [])) {
-                if (!a || !String(a['名称'] || '').trim()) continue;
-                const e = await conn.query('SELECT id FROM accounts WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, a['名称']]);
-                if (e && e.length) { acMap[a['名称']] = e[0].id; continue; }
+                const aName = normName(a && a['名称']);
+                if (!a || !aName) continue;
+                const accType = typeof a['类型'] === 'string' && a['类型'] ? a['类型'] : 'bank_card';
+                const accLimit = cellNum(a['信用额度']);
+                // 授信账户（信用卡 / 带额度的电子支付）：供自动同步债务回填关联账户
+                if (accType === 'credit_card' || (accType === 'electronic_payment' && (accLimit || 0) > 0)) creditAccNames.add(aName);
+                const e = await conn.query('SELECT id FROM accounts WHERE user_id = ? AND book_id = ? AND TRIM(name) = ?', [userId, bookId, aName]);
+                if (e && e.length) { acMap[aName] = e[0].id; continue; }
                 const balance = cellNum(a['余额']);
                 const opening = cellNum(a['期初余额']);
                 const limit = cellNum(a['信用额度']);
@@ -718,9 +742,9 @@ router.post('/import', upload.single('file'), async (req, res) => {
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         userId, bookId,
-                        typeof a['编码'] === 'string' && a['编码'] ? a['编码'] : null,
-                        a['名称'],
-                        typeof a['类型'] === 'string' && a['类型'] ? a['类型'] : 'bank_card',
+                        (typeof a['编码'] === 'string' && a['编码'] && !usedCodes.has(a['编码'])) ? a['编码'] : null,
+                        aName,
+                        accType,
                         typeof a['图标'] === 'string' ? a['图标'] : '💰',
                         Number.isFinite(balance) ? balance : 0,
                         Number.isFinite(opening) ? opening : 0,
@@ -729,8 +753,17 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         a['状态'] === 'closed' ? 'closed' : 'active'
                     ]
                 );
-                acMap[a['名称']] = r.insertId;
+                acMap[aName] = r.insertId;
                 imported.accounts++;
+            }
+            // 授信账户 id 集合：用于判定「信用卡/花呗类」还款，以及末尾按账户余额校准债务
+            const creditAccIds = new Set();
+            {
+                const rows = await conn.query(
+                    "SELECT id FROM accounts WHERE user_id = ? AND (book_id = ? OR book_id IS NULL) AND (type = 'credit_card' OR (type = 'electronic_payment' AND credit_limit > 0))",
+                    [userId, bookId]
+                );
+                rows.forEach(rw => creditAccIds.add(parseInt(rw.id)));
             }
             // 账户 id → 名称 反向映射（转账备注展示用）
             const idToName = {};
@@ -761,7 +794,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     const ex = await findExistingId('investments', ['user_id', 'book_id', 'name'], [userId, bookId, i['名称']]);
                     if (ex != null) continue; // 持仓已存在则整体跳过（含其原始流水），避免重复建仓
                 }
-                const aid = i['关联账户'] ? acMap[i['关联账户']] : null;
+                const aid = i['关联账户'] ? acMap[normName(i['关联账户'])] : null;
                 const it = await conn.query('SELECT id FROM investment_types WHERE name = ?', [String(i['类型'] || '其他')]);
                 const ins = await conn.query(
                     `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note)
@@ -831,16 +864,23 @@ router.post('/import', upload.single('file'), async (req, res) => {
             // 5) 债务
             const debtNameToId = {};
             for (const d of (config['债务'] || [])) {
-                if (!d || !String(d['名称'] || '').trim()) continue;
+                const dName = normName(d && d['名称']);
+                if (!d || !dName) continue;
                 if (mergeMode) {
-                    const ex = await findExistingId('debts', ['user_id', 'book_id', 'name'], [userId, bookId, d['名称']]);
-                    if (ex != null) { debtNameToId[d['名称']] = ex; continue; }
+                    const ex = await findExistingId('debts', ['user_id', 'book_id', 'name'], [userId, bookId, dName]);
+                    if (ex != null) { debtNameToId[dName] = ex; continue; }
                 }
-                const aid = d['关联账户'] ? acMap[d['关联账户']] : null;
+                // 自动同步出来的信用卡/信用支付债务，源库里 account_id 可能为空（同步时按姓名兜底匹配），
+                // 导出后「关联账户」列也就为空。若导入时留空，后续还款无法判定「跨账户还款」，
+                // 只会记单腿支出、信用卡已用额度不回血（钱还了、额度不恢复）。故按债务名回填同名授信账户。
+                let aid = d['关联账户'] ? acMap[normName(d['关联账户'])] : null;
+                if (aid == null && String(d['备注'] || '').startsWith('自动同步') && creditAccNames.has(dName)) {
+                    aid = acMap[dName] != null ? acMap[dName] : null;
+                }
                 await conn.query(
                     db.insertIgnoreSql('debts', ['user_id', 'book_id', 'account_id', 'name', 'type', 'direction', 'creditor', 'principal', 'remaining', 'interest_rate', 'term_months', 'method', 'monthly_payment', 'start_date', 'due_date', 'billing_day', 'payment_day', 'min_payment', 'status', 'note']),
                     [
-                        userId, bookId, aid, d['名称'],
+                        userId, bookId, aid, dName,
                         ['credit_card', 'loan', 'personal', 'other'].includes(d['类型']) ? d['类型'] : 'loan',
                         d['方向'] === 'receivable' ? 'receivable' : 'payable',
                         String(d['债权人'] || ''),
@@ -855,8 +895,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         String(d['备注'] || '')
                     ]
                 );
-                const drow = await conn.query('SELECT id FROM debts WHERE user_id = ? AND book_id = ? AND name = ?', [userId, bookId, d['名称']]);
-                if (drow.length) debtNameToId[d['名称']] = drow[0].id;
+                const drow = await conn.query('SELECT id FROM debts WHERE user_id = ? AND book_id = ? AND TRIM(name) = ?', [userId, bookId, dName]);
+                if (drow.length) debtNameToId[dName] = drow[0].id;
                 imported.debts++;
             }
 
@@ -867,7 +907,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     const ex = await findExistingId('savings_goals', ['user_id', 'book_id', 'name'], [userId, bookId, g['名称']]);
                     if (ex != null) continue;
                 }
-                const aid = g['关联账户'] ? acMap[g['关联账户']] : null;
+                const aid = g['关联账户'] ? acMap[normName(g['关联账户'])] : null;
                 await conn.query(
                     db.insertIgnoreSql('savings_goals', ['user_id', 'book_id', 'name', 'target_amount', 'current_amount', 'account_id', 'icon', 'note', 'status']),
                     [
@@ -920,8 +960,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (amount === null || amount <= 0) continue;
 
                 if (typeLabel === '转账') {
-                    const fa = acMap[t['账户']];
-                    const ta = acMap[t['对方账户']];
+                    const fa = acMap[normName(t['账户'])];
+                    const ta = acMap[normName(t['对方账户'])];
                     if (!fa || !ta) continue;
                     // 合并模式：同付款/收款账户+金额+日期已存在则跳过
                     if (mergeMode) {
@@ -949,7 +989,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     );
                     imported.transfers++;
                 } else {
-                    const aid = acMap[t['账户']];
+                    const aid = acMap[normName(t['账户'])];
                     if (!aid) continue;
                     // 合并模式：同账户+日期+金额+备注+类型已存在则跳过，避免重复追加
                     if (mergeMode) {
@@ -992,12 +1032,16 @@ router.post('/import', upload.single('file'), async (req, res) => {
             // 7.x) 债务还款流水恢复：重建 debt_repayments 记录 + 台账腿（含跨账户还款的两条腿），
             //      使导入后债务还款历史完整、约束可达（交易页按 debt_repayment 拦截去债务页）。
             for (const r of (debtRepayments || [])) {
-                const dn = String(r['债务名称'] || '').trim();
-                const an = String(r['账户'] || '').trim();
+                const dn = normName(r && r['债务名称']);
+                const an = normName(r && r['账户']);
                 const debtId = debtNameToId[dn] != null ? debtNameToId[dn] : null;
                 const accId = acMap[an];
                 const amt = toAmount(r['金额']);
-                if (!debtId || !accId || amt == null || amt <= 0) continue;
+                if (!debtId || !accId || amt == null || amt <= 0) {
+                    // 不再静默丢弃：统计跳过条数，前端可提示「有 N 笔还款未恢复」
+                    imported.debt_repayments_skipped = (imported.debt_repayments_skipped || 0) + 1;
+                    continue;
+                }
                 const paidAt = fmtDateTime(r['日期']) || fmtDate(r['日期']) || new Date().toISOString().slice(0, 19);
                 // 合并模式：同债务+金额+还款日已存在则跳过
                 if (mergeMode && debtId != null) {
@@ -1011,30 +1055,51 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     [userId, bookId, debtId, accId, amt, pp, ip, paidAt, String(r['备注'] || '')]
                 );
                 const repId = repIns.insertId;
-                // 重建台账腿（复刻债务还款创建逻辑，简化版）
-                const drow = await conn.query('SELECT account_id, direction FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [debtId, userId, bookId]);
-                const debtAccId = drow.length ? drow[0].account_id : null;
-                const isReceivable = drow.length && drow[0].direction === 'receivable';
-                const crossAccount = debtAccId != null && debtAccId !== accId;
+                const drow = await conn.query('SELECT account_id, direction, type, name, note FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [debtId, userId, bookId]);
+                const debt = drow.length ? drow[0] : null;
+                const isReceivable = !!debt && debt.direction === 'receivable';
+                let debtAccId = debt && debt.account_id != null ? parseInt(debt.account_id) : null;
+                // 自动同步的授信债务按姓名回填真实信用卡/花呗账户（与 debts.js 还款逻辑一致）
+                const isAutoSync = !!debt && String(debt.note || '').startsWith('自动同步');
+                if (debtAccId == null && isAutoSync) {
+                    const m = await conn.query(
+                        "SELECT id FROM accounts WHERE user_id = ? AND (book_id = ? OR book_id IS NULL) AND TRIM(name) = ? AND (type = 'credit_card' OR (type = 'electronic_payment' AND credit_limit > 0))",
+                        [userId, bookId, normName(debt && debt.name)]
+                    );
+                    if (m.length) debtAccId = parseInt(m[0].id);
+                }
+                const crossAccount = !isReceivable && !!debtAccId && debtAccId !== accId;
+                // 分类：信用卡/花呗类跨账户还款归入「信用卡还款」，与 app 内还款保持一致
+                const isCreditDebt = !!debt && (debt.type === 'credit_card' || (debtAccId != null && creditAccIds.has(debtAccId)));
+                const catName = isReceivable ? '收还款' : (isCreditDebt && crossAccount ? '信用卡还款' : '还款');
+                const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
+                const catId = await ensureCategory(conn, userId, catName, catType, isReceivable ? '💰' : (isCreditDebt ? '💳' : '💸'));
                 const txNote = String(r['备注'] || '');
-                if (crossAccount && debtAccId != null) {
-                    await conn.query(
+                let txId = null;
+                if (crossAccount) {
+                    const outRes = await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
                          VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, NULL, 'debt_repayment', ?)`,
-                        [userId, bookId, accId, transferCatId, amt, txNote, paidAt, accId, repId]
+                        [userId, bookId, accId, catId, amt, txNote, paidAt, accId, repId]
                     );
+                    txId = outRes.insertId;
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
                          VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, NULL, ?, 'debt_repayment', ?)`,
-                        [userId, bookId, debtAccId, transferCatId, amt, txNote, paidAt, debtAccId, repId]
+                        [userId, bookId, debtAccId, catId, amt, txNote, paidAt, debtAccId, repId]
                     );
                 } else {
-                    await conn.query(
+                    const res = await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, link_type, link_id)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'debt_repayment', ?)`,
-                        [userId, bookId, accId, transferCatId, isReceivable ? 'income' : 'expense', amt, txNote, paidAt, accId, accId, repId]
+                        [userId, bookId, accId, catId, isReceivable ? 'income' : 'expense', amt, txNote, paidAt, accId, accId, repId]
                     );
+                    txId = res.insertId;
                 }
+                if (txId != null) {
+                    await conn.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txId, repId]);
+                }
+                imported.debt_repayments = (imported.debt_repayments || 0) + 1;
                 imported.transactions++;
             }
 
@@ -1082,6 +1147,12 @@ router.post('/import', upload.single('file'), async (req, res) => {
             for (const name of Object.keys(acMap)) {
                 const newBal = await computeAccountBalance(conn, userId, acMap[name], bookId);
                 await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBal, acMap[name], userId, bookId]);
+            }
+            // 9) 以「账户余额」为唯一真相重新校准自动同步的授信债务。
+            //    债务表的 remaining 只是导出时的快照，而上面的余额重算可能已改变信用卡余额
+            //    （还款双腿重建后信用卡回血）。不校准就会出现「账户已还清、债务还挂着欠款」。
+            for (const aid of creditAccIds) {
+                await syncCreditCardDebt(conn, userId, aid);
             }
         });
 
