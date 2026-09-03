@@ -863,6 +863,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
             // 5) 债务
             const debtNameToId = {};
+            const debtIdToName = {};
             for (const d of (config['债务'] || [])) {
                 const dName = normName(d && d['名称']);
                 if (!d || !dName) continue;
@@ -896,7 +897,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                     ]
                 );
                 const drow = await conn.query('SELECT id FROM debts WHERE user_id = ? AND book_id = ? AND TRIM(name) = ?', [userId, bookId, dName]);
-                if (drow.length) debtNameToId[dName] = drow[0].id;
+                if (drow.length) { debtNameToId[dName] = drow[0].id; debtIdToName[drow[0].id] = dName; }
                 imported.debts++;
             }
 
@@ -1009,10 +1010,14 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         const dn = String(t['关联对象'] || '').trim();
                         linkId = debtNameToId[dn] != null ? debtNameToId[dn] : null;
                     }
+                    // 债务还款台账腿：备注为空时按关联债务名自动补「还款·{债务名}」，与手动还款一致
+                    const rawTxnNote = String(t['备注'] || '').trim();
+                    const txnNote = (linkType === 'debt_repayment' && !rawTxnNote && linkId != null && debtIdToName[linkId])
+                        ? `还款·${debtIdToName[linkId]}` : rawTxnNote;
                     const insTx = await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, link_type, link_id)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [userId, bookId, aid, catId, typeVal, amount, String(t['备注'] || ''), date, linkType || null, linkId]
+                        [userId, bookId, aid, catId, typeVal, amount, txnNote, date, linkType || null, linkId]
                     );
                     const newTxId = insTx.insertId;
                     // 交易标签关联：按标签名解析 id 写入 transaction_tags
@@ -1050,14 +1055,20 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 }
                 const pp = cellNum(r['本金部分']) || amt;
                 const ip = cellNum(r['利息部分']) || 0;
-                const repIns = await conn.query(
-                    'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [userId, bookId, debtId, accId, amt, pp, ip, paidAt, String(r['备注'] || '')]
-                );
-                const repId = repIns.insertId;
+                // 提前取债务信息，便于「备注为空时按债务名自动补备注」
                 const drow = await conn.query('SELECT account_id, direction, type, name, note FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [debtId, userId, bookId]);
                 const debt = drow.length ? drow[0] : null;
                 const isReceivable = !!debt && debt.direction === 'receivable';
+                // 备注兜底：导出未填时按债务名自动补「还款·/收回·{债务名}」，
+                // 与 app 内手动还款（debts.js）保持一致；债务名同步自信用卡账户名（含尾号，如「交行信用卡（8341）」）。
+                const rawRepNote = String(r['备注'] || '').trim();
+                const autoRepNote = debt ? (isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`) : '';
+                const repNote = rawRepNote || autoRepNote;
+                const repIns = await conn.query(
+                    'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [userId, bookId, debtId, accId, amt, pp, ip, paidAt, repNote]
+                );
+                const repId = repIns.insertId;
                 let debtAccId = debt && debt.account_id != null ? parseInt(debt.account_id) : null;
                 // 自动同步的授信债务按姓名回填真实信用卡/花呗账户（与 debts.js 还款逻辑一致）
                 const isAutoSync = !!debt && String(debt.note || '').startsWith('自动同步');
@@ -1074,7 +1085,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 const catName = isReceivable ? '收还款' : (isCreditDebt && crossAccount ? '信用卡还款' : '还款');
                 const catType = isReceivable ? 'income' : (crossAccount ? 'transfer' : 'expense');
                 const catId = await ensureCategory(conn, userId, catName, catType, isReceivable ? '💰' : (isCreditDebt ? '💳' : '💸'));
-                const txNote = String(r['备注'] || '');
+                const txNote = repNote;
                 let txId = null;
                 if (crossAccount) {
                     const outRes = await conn.query(
