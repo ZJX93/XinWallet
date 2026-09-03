@@ -68,7 +68,13 @@ const DataManager = {
             const action = btn.dataset.action;
             if (action === 'edit-invtype') this.openInvTypeModal(parseInt(btn.dataset.id));
             else if (action === 'del-invtype') this.deleteInvType(parseInt(btn.dataset.id), btn.dataset.name);
-            else if (action === 'toggle-invtype') this.toggleInvType(parseInt(btn.dataset.id), btn.dataset.closed === '1');
+        });
+        // 可见性 ON/OFF 开关：监听 checkbox 变化（而非 click，以便响应键盘空格 + 失败时易回滚）
+        document.getElementById('invTypeTableBody').addEventListener('change', (e) => {
+            const cb = e.target;
+            if (cb && cb.dataset && cb.dataset.action === 'toggle-invtype') {
+                this.toggleInvType(parseInt(cb.dataset.id), cb.checked);
+            }
         });
 
         // 账本管理
@@ -200,7 +206,7 @@ const DataManager = {
                 <td class="dc-actions">
                     <button class="btn-ghost-sm" data-action="edit-invtype" data-id="${t.id}">✏️</button>
                     <button class="btn-ghost-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}">🗑️</button>
-                    <button class="btn-ghost-sm" data-action="toggle-invtype" data-id="${t.id}" data-closed="${(t.is_active != false) ? '0' : '1'}" title="${(t.is_active != false) ? '关闭该类型（从新增理财下拉隐藏）' : '启用该类型（重新出现在新增理财下拉）'}">${(t.is_active != false) ? '🚫 关闭' : '🔓 启用'}</button>
+                    <label class="ios-toggle" title="${(t.is_active != false) ? '点击关闭该类型（从新增理财下拉隐藏）' : '点击启用该类型（重新出现在新增理财下拉）'}"><input type="checkbox" data-action="toggle-invtype" data-id="${t.id}"${(t.is_active != false) ? ' checked' : ''}><span class="ios-toggle-track"><span class="ios-toggle-text-on">ON</span><span class="ios-toggle-knob"></span><span class="ios-toggle-text-off">OFF</span></span></label>
                 </td>
             </tr>
         `).join('');
@@ -260,9 +266,12 @@ const DataManager = {
                 const c = cache.investmentTypes.find(t => t.id === id);
                 if (c) c.is_active = makeActive;
             }
-            this.refreshInvTypes();
+            // 不调 refreshInvTypes()：checkbox 的 checked 状态已经反映了新可见性，
+            // 重新拉列表只为了让开关闪一下。
         } catch (err) {
-            // api() 已显示错误 toast
+            // api() 已显示错误 toast —— 把 checkbox 回滚到原始状态
+            const cb = document.querySelector(`#invTypeTableBody input[data-action="toggle-invtype"][data-id="${id}"]`);
+            if (cb) cb.checked = !makeActive;
         }
     },
 
