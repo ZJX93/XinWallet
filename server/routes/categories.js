@@ -65,10 +65,16 @@ router.post('/', async (req, res) => {
         if (dup) return res.status(400).json(fail(`该分类下已存在同名分类「${name}」`));
         const TYPE_COLOR = { expense: '#22c55e', income: '#ef4444', transfer: '#3b82f6' };
         const defaultColor = TYPE_COLOR[type] || '#6366f1';
-        const maxSort = await db.queryOne(
-            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND (parent_id = ? OR (parent_id IS NULL AND ? IS NULL)) AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
-            [type, parent_id || null, parent_id || null, req.userId, req.bookId]
-        );
+        // PG prepared statement 无法对参数做 IS NULL 类型推断，按 parent_id 是否 null 在 JS 分支拆 SQL
+        const maxSort = parent_id == null
+            ? await db.queryOne(
+                'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NULL AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
+                [type, req.userId, req.bookId]
+              )
+            : await db.queryOne(
+                'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id = ? AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
+                [type, parent_id, req.userId, req.bookId]
+              );
         const result = await db.query(
             'INSERT INTO categories (parent_id, user_id, book_id, name, icon, type, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE)',
             [parent_id || null, req.userId, req.bookId, name, icon || '📌', type, color || defaultColor, maxSort.n]
