@@ -55,7 +55,7 @@ const InvestmentManager = {
         if (includeSoldEl) includeSoldEl.addEventListener('change', () => this.refresh());
         // 类型下拉
         const typeSel = document.getElementById('investType');
-        cache.investmentTypes.forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</option>`; });
+        cache.investmentTypes.filter(t => t.is_active != false).forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</option>`; });
         // 账户下拉
         const accSel = document.getElementById('investAccount');
         cache.accounts.forEach(a => { accSel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`; });
@@ -183,6 +183,17 @@ const InvestmentManager = {
         document.getElementById('investModal').classList.add('show');
         document.getElementById('investModalTitle').textContent = '编辑理财持仓';
         document.getElementById('investType').value = inv.investment_type_id;
+        // 若该类型已被关闭（下拉里已过滤掉），补一个选项保证旧持仓仍可编辑
+        if (document.getElementById('investType').value != inv.investment_type_id) {
+            const it = cache.investmentTypes.find(t => t.id === inv.investment_type_id);
+            if (it) {
+                const opt = document.createElement('option');
+                opt.value = it.id;
+                opt.textContent = `${it.icon || '💹'} ${it.name}（已关闭）`;
+                document.getElementById('investType').appendChild(opt);
+                document.getElementById('investType').value = it.id;
+            }
+        }
         document.getElementById('investName').value = inv.name || '';
         document.getElementById('investCode').value = inv.code || '';
         document.getElementById('investAccount').value = inv.account_id || '';

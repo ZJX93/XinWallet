@@ -243,6 +243,23 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// 切换理财类型全局可见性（关闭后不再出现在「新增理财」下拉）
+// 允许切换系统预置类型：这是「关掉不用的预置、避免反复自建」的核心诉求；
+// 此开关不影响 PUT/DELETE 对 is_system 的改删保护。
+router.patch('/:id', async (req, res) => {
+    try {
+        const typeId = parseInt(req.params.id);
+        if (!Number.isInteger(typeId)) return res.status(400).json(fail('无效的类型 ID'));
+        const t = await db.queryOne('SELECT id, is_active FROM investment_types WHERE id = ?', [typeId]);
+        if (!t) return res.status(404).json(fail('理财类型不存在'));
+        const next = (req.body && typeof req.body.active === 'boolean') ? req.body.active : !t.is_active;
+        await db.query('UPDATE investment_types SET is_active = ? WHERE id = ?', [next ? true : false, typeId]);
+        res.json(success({ active: !!next }, '已更新'));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
 // 获取所有持仓
 //
 // 修复 m2（重复实现）：calcAnnualizedRate / calcPortfolioMetrics 原先在本文件与

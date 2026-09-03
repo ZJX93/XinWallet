@@ -68,6 +68,7 @@ const DataManager = {
             const action = btn.dataset.action;
             if (action === 'edit-invtype') this.openInvTypeModal(parseInt(btn.dataset.id));
             else if (action === 'del-invtype') this.deleteInvType(parseInt(btn.dataset.id), btn.dataset.name);
+            else if (action === 'toggle-invtype') this.toggleInvType(parseInt(btn.dataset.id), btn.dataset.closed === '1');
         });
 
         // 账本管理
@@ -199,6 +200,7 @@ const DataManager = {
                 <td class="dc-actions">
                     <button class="btn-ghost-sm" data-action="edit-invtype" data-id="${t.id}">✏️</button>
                     <button class="btn-ghost-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}">🗑️</button>
+                    <button class="btn-ghost-sm" data-action="toggle-invtype" data-id="${t.id}" data-closed="${(t.is_active != false) ? '0' : '1'}" title="${(t.is_active != false) ? '关闭该类型（从新增理财下拉隐藏）' : '启用该类型（重新出现在新增理财下拉）'}">${(t.is_active != false) ? '🚫 关闭' : '🔓 启用'}</button>
                 </td>
             </tr>
         `).join('');
@@ -243,6 +245,21 @@ const DataManager = {
         try {
             await api('/investment-types/' + id, 'DELETE');
             showToast('理财类型已删除', 'success');
+            this.refreshInvTypes();
+        } catch (err) {
+            // api() 已显示错误 toast
+        }
+    },
+
+    async toggleInvType(id, makeActive) {
+        try {
+            await api('/investment-types/' + id, 'PATCH', { active: makeActive });
+            showToast(makeActive ? '已启用该理财类型（重新出现在新增理财下拉）' : '已关闭该理财类型（从新增理财下拉隐藏）', 'success');
+            // 同步更新全局缓存，使「新增理财」下拉立即反映可见性变化（无需刷新整页）
+            if (typeof cache !== 'undefined' && Array.isArray(cache.investmentTypes)) {
+                const c = cache.investmentTypes.find(t => t.id === id);
+                if (c) c.is_active = makeActive;
+            }
             this.refreshInvTypes();
         } catch (err) {
             // api() 已显示错误 toast

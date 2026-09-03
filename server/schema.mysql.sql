@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS investment_types (
   description VARCHAR(200) DEFAULT '',
   sort_order INT DEFAULT 0,
   is_system BOOLEAN NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,             -- 全局可见性开关：FALSE 时该类型不再出现在「新增理财」下拉
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX idx_investment_types_code ON investment_types (code);
