@@ -1,5 +1,6 @@
 {
   "modelVersion": "6.0.0",
+  "dependencies": {},
   "execution": {
     "analyze": "normal",
     "daemon": false
@@ -11,5 +12,5 @@
   "debugging": {
     "stacktrace": false
   },
-  "nodeOptions": ""
+  "nodeOptions": {}
 }
