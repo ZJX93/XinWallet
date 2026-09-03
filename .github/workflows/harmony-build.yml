@@ -171,57 +171,56 @@ jobs:
             exit 1
           fi
           echo "内置 openharmony SDK: $OPENHARMONY (SDK_ROOT=$SDK_ROOT)"
-          # 工程 compatibleSdkVersion 形如 6.1.1(24)。hvigor 用其中括号里的数字作版本目录名（也可能用 6.1.1），
-          # 两种都建软链，确保命中。
+          # 工程 compatibleSdkVersion 形如 6.1.1(24)：取括号内 API 数字与完整串作为候选目录名。
           API_DIGIT=$(echo "${OHOS_API_VERSION:-24}" | grep -oE '[0-9]+' | head -1)
-          # 工程 compatibleSdkVersion 完整串（如 6.1.1(24)）：华为官方 SDK 目录名就是带括号的
-          # "<version>(<api>)" 格式，hvigor 按 compatibleSdkVersion 原值查找 SDK 版本目录。
-          # 仅建数字版(24)/纯版本版(6.1.1)仍会 00303312，必须把完整串也建一份软链目录。
           COMPAT_VER=$(node -e 'const fs=require("fs");const t=fs.readFileSync("build-profile.json5","utf8");const j=JSON.parse(t);const s=(j.app.products[0]||{}).compatibleSdkVersion||"";console.log(s);')
-          # 关键修复：不再只手写 openharmony/hms 两个软链，而是把 SDK_ROOT 下所有真实子目录
-          # （openharmony/hms/js/native/previewer/toolchains...）全部挂进版本目录 <version>/ 下，
-          # 这样 hvigor 不论要 <version>/openharmony 还是 <version>/native 都能命中，避免 00303312。
-          # 同时跳过与版本名同名的目录，避免自引用死链。
+          # 关键：从 SDK 自带的 sdk-pkg.json 读取它自己声明的版本目录名，按真实字段建目录。
+          # 实测该文件 data.path = "HarmonyOS-6.1.1"（而非 6.1.1(24) 之类），
+          # hvigor 依据这些字段/目录名定位版本目录，名字对不上即 00303312。
+          PKG="$SDK_ROOT/sdk-pkg.json"
+          pkg_field() {
+            node -e '
+              const fs=require("fs");
+              try {
+                const j=JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                const d=j.data||{};
+                console.log(d[process.argv[2]]||"");
+              } catch (e) { console.log(""); }
+            ' "$PKG" "$1" 2>/dev/null || true
+          }
+          PKG_PATH=$(pkg_field path)
+          PKG_VER=$(pkg_field version)
+          PKG_PLAT=$(pkg_field platformVersion)
+          PKG_API=$(pkg_field apiVersion)
+          echo "sdk-pkg.json: path=$PKG_PATH version=$PKG_VER platformVersion=$PKG_PLAT apiVersion=$PKG_API"
           link_sdk_version() {
             local v="$1"
             [ -z "$v" ] && return 0
             local vdir="$SDK_ROOT/$v"
             mkdir -p "$vdir"
+            # 1) 把 SDK_ROOT 下所有真实子目录（openharmony/hms/...）挂进版本目录
             for child in "$SDK_ROOT"/*/; do
               [ -d "$child" ] || continue
               local name; name=$(basename "$child")
               [ "$name" = "$v" ] && continue
               ln -sfn "$child" "$vdir/$name"
             done
-            # 版本目录下的 sdk-pkg.json 也要挂进去：hvigor 靠它识别该目录对应的 SDK 版本。
-            # 注意：不能把同一份 sdk-pkg.json 软链到所有版本目录，否则每个目录都被识别为同一个版本，
-            # 工程要求的版本（如 6.1.1(24)）便不在版本集合里，仍会 00303312。
-            # 这里为每个版本目录生成一份 version/apiVersion 字段为该版本名的独立描述文件。
-            for f in "$SDK_ROOT"/*; do
-              [ -f "$f" ] || continue
-              local fname; fname=$(basename "$f")
-              if [ "$fname" = "sdk-pkg.json" ]; then
-                node -e '
-                  const fs=require("fs");
-                  const [src, v, out] = process.argv.slice(1);
-                  try {
-                    const j = JSON.parse(fs.readFileSync(src, "utf8"));
-                    if (j && typeof j === "object") {
-                      if (j.version !== undefined) j.version = v;
-                      if (j.apiVersion !== undefined) j.apiVersion = v;
-                    }
-                    fs.writeFileSync(out, JSON.stringify(j, null, 2));
-                  } catch (e) {
-                    fs.copyFileSync(src, out);
-                  }
-                ' "$f" "$v" "$vdir/$fname"
-              else
-                ln -sfn "$f" "$vdir/$fname"
-              fi
+            # 2) 组件再平铺一层：兼容 hvigor 直接找 <version>/ets、<version>/toolchains 的布局，
+            #    避免只认 <version>/openharmony/ets 的嵌套布局时落空。
+            for oh in "$SDK_ROOT/openharmony" "$SDK_ROOT/hms"; do
+              [ -d "$oh" ] || continue
+              for comp in "$oh"/*/; do
+                [ -d "$comp" ] || continue
+                local cname; cname=$(basename "$comp")
+                [ -e "$vdir/$cname" ] || ln -sfn "$comp" "$vdir/$cname"
+              done
             done
+            # 3) sdk-pkg.json 原样拷贝：切勿改写 version/apiVersion 等字段，
+            #    否则 apiVersion 变成 "6.1.1(24)" 这类非数字值反而破坏 hvigor 的版本匹配。
+            [ -f "$PKG" ] && cp -f "$PKG" "$vdir/sdk-pkg.json"
             echo "软链版本目录: $vdir -> $(ls -1 "$vdir" 2>/dev/null | tr '\n' ' ')"
           }
-          for v in "$API_DIGIT" "6.1.1" "6.1.1.300" "$COMPAT_VER"; do
+          for v in "$API_DIGIT" "6.1.1" "6.1.1.300" "$COMPAT_VER" "$PKG_PATH" "$PKG_VER" "HarmonyOS-$PKG_PLAT" "$PKG_PLAT($PKG_API)"; do
             link_sdk_version "$v"
           done
           echo "DEVECO_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
@@ -229,10 +228,9 @@ jobs:
           echo "OHOS_BASE_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "::group::SDK 诊断（sdk-pkg.json / toolchains / 版本目录）"
           echo "--- ls -la SDK_ROOT ---"; ls -la "$SDK_ROOT" 2>/dev/null || true
-          echo "--- cat sdk-pkg.json ---"; cat "$SDK_ROOT/sdk-pkg.json" 2>/dev/null || true
+          echo "--- cat sdk-pkg.json ---"; cat "$PKG" 2>/dev/null || true
           echo "--- toolchains 查找 ---"; find "$HOME/commandline-tools" -maxdepth 7 -type d -name toolchains 2>/dev/null | head -10 || true
-          echo "--- 版本目录 6.1.1(24) 内容 ---"; ls -la "$SDK_ROOT/6.1.1(24)" 2>/dev/null || true
-          echo "--- openharmony 内容 ---"; ls -la "$SDK_ROOT/openharmony" 2>/dev/null | head -30 || true
+          echo "--- HarmonyOS-6.1.1 内容 ---"; ls -la "$SDK_ROOT/HarmonyOS-6.1.1" 2>/dev/null | head -30 || true
           echo "::endgroup::"
 
       - name: 'Configure .npmrc (resolve @ohos plugin)'
@@ -371,7 +369,12 @@ jobs:
       - name: 'Build HAP (compile verification)'
         run: |
           chmod +x hvigorw
-          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap
+          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap || {
+            echo "::group::hvigor 失败重试（--stacktrace 获取详细定位信息）"
+            ./hvigorw --mode module -p module=entry@default -p product=default assembleHap --stacktrace || true
+            echo "::endgroup::"
+            exit 1
+          }
 
       - name: 'Analyze build result'
         run: |
