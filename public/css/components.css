@@ -938,7 +938,7 @@
 }
 .inv-toggle input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 
-/* iOS 风 ON/OFF 开关：用于理财类型可见性切换（启用 = 黄色 ON，关闭 = 灰色 OFF） */
+/* iOS 风 ON/OFF 开关：用于理财类型可见性切换（启用 = 绿色 ON，关闭 = 灰色 OFF） */
 .ios-toggle {
   position: relative;
   display: inline-block;
@@ -997,7 +997,7 @@
   flex-shrink: 0;
 }
 .ios-toggle input:checked ~ .ios-toggle-track {
-  background: #fbbf24;
+  background: #16a34a;
 }
 .ios-toggle input:checked ~ .ios-toggle-track .ios-toggle-text-on {
   opacity: 1;
