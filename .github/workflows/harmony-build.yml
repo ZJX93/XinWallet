@@ -193,12 +193,31 @@ jobs:
               [ "$name" = "$v" ] && continue
               ln -sfn "$child" "$vdir/$name"
             done
-            # 版本目录下的 sdk-pkg.json 等文件也要挂进去：hvigor 可能靠它识别该目录对应的 SDK 版本，
-            # 只有 openharmony/hms 软链而无版本描述文件时仍会 00303312。
+            # 版本目录下的 sdk-pkg.json 也要挂进去：hvigor 靠它识别该目录对应的 SDK 版本。
+            # 注意：不能把同一份 sdk-pkg.json 软链到所有版本目录，否则每个目录都被识别为同一个版本，
+            # 工程要求的版本（如 6.1.1(24)）便不在版本集合里，仍会 00303312。
+            # 这里为每个版本目录生成一份 version/apiVersion 字段为该版本名的独立描述文件。
             for f in "$SDK_ROOT"/*; do
               [ -f "$f" ] || continue
               local fname; fname=$(basename "$f")
-              ln -sfn "$f" "$vdir/$fname"
+              if [ "$fname" = "sdk-pkg.json" ]; then
+                node -e '
+                  const fs=require("fs");
+                  const [src, v, out] = process.argv.slice(1);
+                  try {
+                    const j = JSON.parse(fs.readFileSync(src, "utf8"));
+                    if (j && typeof j === "object") {
+                      if (j.version !== undefined) j.version = v;
+                      if (j.apiVersion !== undefined) j.apiVersion = v;
+                    }
+                    fs.writeFileSync(out, JSON.stringify(j, null, 2));
+                  } catch (e) {
+                    fs.copyFileSync(src, out);
+                  }
+                ' "$f" "$v" "$vdir/$fname"
+              else
+                ln -sfn "$f" "$vdir/$fname"
+              fi
             done
             echo "软链版本目录: $vdir -> $(ls -1 "$vdir" 2>/dev/null | tr '\n' ' ')"
           }
@@ -208,6 +227,13 @@ jobs:
           echo "DEVECO_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "OHOS_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "OHOS_BASE_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "::group::SDK 诊断（sdk-pkg.json / toolchains / 版本目录）"
+          echo "--- ls -la SDK_ROOT ---"; ls -la "$SDK_ROOT" 2>/dev/null || true
+          echo "--- cat sdk-pkg.json ---"; cat "$SDK_ROOT/sdk-pkg.json" 2>/dev/null || true
+          echo "--- toolchains 查找 ---"; find "$HOME/commandline-tools" -maxdepth 7 -type d -name toolchains 2>/dev/null | head -10 || true
+          echo "--- 版本目录 6.1.1(24) 内容 ---"; ls -la "$SDK_ROOT/6.1.1(24)" 2>/dev/null || true
+          echo "--- openharmony 内容 ---"; ls -la "$SDK_ROOT/openharmony" 2>/dev/null | head -30 || true
+          echo "::endgroup::"
 
       - name: 'Configure .npmrc (resolve @ohos plugin)'
         run: |
