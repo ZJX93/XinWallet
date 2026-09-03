@@ -28,7 +28,7 @@ jobs:
       OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
       # hvigor（及项目 harmony/hvigorw 的 ensure_sdk_home）依赖 DEVECO_SDK_HOME，
       # CI 中只有 OHOS_SDK_HOME 会导致 00303217 Configuration Error: Invalid value of 'DEVECO_SDK_HOME'。
-      # SDK 由 sdkmgr 安装到 SDK_DIR（即下方目录），此处与之一致即可。
+      # SDK 由 Command Line Tools 内置（Resolve 步骤会动态定位真实 SDK 目录并覆盖本默认值）。
       DEVECO_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
 
     steps:
@@ -52,7 +52,7 @@ jobs:
       - name: 'Resolve HarmonyOS API version from build-profile'
         run: |
           # 从 harmony/build-profile.json5 的 compatibleSdkVersion（如 6.1.1(24)）解析括号里的 API 数字，
-          # 注入 OHOS_API_VERSION，避免 job 级写死 12 与工程实际版本不符导致 sdkmgr install ets:12 失败。
+          # 注入 OHOS_API_VERSION，仅用于诊断/日志参考（本 zip 已内置 SDK，无需按版本安装组件）。
           VER=$(node -e 'const fs=require("fs");const t=fs.readFileSync("build-profile.json5","utf8");const j=JSON.parse(t);const s=(j.app.products[0]||{}).compatibleSdkVersion||"";const m=s.match(/\((\d+)\)/);console.log(m?m[1]:s);')
           echo "OHOS_API_VERSION=$VER" >> "$GITHUB_ENV"
           echo "从 build-profile.json5 解析到 OHOS_API_VERSION=$VER"
@@ -119,15 +119,17 @@ jobs:
               ;;
           esac
 
-          # 华为官方 CLI 解压后工具可能在 command-line-tools/bin 或 sdkmanager/bin 等嵌套目录，布局随版本变化。
-          # 为稳妥，递归把解压目录下所有 bin/ 目录都加入 PATH，再按关键可执行文件名兜底定位，
-          # 确保 sdkmgr/ohpm/hvigorw 可用（旧写法只按文件名找父目录，常漏掉嵌套 bin）。
+          # 华为官方 CLI 解压后工具在 command-line-tools/bin 等嵌套目录，布局随版本变化。
+          # 为稳妥，递归把解压目录下所有 bin/ 目录都加入 PATH，再按关键可执行文件名兜底定位，确保 ohpm/hvigorw 可用。
+          # 注意：本 zip 已内置完整 SDK（sdk/default/openharmony 下含 ets/js/native），不存在、也不需要 sdkmgr 安装步骤。
+          # GitHub Actions 对 bash 默认加 -o pipefail，find | head 会因 SIGPIPE 让管道失败而触发 set -e 退出，
+          # 因此所有 find | head 都追加 || true 吞掉这种“预期内”的管道中断。
           find "$HOME/commandline-tools" -type d -name bin 2>/dev/null | while IFS= read -r b; do
             echo "$b" >> "$GITHUB_PATH"
             echo "PATH+ $b"
           done
-          for exe in sdkmgr ohsdkmgr ohpm hvigorw; do
-            p=$(find "$HOME/commandline-tools" -type f -name "$exe" 2>/dev/null | head -1)
+          for exe in ohpm hvigorw; do
+            p=$(find "$HOME/commandline-tools" -type f -name "$exe" 2>/dev/null | head -1 || true)
             if [ -n "$p" ]; then
               d=$(dirname "$p")
               echo "$d" >> "$GITHUB_PATH"
@@ -135,62 +137,42 @@ jobs:
             fi
           done
           echo "::group::CLI 目录结构（前4层）与工具位置"
-          find "$HOME/commandline-tools" -maxdepth 4 2>/dev/null | head -60
+          find "$HOME/commandline-tools" -maxdepth 4 2>/dev/null | head -60 || true
           echo "--- 关键工具文件 ---"
-          find "$HOME/commandline-tools" -type f \( -name 'sdkmgr' -o -name 'ohsdkmgr' -o -name 'ohpm' -o -name 'hvigorw' -o -name 'sdkmanager' \) 2>/dev/null | head -20
+          find "$HOME/commandline-tools" -type f \( -name 'ohpm' -o -name 'hvigorw' \) 2>/dev/null | head -20 || true
           echo "::endgroup::"
-
-      - name: 'Install SDK components via sdkmgr'
-        run: |
-          # 华为官方 CLI 的命令名是 sdkmgr（位于 sdkmanager/bin/sdkmgr）；社区镜像也叫 sdkmgr/ohsdkmgr。
-          # 注意：sdkmanager 本身常是目录而非可执行文件，不能当命令名查找，否则会误匹配目录导致执行失败。
-          SDKMGR=$(command -v sdkmgr || command -v ohsdkmgr || find "$HOME/commandline-tools" -type f \( -name sdkmgr -o -name ohsdkmgr \) 2>/dev/null | head -1)
-          if [ -z "$SDKMGR" ]; then
-            echo "::error::未找到 SDK 管理器（sdkmgr/ohsdkmgr）。请确认『Download HarmonyOS Command Line Tools』步骤成功安装并解压，且 bin 目录已加入 PATH（见上方 CLI 目录结构）。"
-            echo "--- $HOME/commandline-tools 下疑似工具文件 ---"
-            find "$HOME/commandline-tools" -maxdepth 5 -type f \( -name 'sdkmgr' -o -name 'ohsdkmgr' -o -name 'ohpm' -o -name 'hvigorw' \) 2>/dev/null | head -30
-            echo "--- $HOME/commandline-tools 目录树(前3层) ---"
-            find "$HOME/commandline-tools" -maxdepth 3 2>/dev/null | head -40
-            exit 1
-          fi
-          echo "SDK 管理器: $SDKMGR"
-          echo "::group::可用 SDK 组件（用于确认组件名/API Version）"
-          "$SDKMGR" list || true
+          echo "::group::内置 SDK 概览（sdk/default 下 ets/js/native/previewer）"
+          find "$HOME/commandline-tools" -maxdepth 6 -type d \( -name ets -o -name js -o -name native -o -name previewer \) 2>/dev/null | head -40 || true
           echo "::endgroup::"
-          # HarmonyOS NEXT：ArkTS 运行时 + JS + 工具链。
-          # 华为官方 sdkmgr 与社区镜像的组件名/版本写法略有差异，逐候选尝试，命中即止。
-          "$SDKMGR" install --accept-license ets:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license arkts:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license ets js toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license ets toolchains --sdk-directory "$SDK_DIR" \
-            || "$SDKMGR" install --accept-license toolchains --sdk-directory "$SDK_DIR"
 
       - name: 'Resolve SDK home & export DEVECO_SDK_HOME'
         run: |
           set -e
-          # sdkmgr 可能把 SDK 装到 $SDK_DIR，也可能装到 Command Line Tools 自带的
-          # $HOME/commandline-tools/sdk（取决于 sdkmgr 版本是否遵守 --sdk-directory）。
-          # 这里不写死，而是动态定位「含 ets/ 或 toolchains/ 子目录」的真实 SDK 目录，
-          # 并把 DEVECO_SDK_HOME / OHOS_SDK_HOME / OHOS_BASE_SDK_HOME 统一指向它，
+          # 本 zip（华为官方 Command Line Tools）已内置完整 SDK：
+          #   <CLI>/sdk/default/openharmony/{ets,js,previewer,native}
+          # 无需 sdkmgr 安装。这里动态定位 SDK 根（含 ets/js/native 的 openharmony 目录，
+          # 或含 openharmony 子目录的 sdk/default 根），兼容解压到 $HOME/commandline-tools（嵌套）
+          # 或 $HOME（扁平）两种布局，并把 DEVECO_SDK_HOME / OHOS_SDK_HOME / OHOS_BASE_SDK_HOME 统一指向它，
           # 避免 hvigor 因指向空目录而报 00303217 Configuration Error。
           CANDIDATES=(
-            "$SDK_DIR"
-            "$HOME/commandline-tools/sdk"
+            "$HOME/commandline-tools/command-line-tools/sdk/default/openharmony"
+            "$HOME/commandline-tools/command-line-tools/sdk/default"
             "$HOME/commandline-tools/command-line-tools/sdk"
-            "$GITHUB_WORKSPACE/ohos-sdk"
+            "$HOME/commandline-tools/sdk/default/openharmony"
+            "$HOME/commandline-tools/sdk/default"
+            "$HOME/commandline-tools/sdk"
+            "$SDK_DIR"
           )
           FOUND=""
           for d in "${CANDIDATES[@]}"; do
-            if [ -d "$d" ] && { [ -d "$d/ets" ] || [ -d "$d/toolchains" ]; }; then
+            if [ -d "$d" ] && { [ -d "$d/ets" ] || [ -d "$d/openharmony/ets" ] || [ -d "$d/js" ] || [ -d "$d/native" ]; }; then
               FOUND="$d"
               break
             fi
           done
           if [ -z "$FOUND" ]; then
-            echo "::error::未找到已安装的 HarmonyOS SDK（需含 ets/ 或 toolchains/ 子目录）。候选目录均无效：${CANDIDATES[*]}。请检查『Install SDK components via sdkmgr』是否成功（依赖 HARMONY_COMMANDLINE_TOOLS_URL 或 Release 资产 harmony-cli，且组件名 ets:${OHOS_API_VERSION} 须存在于镜像）。"
-            echo "--- $SDK_DIR 内容 ---"; ls -la "$SDK_DIR" 2>/dev/null || true
-            echo "--- $HOME/commandline-tools 内容 ---"; ls -la "$HOME/commandline-tools" 2>/dev/null || true
+            echo "::error::未在解压的 Command Line Tools 内找到已内置的 HarmonyOS SDK（需含 ets/js/native 子目录）。候选目录均无效。请确认下载的 zip 是华为官方『Command Line Tools for HarmonyOS』完整包（含 sdk/default/openharmony）。"
+            echo "--- $HOME/commandline-tools 目录树(前4层) ---"; find "$HOME/commandline-tools" -maxdepth 4 2>/dev/null | head -50 || true
             exit 1
           fi
           echo "找到 HarmonyOS SDK: $FOUND"
