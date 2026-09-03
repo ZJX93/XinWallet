@@ -79,7 +79,11 @@ function autoReturning(sql) {
   const trimmed = sql.trim();
   if (!/^INSERT\s/i.test(trimmed)) return sql;
   if (/RETURNING/i.test(trimmed)) return sql;
-  if (/ON\s+CONFLICT[\s\S]*DO\s+NOTHING/i.test(trimmed)) return sql;
+  // 含 ON CONFLICT 的 upsert（DO NOTHING / DO UPDATE）均由调用方自行决定返回列，
+  // 不应盲补 RETURNING id：ai_settings 等以 user_id 为主键、无 id 列的表会因此报
+  // "column \"id\" does not exist"。返回列需 id 时，调用方应显式写 RETURNING id
+  // （如 ai-settings-service.js 对 ai_settings 显式 RETURNING user_id）。
+  if (/ON\s+CONFLICT/i.test(trimmed)) return sql;
   return sql + ' RETURNING id';
 }
 
