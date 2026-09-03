@@ -58,6 +58,11 @@ router.post('/', async (req, res) => {
     try {
         const { parent_id, name, icon, type, color } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
+        // 预检查：schema 有 UNIQUE(parent_id, name)，同父下重名直接返 400 友好提示，避免 500
+        const dup = parent_id == null
+            ? await db.queryOne('SELECT id FROM categories WHERE parent_id IS NULL AND name = ?', [name])
+            : await db.queryOne('SELECT id FROM categories WHERE parent_id = ? AND name = ?', [parent_id, name]);
+        if (dup) return res.status(400).json(fail(`该分类下已存在同名分类「${name}」`));
         const TYPE_COLOR = { expense: '#22c55e', income: '#ef4444', transfer: '#3b82f6' };
         const defaultColor = TYPE_COLOR[type] || '#6366f1';
         const maxSort = await db.queryOne(
@@ -79,7 +84,8 @@ router.put('/:id', async (req, res) => {
         // 检查权限：必须是当前用户的私有分类（系统预设不允许修改）
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        if (owner.user_id === null || owner.user_id !== req.userId) {
+        // 允许登录用户改预置全局分类（user_id IS NULL）；仅阻止改他人私有分类
+        if (owner.user_id !== null && owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权修改该分类'));
         }
         await db.query(
@@ -95,7 +101,8 @@ router.delete('/:id', async (req, res) => {
     try {
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        if (owner.user_id === null || owner.user_id !== req.userId) {
+        // 允许登录用户删预置全局分类（user_id IS NULL）；仅阻止删他人私有分类
+        if (owner.user_id !== null && owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权删除该分类'));
         }
         const used = await db.queryOne('SELECT COUNT(*) as cnt FROM transactions WHERE category_id = ?', [req.params.id]);
