@@ -174,12 +174,25 @@ jobs:
           # 工程 compatibleSdkVersion 形如 6.1.1(24)。hvigor 用其中括号里的数字作版本目录名（也可能用 6.1.1），
           # 两种都建软链，确保命中。
           API_DIGIT=$(echo "${OHOS_API_VERSION:-24}" | grep -oE '[0-9]+' | head -1)
+          # 关键修复：不再只手写 openharmony/hms 两个软链，而是把 SDK_ROOT 下所有真实子目录
+          # （openharmony/hms/js/native/previewer/toolchains...）全部挂进版本目录 <version>/ 下，
+          # 这样 hvigor 不论要 <version>/openharmony 还是 <version>/native 都能命中，避免 00303312。
+          # 同时跳过与版本名同名的目录，避免自引用死链。
+          link_sdk_version() {
+            local v="$1"
+            [ -z "$v" ] && return 0
+            local vdir="$SDK_ROOT/$v"
+            mkdir -p "$vdir"
+            for child in "$SDK_ROOT"/*/; do
+              [ -d "$child" ] || continue
+              local name; name=$(basename "$child")
+              [ "$name" = "$v" ] && continue
+              ln -sfn "$child" "$vdir/$name"
+            done
+            echo "软链版本目录: $vdir -> $(ls -1 "$vdir" 2>/dev/null | tr '\n' ' ')"
+          }
           for v in "$API_DIGIT" "6.1.1" "6.1.1.300"; do
-            [ -z "$v" ] && continue
-            mkdir -p "$SDK_ROOT/$v"
-            ln -sfn "$OPENHARMONY" "$SDK_ROOT/$v/openharmony"
-            if [ -d "$HMS" ]; then ln -sfn "$HMS" "$SDK_ROOT/$v/hms"; fi
-            echo "软链: $SDK_ROOT/$v/openharmony -> $OPENHARMONY"
+            link_sdk_version "$v"
           done
           echo "DEVECO_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "OHOS_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
