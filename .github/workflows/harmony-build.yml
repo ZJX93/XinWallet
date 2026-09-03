@@ -145,40 +145,45 @@ jobs:
           find "$HOME/commandline-tools" -maxdepth 6 -type d \( -name ets -o -name js -o -name native -o -name previewer \) 2>/dev/null | head -40 || true
           echo "::endgroup::"
 
-      - name: 'Resolve SDK home & export DEVECO_SDK_HOME'
+      - name: 'Resolve SDK home & build versioned SDK layout for hvigor'
         run: |
           set -e
-          # 本 zip（华为官方 Command Line Tools）已内置完整 SDK：
-          #   <CLI>/sdk/default/openharmony/{ets,js,previewer,native}
-          # 无需 sdkmgr 安装。这里动态定位 SDK 根（含 ets/js/native 的 openharmony 目录，
-          # 或含 openharmony 子目录的 sdk/default 根），兼容解压到 $HOME/commandline-tools（嵌套）
-          # 或 $HOME（扁平）两种布局，并把 DEVECO_SDK_HOME / OHOS_SDK_HOME / OHOS_BASE_SDK_HOME 统一指向它，
-          # 避免 hvigor 因指向空目录而报 00303217 Configuration Error。
-          CANDIDATES=(
-            "$HOME/commandline-tools/command-line-tools/sdk/default/openharmony"
-            "$HOME/commandline-tools/command-line-tools/sdk/default"
-            "$HOME/commandline-tools/command-line-tools/sdk"
-            "$HOME/commandline-tools/sdk/default/openharmony"
-            "$HOME/commandline-tools/sdk/default"
-            "$HOME/commandline-tools/sdk"
-            "$SDK_DIR"
-          )
-          FOUND=""
-          for d in "${CANDIDATES[@]}"; do
-            if [ -d "$d" ] && { [ -d "$d/ets" ] || [ -d "$d/openharmony/ets" ] || [ -d "$d/js" ] || [ -d "$d/native" ]; }; then
-              FOUND="$d"
-              break
+          # 本 zip（华为官方 Command Line Tools）已内置完整 SDK，但布局是扁平的：
+          #   <CLI>/sdk/default/openharmony/{ets,js,previewer,native}   （无 API 版本号子目录）
+          # 而 hvigor 按 DEVECO_SDK_HOME/<apiVersion>/openharmony/{ets,...} 查找（之前 sdkmgr 装出的就是这种
+          # 带版本目录的布局）。因此这里为内置 SDK 补一层软链接：SDK_ROOT/<apiVersion>/openharmony -> 内置扁平 openharmony，
+          # 让 hvigor 能定位。兼容嵌套（$HOME/commandline-tools/command-line-tools/...）与扁平（$HOME/commandline-tools/...）布局。
+          CLI="$HOME/commandline-tools"
+          OPENHARMONY=""
+          HMS=""
+          SDK_ROOT=""
+          for base in "$CLI/command-line-tools/sdk/default" "$CLI/sdk/default" "$CLI/command-line-tools/sdk" "$CLI/sdk" "$SDK_DIR"; do
+            if [ -d "$base/openharmony/ets" ]; then
+              OPENHARMONY="$base/openharmony"; HMS="$base/hms"; SDK_ROOT="$base"; break
+            fi
+            if [ -d "$base/ets" ]; then
+              OPENHARMONY="$base"; HMS="$(dirname "$base")/hms"; SDK_ROOT="$(dirname "$base")"; break
             fi
           done
-          if [ -z "$FOUND" ]; then
-            echo "::error::未在解压的 Command Line Tools 内找到已内置的 HarmonyOS SDK（需含 ets/js/native 子目录）。候选目录均无效。请确认下载的 zip 是华为官方『Command Line Tools for HarmonyOS』完整包（含 sdk/default/openharmony）。"
-            echo "--- $HOME/commandline-tools 目录树(前4层) ---"; find "$HOME/commandline-tools" -maxdepth 4 2>/dev/null | head -50 || true
+          if [ -z "$OPENHARMONY" ]; then
+            echo "::error::未找到内置 openharmony SDK（需含 ets 子目录）。请确认下载的 zip 是华为官方『Command Line Tools for HarmonyOS』完整包。"
+            echo "--- 查找 openharmony 目录 ---"; find "$CLI" -maxdepth 6 -type d -name openharmony 2>/dev/null | head -20 || true
             exit 1
           fi
-          echo "找到 HarmonyOS SDK: $FOUND"
-          echo "DEVECO_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
-          echo "OHOS_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
-          echo "OHOS_BASE_SDK_HOME=$FOUND" >> "$GITHUB_ENV"
+          echo "内置 openharmony SDK: $OPENHARMONY (SDK_ROOT=$SDK_ROOT)"
+          # 工程 compatibleSdkVersion 形如 6.1.1(24)。hvigor 用其中括号里的数字作版本目录名（也可能用 6.1.1），
+          # 两种都建软链，确保命中。
+          API_DIGIT=$(echo "${OHOS_API_VERSION:-24}" | grep -oE '[0-9]+' | head -1)
+          for v in "$API_DIGIT" "6.1.1" "6.1.1.300"; do
+            [ -z "$v" ] && continue
+            mkdir -p "$SDK_ROOT/$v"
+            ln -sfn "$OPENHARMONY" "$SDK_ROOT/$v/openharmony"
+            if [ -d "$HMS" ]; then ln -sfn "$HMS" "$SDK_ROOT/$v/hms"; fi
+            echo "软链: $SDK_ROOT/$v/openharmony -> $OPENHARMONY"
+          done
+          echo "DEVECO_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "OHOS_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "OHOS_BASE_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
 
       - name: 'Configure .npmrc (resolve @ohos plugin)'
         run: |
