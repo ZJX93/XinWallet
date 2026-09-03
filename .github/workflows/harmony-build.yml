@@ -174,6 +174,10 @@ jobs:
           # 工程 compatibleSdkVersion 形如 6.1.1(24)。hvigor 用其中括号里的数字作版本目录名（也可能用 6.1.1），
           # 两种都建软链，确保命中。
           API_DIGIT=$(echo "${OHOS_API_VERSION:-24}" | grep -oE '[0-9]+' | head -1)
+          # 工程 compatibleSdkVersion 完整串（如 6.1.1(24)）：华为官方 SDK 目录名就是带括号的
+          # "<version>(<api>)" 格式，hvigor 按 compatibleSdkVersion 原值查找 SDK 版本目录。
+          # 仅建数字版(24)/纯版本版(6.1.1)仍会 00303312，必须把完整串也建一份软链目录。
+          COMPAT_VER=$(node -e 'const fs=require("fs");const t=fs.readFileSync("build-profile.json5","utf8");const j=JSON.parse(t);const s=(j.app.products[0]||{}).compatibleSdkVersion||"";console.log(s);')
           # 关键修复：不再只手写 openharmony/hms 两个软链，而是把 SDK_ROOT 下所有真实子目录
           # （openharmony/hms/js/native/previewer/toolchains...）全部挂进版本目录 <version>/ 下，
           # 这样 hvigor 不论要 <version>/openharmony 还是 <version>/native 都能命中，避免 00303312。
@@ -191,7 +195,7 @@ jobs:
             done
             echo "软链版本目录: $vdir -> $(ls -1 "$vdir" 2>/dev/null | tr '\n' ' ')"
           }
-          for v in "$API_DIGIT" "6.1.1" "6.1.1.300"; do
+          for v in "$API_DIGIT" "6.1.1" "6.1.1.300" "$COMPAT_VER"; do
             link_sdk_version "$v"
           done
           echo "DEVECO_SDK_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
