@@ -1006,6 +1006,7 @@
 /* 表单/编辑弹窗需高于全屏网格与详情弹窗，避免从网格详情点编辑后被压住 */
 .modal-overlay#investModal,
 .modal-overlay#reduceModal,
+.modal-overlay#invEditTxnModal,
 .modal-overlay#interestModal,
 .modal-overlay#goalModal,
 .modal-overlay#accountModal,
