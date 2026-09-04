@@ -1266,6 +1266,10 @@ header.top-bar.top-bar-sticky {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4); margin-bottom: var(--space-5);
 }
+/* 第二行升级为 3 列：收入饼 / 支出饼 / 关键财务比率 */
+.report-charts-row--3col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .report-chart-card {
   padding: var(--space-4);
   min-height: 320px;
@@ -1539,6 +1543,10 @@ header.top-bar.top-bar-sticky {
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-3);
   padding: var(--space-3);
+}
+/* 与图表第三列对齐时改为单列堆叠 */
+.ratio-grid--stack {
+  grid-template-columns: 1fr;
 }
 .ratio-item {
   padding: var(--space-3);

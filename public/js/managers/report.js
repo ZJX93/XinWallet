@@ -162,7 +162,6 @@ const ReportManager = {
                 ${this.renderAssets(data)}
             </div>
             ${this.renderCharts(data)}
-            ${this.renderRatios(data)}
             <!-- 三卡循环轮换：债务情况 → 右上，现金流量表 → 左下，支出 TOP 5 → 右下 -->
             <div class="report-tables-row">
                 ${this.renderBalanceSheet(data)}
@@ -254,7 +253,8 @@ const ReportManager = {
                     <canvas id="reportAccountChart"></canvas>
                 </div>
             </div>
-            <div class="report-charts-row">
+            <!-- 第二行：3 列布局 —— 收入饼 / 支出饼 / 关键财务比率（4 项竖向） -->
+            <div class="report-charts-row report-charts-row--3col">
                 <div class="glass-card report-chart-card">
                     <h3 class="card-title"><span id="reportIncPieTitle">收入来源占比</span> <span id="reportIncPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
                     <canvas id="reportIncPieChart"></canvas>
@@ -265,6 +265,7 @@ const ReportManager = {
                     <canvas id="reportExpPieChart"></canvas>
                     <div id="reportExpPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                 </div>
+                ${this.renderRatios(data)}
             </div>
         `;
     },
@@ -433,7 +434,7 @@ const ReportManager = {
         return `
             <div class="report-section">
                 <h3 class="report-section-title">📊 关键财务比率</h3>
-                <div class="glass-card ratio-grid">
+                <div class="glass-card ratio-grid ratio-grid--stack">
                     <div class="ratio-item">
                         <div class="ratio-label">储蓄率 ${flag(r.savingsRate, 30, '偏低', '健康')}</div>
                         <div class="ratio-value">${r.savingsRate.toFixed(1)}%</div>
