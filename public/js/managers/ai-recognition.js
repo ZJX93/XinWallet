@@ -666,7 +666,6 @@ const AIRecognition = {
         for (const [id, words] of Object.entries(kw)) { for (const w of words) { if (name.toLowerCase().includes(w)) return getCat(parseInt(id)); } }
         return getCat(14);
     },
-    // renderResults 已废弃，统一使用 renderOcrResults
     async importAll() {
         if (this.parsedItems.length === 0) return;
         const accountId = cache.accounts[0]?.id;

@@ -69,8 +69,12 @@ const PageLoader = {
                 .replace(/^\s*<section[^>]*>/i, '')
                 .replace(/<\/section>\s*$/i, '');
             this.cache.set(src, inner);
-            el.innerHTML = inner;
-            el.dataset.loaded = 'true';
+            // 并发防护：若在 await 期间已被其他调用方注入（dataset.loaded 已置位），
+            // 不再重复写入 innerHTML，否则会重置已注入节点的 DOM、造成事件监听器丢失 / 嵌套双 section
+            if (el.dataset.loaded !== 'true') {
+                el.innerHTML = inner;
+                el.dataset.loaded = 'true';
+            }
             return true;
         }
         return false;

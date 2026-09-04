@@ -5,7 +5,7 @@
 
 // 统一通过 ES Module 导入所有 Manager（utils.js 已在 index.html 中先加载，注入 window 全局）
 import ThemeManager from './theme.js';
-import AccountManager from './account.js?v=1';
+import AccountManager from './account.js';
 import TransactionManager from './transaction.js';
 import BudgetManager from './budget.js';
 import InvestmentManager from './investment.js';
@@ -14,18 +14,18 @@ import TagManager from './tag.js';
 import DataManager from './data.js';
 import SavingsGoalManager from './savings.js';
 import AIRecognition from './ai-recognition.js';
-import AISmartEntry from './ai-smart-entry.js?v=26';
-import AIAdvice from './ai-advice.js?v=1';
-import AIInsights from './ai-insights.js?v=1';
-import AIRules from './ai-rules.js?v=1';
-import AILearning from './ai-learning.js?v=1';
-import AIEvaluation from './ai-evaluation.js?v=1';
+import AISmartEntry from './ai-smart-entry.js';
+import AIAdvice from './ai-advice.js';
+import AIInsights from './ai-insights.js';
+import AIRules from './ai-rules.js';
+import AILearning from './ai-learning.js';
+import AIEvaluation from './ai-evaluation.js';
 import AIProviderManager from './ai-provider.js';
 import AISettings from './ai-settings.js';
 import ReportManager from './report.js';
 import QuickAdd from './quick-add.js';
-import DashboardManager from './dashboard.js?v=19';
-import ChartManager from './chart.js?v=19';
+import DashboardManager from './dashboard.js';
+import ChartManager from './chart.js';
 
 // app.js 是经典 script（非 module），所有函数自动在 window 上，直接用
 const boot = window.boot;

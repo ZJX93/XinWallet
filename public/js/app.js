@@ -357,7 +357,6 @@ const initBottomNav = () => {
     });
 };
 if (window.innerWidth <= 720) initBottomNav();
-window.addEventListener('resize', () => { if (window.innerWidth <= 720) initBottomNav(); });if (window.innerWidth <= 720) initBottomNav();
 window.addEventListener('resize', () => { if (window.innerWidth <= 720) initBottomNav(); });
 
 // 当前站点根路径（兼容反向代理子路径）：XIN_API_BASE 形如 /xin/api → 根为 /xin
@@ -519,9 +518,11 @@ function initColorSwatches(containerId, inputId) {
 // 应用启动
 // ==========================================
 async function boot() {
-    console.log('🚀 鑫钱包启动...');
-    const safeInit = (name, fn) => { try { fn(); console.log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
-    try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
+    const DEBUG = window.XIN_DEBUG === true || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const log = (...a) => { if (DEBUG) console.log(...a); };  // 启动横幅仅在本地/调试态打印
+    log('🚀 鑫钱包启动...');
+    const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
+    try { await initCache(); log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
     // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后
     safeInit('TransMonthFilter', () => initTransMonthFilter());
     safeInit('ThemeManager', () => ThemeManager.init());
@@ -556,7 +557,7 @@ async function boot() {
         history.replaceState({ page: 'dashboard' }, '', pageUrl('dashboard'));
         await showPage('dashboard');
     }
-    console.log('✅ 鑫钱包系统已就绪');
+    log('✅ 鑫钱包系统已就绪');
 }
 
 // boot() 由 js/managers/index.js 在 DOMContentLoaded 后直接调用；app.js 加载为普通 script，所有变量已在全局

@@ -2,9 +2,12 @@
    鑫钱包 · 独立登录/注册页逻辑
    ============================================ */
 
-const TOKEN_KEY = 'xin_token';
-const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
-const USER_KEY = 'zhicai_user';
+// 认证相关 key 统一由 auth-keys.js（window.XIN_AUTH_KEYS）提供单一来源，避免多端字面量分叉。
+// 带兜底默认值：即使 auth-keys.js 未加载也不至于崩溃（极端降级）。
+const KEYS = (typeof window !== 'undefined' && window.XIN_AUTH_KEYS) || {};
+const TOKEN_KEY = KEYS.TOKEN_KEY || 'xin_token';
+const REFRESH_TOKEN_KEY = KEYS.REFRESH_TOKEN_KEY || 'zhicai_refresh_token';
+const USER_KEY = KEYS.USER_KEY || 'zhicai_user';
 
 /* ============================================
    「记住密码」加密存储（WebCrypto AES-GCM）

@@ -23,7 +23,7 @@ const ThemeManager = {
         document.documentElement.setAttribute('data-theme', eff);
         localStorage.setItem('zhicai_theme', theme);
         document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
-        setTimeout(() => { ChartManager.refreshAll(); }, 200);
+        setTimeout(() => { window.ChartManager && window.ChartManager.refreshAll(); }, 200);
     }
 };
 

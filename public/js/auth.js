@@ -4,10 +4,13 @@
    登录/注册 UI 已迁移到独立 login.html，本模块不再管理弹窗。
    ============================================ */
 
-const TOKEN_KEY = 'xin_token';
-const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
-const USER_KEY = 'zhicai_user';
-const BOOK_ID_KEY = 'xin_book_id';
+// 认证相关 key 统一由 auth-keys.js（window.XIN_AUTH_KEYS）提供单一来源，避免多端字面量分叉。
+// 带兜底默认值：即使 auth-keys.js 未加载也不至于崩溃（极端降级）。
+const KEYS = (typeof window !== 'undefined' && window.XIN_AUTH_KEYS) || {};
+const TOKEN_KEY = KEYS.TOKEN_KEY || 'xin_token';
+const REFRESH_TOKEN_KEY = KEYS.REFRESH_TOKEN_KEY || 'zhicai_refresh_token';
+const USER_KEY = KEYS.USER_KEY || 'zhicai_user';
+const BOOK_ID_KEY = KEYS.BOOK_ID_KEY || 'xin_book_id';
 
 export function getToken() { return localStorage.getItem(TOKEN_KEY); }
 export function getRefreshToken() { return localStorage.getItem(REFRESH_TOKEN_KEY); }

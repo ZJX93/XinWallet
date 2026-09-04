@@ -136,6 +136,13 @@ if (typeof window !== 'undefined') {
     window.csvCell = csvCell;
     window.blobToBase64 = blobToBase64;
     window.formatRelativeTime = formatRelativeTime;
+    // 生产环境静默调试日志（console.log），保留 warn/error 用于真实错误。
+    // 仅在本地/调试态（localhost 或 window.XIN_DEBUG=true）才打印，避免生产 console 噪声。
+    // 注：utils.js 以经典脚本先于各模块执行，故此处覆盖对全应用 console.log 生效；
+    // Node 测试环境（无 window）不走此分支，断言用 console 不受影响。
+    if (!(window.XIN_DEBUG === true || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        console.log = function () {};
+    }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
