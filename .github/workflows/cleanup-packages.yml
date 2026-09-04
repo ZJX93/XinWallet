@@ -1,4 +1,4 @@
-name: Cleanup Packages
+name: 清理docker旧镜像
 
 on:
   workflow_dispatch:
