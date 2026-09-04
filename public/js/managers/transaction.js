@@ -740,7 +740,7 @@ const TransactionManager = {
                 this.delete(parseInt(btn.dataset.id));
             });
         });
-        // 复制按钮：克隆一笔完全相同的交易记录
+        // 复制按钮：打开"新增交易"弹窗并预填原交易字段，用户简单修改后保存即可
         // 关联流水（债务还款/理财/计息）同样必须回对应管理页处理，否则会脱离管理页成为游离交易
         tbodyEl.querySelectorAll('[data-action="copy-trans"]').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -757,16 +757,16 @@ const TransactionManager = {
                     showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中处理', 'info');
                     return;
                 }
-                await this.duplicate(parseInt(btn.dataset.id));
+                await this.duplicateAsNew(parseInt(btn.dataset.id));
             });
         });
     },
 
     /**
-     * 克隆一笔交易：取原记录全部字段，新增一条一模一样的记录。
-     * 转账走 /transfers（双腿），普通交易走 /transactions。
+     * 「复制」= 打开"新增交易"弹窗并预填原交易字段，用户简单修改后保存即可。
+     * 转账走双腿分支（from / to / 类别），普通交易走单条分支（账户 / 类别 / 预算 / 标签）。
      */
-    async duplicate(id) {
+    async duplicateAsNew(id) {
         const numId = parseInt(id);
         if (!numId) return;
         let t;
@@ -777,36 +777,53 @@ const TransactionManager = {
             return;
         }
         if (!t) { showToast('找不到该交易，请刷新页面后重试', 'warning'); return; }
-        try {
-            if (t.transfer) {
-                const body = {
-                    from_account_id: t.transfer.from_account_id,
-                    to_account_id: t.transfer.to_account_id,
-                    amount: t.amount,
-                    date: t.date,
-                    note: t.note || '',
-                    category_id: t.category_id || null
-                };
-                await api('/transfers', 'POST', body);
-            } else {
-                const body = {
-                    account_id: t.account_id ?? (t.account && t.account.id) ?? null,
-                    category_id: t.category_id ?? (t.category && t.category.id) ?? null,
-                    budget_id: t.budget_id ?? null,
-                    type: t.type,
-                    amount: t.amount,
-                    date: t.date,
-                    note: t.note || '',
-                    tags: Array.isArray(t.tags) ? t.tags.map(x => x.id ?? x) : []
-                };
-                await api('/transactions', 'POST', body);
+
+        // 先以"新增"模式打开弹窗（标题置为「新增交易」、清空 editingId、清空默认值）
+        await this.openModal();
+
+        const isTransfer = t.type === 'transfer_out' || t.type === 'transfer_in';
+        const targetType = isTransfer ? 'transfer' : (t.type || 'expense');
+
+        // 切换类型按钮 + 表单模式（控件显隐随之改变）
+        document.querySelectorAll('#transForm .type-btn').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+            if (b.dataset.type === targetType) {
+                b.classList.add('active');
+                b.setAttribute('aria-pressed', 'true');
             }
-            showToast('已复制并新增一笔相同交易', 'success');
-            await initCache();
-            await this.refresh();
-        } catch (e) {
-            // api() 已显示错误 toast
+        });
+        this.setFormMode(targetType);
+
+        // 公共字段
+        document.getElementById('transAmount').value = t.amount;
+        document.getElementById('transDate').value = fmtDateTimeLocal(t.date);
+        document.getElementById('transNote').value = t.note || '';
+
+        if (isTransfer) {
+            // 双腿转账：从 transfer 字段反查转出 / 转入账户（与 openModal 编辑分支同源）
+            const fromList = window._lastMergedTransfers &&
+                window._lastMergedTransfers.find(x => x._transferOut?.id === t.id || x.id === t.id);
+            const fromId = t.transfer?.from?.id
+                || fromList?.transfer?.from?.id
+                || fromList?._transferOut?.account?.id
+                || t.account?.id || cache.accounts[0]?.id;
+            document.getElementById('transAccount').value = fromId;
+            const toId = t.transfer?.to?.id
+                || fromList?.transfer?.to?.id
+                || fromList?._transferIn?.account?.id
+                || t._transferIn?.account?.id;
+            if (toId) document.getElementById('transToAccount').value = toId;
+            // 转账类别回填到 transfer 类目下拉
+            document.getElementById('transCategory').value = t.category?.id || '';
+        } else {
+            document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
+            document.getElementById('transCategory').value = t.category?.id;
+            document.getElementById('transBudget').value = t.budget_id || '';
+            this.renderTagPicker(Array.isArray(t.tags) ? t.tags.map(x => x.id ?? x) : []);
         }
+        // 注意：openModal(null) 已把 _editingTxId / _editingTransferId / transEditId 清空，
+        // 保存时会走新增分支（POST /transactions 或 /transfers），不会覆盖原记录。
     },
 
     /**
