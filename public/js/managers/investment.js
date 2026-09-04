@@ -579,9 +579,9 @@ const InvestmentManager = {
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
                 <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}" title="详情">详情</button>
-                    <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}" title="编辑">编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}" title="删除">删除</button>
+                    <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}">详情</button>
+                    <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}">编辑</button>
+                    <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}">删除</button>
                 </div>
             </div>`;
         };
@@ -779,8 +779,8 @@ const InvestmentManager = {
                     <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(t.type_label || t.type)}</span>
                     <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
                     <span class="inv-txn-actions">
-                        <button class="inv-txn-edit" title="修改">修改</button>
-                        <button class="inv-txn-del" title="删除">删除</button>
+                        <button class="inv-txn-edit">修改</button>
+                        <button class="inv-txn-del">删除</button>
                     </span>
                 </div>
                 <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>

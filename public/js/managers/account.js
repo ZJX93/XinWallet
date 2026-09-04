@@ -123,10 +123,10 @@ const AccountManager = {
                     <div class="acc-card-amount">${fmt(a.balance)}</div>
                 </div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="明细">明细</button>
-                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}" title="计息">计息</button>
-                    <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="销户/删除">删除</button>
+                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
+                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}">计息</button>
+                    <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">编辑</button>
+                    <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">删除</button>
                 </div>
             </div>`;
         };
@@ -198,9 +198,9 @@ const AccountManager = {
                         <div class="acc-card-amount is-closed">${fmt(a.balance)}</div>
                     </div>
                     <div class="goal-actions">
-                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}" title="明细">明细</button>
-                        <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}" title="编辑">编辑</button>
-                        <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}" title="彻底删除">删除</button>
+                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
+                        <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">编辑</button>
+                        <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">删除</button>
                     </div>
                 </div>`).join('');
             return `<div class="acc-stack"><div class="acc-stack-cards" style="--n:${cn + 1}">${cover}${cards}</div></div>`;
@@ -437,7 +437,7 @@ const AccountManager = {
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
                         <span class="rh-date">${t.date || ''}</span>
-                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}" title="修改">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}" title="删除">删除</button></span>` : ''}
+                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}">删除</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
