@@ -13,6 +13,20 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
+// ==========================================
+// 诊断：捕获未处理的异常 / Promise rejection，同步落盘到 crash.log，
+// 避免进程崩溃时重定向缓冲丢失堆栈（临时诊断用，定位后可移除）。
+// ==========================================
+const _crashLog = path.join(__dirname, '..', 'crash.log');
+function _writeCrash(tag, err) {
+    try {
+        const stack = err && (err.stack || String(err));
+        fs.appendFileSync(_crashLog, `[${new Date().toISOString()}] ${tag}\n${stack}\n${'='.repeat(60)}\n`);
+    } catch (_) {}
+}
+process.on('uncaughtException', (err) => { _writeCrash('uncaughtException', err); });
+process.on('unhandledRejection', (reason) => { _writeCrash('unhandledRejection', reason); });
+
 const db = require('./db');
 const routes = require('./routes');
 const logger = require('./logger');
@@ -220,15 +234,7 @@ app.get('/docs', (req, res) => {
 <body>
 <div id="swagger-ui"></div>
 <script src="/swagger-static/swagger-ui-bundle.js" charset="UTF-8"></script>
-<script>
-SwaggerUIBundle({
-  url: '/openapi.json',
-  dom_id: '#swagger-ui',
-  deepLinking: true,
-  presets: [SwaggerUIBundle.presets.apis],
-  layout: 'BaseLayout',
-});
-</script>
+<script src="/swagger-init.js" charset="UTF-8"></script>
 </body>
 </html>`);
 });
