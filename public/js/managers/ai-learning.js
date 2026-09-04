@@ -113,7 +113,7 @@ const AILearning = {
             verified: '已生效', trusted: '高可信', candidate: '候选', disabled: '已禁用',
         });
         evHtml += '<div class="ai-learn-sub">记忆条目分布</div>' + this._kvGrid(ev.memory, {});
-        parts.push(this._section('反馈与记忆', '📥', evHtml));
+        parts.push(this._section('反馈与记忆', '', evHtml));
 
         // 2. 规则冲突
         const cons = Array.isArray(d.contradictions) ? d.contradictions : [];
@@ -123,11 +123,11 @@ const AILearning = {
                     <span class="ai-cons-meta">${this._num(c.variants)} 个类目 · ${this._num(c.samples)} 样本</span>
                     <span class="ai-cons-flag">需裁定</span>
                 </div>`).join('')
-            : '<p class="empty-desc">无规则冲突，学习方向一致 👍</p>';
+            : '<p class="empty-desc">无规则冲突，学习方向一致</p>';
         parts.push(this._section('规则冲突（需用户裁定）', '⚠️', consHtml));
 
         // 3. 在线指标
-        parts.push(this._section('在线指标', '📈',
+        parts.push(this._section('在线指标', '',
             this._kvGrid(d.metrics, {
                 confirmation_rate: '确认率', correction_rate: '修正率', discard_rate: '弃置率',
                 rule_hit_rate: '规则命中率', llm_call_rate: 'LLM 调用率', fallback_rate: '兜底率',
@@ -135,7 +135,7 @@ const AILearning = {
             })));
 
         // 4. 调用用量
-        parts.push(this._section('调用用量（近 30 天）', '💸',
+        parts.push(this._section('调用用量（近 30 天）', '',
             this._kvGrid(d.usage, {
                 total_predictions: '调用总数', local_count: '本地路由', llm_count: 'LLM 路由',
                 fallback_count: '兜底路由', llm_call_rate: 'LLM 调用率', fallback_rate: '兜底率',
@@ -153,7 +153,7 @@ const AILearning = {
         });
         let bHtml = this._kvGrid(bState, {});
         bHtml += '<div class="ai-learn-sub">失败计数</div>' + this._kvGrid(bFail, {});
-        parts.push(this._section('模型熔断器', '🛡️', bHtml));
+        parts.push(this._section('模型熔断器', '', bHtml));
 
         body.innerHTML = parts.join('');
     },

@@ -70,7 +70,7 @@ const AccountManager = {
 
         const showClosed = !!(document.getElementById('showClosedAcc') && document.getElementById('showClosedAcc').checked);
         const activeAccounts = (data.accounts || []).filter(a => !a.closed);
-        if (activeAccounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
+        if (activeAccounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产'); return; }
 
         // 按类型分组（按语义顺序排），每组一张大封面卡 + 下方牌堆叠放子卡。
         // 视觉：5 个组（现金/储蓄卡/信用卡/电子支付/金融账户）横排，封面卡突出展示组信息，
@@ -382,7 +382,7 @@ const AccountManager = {
         modal.classList.add('show');
         body.innerHTML = '<div class="empty-state">⏳ 加载中…</div>';
         const res = await api(`/accounts/${id}/transactions`);
-        if (!res) { body.innerHTML = '<div class="empty-state">⚠️ 加载失败，请检查网络</div>'; return; }
+        if (!res) { body.innerHTML = '<div class="empty-state">加载失败，请检查网络</div>'; return; }
         const acc = res.account || {};
         const list = res.transactions || [];
         const subBits = [`共 ${list.length} 笔资金变动`];
@@ -404,7 +404,7 @@ const AccountManager = {
             <div class="rh-actions">${actions}</div>
         </div>`;
         if (!list.length) {
-            body.innerHTML = head + '<div class="empty-state">📭 该账户暂无资金变动记录</div>';
+            body.innerHTML = head + '<div class="empty-state">该账户暂无资金变动记录</div>';
         } else {
             const typeMeta = {
                 expense: { dir: '−', cls: 'negative', label: '支出' },

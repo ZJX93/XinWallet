@@ -1,6 +1,6 @@
             <section class="page" id="page-investments">
                 <div class="glass-card">
-                    <h3 class="card-title">💰 理财资产总览</h3>
+                    <h3 class="card-title">理财资产总览</h3>
                     <div class="inv-summary-row" id="invSummary">
                         <div class="inv-summary-item"><span class="inv-label">投入本金</span><span class="inv-value" id="invTotalCost">¥0</span></div>
                         <div class="inv-summary-item"><span class="inv-label">当前市值</span><span class="inv-value" id="invTotalValue">¥0</span></div>
@@ -17,13 +17,13 @@
                     <div class="glass-card chart-card"><h3 class="card-title">类型对比</h3><canvas id="invTypeBarChart" height="220"></canvas></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">持仓明细 <button class="btn btn-ghost" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">🔄 一键刷新</button>
+                    <h3 class="card-title">持仓明细 <button class="btn btn-ghost" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">一键刷新</button>
                         <label class="inv-toggle" title="显示历史已清仓（已隐藏）的持仓"><input type="checkbox" id="invIncludeSold"> 显示已清仓</label>
                     </h3>
                     <div id="investList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">🎯 储蓄目标 <button class="btn btn-ghost" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新建目标</button></h3>
+                    <h3 class="card-title">储蓄目标 <button class="btn btn-ghost" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新建目标</button></h3>
                     <p class="card-desc">为大额支出或心愿设立储蓄罐，从关联账户定投，进度一目了然</p>
                     <div id="savingsGoalList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
@@ -35,7 +35,7 @@
                             <div class="form-group"><label>产品名称</label><input type="text" id="investName" required placeholder="如：沪深300ETF"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group" style="flex:1"><label>产品代码</label><div class="input-with-btn"><input type="text" id="investCode" placeholder="510300 / sh600519"><button type="button" class="btn btn-ghost btn-sm" id="investQuoteBtn">🔍 查行情</button></div><div class="quote-result" id="quoteResult"></div></div>
+                            <div class="form-group" style="flex:1"><label>产品代码</label><div class="input-with-btn"><input type="text" id="investCode" placeholder="510300 / sh600519"><button type="button" class="btn btn-ghost btn-sm" id="investQuoteBtn">查行情</button></div><div class="quote-result" id="quoteResult"></div></div>
                             <div class="form-group"><label>关联账户</label><select id="investAccount"></select></div>
                         </div>
                         <div class="form-row">
@@ -69,15 +69,15 @@
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="reduceModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="reduceModalTitle">⚖️ 加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="reduceModalTitle">加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
                     <form class="trans-form" id="reduceForm"><input type="hidden" id="reduceInvestId">
                         <div class="reduce-meta" id="reduceMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
                             <div class="form-group" style="flex:1">
                                 <label>操作类型</label>
                                 <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="buy"><input type="radio" name="reduceAction" value="buy" style="accent-color:var(--accent-500)"> <span>📈 加仓</span></label>
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="sell"><input type="radio" name="reduceAction" value="sell" checked style="accent-color:var(--accent-500)"> <span>📉 减仓</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="buy"><input type="radio" name="reduceAction" value="buy" style="accent-color:var(--accent-500)"> <span>加仓</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="sell"><input type="radio" name="reduceAction" value="sell" checked style="accent-color:var(--accent-500)"> <span>减仓</span></label>
                                 </div>
                             </div>
                         </div>
@@ -96,15 +96,15 @@
 
                 <!-- 记一笔利息弹窗 -->
                 <div class="modal-overlay" id="interestModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="interestModalTitle">💵 记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="interestModalTitle">记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
                     <form class="trans-form" id="interestForm"><input type="hidden" id="interestInvestId">
                         <div class="reduce-meta" id="interestMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
                             <div class="form-group" style="flex:1">
                                 <label>计息方式</label>
                                 <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span>🔁 红利再投</span></label>
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>💵 现金入账</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span>红利再投</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>现金入账</span></label>
                                 </div>
                             </div>
                         </div>
@@ -139,7 +139,7 @@
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="goalAmountModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="goalAmountTitle">💰 存入金额</h3><button class="modal-close" id="goalAmountClose">✕</button></div>
+                    <div class="modal-header"><h3 id="goalAmountTitle">存入金额</h3><button class="modal-close" id="goalAmountClose">✕</button></div>
                     <form class="trans-form" id="goalAmountForm">
                         <div class="goal-amount-meta" id="goalAmountMeta"></div>
                         <div class="form-group full-width">

@@ -326,11 +326,11 @@ const AIRules = {
             ${r.target_account_id ? `<div class="ai-rules-target">目标账户 #${r.target_account_id}</div>` : ''}
             ${r.target_type ? `<div class="ai-rules-target">目标类型 ${escapeHtml(r.target_type)}</div>` : ''}
             <div class="ai-rules-actions">
-                <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">📜 查看证据</button>
+                <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">查看证据</button>
                 ${isDisabled
-                    ? `<button class="btn btn-ghost btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✓ 启用'}</button>
-                        <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>🗑 删除</button>`
-                    : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '✕ 禁用'}</button>`
+                    ? `<button class="btn btn-ghost btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '启用'}</button>
+                        <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>删除</button>`
+                    : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '禁用'}</button>`
                 }
             </div>
         `;

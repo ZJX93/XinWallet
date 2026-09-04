@@ -73,7 +73,7 @@ const TagManager = {
         const tags = await api('/tags');
         cache.tags = tags || [];
         this.populateTagFilter();
-        if (!cache.tags.length) { showEmpty(grid, '还没有标签，点击右上角「新建标签」创建第一个吧', '🏷️'); return; }
+        if (!cache.tags.length) { showEmpty(grid, '还没有标签，点击右上角「新建标签」创建第一个吧'); return; }
         grid.innerHTML = cache.tags.map(t => `
             <div class="tag-card" style="--tag-color:${t.color}" data-id="${t.id}">
                 <div class="tag-card-icon">${escapeHtml(t.icon || "🏷️")}</div>

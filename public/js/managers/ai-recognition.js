@@ -33,7 +33,7 @@ const AIRecognition = {
     renderNoProvider(containerId) {
         const container = document.getElementById(containerId);
         if (container) {
-            container.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>未配置 AI 服务商</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
+            container.innerHTML = `<div class="empty-hint"><p>未配置 AI 服务商</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
             // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
             container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
         }
@@ -245,7 +245,7 @@ const AIRecognition = {
             showToast(err.message || '解析失败', 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = '🔍 解析账单';
+            btn.textContent = '解析账单';
         }
     },
 

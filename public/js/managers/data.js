@@ -101,7 +101,7 @@ const DataManager = {
         const data = await api('/categories' + qs);
         const tbody = document.getElementById('catTableBody');
         if (!data || !data.tree || data.tree.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📂</div><div class="empty-text">暂无分类数据</div></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-text">暂无分类数据</div></div></td></tr>';
             return;
         }
         const typeLabel = { expense: '支出', income: '收入', transfer: '转账' };
@@ -192,7 +192,7 @@ const DataManager = {
         const data = await api('/investment-types');
         const tbody = document.getElementById('invTypeTableBody');
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">💹</div><div class="empty-text">暂无理财类型</div></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-text">暂无理财类型</div></div></td></tr>';
             return;
         }
         const riskLabel = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
@@ -282,7 +282,7 @@ const DataManager = {
         const books = (data && data.books) || [];
         this._books = books;
         if (books.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📒</div><div class="empty-text">暂无账本</div></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-text">暂无账本</div></div></td></tr>';
             return;
         }
         tbody.innerHTML = books.map(b => `

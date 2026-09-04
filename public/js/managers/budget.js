@@ -124,7 +124,7 @@ const BudgetManager = {
         bar.style.width = Math.min(rate, 100) + '%';
         bar.style.background = rate > 100 ? 'var(--accent-expense)' : rate > 80 ? 'var(--accent-warning)' : 'var(--accent-primary)';
 
-        if (!budgets.length) { showEmpty(container, '该周期还没有设置预算，点击「添加预算」开始规划', '🎯'); return; }
+        if (!budgets.length) { showEmpty(container, '该周期还没有设置预算，点击「添加预算」开始规划'); return; }
         container.innerHTML = budgets.map(b => {
             const r = Math.round(b.actual / b.amount * 100);
             const cls = r > 100 ? 'over' : r > 80 ? 'warning' : 'safe';
@@ -146,8 +146,8 @@ const BudgetManager = {
                 <div class="goal-progress"><div class="goal-progress-fill ${cls === 'over' ? 'danger' : ''}" style="width:${Math.min(r, 100)}%"></div></div>
                 <div class="goal-amounts"><span class="goal-pct">${r}% 使用率</span><span>${r > 100 ? '超支 ' + fmt(b.actual - b.amount) : '剩余 ' + fmt(b.amount - b.actual)}</span></div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="edit-budget" data-id="${b.id}">✏️ 编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-budget" data-id="${b.id}">🗑️ 删除</button>
+                    <button class="btn btn-ghost" data-action="edit-budget" data-id="${b.id}">编辑</button>
+                    <button class="btn btn-ghost" data-action="delete-budget" data-id="${b.id}">删除</button>
                 </div>
             </div>
             `;

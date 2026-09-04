@@ -562,7 +562,7 @@ const TransactionManager = {
         if (search) params += `&search=${encodeURIComponent(search)}`;
         const list = await api(`/transactions?${params}`);
         const tbodyEl = document.getElementById('transTbody');
-        if (!list || list.length === 0) { showEmpty(tbodyEl, '暂无交易记录', '📭'); return; }
+        if (!list || list.length === 0) { showEmpty(tbodyEl, '暂无交易记录'); return; }
 
         // 合并配对转账
         const merged = mergeTransferPairs(list);
@@ -584,7 +584,7 @@ const TransactionManager = {
 
         if (filtered.length === 0) {
             const emptyMsg = noteFilter ? '没有匹配备注的交易' : '暂无交易记录';
-            showEmpty(tbodyEl, emptyMsg, '📭');
+            showEmpty(tbodyEl, emptyMsg);
             this.renderPager(0, 1);
             return;
         }

@@ -215,10 +215,10 @@ function showSkeleton(el, rows = 3, variant = 'list') {
     el.innerHTML = `<div class="skeleton-wrap" data-skeleton="${variant}">${html}</div>`;
 }
 
-// 空状态：图标 + 文案，比纯文字更友好
-function showEmpty(el, text, icon = '🗂️') {
+// 空状态：纯文字提示（图标已按 UI 规范移除，保留 icon 参数仅为兼容历史调用）
+function showEmpty(el, text, icon = '') {
     if (!el) return;
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${icon}</div><div class="empty-text">${escapeHtml(text)}</div></div>`;
+    el.innerHTML = `<div class="empty-state">${icon ? `<div class="empty-icon">${icon}</div>` : ''}<div class="empty-text">${escapeHtml(text)}</div></div>`;
 }
 
 // ==========================================
@@ -300,14 +300,11 @@ const initBottomNav = () => {
         }
     });
 
-    // 给每个分组标签映射图标
-    const groupIcons = { '总览': '📊', '账本': '💰', '设置': '⚙️', '实验室': '🧪' };
-
-    // 更新分组标签显示为图标+文字，保存原始名称到 data-group
+    // 更新分组标签显示为文字，保存原始名称到 data-group
     labels.forEach(label => {
         const name = label.textContent.trim();
         label.dataset.group = name;
-        label.innerHTML = `<span style="font-size:18px">${groupIcons[name] || '📋'}</span><span style="display:block;font-size:9px;line-height:1">${name}</span>`;
+        label.innerHTML = `<span style="display:block;font-size:11px;line-height:1;font-weight:var(--fw-medium)">${name}</span>`;
     });
 
     // 点击分组标签展开子菜单
@@ -335,11 +332,10 @@ const initBottomNav = () => {
 
             const subItems = groups[name] || [];
             popup.innerHTML = subItems.map(it => {
-                const icon = it.querySelector('.nav-icon')?.textContent || '📌';
                 const text = it.querySelector('.nav-text')?.textContent || it.dataset.page;
                 const page = it.dataset.page;
                 return `<div class="mobile-subitem" data-page="${page}" style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text-primary);">
-                    <span style="font-size:20px">${icon}</span><span>${text}</span>
+                    <span>${text}</span>
                 </div>`;
             }).join('');
             popup.style.display = 'block';

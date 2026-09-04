@@ -113,7 +113,7 @@ const SavingsGoalManager = {
         const target = parseFloat(g.target_amount) || 0;
         const remaining = Math.max(0, target - cur);
         const isAlloc = type === 'allocate';
-        document.getElementById('goalAmountTitle').textContent = isAlloc ? '💰 存入金额' : '↩️ 取回金额';
+        document.getElementById('goalAmountTitle').textContent = isAlloc ? '存入金额' : '取回金额';
         document.getElementById('goalAmountLabel').textContent = (isAlloc ? '存入' : '取回') + '金额 (¥)';
         document.getElementById('goalAmountMeta').innerHTML =
             `<div>${escapeHtml(g.icon || '🎯')} <strong>${escapeHtml(g.name)}</strong></div>` +
@@ -242,7 +242,7 @@ const SavingsGoalManager = {
         showSkeleton(container, 3, 'grid');
         const goals = await api('/savings-goals');
         this.goals = goals || [];
-        if (!goals || goals.length === 0) { showEmpty(container, '还没有储蓄目标，点击「新建目标」开始积累吧', '🎯'); return; }
+        if (!goals || goals.length === 0) { showEmpty(container, '还没有储蓄目标，点击「新建目标」开始积累吧'); return; }
         container.innerHTML = goals.map(g => {
             const cur = parseFloat(g.current_amount) || 0;
             const target = parseFloat(g.target_amount) || 0;

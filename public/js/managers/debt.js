@@ -114,7 +114,7 @@ const DebtManager = {
         showSkeleton(container, 4, 'grid');
         try {
         const res = await api('/debts');
-        if (!res) { showEmpty(container, '加载失败，请检查网络', '⚠️'); return; }
+        if (!res) { showEmpty(container, '加载失败，请检查网络'); return; }
         const s = res.summary || {};
         this._listCache = res.debts || [];
 
@@ -158,7 +158,7 @@ const DebtManager = {
         const debts = this._listCache.filter(d => this._filter === 'all' || d.direction === this._filter);
         if (!debts.length) {
             const msg = this._filter === 'receivable' ? '暂无应收账款记录' : this._filter === 'payable' ? '暂无应付账款记录' : '暂无债权债务记录';
-            showEmpty(container, msg, '📋');
+            showEmpty(container, msg);
             return;
         }
         container.innerHTML = debts.map(d => this._renderRow(d)).join('');
@@ -168,7 +168,7 @@ const DebtManager = {
         container.querySelectorAll('[data-action="delete-debt"]').forEach(b => b.addEventListener('click', () => this.delete(parseInt(b.dataset.id))));
         } catch (err) {
             console.error('DebtManager.refresh error:', err);
-            showEmpty(container, '加载失败：' + (err.message || '未知错误'), '⚠️');
+            showEmpty(container, '加载失败：' + (err.message || '未知错误'));
         }
     },
 
@@ -209,7 +209,6 @@ const DebtManager = {
                 : `<span class="goal-status type">${deptLabel} · ${typeName}</span>`;
         const acc = (d.account_id && (cache.accounts || []).find(a => a.id === d.account_id)) || null;
         const acctLine = acc ? `<div class="goal-sub">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name)}</div>` : '';
-        const icon = isRecv ? '📤' : '📥';
         const term = parseInt(d.term_months) || 0;
         const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
         const leftLabel = isRecv ? '已收回' : '已偿付';
@@ -224,7 +223,6 @@ const DebtManager = {
         return `
         <div class="goal-card ${d.status === 'paid_off' ? 'completed' : ''} ${d.status === 'overdue' ? 'overdue' : ''}">
             <div class="goal-head">
-                <div class="goal-icon">${icon}</div>
                 <div class="goal-head-text">
                     <div class="goal-title">${escapeHtml(d.name || '')}${d.creditor ? ' · ' + escapeHtml(d.creditor) : ''}</div>
                     ${acctLine}
@@ -522,9 +520,9 @@ const DebtManager = {
         const modal = document.getElementById('repayHistoryModal');
         const body = document.getElementById('repayHistoryBody');
         modal.classList.add('show');
-        body.innerHTML = '<div class="empty-state">⏳ 加载中…</div>';
+        body.innerHTML = '<div class="empty-state">加载中…</div>';
         const res = await api(`/debts/${id}`);
-        if (!res) { body.innerHTML = '<div class="empty-state">⚠️ 加载失败，请检查网络</div>'; return; }
+        if (!res) { body.innerHTML = '<div class="empty-state">加载失败，请检查网络</div>'; return; }
         const d = res.debt || {};
         const list = res.repayments || [];
         const isRecv = d.direction === 'receivable';
@@ -533,11 +531,11 @@ const DebtManager = {
         const safe = (s, fallback = '<空>') => (!s || isGarbled(s)) ? fallback : s;
         const safeNote = (s) => (!s || isGarbled(s)) ? '' : s;
         const head = `<div class="rh-head">
-            <div class="rh-debt">${isRecv ? '📤' : '📥'} ${escapeHtml(safe(d.name))} · ${isRecv ? '应收账款' : '应付账款'}</div>
+            <div class="rh-debt">${escapeHtml(safe(d.name))} · ${isRecv ? '应收账款' : '应付账款'}</div>
             <div class="rh-sub">对方：${escapeHtml(safe(d.creditor, '—'))} · ${isRecv ? '待收' : '剩余'}本金 ${fmt(d.remaining || 0)} · 累计${isRecv ? '已收' : '已偿'} ${fmt(d.paid_total || 0)} · 共 ${list.length} 笔</div>
         </div>`;
         if (!list.length) {
-            body.innerHTML = head + `<div class="empty-state">📭 暂无${isRecv ? '收款' : '还款'}记录</div>`;
+            body.innerHTML = head + `<div class="empty-state">暂无${isRecv ? '收款' : '还款'}记录</div>`;
             return;
         }
         const rows = list.map(r => `

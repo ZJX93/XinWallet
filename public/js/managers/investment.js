@@ -301,7 +301,7 @@ const InvestmentManager = {
         const inv = data && data.find(i => i.id === id);
         if (!inv) { showToast('持仓不存在', 'error'); return; }
         document.getElementById('reduceInvestId').value = id;
-        document.getElementById('reduceModalTitle').textContent = `⚖️ 加仓/减仓 · ${inv.name}`;
+        document.getElementById('reduceModalTitle').textContent = `加仓/减仓 · ${inv.name}`;
         document.getElementById('reduceMeta').innerHTML = `当前持有 <b>${inv.quantity}</b>，市值 ${fmt(inv.current_value)}`;
         // 默认选中减仓
         const sellRadio = document.querySelector('input[name="reduceAction"][value="sell"]');
@@ -346,7 +346,7 @@ const InvestmentManager = {
         const inv = (cache.investments || []).find(i => i.id === id);
         if (!inv) { showToast('持仓不存在', 'error'); return; }
         document.getElementById('interestInvestId').value = id;
-        document.getElementById('interestModalTitle').textContent = `💵 记一笔利息 · ${inv.name}`;
+        document.getElementById('interestModalTitle').textContent = `记一笔利息 · ${inv.name}`;
         document.getElementById('interestMeta').innerHTML = `当前持有 <b>${inv.quantity}</b> 份，市值 ${fmt(inv.current_value)}`;
         const reinvestRadio = document.querySelector('input[name="interestMode"][value="reinvest"]');
         if (reinvestRadio) reinvestRadio.checked = true;
@@ -558,7 +558,7 @@ const InvestmentManager = {
         if (expEl) expEl.textContent = (s.expectedRateAvg ?? 0).toFixed(2) + '%';
 
         // 持仓列表：按类型分组，同类型叠成一叠牌，点击封面展开/收起
-        if (!data.investments || data.investments.length === 0) { showEmpty(container, '还没有理财持仓，点击「新增持仓」记录你的投资', '📈'); return; }
+        if (!data.investments || data.investments.length === 0) { showEmpty(container, '还没有理财持仓，点击「新增持仓」记录你的投资'); return; }
         // 复用模块级 INV_RISK_LABELS / INV_RISK_DOT
 
         const buildCard = (i, idx, n) => {

@@ -151,13 +151,13 @@ const AISmartEntry = {
                 // append 模式：已有内容时换行追加；空时直接填入
                 input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
                 input.focus();
-                showToast('已填入转写文本，可点「🪄 解析」', 'success');
+                showToast('已填入转写文本，可点「解析」', 'success');
             }
         } catch (err) {
             // 服务端 422 / 502 时仍可保留已录内容，下次再试
             showToast((err && err.payload && err.payload.message) || '语音转写失败', 'error');
         } finally {
-            btn.textContent = '🎙 按住说话';
+            btn.textContent = '按住说话';
             btn.classList.remove('is-recording');
             btn.disabled = false;
             this._voice = { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null };
@@ -452,7 +452,7 @@ const AISmartEntry = {
         const btn = document.getElementById('aiSmartCommitBtn');
         if (!btn) return;
         const n = this.items.length;
-        btn.textContent = this._isDirty() ? `✅ 按修正后提交（${n} 笔）` : `✅ 确认并记账（${n} 笔）`;
+        btn.textContent = this._isDirty() ? `按修正后提交（${n} 笔）` : `确认并记账（${n} 笔）`;
     },
 
     // ========== 步骤 3：提交 ==========

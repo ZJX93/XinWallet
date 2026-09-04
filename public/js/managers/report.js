@@ -116,7 +116,7 @@ const ReportManager = {
         const container = document.getElementById('reportContent');
         showSkeleton(container, 6, 'grid');
         const data = await api(`/reports?type=${type}&period=${period}`);
-        if (!data) { showEmpty(container, '暂无数据', '📊'); return; }
+        if (!data) { showEmpty(container, '暂无数据'); return; }
         this.currentData = data;
         this.render(data);
     },
@@ -145,7 +145,7 @@ const ReportManager = {
     render(data) {
         const container = document.getElementById('reportContent');
         this.destroyCharts();
-        const bsTitle = data.balanceSheet ? `🏛️ 资产负债表（${data.balanceSheet.period.end} 快照）` : '🏛️ 资产负债表';
+        const bsTitle = data.balanceSheet ? `资产负债表（${data.balanceSheet.period.end} 快照）` : '资产负债表';
 
         // 渲染完成后触发数字滚动动画（延迟 100ms 让 CSS stagger 先执行）
         requestAnimationFrame(() => {
@@ -208,7 +208,7 @@ const ReportManager = {
         const balDiff = s.balance - c.balance;
         return `
             <div class="report-compare-card">
-                <div class="report-section-title">📈 环比上期（${c.label}）</div>
+                <div class="report-section-title">环比上期（${c.label}）</div>
                 <div class="report-compare-grid">
                     <div class="report-compare-row">
                         <span class="report-compare-label">收入</span>
@@ -233,7 +233,7 @@ const ReportManager = {
         const a = data.assets;
         return `
             <div class="report-assets-card">
-                <div class="report-section-title">💰 资产快照</div>
+                <div class="report-section-title">资产快照</div>
                 <div class="report-assets-value">${fmt(a.totalAssets)}</div>
                 <div class="report-assets-sub">账户 ${fmt(a.accounts)} · 理财 ${fmt(a.investments)}</div>
             </div>
@@ -308,7 +308,7 @@ const ReportManager = {
         }).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">🔥 支出 TOP 5</h3>
+                <h3 class="report-section-title">支出 TOP 5</h3>
                 <div class="glass-card report-top-list">${items}</div>
             </div>
         `;
@@ -345,7 +345,7 @@ const ReportManager = {
         }).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">🎯 预算执行情况</h3>
+                <h3 class="report-section-title">预算执行情况</h3>
                 <div class="glass-card report-budget-list">${items}</div>
             </div>
         `;
@@ -356,8 +356,8 @@ const ReportManager = {
         if (d.count === 0) {
             return `
                 <div class="report-section">
-                    <h3 class="report-section-title">💳 债务情况</h3>
-                    <div class="glass-card report-budget-list"><div class="empty-hint"><div class="empty-icon">💳</div><p>本周期无活跃债务</p></div></div>
+                    <h3 class="report-section-title">债务情况</h3>
+                    <div class="glass-card report-budget-list"><div class="empty-hint"><p>本周期无活跃债务</p></div></div>
                 </div>
             `;
         }
@@ -400,7 +400,7 @@ const ReportManager = {
         `).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">💳 债务情况${overdueTag}</h3>
+                <h3 class="report-section-title">债务情况${overdueTag}</h3>
                 <div class="glass-card" style="margin-bottom:12px;">${headerKpi}</div>
                 ${debtItems ? `<div class="glass-card report-budget-list">${debtItems}</div>` : ''}
                 ${(d.repayments || []).length > 0 ? `
@@ -433,7 +433,7 @@ const ReportManager = {
         };
         return `
             <div class="report-section">
-                <h3 class="report-section-title">📊 关键财务比率</h3>
+                <h3 class="report-section-title">关键财务比率</h3>
                 <div class="glass-card ratio-grid ratio-grid--stack">
                     <div class="ratio-item">
                         <div class="ratio-label">储蓄率 ${flag(r.savingsRate, 30, '偏低', '健康')}</div>
@@ -466,7 +466,7 @@ const ReportManager = {
         const changeArrow = bs.change >= 0 ? '↑' : '↓';
         return `
             <div class="report-section">
-                <h3 class="report-section-title">🏛️ 资产负债表（${bs.period.end} 快照）</h3>
+                <h3 class="report-section-title">资产负债表（${bs.period.end} 快照）</h3>
                 <div class="balance-sheet">
                     <!-- 资产 -->
                     <div class="bs-side">
@@ -565,7 +565,7 @@ const ReportManager = {
         const totalColor = cf.netChange >= 0 ? 'income' : 'expense';
         return `
             <div class="report-section">
-                <h3 class="report-section-title">💧 现金流量表</h3>
+                <h3 class="report-section-title">现金流量表</h3>
                 <div class="glass-card">
                     <div class="cf-header">
                         <span></span>
@@ -573,9 +573,9 @@ const ReportManager = {
                         <span class="cf-header-outflow">流出</span>
                         <span class="cf-header-net">净额</span>
                     </div>
-                    ${flowRow('🏢 经营活动（日常收支）', cf.operating.inflow, cf.operating.outflow, cf.operating.net, cf.operating.net >= 0 ? 'income' : 'expense')}
-                    ${flowRow('📈 投资活动', cf.investing.inflow, cf.investing.outflow, cf.investing.net, cf.investing.net >= 0 ? 'income' : 'expense')}
-                    ${flowRow('🏦 筹资活动（借还款）', cf.financing.inflow, cf.financing.outflow, cf.financing.net, cf.financing.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow('经营活动（日常收支）', cf.operating.inflow, cf.operating.outflow, cf.operating.net, cf.operating.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow('投资活动', cf.investing.inflow, cf.investing.outflow, cf.investing.net, cf.investing.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow('筹资活动（借还款）', cf.financing.inflow, cf.financing.outflow, cf.financing.net, cf.financing.net >= 0 ? 'income' : 'expense')}
                     <div class="cf-row cf-total">
                         <div class="cf-label"><strong>本期现金净变化</strong></div>
                         <div class="cf-flows"></div>
@@ -623,7 +623,7 @@ const ReportManager = {
         target.innerHTML = `
             <div class="bs-detail-card" data-detail-debt="${debtId}">
                 <div class="bs-detail-header">
-                    <h4>📋 ${escapeHtml(d.name)} 还款明细 <span class="bs-meta-inline">${reps.length} 笔记录</span></h4>
+                    <h4>${escapeHtml(d.name)} 还款明细 <span class="bs-meta-inline">${reps.length} 笔记录</span></h4>
                     <button class="btn-close js-bs-close" aria-label="关闭">✕</button>
                 </div>
                 <div class="bs-detail-stats">
@@ -655,7 +655,7 @@ const ReportManager = {
         target.innerHTML = `
             <div class="bs-detail-card" data-detail-account="${accountId}">
                 <div class="bs-detail-header">
-                    <h4>🏦 ${escapeHtml(acc.name)} 最近流水</h4>
+                    <h4>${escapeHtml(acc.name)} 最近流水</h4>
                     <button class="btn-close js-bs-close" aria-label="关闭">✕</button>
                 </div>
                 ${rows ? `<table class="report-table"><thead><tr><th>日期</th><th>类别</th><th>金额</th><th>备注</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="bs-empty">暂无流水</div>'}
@@ -981,7 +981,7 @@ function confirmClearImport(mode) {
         overlay.innerHTML = merge ? `
             <div class="modal glass-card" style="max-width:440px">
                 <div class="modal-header">
-                    <h3>🔀 合并导入</h3>
+                    <h3>合并导入</h3>
                     <button class="modal-close" aria-label="关闭">✕</button>
                 </div>
                 <div class="modal-body" style="padding:12px 16px 4px;line-height:1.6">

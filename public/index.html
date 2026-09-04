@@ -61,46 +61,46 @@
             <ul class="nav-menu">
                 <li class="nav-group-label">总览</li>
                 <li class="nav-item active" data-page="dashboard">
-                    <span class="nav-icon">📊</span><span class="nav-text">仪表盘</span>
+                    <span class="nav-text">仪表盘</span>
                 </li>
 
                 <li class="nav-group-label">账本</li>
                 <li class="nav-item" data-page="transactions">
-                    <span class="nav-icon">💰</span><span class="nav-text">交易管理</span>
+                    <span class="nav-text">交易管理</span>
                 </li>
                 <li class="nav-item" data-page="budget">
-                    <span class="nav-icon">🎯</span><span class="nav-text">预算管理</span>
+                    <span class="nav-text">预算管理</span>
                 </li>
                 <li class="nav-item" data-page="investments">
-                    <span class="nav-icon">📈</span><span class="nav-text">理财管理</span>
+                    <span class="nav-text">理财管理</span>
                 </li>
                 <li class="nav-item" data-page="debts">
-                    <span class="nav-icon">🏷️</span><span class="nav-text">债务管理</span>
+                    <span class="nav-text">债务管理</span>
                 </li>
                 <li class="nav-item" data-page="reports">
-                    <span class="nav-icon">📋</span><span class="nav-text">报表中心</span>
+                    <span class="nav-text">报表中心</span>
                 </li>
 
                 <li class="nav-group-label">AI 实验室</li>
                 <li class="nav-item" data-page="ai-recognition">
-                    <span class="nav-icon">🧠</span><span class="nav-text">AI 识别</span>
+                    <span class="nav-text">AI 识别</span>
                 </li>
-                <li class="nav-item" data-page="ai-insights"><span class="nav-icon">💡</span><span class="nav-text">AI 洞察</span></li>
-                <li class="nav-item" data-page="ai-evaluation"><span class="nav-icon">🧪</span><span class="nav-text">模型评测</span></li>
-                <li class="nav-item" data-page="ai-rules"><span class="nav-icon">📜</span><span class="nav-text">AI 规则</span></li>
+                <li class="nav-item" data-page="ai-insights"><span class="nav-text">AI 洞察</span></li>
+                <li class="nav-item" data-page="ai-evaluation"><span class="nav-text">模型评测</span></li>
+                <li class="nav-item" data-page="ai-rules"><span class="nav-text">AI 规则</span></li>
 
                 <li class="nav-group-label">设置</li>
                 <li class="nav-item" data-page="data-center">
-                    <span class="nav-icon">⚙️</span><span class="nav-text">基础数据</span>
+                    <span class="nav-text">基础数据</span>
                 </li>
                 <li class="nav-item" data-page="ai-config">
-                    <span class="nav-icon">🤖</span><span class="nav-text">AI配置</span>
+                    <span class="nav-text">AI配置</span>
                 </li>
                 <li class="nav-item" data-page="accounts">
-                    <span class="nav-icon">🏦</span><span class="nav-text">账户管理</span>
+                    <span class="nav-text">账户管理</span>
                 </li>
                 <li class="nav-item" data-page="about">
-                    <span class="nav-icon">ℹ️</span><span class="nav-text">关于</span>
+                    <span class="nav-text">关于</span>
                 </li>
             </ul>
         </nav>
@@ -202,7 +202,7 @@
                 </div>
                 <div class="glass-card">
                     <div class="card-title-row">
-                        <h3 class="card-title" style="margin:0">🎯 预算管理</h3>
+                        <h3 class="card-title" style="margin:0">预算管理</h3>
                         <div class="card-title-actions">
                             <select id="budgetPeriodType" class="filter-select" style="font-size:12px;padding:4px 8px">
                                 <option value="">全部</option>
@@ -264,12 +264,12 @@
                             <div class="dkpi-foot" id="debtOverdueFoot">0 笔</div>
                         </div>
                         <div class="dkpi-item dkpi-pay">
-                            <div class="dkpi-label">📥 应付账款余额</div>
+                            <div class="dkpi-label">应付账款余额</div>
                             <div class="dkpi-value" id="debtPayableRemaining">¥0</div>
                             <div class="dkpi-foot" id="debtPayableFoot">0 笔</div>
                         </div>
                         <div class="dkpi-item dkpi-recv">
-                            <div class="dkpi-label">📤 应收账款余额</div>
+                            <div class="dkpi-label">应收账款余额</div>
                             <div class="dkpi-value" id="debtReceivableRemaining">¥0</div>
                             <div class="dkpi-foot" id="debtReceivableFoot">0 笔</div>
                         </div>
@@ -281,18 +281,16 @@
                 <div class="glass-card">
                     <div class="page-toolbar">
                         <div class="toolbar-left">
-                            <h3 class="card-title" style="margin:0">📋 债权债务明细</h3>
+                            <h3 class="card-title" style="margin:0">债权债务明细</h3>
                             <!-- 业务类型 Tab：与标题同一行 -->
                             <div class="debt-type-tabs">
                                 <button class="debt-type-tab active" data-debt-dir="all">
                                     <span class="dtt-label">全部</span>
                                 </button>
                                 <button class="debt-type-tab" data-debt-dir="payable">
-                                    <span class="dtt-icon">📥</span>
                                     <span class="dtt-label">应付账款</span>
                                 </button>
                                 <button class="debt-type-tab" data-debt-dir="receivable">
-                                    <span class="dtt-icon">📤</span>
                                     <span class="dtt-label">应收账款</span>
                                 </button>
                             </div>
@@ -314,12 +312,10 @@
                     <form class="debt-form" id="debtForm"><input type="hidden" id="debtEditId"><input type="hidden" id="debtDirection" value="payable">
                         <div class="debt-type-tabs" style="margin-bottom:18px">
                             <button type="button" class="debt-type-tab active" data-form-dir="payable">
-                                <span class="dtt-icon">📥</span>
                                 <span class="dtt-label">应付账款</span>
                                 <span class="dtt-meta">Payable</span>
                             </button>
                             <button type="button" class="debt-type-tab" data-form-dir="receivable">
-                                <span class="dtt-icon">📤</span>
                                 <span class="dtt-label">应收账款</span>
                                 <span class="dtt-meta">Receivable</span>
                             </button>
@@ -400,13 +396,13 @@
             <!-- ========== 标签管理 ========== -->
             <section class="page" id="page-data-center">
                 <div class="glass-card">
-                    <h3 class="card-title">⚙️ 基础数据维护</h3>
+                    <h3 class="card-title">基础数据维护</h3>
                     <p class="card-desc">管理系统中的分类、理财类型和标签等基础数据</p>
                     <div class="dc-tabs">
-                        <button class="dc-tab active" data-dctab="categories">📂 分类管理</button>
-                        <button class="dc-tab" data-dctab="invtypes">💹 理财类型</button>
-                        <button class="dc-tab" data-dctab="tags">🏷️ 标签管理</button>
-                        <button class="dc-tab" data-dctab="books">📒 账本管理</button>
+                        <button class="dc-tab active" data-dctab="categories">分类管理</button>
+                        <button class="dc-tab" data-dctab="invtypes">理财类型</button>
+                        <button class="dc-tab" data-dctab="tags">标签管理</button>
+                        <button class="dc-tab" data-dctab="books">账本管理</button>
                     </div>
 
                     <!-- 分类管理 -->
@@ -433,7 +429,7 @@
                     <!-- 账本管理 -->
                     <div class="dc-panel" id="dcPanel-books">
                         <div class="dc-toolbar"><button class="btn btn-ghost" id="addBookBtn">＋ 新增账本</button></div>
-                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>颜色</th><th>默认</th><th>操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📒</div><div class="empty-text">暂无账本</div></div></td></tr></tbody></table></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>颜色</th><th>默认</th><th>操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-text">暂无账本</div></div></td></tr></tbody></table></div>
                     </div>
                 </div>
 
@@ -478,21 +474,20 @@
                 <div class="glass-card">
                     <div class="ai-config-header">
                         <div>
-                            <h3 class="card-title">🤖 AI 服务商配置</h3>
+                            <h3 class="card-title">AI 服务商配置</h3>
                             <p class="card-desc">配置大模型服务商后即可使用 AI 记账、消费洞察和语音转写。建议搭配两个服务商：<b>一个用于对话</b>（如 MiniMax），<b>一个用于语音转写</b>（如 Groq 免费 Whisper）。API Key 仅保存在服务端。</p>
                         </div>
                         <button class="btn btn-ghost" id="aiAddProviderBtn">＋ 添加服务商</button>
                     </div>
                     <!-- 新手引导 -->
                     <div class="ai-guide-hint" style="margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--surface-hover);font-size:var(--text-caption);color:var(--text-secondary);line-height:1.6">
-                        <b>📋 快速上手</b><br>
+                        <b>快速上手</b><br>
                         ① 点击「添加服务商」→ 选择快捷预设（如 MiniMax）→ 填入 API Key → 保存<br>
                         ② 如需语音记账，再添加一个 Groq（免费）用于语音转写<br>
                         ③ 点击「启用」切换对话服务商，语音转写会自动选择支持的服务商
                     </div>
                     <div class="provider-list" id="aiProviderList"></div>
                     <div id="aiProviderEmpty" class="empty-hint" style="display:none;margin-top:24px">
-                        <div class="empty-icon">🤖</div>
                         <p>暂无服务商，点击右上角添加一个</p>
                     </div>
                 </div>
@@ -571,7 +566,7 @@
 
                 <!-- OCR 配置 -->
                 <div class="glass-card" style="margin-top:16px">
-                    <h3 class="card-title">📷 OCR 配置</h3>
+                    <h3 class="card-title">OCR 配置</h3>
                     <p class="card-desc">配置腾讯云 OCR 密钥，用于账单截图文字识别。SecretKey 仅保存在服务端。</p>
                     <form class="trans-form" id="ocrConfigForm" style="margin-top:12px">
                         <div class="form-row">
@@ -601,7 +596,7 @@
 
                 <!-- AI 识别行为设置 -->
                 <div class="glass-card" style="margin-top:16px">
-                    <h3 class="card-title">🎯 AI 识别行为</h3>
+                    <h3 class="card-title">AI 识别行为</h3>
                     <p class="card-desc">调整 AI 账单识别策略，保存后立即生效，无需改服务器环境变量。未保存的项自动沿用服务器 <code>AI_*</code> 默认值。</p>
                     <form class="trans-form" id="aiSettingsForm" style="margin-top:12px">
                         <div class="form-row" style="flex-wrap:wrap">

@@ -316,7 +316,7 @@ const ChartManager = {
             wrap.appendChild(empty);
         }
         // 允许用 \n 换行
-        empty.innerHTML = `<div class="empty-icon">🍩</div><div class="empty-text">${
+        empty.innerHTML = `<div class="empty-text">${
             String(msg).split('\n').map(l => `<div>${l}</div>`).join('')
         }</div>`;
     },

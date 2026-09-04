@@ -103,7 +103,7 @@ const DashboardManager = {
                 : `<div class="detail-total"><span class="detail-total-label">总支出</span><span class="detail-total-value expense">${fmt(data.totalExpense)}</span></div>`;
 
             if (!data.transactions || data.transactions.length === 0) {
-                listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无交易记录</div></div>';
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-text">暂无交易记录</div></div>';
             } else {
                 // 合并配对的转账记录
                 const transferMap = {};

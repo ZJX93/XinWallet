@@ -99,12 +99,12 @@ const AIAdvice = {
                 const lvLabel = { warning: '需重视', info: '关注', tip: '小建议' };
                 const lvClass = { warning: 'lv-warning', info: 'lv-info', tip: 'lv-tip' };
                 insightList.innerHTML = this.insights.map(i => `<div class="insight-item ${lvClass[i.level] || ''}">
-                    <div class="insight-head"><span class="insight-title">🧠 ${escapeHtml(i.title || '洞察')}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
+                    <div class="insight-head"><span class="insight-title">${escapeHtml(i.title || '洞察')}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
                     <div class="insight-desc">${escapeHtml(i.description || '')}</div>
-                    ${i.action ? `<div class="insight-action">💡 ${escapeHtml(i.action)}</div>` : ''}
+                    ${i.action ? `<div class="insight-action">${escapeHtml(i.action)}</div>` : ''}
                 </div>`).join('');
             } else {
-                insightList.innerHTML = '<div class="empty-hint"><div class="empty-icon">🧠</div><p>暂无洞察</p></div>';
+                insightList.innerHTML = '<div class="empty-hint"><p>暂无洞察</p></div>';
             }
         }
 
@@ -139,7 +139,7 @@ const AIAdvice = {
             <div class="ai-advice-priority-tag">${escapeHtml(this._priorityLabel(priority))}</div>
             <h3 class="ai-advice-title">${title}</h3>
             <p class="ai-advice-content">${content}</p>
-            ${impact ? `<p class="ai-advice-impact">💡 影响：${impact}</p>` : ''}
+            ${impact ? `<p class="ai-advice-impact">影响：${impact}</p>` : ''}
         `;
         return card;
     },
@@ -159,7 +159,7 @@ const AIAdvice = {
         if (insightList) insightList.innerHTML = '';
         if (!adviceList) return;
         adviceList.innerHTML = `<div class="empty-state">
-            <p class="empty-title">⚠️ ${escapeHtml(msg)}</p>
+            <p class="empty-title">${escapeHtml(msg)}</p>
             <p class="empty-desc">点击右上角刷新重试，或稍后再试</p>
         </div>`;
     },
@@ -170,7 +170,7 @@ const AIAdvice = {
         if (insightList) insightList.innerHTML = '';
         if (!adviceList) return;
         adviceList.innerHTML = `<div class="empty-state">
-            <p class="empty-title">💡 请先配置对话服务商</p>
+            <p class="empty-title">请先配置对话服务商</p>
             <p class="empty-desc">AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）</p>
             <button class="btn btn-ghost" id="btnGoAiConfig">前往配置</button>
         </div>`;
