@@ -453,14 +453,38 @@ header.top-bar.top-bar-sticky {
 .btn:active { background: var(--interactive-active); transform: translateY(0) scale(0.98); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-.btn-primary { background: var(--interactive-default); color: var(--text-on-accent); box-shadow: var(--shadow-sm); }
-.btn-primary:hover { background: var(--interactive-hover); }
+/* 主操作按钮：淡棕实心（奶茶色），用于「保存 / 新增 / 生成 / 检查更新」等主动作。
+   次要动作（取消 / 关闭 / 删除 / 刷新等）继续用 .btn-ghost 浅色描边，形成主次对比。 */
+.btn-primary {
+  background: var(--interactive-soft);
+  color: var(--text-on-soft);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover { background: var(--interactive-soft-hover); color: var(--text-on-soft); }
+.btn-primary:active { background: var(--interactive-soft-active); }
 
 .btn-ghost {
   background: transparent; color: var(--text-secondary);
   border-color: var(--border-default);
 }
 .btn-ghost:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+/* 表单提交按钮自动获得主操作样式：全站 form-actions 里「保存/确认/提交」均为
+   type="submit"，而紧邻的「取消」是 type="button" 且 class 完全相同。
+   靠属性选择器区分主次，避免逐个页面改 class（历史上正因逐处硬改而反复漏改、风格漂移）。
+   选择器带 .btn-ghost 以压过其 background:transparent；.btn-danger 除外（删除类保持红色）。 */
+.btn.btn-ghost[type="submit"]:not(.btn-danger),
+.btn[type="submit"]:not(.btn-ghost):not(.btn-danger) {
+  background: var(--interactive-soft);
+  color: var(--text-on-soft);
+  border-color: transparent;
+  box-shadow: var(--shadow-sm);
+}
+.btn.btn-ghost[type="submit"]:not(.btn-danger):hover,
+.btn[type="submit"]:not(.btn-ghost):not(.btn-danger):hover {
+  background: var(--interactive-soft-hover); color: var(--text-on-soft);
+}
 
 .btn-danger { background: var(--expense); color: #fff; border-color: transparent; }
 .btn-danger:hover { filter: brightness(1.08); }
@@ -1903,7 +1927,7 @@ header.top-bar.top-bar-sticky {
 .btn-danger-sm:hover { background: var(--income-soft); color: var(--expense); }
 
 /* 文字型小按钮：图标 + 文案（纯图标按钮语义不明，补文字降低误操作）
-   与「检查更新」按钮同一套棕色品牌交互色，hover 时填充品牌色背景。 */
+   遵循全站浅色按钮风格：默认透明描边，hover 时以品牌色淡填充作为强调。 */
 .btn-text-sm {
   width: auto; min-height: 30px; gap: 5px;
   padding: 0 var(--space-3);
@@ -2427,7 +2451,9 @@ body {
     display: block;
 }
 
-/* ---- 按钮（覆盖真实项目 .btn-primary 等）---- */
+/* ---- 按钮（覆盖真实项目 .btn-primary 等）----
+   注意：本节在文件末尾，同优先级下会覆盖第 4 节 BUTTONS 的定义，
+   因此主操作淡棕实心必须在此同步维护，否则会被这里改回去。 */
 .btn, button.btn {
     font-family: var(--font-button);
     font-size: 14px;
@@ -2438,13 +2464,20 @@ body {
     transition: all .2s cubic-bezier(.16, 1, .3, 1);
     font-weight: 500;
 }
-.btn-primary, button.btn-primary {
-    background: var(--interactive-default);
-    color: oklch(14% 0.014 60);
-    box-shadow: 0 4px 14px color-mix(in oklab, var(--interactive-default) 35%, transparent);
+/* 主操作：淡棕实心（与第 4 节保持一致） */
+.btn-primary, button.btn-primary,
+.btn.btn-ghost[type="submit"]:not(.btn-danger),
+.btn[type="submit"]:not(.btn-ghost):not(.btn-danger) {
+    background: var(--interactive-soft);
+    color: var(--text-on-soft);
+    border: 1px solid transparent;
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--interactive-soft) 40%, transparent);
 }
-.btn-primary:hover, button.btn-primary:hover {
-    filter: brightness(1.06);
+.btn-primary:hover, button.btn-primary:hover,
+.btn.btn-ghost[type="submit"]:not(.btn-danger):hover,
+.btn[type="submit"]:not(.btn-ghost):not(.btn-danger):hover {
+    background: var(--interactive-soft-hover);
+    color: var(--text-on-soft);
     transform: translateY(-1px);
 }
 .btn-ghost, button.btn-ghost {

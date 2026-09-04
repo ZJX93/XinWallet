@@ -109,6 +109,14 @@
   --interactive-disabled: oklch(77% 0.01 60);
   --interactive-focus-ring: oklch(62% 0.11 60 / 0.35);
 
+  /* 主操作按钮（.btn-primary）：淡棕实心（奶茶色），比 --interactive-default 明显更淡。
+     用途是让「保存/新增/生成/检查更新」等主操作从一片浅色描边按钮中浮出来，
+     同时避免深棕实心过重。文字用深色以保证对比度。 */
+  --interactive-soft: var(--accent-200);
+  --interactive-soft-hover: var(--accent-300);
+  --interactive-soft-active: var(--accent-400);
+  --text-on-soft: oklch(28% 0.05 60);
+
   /* 收入红 / 支出绿：A 股涨红跌绿语义（不可误改） */
   --income: oklch(56% 0.19 20);
   --income-soft: oklch(56% 0.19 20 / 0.1);
@@ -243,6 +251,13 @@
   --interactive-active: var(--accent-200);
   --interactive-disabled: oklch(40% 0.008 60);
   --interactive-focus-ring: oklch(62% 0.11 60 / 0.45);
+
+  /* 主操作淡棕实心（暗色）：直接套用亮色的 accent-200 会过曝刺眼，
+     改用中低明度暖棕填充 + 亮色文字，观感上仍是「淡棕实心」且与暗背景协调。 */
+  --interactive-soft: oklch(46% 0.06 60);
+  --interactive-soft-hover: oklch(53% 0.07 60);
+  --interactive-soft-active: oklch(60% 0.08 60);
+  --text-on-soft: oklch(95% 0.015 60);
 
   /* 收支：暗色下降低饱和度，避免刺眼（收红支绿语义保留） */
   --income: oklch(68% 0.16 20);

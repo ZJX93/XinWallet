@@ -216,8 +216,8 @@ const DebtManager = {
         const leftVal = paidTotal;
         const rightVal = remain;
         const actBtn = isRecv
-            ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">收款</button>`
-            : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">还款</button>`;
+            ? `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">收款</button>`
+            : `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">还款</button>`;
         const metaLeft = `${pct}% 进度`;
         // 自动同步出来的信用卡/花呗债务：本身是「消费账单」不是「贷款」，
         // method='minimum' 是后端默认值（不代表用户选的还款方式），直接显示「最低还款」会很突兀。

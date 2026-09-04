@@ -150,11 +150,12 @@ body {
   font-family: var(--font-sans);
 }
 
+/* 主操作：淡棕实心（与全站 styles.css 的 .btn-primary 保持一致） */
 .btn-primary {
-  background: var(--interactive-default); color: var(--text-on-accent);
+  background: var(--interactive-soft); color: var(--text-on-soft);
 }
-.btn-primary:hover { background: var(--interactive-hover); }
-.btn-primary:active { transform: scale(0.98); }
+.btn-primary:hover { background: var(--interactive-soft-hover); }
+.btn-primary:active { transform: scale(0.98); background: var(--interactive-soft-active); }
 
 .btn-block { width: 100%; }
 
