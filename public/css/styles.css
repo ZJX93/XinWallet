@@ -1270,6 +1270,11 @@ header.top-bar.top-bar-sticky {
 .report-charts-row--3col {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+/* 3 列行内卡片全部撑满网格行高（实测 align-items:stretch 对图片卡不生效，需显式 height:100%） */
+.report-charts-row--3col > * { height: 100%; }
+/* 比率卡纵向 flex，网格卡弹性填满剩余高度 */
+.report-charts-row--3col .report-section { display: flex; flex-direction: column; }
+.report-charts-row--3col .ratio-grid--stack { flex: 1 1 auto; }
 .report-chart-card {
   padding: var(--space-4);
   min-height: 320px;
@@ -1547,18 +1552,22 @@ header.top-bar.top-bar-sticky {
 /* 与图表第三列对齐时改为单列堆叠，并紧凑以匹配饼图卡高度 */
 .ratio-grid--stack {
   grid-template-columns: 1fr;
-  padding: 10px;
-  gap: 6px;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  padding: 8px;
+  gap: 4px;
 }
 .ratio-grid--stack .ratio-item {
-  padding: 8px 10px;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .ratio-grid--stack .ratio-label {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .ratio-grid--stack .ratio-value {
-  font-size: 20px;
-  margin-bottom: 4px;
+  font-size: 18px;
+  margin-bottom: 2px;
   line-height: 1.1;
 }
 .ratio-grid--stack .ratio-bar {
