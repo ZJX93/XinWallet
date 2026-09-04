@@ -1,4 +1,4 @@
-name: Cleanup Releases
+name: 清理发布手机客户端
 
 on:
   workflow_dispatch:
