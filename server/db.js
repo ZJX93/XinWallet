@@ -498,6 +498,21 @@ async function healSchemaColumns() {
  * MySQL：CHECK 约束在 MySQL 8.0.16 之前不强制执行，且不支持 `DROP CONSTRAINT IF EXISTS`，
  *    因此对 MySQL 直接跳过；如有问题由 schema.mysql.sql 建表时确保正确。
  */
+/**
+ * 清除旧版信用卡/花呗自动同步债务遗留的硬编码利率 18.25%。
+ * 该利率是被错误挂到消费账单上的行业上限，已改为「还款填利息、详情接口反推真实年化」。
+ * 幂等：仅清 note 含「自动同步」且 interest_rate = 18.25 的记录，不影响正常手动录入的贷款。
+ */
+async function healDebtRate() {
+  try {
+    await query("UPDATE debts SET interest_rate = 0 WHERE note LIKE '%自动同步%' AND interest_rate = 18.25");
+  } catch (err) {
+    // 表不存在（全新库尚未建表）属预期，忽略
+    if (/does not exist|42703|1054/i.test(err.message)) return;
+    throw err;
+  }
+}
+
 async function healAiConstraints() {
   if (DB_DIALECT === 'mysql') return; // MySQL 不走 PG 这套约束自愈
   // 两个约束互不阻塞：任一失败都不应吃掉另一个的自愈机会
@@ -648,6 +663,16 @@ async function initDatabase() {
       console.log('✅ schema 列自愈完成（无需补列时无任何变化）');
     } catch (err) {
       console.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
+    }
+
+    // 旧版信用卡/花呗债务遗留的硬编码利率 18.25% 清零：该利率本不该挂在消费账单上，
+    // 改为「还款时如实填利息、详情接口反推真实年化」后，必须把历史脏值清掉，
+    // 否则编辑债务时 debtRate 会回填 18.25。幂等：只清 note 以「自动同步」开头且值为 18.25 的。
+    try {
+      await healDebtRate();
+      console.log('✅ 信用卡债务遗留利率自愈完成（无遗留值时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ 信用卡债务遗留利率自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // AI CHECK 约束自愈：把 Phase 1 建的旧白名单升级到 Phase 3 的 8 个事件类型

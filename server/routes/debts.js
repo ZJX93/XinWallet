@@ -389,9 +389,23 @@ router.get('/:id', async (req, res) => {
         const monthly = auto
             ? (parseFloat(debt.monthly_payment) || calcMonthlyPayment(debt.principal, debt.interest_rate, debt.term_months, debt.method))
             : (parseFloat(debt.monthly_payment) || 0);
+        // 根据真实还款明细里的「利息」部分反推等效年化利率：
+        // 仅当确实产生过利息（interest_part 累计 > 0）才给出，否则为 null（免息/未计息不显示）。
+        // 单期实际利息率 = 累计利息 / 已还期数 / 占用本金，年化按 12 期/年折算。
+        const interestPaidTotal = repayments.reduce((s, r) => s + (parseFloat(r.interest_part) || 0), 0);
+        let effectiveRate = null;
+        if (interestPaidTotal > 0) {
+            const P = parseFloat(debt.principal) || 0;
+            const base = P > 0 ? P : (parseFloat(debt.remaining) || 0);
+            const n = repayments.length || 0;
+            if (base > 0 && n > 0) {
+                const perPeriod = interestPaidTotal / n / base;
+                effectiveRate = Math.round(perPeriod * 12 * 100 * 100) / 100;
+            }
+        }
         const schedule = buildDebtSchedule({ ...debt, monthly_payment: monthly });
         res.json(success({
-            debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: Math.round(monthly * 100) / 100, min_payment: parseFloat(debt.min_payment), paid_total: repayments.reduce((s, r) => s + parseFloat(r.amount), 0), start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
+            debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: Math.round(monthly * 100) / 100, min_payment: parseFloat(debt.min_payment), paid_total: repayments.reduce((s, r) => s + parseFloat(r.amount), 0), effective_rate: effectiveRate, interest_paid_total: interestPaidTotal, start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
             repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: r.paid_at ? new Date(r.paid_at).toISOString().slice(0, 19).replace('T', ' ') : null })),
             schedule
         }));

@@ -110,19 +110,23 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 
     if (owes <= 0) {
         if (debt) {
-            await conn.query("UPDATE debts SET remaining = 0, monthly_payment = 0, min_payment = 0, status = 'paid_off' WHERE id = ?", [debt.id]);
+            // 已结清时一并把可能残留的旧硬编码利率清零，避免编辑时回填 18.25
+            await conn.query("UPDATE debts SET remaining = 0, monthly_payment = 0, min_payment = 0, interest_rate = 0, status = 'paid_off' WHERE id = ?", [debt.id]);
         }
     } else {
         const minPmt = Math.max(Math.round(owes * 0.1), 500);
         if (debt) {
+            // ⚠️ 不再硬编码 18.25：信用卡/花呗消费账单在免息期内还清本就不产生利息，
+            // 挂载行业利率上限会误导用户以为「账单在计息」。利息字段改由「还款时如实
+            // 填写利息」驱动，详情接口再反推真实年化（见 debts.js GET /:id）。
             await conn.query(
-                'UPDATE debts SET remaining = ?, monthly_payment = 0, min_payment = ?, interest_rate = 18.25, method = \'minimum\', status = \'active\' WHERE id = ?',
+                'UPDATE debts SET remaining = ?, monthly_payment = 0, min_payment = ?, interest_rate = 0, method = \'minimum\', status = \'active\' WHERE id = ?',
                 [owes, minPmt, debt.id]
             );
         } else {
             await conn.query(
                 `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, billing_day, payment_day, min_payment, status, note)
-                 VALUES (?, ?, ?, ?, ?, 'payable', ?, 0, ?, 18.25, 0, 'minimum', 0, 15, 5, ?, 'active', ?)`,
+                 VALUES (?, ?, ?, ?, ?, 'payable', ?, 0, ?, 0, 0, 'minimum', 0, 15, 5, ?, 'active', ?)`,
                 [userId, bookId, accountId, account.name, debtType, account.name, owes, minPmt, syncNote]
             );
         }
