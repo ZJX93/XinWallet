@@ -153,7 +153,7 @@ const ReportManager = {
         });
         container.innerHTML = `
             <div class="report-header">
-                <h2 class="report-title">📊 ${data.label} 财务报告</h2>
+                <h2 class="report-title">${data.label} 财务报告</h2>
                 <span class="report-date">${data.start} ~ ${data.end}</span>
             </div>
             <div class="report-grid report-grid--overview">
