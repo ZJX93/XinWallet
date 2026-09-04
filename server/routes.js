@@ -83,6 +83,18 @@ router.use('/debts', require('./routes/debts'));
 router.use('/books', booksRouter);
 router.use('/backup', require('./routes/backup'));   // /backup/export, /backup/import（xlsx 3 工作表备份）
 
+// 应用一键更新（检测最新镜像 + 应用更新）；受全局 authMiddleware 保护（仅登录用户）。
+// 严格限流：10 分钟内最多 3 次，防滥用反复重启容器。
+const rateLimit = require('express-rate-limit');
+const updateLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: '更新操作过于频繁，请 10 分钟后再试' },
+});
+router.use('/update', updateLimiter, require('./routes/update'));
+
 // ==========================================
 // 导出
 // ==========================================

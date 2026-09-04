@@ -401,6 +401,60 @@ async function showPage(page) {
             const el = document.getElementById('aboutVersion');
             if (v && el) el.textContent = v;
         }).catch(() => {});
+
+        // 应用一键更新：检测最新镜像 / 应用更新
+        const checkBtn = document.getElementById('aboutCheckUpdateBtn');
+        const applyBtn = document.getElementById('aboutApplyUpdateBtn');
+        const statusEl = document.getElementById('aboutUpdateStatus');
+        if (checkBtn && statusEl && !checkBtn.dataset.bound) {
+            checkBtn.dataset.bound = '1';
+            checkBtn.addEventListener('click', async () => {
+                checkBtn.disabled = true;
+                statusEl.textContent = '检测中…';
+                try {
+                    const r = await fetch('/api/update/check', { credentials: 'same-origin' }).then(x => x.json());
+                    if (r && r.success && r.data) {
+                        let msg = `当前 ${r.data.currentVersion}` + (r.data.latestVersion ? ` / 最新 ${r.data.latestVersion}` : '');
+                        if (r.data.hasUpdate) {
+                            if (applyBtn) applyBtn.style.display = '';
+                            msg += ' · 发现新版本';
+                        } else {
+                            if (applyBtn) applyBtn.style.display = 'none';
+                            msg += ' · 已是最新';
+                        }
+                        if (r.data.dockerAvailable === false) msg += '（容器内 docker 不可用，无法自动更新）';
+                        statusEl.textContent = msg;
+                    } else {
+                        statusEl.textContent = '检测失败';
+                    }
+                } catch (e) {
+                    statusEl.textContent = '检测失败：' + (e.message || '');
+                } finally {
+                    checkBtn.disabled = false;
+                }
+            });
+            if (applyBtn) applyBtn.addEventListener('click', async () => {
+                applyBtn.disabled = true;
+                statusEl.textContent = '正在更新，服务即将重启…';
+                try {
+                    await fetch('/api/update/apply', { method: 'POST', credentials: 'same-origin' });
+                    // 轮询 /healthz 等待容器重启完成（最多约 2 分钟）
+                    let restored = false;
+                    for (let i = 0; i < 40; i++) {
+                        await new Promise(r => setTimeout(r, 3000));
+                        try {
+                            const h = await fetch('/healthz', { cache: 'no-store' });
+                            if (h.ok) { restored = true; break; }
+                        } catch (e) { /* 重启中，连接暂不可达 */ }
+                    }
+                    if (restored) location.reload();
+                    else statusEl.textContent = '更新可能已完成，请手动刷新页面';
+                } catch (e) {
+                    statusEl.textContent = '更新失败：' + (e.message || '');
+                    applyBtn.disabled = false;
+                }
+            });
+        }
     }
     // 刷新当前页数据
     refreshPage(page);

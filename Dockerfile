@@ -36,10 +36,16 @@ EOF
 
 # 数据卷挂载点：存放加密密钥文件（/app/data/.encryption-key）
 # 持久化到 docker volume，跨容器重启保持稳定
-# 必须在 USER appuser 之前用 root 创建，避免 chown 失败
+# 必须在降权前用 root 创建，避免 chown 失败
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
 
-USER appuser
+# 安装 docker CLI：Web 端「一键更新镜像」需容器内执行 docker pull / docker restart。
+# 配合 docker-compose.yml 挂载的宿主 /var/run/docker.sock 使用。
+# 因已挂载 docker.sock（等同宿主 root 权限），本容器以 root 运行，不再降权到 appuser，
+# 否则非 root 用户无法访问属主为 root 的 docker.sock。
+RUN apk add --no-cache docker-cli
+
+# USER appuser   # 已禁用：与 docker.sock 自动更新方案互斥（sock 属主为 root）
 
 # 生产环境强烈建议显式注入 ENCRYPTION_KEY（用于 AI 凭证等敏感字段加密）
 # 不注入时，crypto.js 启动时会从 /app/data/.encryption-key 读取或自动生成

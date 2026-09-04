@@ -14,6 +14,8 @@
         .about-stack { margin: 12px 0 0; padding-left: 20px; line-height: 2; color: var(--text-secondary); font-size: 14px; }
         .about-stack b { color: var(--text-primary); }
         .about-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+        .about-update { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+        .about-update-status { font-size: 13px; color: var(--text-secondary); }
     </style>
 
     <div class="glass-card about-hero">
@@ -50,6 +52,16 @@
         <div class="about-links">
             <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet" target="_blank" rel="noopener">GitHub 仓库</a>
             <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet/releases" target="_blank" rel="noopener">更新日志</a>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h3 class="card-title">应用更新</h3>
+        <p class="about-desc" style="margin:0 0 14px;text-align:left">检测并一键更新到最新 Docker 镜像（ghcr.io 官方镜像）。</p>
+        <div class="about-update">
+            <button class="btn btn-primary" id="aboutCheckUpdateBtn">检查更新</button>
+            <button class="btn btn-ghost" id="aboutApplyUpdateBtn" style="display:none">立即更新</button>
+            <span class="about-update-status" id="aboutUpdateStatus"></span>
         </div>
     </div>
 </section>

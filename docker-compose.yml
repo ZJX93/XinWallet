@@ -84,9 +84,17 @@ services:
       ALLOW_DEMO: ${ALLOW_DEMO:-false}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # 一键更新镜像（Web 端检测 + 应用）：镜像名与容器名，
+      # 与下方 volumes 挂载的 docker.sock 配合使用
+      UPDATE_IMAGE: ghcr.io/zjx93/xin-wallet/xinwallet:latest
+      UPDATE_CONTAINER: xinwallet-app
     volumes:
       # 加密密钥持久化：与数据库同卷管理，docker compose down -v 才会清除
       - xinwallet-app-data:/app/data
+      # 挂载宿主 Docker socket：允许容器内执行 docker 命令（一键更新镜像）。
+      # ⚠️ 安全提示：docker.sock 等同宿主 root 权限，仅在你信任该自托管环境时启用；
+      #   若关闭此挂载，Web 端「立即更新」将不可用（版本检测仍可用）。
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "${APP_PORT:-18888}:18888"
     networks:
