@@ -67,16 +67,21 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
             const paidInMonth = curMonthReps.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
 
             if (todayStr >= cutoff) {
-                // 已过还款截止日但还在本月 → 本月需还
+                // 已过还款截止日但还在本月 → 本月需还（按剩余最低还款计）
                 if (paidInMonth + 0.005 < minPmt) {
                     dueThisMonth++;
                     dueAmount += Math.max(0, minPmt - paidInMonth);
                 }
                 // 已还清则不计
             } else {
-                // 未到还款截止日 → 本月需还
-                dueThisMonth++;
-                dueAmount += minPmt;
+                // 未到还款截止日 → 若本月账单已提前还足则不计入，
+                // 否则按「剩余最低还款」计入（修复：此前无条件计入全额 minPmt，
+                // 导致已提前还足的账单仍被算作本月待还）
+                const remaining = Math.max(0, minPmt - paidInMonth);
+                if (remaining > 0.005) {
+                    dueThisMonth++;
+                    dueAmount += remaining;
+                }
             }
 
         } else {
@@ -141,4 +146,4 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
     };
 }
 
-module.exports = { calcDebtDueSummary, fmtDateOnly };
+module.exports = { calcDebtDueSummary };

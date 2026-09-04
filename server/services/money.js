@@ -36,7 +36,11 @@
 function toCents(value) {
     if (value === null || value === undefined || value === '') return 0;
     const num = typeof value === 'number' ? value : parseFloat(value);
-    if (!Number.isFinite(num)) return 0;
+    if (!Number.isFinite(num)) {
+        // 显式失败优于静默归零——非法金额（NaN/Infinity/无法解析）必须让调用方感知，
+        // 否则脏数据会被当作 0 静默写进账本，长期累积造成账目错乱
+        throw new TypeError(`非法金额，无法转为整数分: ${JSON.stringify(value)}`);
+    }
 
     const cents = Math.round(num * 100);
     if (!Number.isSafeInteger(cents)) {
@@ -52,7 +56,11 @@ function toCents(value) {
  * @returns {number}
  */
 function fromCents(cents) {
-    if (!Number.isFinite(cents)) return 0;
+    if (cents === null || cents === undefined) return 0;
+    if (!Number.isFinite(cents)) {
+        // 与 toCents 一致：非有限值视为调用方传入了脏数据，显式抛错而非静默归零
+        throw new TypeError(`非法整数分: ${JSON.stringify(cents)}`);
+    }
     return Math.round(cents) / 100;
 }
 
@@ -120,9 +128,10 @@ function percentOf(part, whole, digits = 2) {
     return Math.round((p / w) * 100 * factor) / factor;
 }
 
-// toCents 被 portfolio.js 使用；fromCents 仅为内部辅助，不对外暴露。
+// toCents / fromCents 均被 portfolio.js 使用（前者用于分域比较，后者把分还原为元后接入 percentOf）。
 module.exports = {
     toCents,
+    fromCents,
     sumAmounts,
     addAmounts,
     subtractAmounts,

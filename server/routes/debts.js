@@ -200,6 +200,9 @@ router.get('/', async (req, res) => {
                 term_months: parseInt(d.term_months) || 0,
                 monthly_payment: Math.round(monthly * 100) / 100,
                 min_payment: parseFloat(d.min_payment),
+                // 累计已还：全生命周期还款流水 SUM(amount)，纯展示指标。
+                // 与下方 calcDebtDueSummary 的 dueAmount/overdueAmount（基于月供逐期 FIFO 的「本月到期/逾期」）是
+                // 不同口径，二者不可互相替代——前者看历史总还款，后者看当前周期应付，请勿合并。
                 paid_total: paidMap[d.id] || 0,
                 start_date: fmtDateOnly(d.start_date),
                 due_date: fmtDateOnly(d.due_date)

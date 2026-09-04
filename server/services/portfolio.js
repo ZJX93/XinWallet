@@ -7,7 +7,7 @@
      比率类指标（年化、收益率）本身是浮点语义，保留浮点但统一四舍五入位数。
    ============================================ */
 
-const { sumAmounts, subtractAmounts, toCents, percentOf } = require('./money');
+const { sumAmounts, subtractAmounts, toCents, fromCents, percentOf } = require('./money');
 
 /**
  * 单持仓年化收益率（基于买入日持有期的【复合年化 / 复利 CAGR】）
@@ -74,10 +74,10 @@ function calcPortfolioMetrics(investments) {
     ? Math.round(rawAnn * 100) / 100
     : null;
 
-  // 集中度：最大持仓占比
-  const maxHolding = investments.reduce((m, i) => {
-    const v = parseFloat(i.current_value);
-    return Number.isFinite(v) && v > m ? v : m;
+  // 集中度：最大持仓占比（用整数分取最大值，消除浮点比较误差）
+  const maxHoldingCents = investments.reduce((m, i) => {
+    const c = toCents(i.current_value);
+    return Number.isSafeInteger(c) && c > m ? c : m;
   }, 0);
 
   // 预期收益加权平均：权重（金额）在分域相乘，避免浮点累乘误差
@@ -94,7 +94,7 @@ function calcPortfolioMetrics(investments) {
     totalValue: tVal,
     totalProfit: subtractAmounts(tVal, tCost),
     annualizedRate: annualized,
-    concentration: percentOf(maxHolding, tVal, 1),
+    concentration: percentOf(fromCents(maxHoldingCents), tVal, 1),
     expectedRateAvg: Math.round(expectedRateAvg * 100) / 100
   };
 }

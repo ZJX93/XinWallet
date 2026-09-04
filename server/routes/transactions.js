@@ -143,9 +143,6 @@ router.get('/', async (req, res) => {
         // ⚠️ 必须在 SQL 层折叠，不能拿到结果后在 JS 里 filter：
         // 下方分页用的是 SQL 的 LIMIT/OFFSET，JS 过滤会让 limit=20 实际只显示 14 条，
         // 且「还有没有下一页」的判断全错。
-        // ⚠️ 必须在 SQL 层折叠，不能拿到结果后在 JS 里 filter：
-        // 下方分页用的是 SQL 的 LIMIT/OFFSET，JS 过滤会让 limit=20 实际只显示 14 条，
-        // 且「还有没有下一页」的判断全错。
         //
         // 配对判据覆盖两种「两条腿」语义：
         //   1. 普通转账（同 transfer_id）—— /transfers 创建的双腿
@@ -553,6 +550,15 @@ router.delete('/:id', async (req, res) => {
         const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!old) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
 
+        // 债务还款（debt_repayment）通过交易接口删除时，需提前取出还款记录与债务，
+        // 在事务内级联回滚（删干净配对腿 + 还款记录 + 债务剩余本金），否则会留下孤儿腿、
+        // 债务余额与流水不一致。逻辑与 DELETE /debts/:id/repayments/:rid 对齐。
+        let repRow = null, debtRow = null;
+        if (old.link_type === 'debt_repayment') {
+            repRow = await db.queryOne('SELECT * FROM debt_repayments WHERE id = ? AND user_id = ? AND book_id = ?', [old.link_id, req.userId, req.bookId]);
+            if (repRow) debtRow = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [repRow.debt_id, req.userId, req.bookId]);
+        }
+
         await db.transaction(async (conn) => {
             // 如果是转账记录，同时删除配对的另一条
             const affectedAccounts = new Set([parseInt(old.account_id)]);
@@ -566,6 +572,29 @@ router.delete('/:id', async (req, res) => {
                 await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
                 // 同时删除 transfers 表记录
                 await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ? AND book_id = ?', [old.transfer_id, req.userId, req.bookId]);
+            } else if (old.link_type === 'debt_repayment') {
+                if (repRow) {
+                    // 跨账户还款写两条腿（transfer_out + transfer_in），单腿为一条；
+                    // 按 link_id 精确命中删干净，再回滚债务剩余本金并删除还款记录
+                    const legs = await conn.query(
+                        "SELECT id, account_id FROM transactions WHERE user_id = ? AND book_id = ? AND link_type = 'debt_repayment' AND link_id = ?",
+                        [req.userId, req.bookId, repRow.id]
+                    );
+                    legs.forEach(l => { if (l.account_id) affectedAccounts.add(parseInt(l.account_id)); });
+                    await conn.query(
+                        "DELETE FROM transactions WHERE user_id = ? AND book_id = ? AND link_type = 'debt_repayment' AND link_id = ?",
+                        [req.userId, req.bookId, repRow.id]
+                    );
+                    if (debtRow) {
+                        const newRemain = parseFloat(debtRow.remaining) + parseFloat(repRow.principal_part || 0);
+                        const newStatus = newRemain > 0 ? 'active' : 'paid_off';
+                        await conn.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debtRow.id]);
+                    }
+                    await conn.query('DELETE FROM debt_repayments WHERE id = ?', [repRow.id]);
+                } else {
+                    // 还款记录已不存在：仅删这条交易，避免脏数据残留
+                    await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
+                }
             } else {
                 await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
             }

@@ -107,3 +107,31 @@ test('start_date 为 Date 对象（仪表盘路由原始入参）也能正确解
     assert.strictEqual(r.overdue, 4, 'Date 入参应同样得到 FIFO 结果 4 期逾期');
     assert.strictEqual(r.dueThisMonth, 1);
 });
+
+test('信用卡：还款日前未还 → 本月需还 1 笔（全额 min_pmt）', () => {
+    const debts = [{ id: 1, type: 'credit_card', billing_day: 5, payment_day: 25, min_payment: 500, remaining: 2000 }];
+    const r = calcDebtDueSummary(debts, byDebt(1, []), '2026-07-20'); // 20 < 25 未到还款日
+    assert.strictEqual(r.dueThisMonth, 1);
+    assert.strictEqual(r.dueAmount, 500);
+});
+
+test('信用卡：还款日前已提前还足 → 本月不再计入待还（修复点）', () => {
+    const debts = [{ id: 1, type: 'credit_card', billing_day: 5, payment_day: 25, min_payment: 500, remaining: 2000 }];
+    const r = calcDebtDueSummary(debts, byDebt(1, [rep(500, '2026-07-10')]), '2026-07-20');
+    assert.strictEqual(r.dueThisMonth, 0, '已还足则不计');
+    assert.strictEqual(r.dueAmount, 0);
+});
+
+test('信用卡：还款日后已还足 → 本月不计', () => {
+    const debts = [{ id: 1, type: 'credit_card', billing_day: 5, payment_day: 25, min_payment: 500, remaining: 2000 }];
+    const r = calcDebtDueSummary(debts, byDebt(1, [rep(500, '2026-07-26')]), '2026-07-30'); // 30 >= 25 已过截止
+    assert.strictEqual(r.dueThisMonth, 0);
+    assert.strictEqual(r.dueAmount, 0);
+});
+
+test('信用卡：还款日后部分还 → 按剩余最低还款计入', () => {
+    const debts = [{ id: 1, type: 'credit_card', billing_day: 5, payment_day: 25, min_payment: 500, remaining: 2000 }];
+    const r = calcDebtDueSummary(debts, byDebt(1, [rep(200, '2026-07-26')]), '2026-07-30');
+    assert.strictEqual(r.dueThisMonth, 1);
+    assert.strictEqual(r.dueAmount, 300);
+});
