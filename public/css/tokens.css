@@ -181,7 +181,7 @@
   --text-muted: var(--text-tertiary);
   --muted: var(--text-tertiary);
   --ring: 0 0 0 3px var(--interactive-focus-ring);
-  --sidebar-w: 240px;
+  --sidebar-w: 180px;
   --accent-primary: var(--interactive-default);
   --accent-income: var(--income);
   --accent-expense: var(--expense);
