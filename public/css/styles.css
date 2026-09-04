@@ -216,6 +216,11 @@ button { font-family: var(--font-button) !important; cursor: pointer; -webkit-fo
   border-top: 1px solid var(--border-subtle);
 }
 
+/* 分组缩进：组标签后的子项整体右移，强化「资金管理/AI 实验室/设置」分组层次。
+   仅用 margin，不影响既有 hover 的 padding-left 右推动画；首个无前置标签的
+   「仪表盘」不会被缩进（~ 选择器从第一个 label 之后才生效）。 */
+.nav-group-label ~ .nav-item { margin-left: 14px; }
+
 .nav-item {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2) var(--space-3); height: 36px;
