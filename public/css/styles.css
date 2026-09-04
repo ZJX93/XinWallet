@@ -209,9 +209,11 @@ button { font-family: var(--font-button) !important; cursor: pointer; -webkit-fo
 
 .nav-group-label {
   padding: var(--space-4) var(--space-3) var(--space-2);
+  margin-top: var(--space-2);
   font-size: var(--text-label); font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-wider); text-transform: uppercase;
   color: var(--text-tertiary);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .nav-item {
@@ -2189,10 +2191,13 @@ body {
 .nav-icon { font-size: 16px; width: 20px; text-align: center; }
 .nav-group-label {
     font-size: 11px;
+    font-weight: 700;
     color: var(--text-tertiary);
     text-transform: uppercase;
-    letter-spacing: .08em;
-    padding: 14px 12px 6px;
+    letter-spacing: .12em;
+    padding: 14px 12px 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--border-subtle);
 }
 
 /* ---- 账本切换 / 主题切换 ---- */
