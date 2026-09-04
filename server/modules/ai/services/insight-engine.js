@@ -23,6 +23,37 @@
 
 const db = require('../../../db');
 
+/**
+ * 相对今天的截止日期（YYYY-MM-DD），n 为负数表示过去。
+ * ⛔ 为什么必须这么做：项目是 MySQL / PostgreSQL 双方言，而两者的 INTERVAL 字面量
+ *    语法互不兼容（MySQL `INTERVAL 30 DAY` vs PG `INTERVAL '30 days'`），
+ *    原生写法在 PG 下直接语法错误。统一改为 JS 侧算好日期再参数绑定下发（与 debts.js 同款处理）。
+ * @param {number} n 正数=今天起 N 天后；负数=N 天前
+ */
+function daysOffset(n) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(n));
+    return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 取某日期所在自然周的周一（本地时间，YYYY-MM-DD）。
+ * 用于替代方言相关的 `DATE_TRUNC('week', date)`（PG 专属，MySQL 无此函数）。
+ */
+function weekKey(dateVal) {
+    // pg 驱动把 TIMESTAMP 列解析成 Date 对象；MySQL 与参数化查询可能返回 'YYYY-MM-DD' 字符串，两者都要兼容
+    const raw = dateVal instanceof Date
+        ? dateVal.toISOString().slice(0, 10)
+        : String(dateVal == null ? '' : dateVal).slice(0, 10);
+    if (!raw) return null;
+    const d = new Date(raw + 'T00:00:00');
+    if (isNaN(d.getTime())) return null;
+    const day = d.getDay();               // 0=周日
+    const offset = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().slice(0, 10);
+}
+
 /** 所有洞察类型的定义（type → label + default importance） */
 const INSIGHT_TYPES = {
   spending_spike:      { label: '消费突增',     defaultImportance: 4 },
@@ -153,24 +184,33 @@ async function generateInsight({
  * 消费突增检测：与过去 4 周平均值比，当前周涨幅超过 50% 且绝对金额 > 500 元
  */
 async function analyzeSpendingSpike(userId, bookId, weekStart) {
-  // 读取最近 5 周每周总支出
+  // 读取最近 5 周支出明细，按自然周在 JS 侧聚合。
+  // ⛔ 为什么不在 SQL 里 GROUP BY 周：`DATE_TRUNC('week', ...)` 是 PG 专属，
+  //    MySQL 等价写法完全不同；同理 INTERVAL 字面量两侧语法也不兼容。
+  //    统一改为 JS 分桶，双方言行为一致。
   const rows = await db.query(`
-    SELECT
-      DATE_TRUNC('week', trans_date) AS week_start,
-      SUM(ABS(amount)) AS total
+    SELECT t.date, t.amount
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.type = 'expense'
-      AND t.trans_date >= ? - INTERVAL 5 WEEK
-      AND t.trans_date < ?
-    GROUP BY 1
-    ORDER BY 1 ASC
-  `, [userId, bookId, weekStart, weekStart]);
+      AND t.date >= ?
+      AND t.date < ?
+  `, [userId, bookId, daysOffset(-35), weekStart]);
 
-  if (rows.length < 5) return null;
-  const recent = rows.slice(-4); // 最近 4 周
-  const baseline = rows.slice(0, -1); // 对比基准
+  const byWeek = new Map();
+  for (const r of rows) {
+    const wk = weekKey(r.date);
+    if (!wk) continue;
+    byWeek.set(wk, (byWeek.get(wk) || 0) + Math.abs(Number(r.amount) || 0));
+  }
+  const series = [...byWeek.entries()]
+    .map(([week_start, total]) => ({ week_start, total }))
+    .sort((a, b) => a.week_start.localeCompare(b.week_start));
+
+  if (series.length < 5) return null;
+  const recent = series.slice(-4); // 最近 4 周
+  const baseline = series.slice(0, -1); // 对比基准
   if (recent.length < 1 || baseline.length < 1) return null;
 
   const avgRecent = recent.reduce((s, r) => s + Number(r.total), 0) / recent.length;
@@ -196,16 +236,23 @@ async function analyzeSpendingSpike(userId, bookId, weekStart) {
  * 预算临近/超支检测
  */
 async function analyzeBudgetStatus(userId, bookId) {
+  /* ⛔ 为什么重写：原 SQL 引用了 budgets 表根本不存在的列
+     （b.period / b.category_id / b.status），且用 PG 不存在的 t.trans_date，
+     在 PostgreSQL 下必然报 "column does not exist"，导致预算洞察整块失效。
+     现按项目既定口径统计已用金额（与 budgets.js / stats.js 完全一致）：
+     周期内「支出」且满足「直接关联 budget_id」或「分类名 == 预算名」之一。 */
   const budgets = await db.query(`
-    SELECT b.id, b.name, b.amount AS budget_amount, b.period,
-           COALESCE(SUM(ABS(t.amount)), 0) AS spent
+    SELECT b.id, b.name, b.amount AS budget_amount,
+           COALESCE((
+             SELECT SUM(ABS(t.amount)) FROM transactions t
+             LEFT JOIN categories c ON t.category_id = c.id
+             WHERE t.user_id = b.user_id AND t.book_id = b.book_id
+               AND t.type = 'expense'
+               AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+               AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
+           ), 0) AS spent
     FROM budgets b
-    LEFT JOIN transactions t ON t.category_id = b.category_id
-      AND t.type = 'expense'
-      AND t.trans_date >= b.start_date
-      AND (b.end_date IS NULL OR t.trans_date <= b.end_date)
-    WHERE b.user_id = ? AND b.book_id = ? AND b.status = 'active'
-    GROUP BY b.id
+    WHERE b.user_id = ? AND b.book_id = ?
   `, [userId, bookId]);
 
   const results = [];
@@ -241,18 +288,18 @@ async function analyzeBudgetStatus(userId, bookId) {
  */
 async function analyzeNewMerchants(userId, bookId, lookbackDays = 30) {
   const rows = await db.query(`
-    SELECT merchant, COUNT(*) AS cnt, SUM(ABS(amount)) AS total
+    SELECT t.merchant AS merchant, COUNT(*) AS cnt, SUM(ABS(t.amount)) AS total
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.merchant IS NOT NULL AND t.merchant != ''
-      AND t.trans_date >= CURDATE() - INTERVAL ${lookbackDays} DAY
-      AND t.trans_date < CURDATE() - INTERVAL 1 DAY
+      AND t.date >= ?
+      AND t.date < ?
     GROUP BY merchant
     HAVING COUNT(*) = 1   -- 仅出现 1 次 = 新商家
     ORDER BY total DESC
     LIMIT 5
-  `, [userId, bookId]);
+  `, [userId, bookId, daysOffset(-Number(lookbackDays)), daysOffset(-1)]);
 
   return rows.map(r => ({
     insightType: 'merchant_new',
@@ -270,16 +317,16 @@ async function analyzeNewMerchants(userId, bookId, lookbackDays = 30) {
 async function analyzeIncomeChange(userId, bookId) {
   const rows = await db.query(`
     SELECT
-      DATE_TRUNC('month', trans_date) AS month,
-      SUM(ABS(amount)) AS total
+      LEFT(CAST(t.date AS CHAR(10)), 7) AS month,
+      SUM(ABS(t.amount)) AS total
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
     WHERE a.user_id = ? AND a.book_id = ?
       AND t.type = 'income'
-      AND t.trans_date >= NOW() - INTERVAL 3 MONTH
+      AND t.date >= ?
     GROUP BY 1
     ORDER BY 1 ASC
-  `, [userId, bookId]);
+  `, [userId, bookId, daysOffset(-90)]);
 
   if (rows.length < 2) return null;
   const last = Number(rows[rows.length - 1].total);
@@ -414,9 +461,9 @@ async function dismissInsight(userId, insightId) {
 async function cleanupOldInsights(userId) {
   return db.query(
     `DELETE FROM ai_insights
-       WHERE user_id = ? AND created_at < NOW() - INTERVAL 90 DAY
+       WHERE user_id = ? AND created_at < ?
          AND status IN ('read','dismissed','archived')`,
-    [userId]
+    [userId, daysOffset(-90)]
   );
 }
 
@@ -439,17 +486,28 @@ async function getRankedInsights(userId, {
   limit = 20,
   offset = 0,
 } = {}) {
-  // DISTINCT ON 先按 type+dedupe_key 分组取每组最新，再全局排序
+  /* 按 type+dedupe_key 分组取每组最新一条，再在 JS 侧全局排序。
+     ⛔ 为什么不用 `DISTINCT ON`：那是 PostgreSQL 专属语法，MySQL 完全没有；
+        同理 `id::text` 的 `::` 强制转换也是 PG 专属。
+        改用标准 SQL 窗口函数 ROW_NUMBER()（PG 8.4+ / MySQL 8.0+ 均支持）
+        + 标准 CAST()，语义等价且双方言通用。 */
   const rows = await db.query(
-    `SELECT DISTINCT ON (insight_type, COALESCE(dedupe_key, id::text))
-            id, insight_type, importance, title, content, dedupe_key,
+    `SELECT id, insight_type, importance, title, content, dedupe_key,
             status, created_at, read_at, action_suggestion
-       FROM ai_insights
-      WHERE user_id = ?
-        AND status = ?
-        AND importance >= ?
-        AND (cooldown_until IS NULL OR cooldown_until <= NOW())
-      ORDER BY insight_type, COALESCE(dedupe_key, id::text), created_at DESC`,
+       FROM (
+         SELECT id, insight_type, importance, title, content, dedupe_key,
+                status, created_at, read_at, action_suggestion,
+                ROW_NUMBER() OVER (
+                  PARTITION BY insight_type, COALESCE(dedupe_key, CAST(id AS CHAR))
+                  ORDER BY created_at DESC
+                ) AS rn
+           FROM ai_insights
+          WHERE user_id = ?
+            AND status = ?
+            AND importance >= ?
+            AND (cooldown_until IS NULL OR cooldown_until <= NOW())
+       ) t
+      WHERE t.rn = 1`,
     [userId, status, minImportance]
   );
 

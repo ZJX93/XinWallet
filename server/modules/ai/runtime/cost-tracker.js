@@ -16,6 +16,18 @@ const PRICE_PER_1K = {
 };
 
 /**
+ * N 天前的日期（YYYY-MM-DD）。
+ * ⛔ 用于替代 MySQL 专属的 `NOW() - INTERVAL n DAY`：PostgreSQL 的 INTERVAL
+ *    字面量语法不同（`INTERVAL '30 days'`），原生写法在 PG 下直接语法错误。
+ *    统一在 JS 侧算好日期再参数绑定，双方言都可执行（与 debts.js 同款处理）。
+ */
+function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - Number(n));
+    return d.toISOString().slice(0, 10);
+}
+
+/**
  * 估算成本（返回微分整数）。
  */
 function estimateCostMicro({ route, promptTokens = 0, completionTokens = 0 }) {
@@ -69,9 +81,9 @@ async function usageMetrics(db, userId, days = 30) {
         const rows = await db.query(
             `SELECT route, COUNT(*) AS cnt, SUM(cost_micro_cny) AS cost, AVG(latency_ms) AS lat
                FROM ai_provider_usage
-              WHERE user_id = ? AND created_at >= NOW() - INTERVAL ${Number(days)} DAY
+              WHERE user_id = ? AND created_at >= ?
               GROUP BY route`,
-            [userId]
+            [userId, daysAgo(Number(days))]
         );
         let latSum = 0; let latN = 0;
         for (const r of rows) {

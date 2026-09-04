@@ -44,7 +44,10 @@ function calcPeriodRange(type, baseDate) {
 // GET / → 预算列表
 router.get('/', async (req, res) => {
     try {
-        const { period, period_type } = req.query; // period 可选 YYYY-MM-DD；period_type 按周期类型筛选
+        let { period, period_type } = req.query; // period 可选 YYYY-MM-DD（兼容 YYYY-MM，自动补 01）
+        // 归一化：MySQL 对 'YYYY-MM' 与 DATE 比较宽容（自动按 1 号解析），
+        // PostgreSQL 会报 invalid input syntax for type date → 500。这里统一补全到月首。
+        if (period && /^\d{4}-\d{2}$/.test(period)) period += '-01';
         // 预算 actual 计算口径（修复：原实现用 LEFT JOIN t.budget_id 且完全不限日期，
         // 既要求交易显式带 budget_id（多数记账不会带），又累计预算周期外的全部历史支出，
         // 导致进度条要么恒为 0、要么虚高）。

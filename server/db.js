@@ -93,7 +93,7 @@ function autoReturning(sql) {
  * 仅处理顶层 UPDATE ... SET ...，避免误伤子查询。
  */
 function autoUpdatedAt(sql) {
-  const m = /^\s*UPDATE\s+([`"]?\w+[`"]?)\s+SET\s/i.exec(sql);
+  const m = /^\s*(?:WITH\s+[\s\S]*?)?UPDATE\s+[`"]?\w+[`"]?\s+SET\b/i.exec(sql);
   if (!m) return sql;
   if (/\bupdated_at\s*=/.test(sql)) return sql; // 已手动设置
   const setIdx = sql.search(/\bSET\s/i);
@@ -154,7 +154,9 @@ function prepare(sql) {
   if (DB_DIALECT === 'mysql') {
     // MySQL 占位符直接是 ?；仅对 UPDATE 做应用层 updated_at 兜底（替代 PG 触发器）。
     let out = sql;
-    if (/^\s*UPDATE\s/i.test(sql)) out = autoUpdatedAt(out);
+    // 同时识别带 CTE 前缀的 UPDATE（WITH ... UPDATE ... SET），否则这类语句
+    // 会因正则不匹配而跳过 updated_at 自动填充（仅 MySQL 需要此兜底）
+    if (/^\s*(?:WITH\s+[\s\S]*?)?UPDATE\s/i.test(sql)) out = autoUpdatedAt(out);
     return out;
   }
   return autoReturning(toPgPlaceholders(sql));

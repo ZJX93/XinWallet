@@ -14,6 +14,19 @@
 
 const db = require('../../../db');
 
+/**
+ * 计算「N 个月前」的截止日期（YYYY-MM-DD）。
+ * ⛔ 为什么必须这么做：项目是 MySQL / PostgreSQL 双方言，而两者的 INTERVAL 字面量
+ *    语法互不兼容（MySQL `INTERVAL 30 DAY` vs PG `INTERVAL '30 days'`），
+ *    原生写法在 PG 下直接语法错误（如 `INTERVAL 8 MONTH` → 语法错误 在 "8" 或附近）。
+ *    统一改为在 JS 里算好截止日期再以参数绑定下发，两侧方言都可执行（与 debts.js 同款处理）。
+ */
+function monthsAgo(n) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - Number(n));
+    return d.toISOString().slice(0, 10);
+}
+
 // ============================================
 // 1. 现金流预测
 // ============================================
@@ -34,16 +47,16 @@ async function forecastCashflow(userId, { months = 6 } = {}) {
     // 读取历史数据
     const history = await db.query(`
         SELECT
-            DATE_TRUNC('month', trans_date) AS month,
-            COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0) AS income,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN ABS(amount) ELSE 0 END), 0) AS expense
+            LEFT(CAST(t.date AS CHAR(10)), 7) AS month,
+            COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) AS income,
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS expense
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id = ?
-          AND t.trans_date >= CURDATE() - INTERVAL ${lookbackMonths + 2} MONTH
+          AND t.date >= ?
         GROUP BY 1
         ORDER BY 1 ASC
-    `, [userId]);
+    `, [userId, monthsAgo(lookbackMonths + 2)]);
 
     if (history.length < 2) {
         return {
@@ -135,17 +148,17 @@ async function simulateBudget(userId, categoryId, newBudget, { months = 3 } = {}
     // 获取历史月均消费
     const history = await db.query(`
         SELECT
-            DATE_TRUNC('month', trans_date) AS month,
-            SUM(ABS(amount)) AS spent
+            LEFT(CAST(t.date AS CHAR(10)), 7) AS month,
+            SUM(ABS(t.amount)) AS spent
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id = ?
           AND t.category_id = ?
           AND t.type = 'expense'
-          AND t.trans_date >= CURDATE() - INTERVAL ${parseInt(months, 10) + 1} MONTH
+          AND t.date >= ?
         GROUP BY 1
         ORDER BY 1 ASC
-    `, [userId, categoryId]);
+    `, [userId, categoryId, monthsAgo(parseInt(months, 10) + 1)]);
 
     const category = await db.queryOne(
         `SELECT name FROM categories WHERE id = ?`,
@@ -196,16 +209,16 @@ async function simulateSavingsGoal(userId, targetAmount, { months = 12, monthlyS
     // 获取历史月均结余
     const history = await db.query(`
         SELECT
-            DATE_TRUNC('month', trans_date) AS month,
-            COALESCE(SUM(CASE WHEN type = 'income' THEN ABS(amount) ELSE 0 END), 0) -
-            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(amount) ELSE 0 END), 0) AS balance
+            LEFT(CAST(t.date AS CHAR(10)), 7) AS month,
+            COALESCE(SUM(CASE WHEN t.type = 'income' THEN ABS(t.amount) ELSE 0 END), 0) -
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN ABS(t.amount) ELSE 0 END), 0) AS balance
         FROM transactions t
         JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id = ?
-          AND t.trans_date >= NOW() - INTERVAL 12 MONTH
+          AND t.date >= ?
         GROUP BY 1
         ORDER BY 1 ASC
-    `, [userId]);
+    `, [userId, monthsAgo(12)]);
 
     const avgMonthlySurplus = history.length > 0 ? mean(history.map(r => parseFloat(r.balance))) : 0;
     const recommendedMonthlySave = monthlySave ?? Math.max(0, avgMonthlySurplus);

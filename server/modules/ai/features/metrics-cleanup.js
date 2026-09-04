@@ -7,6 +7,18 @@
 
 const db = require('../../../db');
 
+/**
+ * N 天前的日期（YYYY-MM-DD）。
+ * ⛔ 用于替代 MySQL 专属的 `NOW() - INTERVAL n DAY` / `CURDATE() - INTERVAL n DAY`：
+ *    PostgreSQL 的 INTERVAL 字面量语法不同（要求 `INTERVAL '30 days'`），
+ *    原生写法在 PG 下直接语法错误。统一在 JS 侧算好日期再参数绑定，双方言都可执行。
+ */
+function daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - Number(n));
+    return d.toISOString().slice(0, 10);
+}
+
 // ============================================
 // 1. Metrics（使用统计）
 // ============================================
@@ -21,14 +33,14 @@ async function getHealthMetrics() {
             insightCount, ruleCount, providerUsage,
             pendingFeedback, recentErrors,
         ] = await Promise.all([
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_predictions WHERE created_at >= NOW() - INTERVAL 30 DAY`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_conversations WHERE created_at >= NOW() - INTERVAL 30 DAY`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE created_at >= NOW() - INTERVAL 30 DAY`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_insights WHERE created_at >= NOW() - INTERVAL 30 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_predictions WHERE created_at >= ?`, [daysAgo(30)]),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_conversations WHERE created_at >= ?`, [daysAgo(30)]),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE created_at >= ?`, [daysAgo(30)]),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_insights WHERE created_at >= ?`, [daysAgo(30)]),
             db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_rules WHERE status != 'disabled'`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_provider_usage WHERE created_at >= NOW() - INTERVAL 7 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_provider_usage WHERE created_at >= ?`, [daysAgo(7)]),
             db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_feedback_events WHERE processed = FALSE`),
-            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE error IS NOT NULL AND created_at >= NOW() - INTERVAL 7 DAY`),
+            db.queryOne(`SELECT COUNT(*) AS cnt FROM ai_messages WHERE error IS NOT NULL AND created_at >= ?`, [daysAgo(7)]),
         ]);
 
         return {
@@ -65,10 +77,10 @@ async function getCostBreakdown({ days = 7 } = {}) {
                 SUM(cost_micro_cny) AS total_cost_micro_cny,
                 COUNT(*) AS call_count
             FROM ai_provider_usage
-            WHERE created_at >= CURDATE() - INTERVAL ${days} DAY
+            WHERE created_at >= ?
             GROUP BY route
             ORDER BY total_cost_micro_cny DESC
-        `);
+        `, [daysAgo(days)]);
 
         return {
             period_days: days,
@@ -102,8 +114,8 @@ async function cleanupOrphanedPredictions(userId) {
             `DELETE FROM ai_predictions
                WHERE user_id = ?
                  AND status = 'pending'
-                 AND created_at < NOW() - INTERVAL 7 DAY`,
-            [userId]
+                 AND created_at < ?`,
+            [userId, daysAgo(7)]
         );
         return { deleted: result.rowCount || 0 };
     } catch (err) {
@@ -121,8 +133,8 @@ async function archiveOldConversations(userId) {
                SET status = 'archived', updated_at = NOW()
                WHERE user_id = ?
                  AND status = 'active'
-                 AND last_message_at < NOW() - INTERVAL 90 DAY`,
-            [userId]
+                 AND last_message_at < ?`,
+            [userId, daysAgo(90)]
         );
         return { archived: result.rowCount || 0 };
     } catch (err) {
@@ -139,9 +151,9 @@ async function runFullCleanup(userId) {
     try {
         results.insights_cleanup = await db.query(
             `DELETE FROM ai_insights
-               WHERE user_id = ? AND created_at < NOW() - INTERVAL 90 DAY
+               WHERE user_id = ? AND created_at < ?
                  AND status IN ('read','dismissed','archived')`,
-            [userId]
+            [userId, daysAgo(90)]
         );
     } catch (_) { /* 表可能不存在 */ }
 

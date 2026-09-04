@@ -340,7 +340,11 @@ ${accRef}`;
                 let sql = `SELECT id, name, type, icon FROM categories
                            WHERE (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))`;
                 if (query) { sql += ' AND name LIKE ?'; params.push(query); }
-                if (typeFilter) { params.push(typeFilter); sql += ` AND type = $${params.length}`; }
+                // ⛔ 必须用 ? 而非拼接 $N：db.js 的 prepare() 只对 MySQL 保持 ?，
+                //    对 PG 做 ?->$N 转换并「从已存在的最大 $N 之后继续编号」。
+                //    此处若混入硬编码的 $N，会让后续 ? 的编号整体后移，
+                //    造成参数绑定错位（$N 与 params 顺序不再一一对应）。
+                if (typeFilter) { params.push(typeFilter); sql += ' AND type = ?'; }
                 sql += ' ORDER BY type, sort_order LIMIT ' + limit;
                 const rows = await db.query(sql, params);
                 return {
