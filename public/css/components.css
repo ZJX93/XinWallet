@@ -2383,6 +2383,45 @@
 /* AI Advice：三级 priority 配色 */
 .ai-insight-section, .ai-advice-section { margin-top: 8px; }
 .ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
+
+/* AI 建议页：消费洞察 + 财务建议 并列两栏（窄屏自动 fallback 单列） */
+.ai-twocol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+  margin-top: 4px;
+}
+.ai-twocol > .ai-insight-section,
+.ai-twocol > .ai-advice-section { margin-top: 0; }
+.ai-twocol .ai-section-title {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 12px 0;
+  padding-bottom: 10px;
+}
+.ai-twocol .ai-section-bar {
+  display: inline-block;
+  width: 4px; height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--primary-500, #6366f1), var(--accent-500, #8b5cf6));
+}
+.ai-twocol .ai-section-bar.alt {
+  background: linear-gradient(180deg, var(--success-500, #22c55e), var(--primary-500, #6366f1));
+}
+.ai-twocol .ai-insight-list { display: flex; flex-direction: column; gap: 12px; }
+.ai-twocol .insight-item { margin-bottom: 0; }
+.ai-twocol .insight-item,
+.ai-twocol .ai-advice-card {
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.ai-twocol .insight-item:hover,
+.ai-twocol .ai-advice-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.06);
+}
+@media (max-width: 900px) {
+  .ai-twocol { grid-template-columns: 1fr; gap: 16px; }
+}
 /* 建议卡片与洞察条目共用同一套 padding / 圆角 / 背景（见上方 .insight-item），
    仅保留优先级标签的绝对定位和级别配色差异 */
 .ai-advice-card {

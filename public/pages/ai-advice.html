@@ -22,16 +22,19 @@
             <p class="ai-page-loading-text">正在分析你的财务数据...</p>
         </div>
 
-        <!-- 洞察区（观察型：warning/info/tip） -->
-        <div class="ai-insight-section">
-            <h4 class="ai-section-title">消费洞察</h4>
-            <div id="aiInsightList" class="ai-insight-list"></div>
-        </div>
+        <!-- 两栏：左 消费洞察 / 右 财务建议（窄屏自动 fallback 单列） -->
+        <div class="ai-twocol">
+            <!-- 洞察区（观察型：warning/info/tip） -->
+            <div class="ai-insight-section">
+                <h4 class="ai-section-title"><span class="ai-section-bar"></span>消费洞察</h4>
+                <div id="aiInsightList" class="ai-insight-list"></div>
+            </div>
 
-        <!-- 建议区（可执行：high/medium/low） -->
-        <div class="ai-advice-section">
-            <h4 class="ai-section-title">财务建议</h4>
-            <div id="aiAdviceList" class="ai-advice-list"></div>
+            <!-- 建议区（可执行：high/medium/low） -->
+            <div class="ai-advice-section">
+                <h4 class="ai-section-title"><span class="ai-section-bar alt"></span>财务建议</h4>
+                <div id="aiAdviceList" class="ai-advice-list"></div>
+            </div>
         </div>
     </div>
 </section>
