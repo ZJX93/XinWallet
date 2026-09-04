@@ -73,9 +73,17 @@ router.get('/check', async (req, res) => {
     });
 });
 
-// POST /api/update/apply —— 拉取最新镜像并重启当前容器（自更新）
-// 立即返回「已开始」，后台异步执行 docker pull + docker restart；
-// 容器重启会中断本进程，故不能在请求内等待完成。
+// POST /api/update/apply —— 拉取最新镜像并以新镜像重建当前容器（自更新）
+//
+// ⚠️ 为什么不能用 docker restart：restart 只是重启现有容器实例，而容器的镜像在
+//    创建时就已固定，重启后仍跑旧镜像 —— 表现为「点了更新、容器确实重启了，
+//    但版本没变」。必须 recreate（删除旧容器 + 用新镜像创建）才能真正升级。
+//
+// ⚠️ 容器无法重建自己（删除自身时进程立即被杀，后续命令不会执行），因此把
+//    「down + up」交给一个挂载了 docker.sock 的临时辅助容器执行，本进程只负责
+//    把它拉起来就退出。辅助容器用 --rm 自清理。
+//
+// 立即返回「已开始」，后台异步执行，不在请求内等待完成。
 router.post('/apply', (req, res) => {
     res.json({
         success: true,
@@ -83,17 +91,64 @@ router.post('/apply', (req, res) => {
         data: { image: UPDATE_IMAGE },
     });
 
-    // 后台异步：先拉取最新镜像，再重启自身容器（compose 因 :latest tag 漂移而载入新层）
-    execFile('docker', ['pull', UPDATE_IMAGE], (pullErr) => {
+    // 后台异步：先拉最新镜像（失败则不动现有容器，避免把可用服务弄挂）
+    execFile('docker', ['pull', UPDATE_IMAGE], { timeout: 10 * 60 * 1000 }, (pullErr) => {
         if (pullErr) {
-            console.error('[update] docker pull failed:', pullErr.message);
+            console.error('[update] docker pull 失败，已保留当前版本:', pullErr.message);
             return;
         }
-        execFile('docker', ['restart', UPDATE_CONTAINER], (restartErr) => {
-            if (restartErr) console.error('[update] docker restart failed:', restartErr.message);
-            // 重启成功则当前进程被终止；失败则仅记录，不影响已返回的响应。
-        });
+        console.log('[update] 镜像拉取完成，开始重建容器:', UPDATE_IMAGE);
+        recreateSelf();
     });
 });
+
+/**
+ * 用临时辅助容器重建自身。
+ * 优先走 compose（能完整还原端口/卷/网络/环境变量等编排配置）；
+ * 容器缺少 compose 标签（如手工 docker run 启动）时退回 docker CLI 重建。
+ */
+function recreateSelf() {
+    // compose 项目名/服务名/项目目录一律从自身容器标签读取，不硬编码：
+    // 用户可能用 -p 自定义项目名，或把仓库放在任意路径。
+    execFile('docker', [
+        'inspect', UPDATE_CONTAINER, '--format',
+        '{{index .Config.Labels "com.docker.compose.project"}}\n' +
+        '{{index .Config.Labels "com.docker.compose.service"}}\n' +
+        '{{index .Config.Labels "com.docker.compose.project.working_dir"}}',
+    ], (inspectErr, stdout) => {
+        const [project, service, workDir] = String(stdout || '')
+            .split('\n').map(s => s.trim());
+
+        const args = ['run', '-d', '--rm', '-v', '/var/run/docker.sock:/var/run/docker.sock'];
+        let script;
+
+        if (!inspectErr && project && service && workDir) {
+            // compose 路径：能完整还原端口/卷/网络/环境变量等编排配置。
+            // 宿主项目目录挂到辅助容器内的固定路径 /compose-dir 并设为工作目录 ——
+            // 不用「宿主路径:同名路径」，因为 Windows 宿主路径（D:\...）不是合法的
+            // 容器内路径，同名挂载会直接失败。
+            args.push('-v', `${workDir}:/compose-dir`, '-w', '/compose-dir');
+            // sleep 2：等本容器把 HTTP 响应发送完，避免前端拿不到「已开始更新」。
+            // --no-deps 只重建 app 不牵动数据库；--force-recreate 确保载入新镜像层。
+            script = `sleep 2 && docker compose -p ${project} up -d --no-deps --force-recreate ${service}`;
+        } else {
+            // 兜底：无 compose 标签（手工 docker run 启动）时无法还原编排配置，
+            // 只能重启容器并记录警告——此路径下镜像不会更新，需用户手动重建。
+            console.warn('[update] 未取到 compose 标签，退化为重启容器（镜像不会更新）');
+            script = `sleep 2 && docker restart ${UPDATE_CONTAINER}`;
+        }
+
+        args.push('docker:cli', 'sh', '-c', script);
+
+        execFile('docker', args, (runErr, out) => {
+            if (runErr) {
+                console.error('[update] 启动重建辅助容器失败:', runErr.message);
+                return;
+            }
+            console.log('[update] 重建辅助容器已启动:', String(out || '').trim().slice(0, 12));
+            // 本进程随后会被辅助容器替换掉，无需再做任何事。
+        });
+    });
+}
 
 module.exports = router;
