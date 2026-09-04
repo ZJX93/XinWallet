@@ -23,6 +23,8 @@ function dockerAvailable() {
 }
 
 // 查询 GitHub 最新 release tag（与 APP_VERSION 同为 v*.*.* 形态）
+// 返回 { tag, error }：区分「查到了」与「查不到（网络/限流/仓库无 release）」，
+// 否则失败被当成 null，前端会误报成「已是最新」，把故障藏起来。
 async function fetchLatestVersion() {
     try {
         const ctrl = new AbortController();
@@ -32,26 +34,40 @@ async function fetchLatestVersion() {
             signal: ctrl.signal,
         });
         clearTimeout(timer);
-        if (!r.ok) throw new Error('github ' + r.status);
+        if (!r.ok) {
+            const hint = r.status === 403 ? 'GitHub API 限流（403）'
+                : r.status === 404 ? '仓库暂无 Release（404）'
+                    : 'GitHub 返回 ' + r.status;
+            return { tag: null, error: hint };
+        }
         const j = await r.json();
-        return typeof j.tag_name === 'string' ? j.tag_name : null;
+        if (typeof j.tag_name !== 'string' || !j.tag_name) {
+            return { tag: null, error: 'GitHub 未返回版本号' };
+        }
+        return { tag: j.tag_name, error: null };
     } catch (e) {
-        return null;
+        const reason = e && e.name === 'AbortError' ? '连接 GitHub 超时（8s）' : '无法连接 GitHub';
+        return { tag: null, error: reason };
     }
 }
 
 // GET /api/update/check —— 检测是否有新版本（不执行任何 docker 操作）
 router.get('/check', async (req, res) => {
-    const latest = await fetchLatestVersion();
-    const hasUpdate = !!(latest && latest !== CURRENT_VERSION);
+    const { tag: latest, error } = await fetchLatestVersion();
+    // 本地自建镜像 APP_VERSION 为 dev（未注入 VERSION build-arg），
+    // 与任何 release tag 都不相等，不能据此判定「有新版本」。
+    const isDev = CURRENT_VERSION === 'dev';
+    const hasUpdate = !!(latest && !isDev && latest !== CURRENT_VERSION);
     res.json({
         success: true,
         data: {
             currentVersion: CURRENT_VERSION,
             latestVersion: latest,
             hasUpdate,
+            isDevBuild: isDev,
             dockerAvailable: await dockerAvailable(),
             image: UPDATE_IMAGE,
+            error,                 // 非空表示本次未能取到最新版本，前端需如实提示
             checkedAt: new Date().toISOString(),
         },
     });

@@ -413,23 +413,44 @@ async function showPage(page) {
                 checkBtn.disabled = true;
                 statusEl.textContent = '检测中…';
                 try {
-                    const r = await fetch('/api/update/check', { credentials: 'same-origin' }).then(x => x.json());
+                    const res = await fetch(`${API}/update/check`, { credentials: 'same-origin' });
+                    // 旧版本镜像不含该路由 → 404；限流 → 429。必须区分，否则一律「检测失败」无从排查。
+                    if (res.status === 404) {
+                        statusEl.textContent = '当前版本不支持在线更新，请手动拉取最新镜像';
+                        return;
+                    }
+                    if (res.status === 429) {
+                        statusEl.textContent = '检测过于频繁，请 10 分钟后再试';
+                        return;
+                    }
+                    const r = await res.json().catch(() => null);
                     if (r && r.success && r.data) {
-                        let msg = `当前 ${r.data.currentVersion}` + (r.data.latestVersion ? ` / 最新 ${r.data.latestVersion}` : '');
-                        if (r.data.hasUpdate) {
-                            if (applyBtn) applyBtn.style.display = '';
-                            msg += ' · 发现新版本';
-                        } else {
+                        const d = r.data;
+                        let msg = `当前 ${d.currentVersion}`;
+                        if (d.error) {
+                            // 取不到最新版本时如实提示，绝不显示「已是最新」
+                            msg += ` · 无法获取最新版本（${d.error}）`;
                             if (applyBtn) applyBtn.style.display = 'none';
-                            msg += ' · 已是最新';
+                        } else {
+                            if (d.latestVersion) msg += ` / 最新 ${d.latestVersion}`;
+                            if (d.hasUpdate) {
+                                if (applyBtn) applyBtn.style.display = '';
+                                msg += ' · 发现新版本';
+                            } else if (d.isDevBuild) {
+                                if (applyBtn) applyBtn.style.display = '';
+                                msg += ' · 本地自建版本，可切换到官方镜像';
+                            } else {
+                                if (applyBtn) applyBtn.style.display = 'none';
+                                msg += ' · 已是最新';
+                            }
                         }
-                        if (r.data.dockerAvailable === false) msg += '（容器内 docker 不可用，无法自动更新）';
+                        if (d.dockerAvailable === false) msg += '（容器内 docker 不可用，无法自动更新）';
                         statusEl.textContent = msg;
                     } else {
-                        statusEl.textContent = '检测失败';
+                        statusEl.textContent = `检测失败（HTTP ${res.status}）`;
                     }
                 } catch (e) {
-                    statusEl.textContent = '检测失败：' + (e.message || '');
+                    statusEl.textContent = '检测失败：' + (e.message || '网络错误');
                 } finally {
                     checkBtn.disabled = false;
                 }
@@ -438,7 +459,12 @@ async function showPage(page) {
                 applyBtn.disabled = true;
                 statusEl.textContent = '正在更新，服务即将重启…';
                 try {
-                    await fetch('/api/update/apply', { method: 'POST', credentials: 'same-origin' });
+                    const ap = await fetch(`${API}/update/apply`, { method: 'POST', credentials: 'same-origin' });
+                    if (!ap.ok) {
+                        statusEl.textContent = `更新请求失败（HTTP ${ap.status}）`;
+                        applyBtn.disabled = false;
+                        return;
+                    }
                     // 轮询 /healthz 等待容器重启完成（最多约 2 分钟）
                     let restored = false;
                     for (let i = 0; i < 40; i++) {

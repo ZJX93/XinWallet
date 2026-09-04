@@ -64,6 +64,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # 本地 build 时注入版本号，否则 APP_VERSION 恒为 dev，
+      # 「检查更新」无法与 GitHub Release tag 比对。
+      args:
+        VERSION: ${APP_VERSION:-dev}
     image: ghcr.io/zjx93/xin-wallet/xinwallet:latest
     container_name: xinwallet-app
     restart: unless-stopped
