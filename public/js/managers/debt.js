@@ -219,11 +219,23 @@ const DebtManager = {
             ? `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">收款</button>`
             : `<button class="btn btn-ghost btn-sm" data-action="repay-debt" data-id="${d.id}">还款</button>`;
         const metaLeft = `${pct}% 进度`;
-        // 自动同步出来的信用卡/花呗债务：本身没有「贷款利率」概念（免息期内还清不计息），
-        // 不展示利率，只显示还款方式（如「最低还款」）。真实利率仅当用户在还款里填了利息、
-        // 由详情接口反推后在明细弹窗展示。
+        // 自动同步出来的信用卡/花呗债务：本身是「消费账单」不是「贷款」，
+        // method='minimum' 是后端默认值（不代表用户选的还款方式），直接显示「最低还款」会很突兀。
+        // 按状态分流：已结清留空、未结清显示账单类型提示、逾期提示逾期计息。
+        // 真实利率仅当用户在还款里填了利息、由详情接口反推后在明细弹窗展示。
         const isAutoSync = String(d.note || '').startsWith('自动同步');
-        const metaRight = (!isAutoSync && d.interest_rate) ? `年利率 ${d.interest_rate}%` : methodName;
+        let metaRight;
+        if (isAutoSync) {
+            if (d.status === 'paid_off') {
+                metaRight = ''; // 已结清由右上角标签体现，无需重复信息
+            } else if (d.status === 'overdue') {
+                metaRight = '逾期计息';
+            } else {
+                metaRight = d.type === 'credit_card' ? '信用卡账单' : '信用支付';
+            }
+        } else {
+            metaRight = d.interest_rate ? `年利率 ${d.interest_rate}%` : methodName;
+        }
         return `
         <div class="goal-card ${d.status === 'paid_off' ? 'completed' : ''} ${d.status === 'overdue' ? 'overdue' : ''}">
             <div class="goal-head">
