@@ -1544,9 +1544,25 @@ header.top-bar.top-bar-sticky {
   gap: var(--space-3);
   padding: var(--space-3);
 }
-/* 与图表第三列对齐时改为单列堆叠 */
+/* 与图表第三列对齐时改为单列堆叠，并紧凑以匹配饼图卡高度 */
 .ratio-grid--stack {
   grid-template-columns: 1fr;
+  padding: 10px;
+  gap: 6px;
+}
+.ratio-grid--stack .ratio-item {
+  padding: 8px 10px;
+}
+.ratio-grid--stack .ratio-label {
+  margin-bottom: 4px;
+}
+.ratio-grid--stack .ratio-value {
+  font-size: 20px;
+  margin-bottom: 4px;
+  line-height: 1.1;
+}
+.ratio-grid--stack .ratio-bar {
+  height: 4px;
 }
 .ratio-item {
   padding: var(--space-3);
