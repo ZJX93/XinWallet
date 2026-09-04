@@ -163,13 +163,14 @@ const ReportManager = {
             </div>
             ${this.renderCharts(data)}
             ${this.renderRatios(data)}
+            <!-- 三卡循环轮换：债务情况 → 右上，现金流量表 → 左下，支出 TOP 5 → 右下 -->
             <div class="report-tables-row">
                 ${this.renderBalanceSheet(data)}
-                ${this.renderCashFlow(data)}
+                ${this.renderDebtSection(data)}
             </div>
             <div class="report-grid report-grid--detail">
+                ${this.renderCashFlow(data)}
                 ${this.renderTopExpenses(data)}
-                ${this.renderDebtSection(data)}
             </div>
         `;
         this.initCharts(data);
@@ -240,6 +241,8 @@ const ReportManager = {
         `;
     },
     renderCharts(data) {
+        // 右列互换：上方「账户资金流向」/ 下方「支出类别占比」
+        // 调整原因：账户流向（柱状图）右侧放置更符合视觉重心；与左列收入/支出形成「收-流」对比
         return `
             <div class="report-charts-row">
                 <div class="glass-card report-chart-card">
@@ -247,9 +250,8 @@ const ReportManager = {
                     <canvas id="reportTrendChart"></canvas>
                 </div>
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title"><span id="reportExpPieTitle">支出类别占比</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
-                    <canvas id="reportExpPieChart"></canvas>
-                    <div id="reportExpPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
+                    <h3 class="card-title">账户资金流向</h3>
+                    <canvas id="reportAccountChart"></canvas>
                 </div>
             </div>
             <div class="report-charts-row">
@@ -259,8 +261,9 @@ const ReportManager = {
                     <div id="reportIncPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                 </div>
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title">账户资金流向</h3>
-                    <canvas id="reportAccountChart"></canvas>
+                    <h3 class="card-title"><span id="reportExpPieTitle">支出类别占比</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
+                    <canvas id="reportExpPieChart"></canvas>
+                    <div id="reportExpPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
                 </div>
             </div>
         `;
