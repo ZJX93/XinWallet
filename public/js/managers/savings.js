@@ -261,7 +261,7 @@ const SavingsGoalManager = {
                 ${g.note ? `<div class="goal-note">${escapeHtml(g.note)}</div>` : ''}
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-alloc="${g.id}" title="存入">存入</button>
-                    <button class="btn btn-ghost" data-withdraw="${g.id}" title="取回">↩️</button>
+                    <button class="btn btn-ghost" data-withdraw="${g.id}" title="取回">取回</button>
                     <button class="btn btn-ghost" data-history="${g.id}" title="存取流水">流水</button>
                     <button class="btn btn-ghost" data-edit="${g.id}" title="编辑">编辑</button>
                     <button class="btn btn-ghost" data-del="${g.id}" title="删除">删除</button>
