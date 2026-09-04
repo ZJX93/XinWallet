@@ -1,4 +1,4 @@
-name: Cleanup Runs
+name: 清理运行日志
 
 on:
   workflow_dispatch:
