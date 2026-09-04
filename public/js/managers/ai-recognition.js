@@ -662,9 +662,18 @@ const AIRecognition = {
     },
 
     guessCat(name) {
-        const kw = { 1: ['餐','饭','食','吃','外卖','菜','肉','蛋','牛奶','面包','水果','咖啡','奶茶'], 2: ['车','油','打车','滴滴','地铁','公交','停车'], 3: ['购','买','京东','淘宝','天猫','日用品'], 5: ['电影','游戏','娱乐','健身'], 4: ['房','租','水电','物业'], 6: ['药','医','体检'], 7: ['课','书','学','培训'], 8: ['话费','流量','宽带'], 9: ['衣','鞋','包','化妆'] };
-        for (const [id, words] of Object.entries(kw)) { for (const w of words) { if (name.toLowerCase().includes(w)) return getCat(parseInt(id)); } }
-        return getCat(14);
+        // 关键词 → 种子一级分类 ID；经 _seedIdToRealId 转成当前库中的真实 ID 再取对象，
+        // 避免种子 ID 漂移/用户重命名后指向错误类目。
+        // 注：原表里的 id 8 在 schema.sql 中并不存在（无该一级分类），
+        // 「话费/流量/宽带」正确归属是二级分类 42「话费宽带」；
+        // 「衣/鞋/包/化妆」原写 id 9，但 9 是「人情往来」，正确归属是二级分类 36「服饰美容」。
+        const kw = { 1: ['餐','饭','食','吃','外卖','菜','肉','蛋','牛奶','面包','水果','咖啡','奶茶'], 2: ['车','油','打车','滴滴','地铁','公交','停车'], 3: ['购','买','京东','淘宝','天猫','日用品'], 5: ['电影','游戏','娱乐','健身'], 4: ['房','租','水电','物业'], 6: ['药','医','体检'], 7: ['课','书','学','培训'], 42: ['话费','流量','宽带'], 36: ['衣','鞋','包','化妆'] };
+        for (const [id, words] of Object.entries(kw)) {
+            for (const w of words) {
+                if (name.toLowerCase().includes(w)) return getCat(this._seedIdToRealId(parseInt(id)));
+            }
+        }
+        return getCat(this._seedIdToRealId(14));
     },
     async importAll() {
         if (this.parsedItems.length === 0) return;
@@ -698,12 +707,60 @@ const AIRecognition = {
         await DashboardManager.refresh();
     },
 
+    // ── 分类名 → 分类 ID 的解析基础设施 ────────────────────────────
+    // 说明：本文件原先把 schema.sql 的种子分类 ID 硬编码在关键词表里。
+    // 一旦种子数据调整、用户重命名分类或使用自建分类，硬编码 ID 就会指向错误类目。
+    // 现改为「先按名称在运行时 cache.categories 里查真实 ID，查不到才回退到种子 ID」，
+    // 关键词表仍以种子 ID 书写（可读性好），由 _seedIdToRealId 统一做一次映射转换。
+
+    // 种子 ID → 种子分类名（与 server/schema.sql 保持一致；仅用于反查名称）
+    _SEED_NAMES: {
+        1: '餐饮', 2: '交通出行', 3: '购物消费', 4: '居家生活', 5: '休闲娱乐',
+        6: '医疗健康', 7: '学习进修', 9: '人情往来', 11: '育儿亲子', 14: '其他支出',
+        15: '职业收入', 17: '被动收入', 18: '兼职副业', 21: '其他收入',
+        23: '早午晚餐', 24: '外卖小吃', 25: '零食饮料', 26: '烟酒', 27: '聚餐请客',
+        28: '生鲜食材', 281: '粮油调味',
+        29: '公交地铁', 30: '打车拼车', 31: '加油充电', 32: '停车过路', 33: '火车飞机', 34: '维保车险',
+        35: '日用百货', 36: '服饰美容', 37: '数码电器', 38: '家居家具',
+        39: '房租月供', 40: '水电燃气', 41: '物业维修', 42: '话费宽带', 43: '社保保险',
+        44: '日用杂货', 45: '快递邮寄',
+        46: '电影演出', 47: '游戏电竞', 48: '运动健身', 49: '旅游度假', 50: '宠物开销', 51: '会员订阅',
+        52: '门诊药品', 53: '体检住院', 54: '牙科眼科', 55: '保健养生',
+        56: '培训考试', 57: '书本文具', 58: '知识付费',
+        59: '孝敬父母', 60: '送礼红包', 61: '慈善捐赠', 62: '请客招待',
+        67: '奶粉尿布', 68: '玩具童书', 69: '学费培训', 70: '医疗保健',
+        71: '工资薪水', 72: '奖金绩效', 73: '补贴报销', 74: '理财收益', 75: '房租收入', 76: '分红利息',
+        77: '自由职业', 78: '咨询服务', 79: '自媒体创作', 80: '电商微商'
+    },
+
+    // 按分类名在运行时缓存里查真实 ID（精确匹配优先，其次包含匹配）
+    _findCatIdByName(name) {
+        if (!name || typeof cache === 'undefined' || !Array.isArray(cache.categories)) return null;
+        const exact = cache.categories.find(c => c.name === name);
+        if (exact) return exact.id;
+        const partial = cache.categories.find(c => c.name && (c.name.includes(name) || name.includes(c.name)));
+        return partial ? partial.id : null;
+    },
+
+    // 种子 ID → 当前库中的真实 ID（名称对不上时按种子 ID 兜底）
+    _seedIdToRealId(seedId) {
+        const name = this._SEED_NAMES[seedId];
+        if (!name) return seedId;
+        return this._findCatIdByName(name) || seedId;
+    },
+
     // 将 AI 返回的类别名映射到 category_id
     resolveCategoryId(category, itemName) {
         // 结合分类名和商户名做精准二级分类匹配
         const searchText = ((itemName || '') + ' ' + (category || '')).toLowerCase();
 
-        // 直接匹配二级分类名（后端已返回二级分类名时直接用；id 与 schema.sql 种子严格一致）
+        // 1) AI 已给出确切分类名 → 直接按名称查真实 ID（无需经过种子 ID）
+        if (category) {
+            const direct = this._findCatIdByName(category);
+            if (direct) return direct;
+        }
+
+        // 2) 二级分类名的种子映射（AI 返回名与库中名不一致时的兼容层）
         const directMap = {
             '早午晚餐': 23, '外卖小吃': 24, '零食饮料': 25, '烟酒': 26, '聚餐请客': 27, '生鲜食材': 28, '粮油调味': 281,
             '公交地铁': 29, '打车拼车': 30, '加油充电': 31, '停车过路': 32, '火车飞机': 33, '维保车险': 34,
@@ -717,7 +774,7 @@ const AIRecognition = {
             '工资薪水': 71, '奖金绩效': 72, '补贴报销': 73, '理财收益': 74, '房租收入': 75, '分红利息': 76,
             '自由职业': 77, '咨询服务': 78, '自媒体创作': 79, '电商微商': 80
         };
-        if (category && directMap[category]) return directMap[category];
+        if (category && directMap[category]) return this._seedIdToRealId(directMap[category]);
 
         // 精准二级分类映射：关键词 → 二级分类 ID（与 schema.sql 种子 id 严格一致）
         const subCatMap = [
@@ -786,19 +843,22 @@ const AIRecognition = {
             { kw: ['电商','微商','开店','网店'], id: 80 },
         ];
 
-        // 精准匹配：用商户名+分类名匹配二级分类
+        // 3) 关键词精准匹配二级分类（表内写种子 ID，命中后转成真实 ID）
         for (const rule of subCatMap) {
             for (const kw of rule.kw) {
-                if (searchText.includes(kw)) return rule.id;
+                if (searchText.includes(kw)) return this._seedIdToRealId(rule.id);
             }
         }
 
-        // 一级分类兜底（id 与 schema.sql 种子一致）
+        // 4) 一级分类兜底（同样经种子 ID → 真实 ID 转换）
         const catMap = { '餐饮': 1, '交通': 2, '购物': 3, '居家': 4, '住房': 4, '娱乐': 5, '休闲': 5, '医疗': 6, '教育': 7, '学习': 7, '人情': 9, '育儿': 11, '职业收入': 15, '工资': 15, '被动收入': 17, '投资收益': 17, '兼职': 18, '副业': 18, '其他收入': 21 };
         if (category) {
-            for (const [key, id] of Object.entries(catMap)) { if (category.includes(key)) return id; }
+            for (const [key, id] of Object.entries(catMap)) {
+                if (category.includes(key)) return this._seedIdToRealId(id);
+            }
         }
-        return 14;
+        // 5) 全部未命中 → 「其他支出」
+        return this._seedIdToRealId(14);
     },
 
     clear() { document.getElementById('aiResults').style.display = 'none'; document.getElementById('ocrTextPreview').style.display = 'none'; this.parsedItems = []; this.ocrClear(); },

@@ -123,9 +123,9 @@ const DataManager = {
                 <td><span class="color-dot" style="background:${c.color}"></span></td>
                 <td>${c.sort_order}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm" data-action="edit-cat" data-id="${c.id}">✏️</button>
-                    <button class="btn-ghost-sm" data-action="add-subcat" data-pid="${c.id}">➕</button>
-                    <button class="btn-ghost-sm btn-danger-sm" data-action="del-cat" data-id="${c.id}" data-name="${escapeHtml(c.name)}">🗑️</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-cat" data-id="${c.id}" title="编辑分类">✏️ 编辑</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="add-subcat" data-pid="${c.id}" title="新增子分类">➕ 子类</button>
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-cat" data-id="${c.id}" data-name="${escapeHtml(c.name)}" title="删除分类">🗑️ 删除</button>
                 </td>
             </tr>
             ${hasChildren ? c.children.map(ch => renderRow(ch, depth + 1, childHidden)).join('') : ''}
@@ -204,8 +204,8 @@ const DataManager = {
                 <td>${escapeHtml(t.description || '-')}</td>
                 <td>${t.sort_order}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm" data-action="edit-invtype" data-id="${t.id}">✏️</button>
-                    <button class="btn-ghost-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}">🗑️</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-invtype" data-id="${t.id}" title="编辑类型">✏️ 编辑</button>
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="删除类型">🗑️ 删除</button>
                     <label class="ios-toggle" title="${(t.is_active != false) ? '点击关闭该类型（从新增理财下拉隐藏）' : '点击启用该类型（重新出现在新增理财下拉）'}"><input type="checkbox" data-action="toggle-invtype" data-id="${t.id}"${(t.is_active != false) ? ' checked' : ''}><span class="ios-toggle-track"><span class="ios-toggle-text-on">ON</span><span class="ios-toggle-knob"></span><span class="ios-toggle-text-off">OFF</span></span></label>
                 </td>
             </tr>
@@ -292,9 +292,9 @@ const DataManager = {
                 <td><span class="color-dot" style="background:${escapeHtml(b.color || '#6366f1')}"></span></td>
                 <td>${b.is_default ? '<span class="badge">默认</span>' : ''}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm" data-action="edit-book" data-id="${b.id}" title="编辑">✏️</button>
-                    ${b.is_default ? '' : `<button class="btn-ghost-sm" data-action="switch-book" data-id="${b.id}" title="设为默认">⭐</button>`}
-                    <button class="btn-ghost-sm btn-danger-sm" data-action="del-book" data-id="${b.id}" data-name="${escapeHtml(b.name)}" title="删除">🗑️</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-book" data-id="${b.id}" title="编辑账本">✏️ 编辑</button>
+                    ${b.is_default ? '' : `<button class="btn-ghost-sm btn-text-sm" data-action="switch-book" data-id="${b.id}" title="设为默认账本">⭐ 设默认</button>`}
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-book" data-id="${b.id}" data-name="${escapeHtml(b.name)}" title="删除账本">🗑️ 删除</button>
                 </td>
             </tr>
         `).join('');

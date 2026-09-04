@@ -461,10 +461,18 @@ const spec = {
       delete: { tags: ['理财'], summary: '删除类型（无持仓时才可删）', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
         responses: { 200: { description: '删除成功' }, 400: { description: '仍有持仓' } } },
     },
-    '/api/investments/investments': {
-      get: { tags: ['理财'], summary: '持仓列表（含年化/盈亏/按类型分组/组合指标）', responses: { 200: { description: '{ investments[], summary, byType }' } } },
+    '/api/investments/holdings': {
+      get: { tags: ['理财'], summary: '持仓列表（推荐路径；等价于 /investments/investments）', responses: { 200: { description: '{ investments[], summary, byType }' } } },
       post: {
-        tags: ['理财'], summary: '新增持仓',
+        tags: ['理财'], summary: '新增持仓（推荐路径）',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Investment' } } } },
+        responses: { 200: { description: '返回 { id }' } },
+      },
+    },
+    '/api/investments/investments': {
+      get: { tags: ['理财'], summary: '持仓列表（旧路径，兼容保留；推荐 /investments/holdings）', responses: { 200: { description: '{ investments[], summary, byType }' } } },
+      post: {
+        tags: ['理财'], summary: '新增持仓（旧路径，兼容保留）',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Investment' } } } },
         responses: { 200: { description: '返回 { id }' } },
       },

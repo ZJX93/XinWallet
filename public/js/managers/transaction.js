@@ -659,9 +659,9 @@ const TransactionManager = {
                         <div class="trans-td trans-tags">${tagsHtml}</div>
                         <div class="trans-td trans-desc">${escapeHtml(noteText)}</div>
                         <div class="trans-td trans-actions">
-                            <button data-action="edit-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="编辑">✏️</button>
-                            <button data-action="copy-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="复制">📄</button>
-                            <button data-action="delete-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="删除">🗑️</button>
+                            <button data-action="edit-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="编辑" aria-label="编辑该交易">✏️</button>
+                            <button data-action="copy-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="复制" aria-label="复制该交易">📄</button>
+                            <button data-action="delete-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="删除" aria-label="删除该交易">🗑️</button>
                         </div>
                     </div>`;
             }
@@ -684,9 +684,9 @@ const TransactionManager = {
                     <div class="trans-td trans-tags">${tagsHtml}</div>
                     <div class="trans-td trans-desc">${escapeHtml(t.note || '')}</div>
                     <div class="trans-td trans-actions">
-                        <button data-action="edit-trans" data-id="${t.id}"${linked} title="编辑">✏️</button>
-                        <button data-action="copy-trans" data-id="${t.id}"${linked} title="复制">📄</button>
-                        <button data-action="delete-trans" data-id="${t.id}"${linked} title="删除">🗑️</button>
+                        <button data-action="edit-trans" data-id="${t.id}"${linked} title="编辑" aria-label="编辑该交易">✏️</button>
+                        <button data-action="copy-trans" data-id="${t.id}"${linked} title="复制" aria-label="复制该交易">📄</button>
+                        <button data-action="delete-trans" data-id="${t.id}"${linked} title="删除" aria-label="删除该交易">🗑️</button>
                     </div>
                 </div>`;
         };

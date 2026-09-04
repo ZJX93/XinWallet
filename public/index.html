@@ -7,8 +7,8 @@
     <meta name="referrer" content="no-referrer-when-downgrade">
     <title>鑫钱包 · 个人财务助手</title>
     <link rel="icon" type="image/png" href="images/logo.png">
-    <!-- 按钮字体：免费开源「朱雀仿宋」(Zhuque Fangsong, OFL-1.1) 自托管子集，零外网依赖 -->
-    <link rel="stylesheet" href="./css/fonts/zhuque.css">
+    <!-- 按钮字体：朱雀仿宋(Zhuque Fangsong, OFL-1.1)，自托管子集，非阻塞加载避免首屏延迟 -->
+    <link rel="stylesheet" href="./css/fonts/zhuque.css" media="print" onload="this.media='all'">
     <!-- 字体优先：Geist 必须先于任何使用它的样式 -->
     <link rel="stylesheet" href="css/fonts.css">
     <!-- 设计令牌：颜色 / 阴影 / 玻璃 / 品牌色，必须先于组件样式 -->
@@ -92,6 +92,9 @@
                 <li class="nav-item" data-page="ai-rules"><span class="nav-text">规则</span></li>
                 <li class="nav-item" data-page="ai-config">
                     <span class="nav-text">配置</span>
+                </li>
+                <li class="nav-item" data-page="ai-tools">
+                    <span class="nav-text">运维</span>
                 </li>
 
                 <li class="nav-group-label">设置</li>
@@ -467,6 +470,9 @@
                     </form>
                 </div></div>
             </section>
+
+            <!-- ========== AI 运维 ========== -->
+            <section class="page" id="page-ai-tools" data-lazy="pages/ai-tools.html"></section>
 
             <!-- ========== AI 配置 ========== -->
             <section class="page" id="page-ai-config">

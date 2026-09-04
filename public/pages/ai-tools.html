@@ -1,0 +1,133 @@
+<!-- ===== 实验室 · AI 运维工具（无消费者后端 API 的管理入口） ===== -->
+<section class="page" id="page-ai-tools" data-lazy="pages/ai-tools.html">
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title">AI 运维</h3>
+                <p class="card-desc">系统监控、健康检查、运维工具</p>
+            </div>
+            <div class="ai-page-actions">
+                <button class="btn btn-ghost btn-ai" id="aiToolsRefreshBtn" title="重新加载">↻ 刷新</button>
+            </div>
+        </div>
+
+        <div id="aiToolsErrorBar" class="ai-rules-error-bar" style="display:none"></div>
+
+        <!-- 系统状态 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">系统状态</h4>
+            <div class="ai-tools-grid" id="aiToolsStatus">
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">事件总线</div>
+                    <div class="ai-tools-card-body" id="aiToolsEventBus"><span class="skeleton-line shimmer" style="width:60%"></span></div>
+                </div>
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">等待反馈</div>
+                    <div class="ai-tools-card-body" id="aiToolsPendingFeedback"><span class="skeleton-line shimmer" style="width:40%"></span></div>
+                </div>
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">版本</div>
+                    <div class="ai-tools-card-body" id="aiToolsVersion"><span class="skeleton-line shimmer" style="width:30%"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 健康指标 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">健康指标</h4>
+            <div class="ai-tools-grid" id="aiToolsMetrics">
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">AI 健康</div>
+                    <div class="ai-tools-card-body" id="aiToolsHealth"><span class="skeleton-line shimmer" style="width:70%"></span></div>
+                </div>
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">7 日成本</div>
+                    <div class="ai-tools-card-body" id="aiToolsCost"><span class="skeleton-line shimmer" style="width:50%"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 功能开关 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">功能开关</h4>
+            <div class="ai-tools-card" style="grid-column:1/-1">
+                <div class="ai-tools-card-header">用户特性开关</div>
+                <div class="ai-tools-card-body" id="aiToolsFeatures"><span class="skeleton-line shimmer" style="width:80%"></span></div>
+            </div>
+        </div>
+
+        <!-- 对话会话 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">对话会话</h4>
+            <div class="ai-tools-card" style="grid-column:1/-1">
+                <div class="ai-tools-card-header">最近对话</div>
+                <div class="ai-tools-card-body" id="aiToolsConversations"><span class="skeleton-line shimmer" style="width:80%"></span></div>
+            </div>
+        </div>
+
+        <!-- AI 画像 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">AI 画像</h4>
+            <div class="ai-tools-card" style="grid-column:1/-1">
+                <div class="ai-tools-card-header">用户偏好</div>
+                <div class="ai-tools-card-body" id="aiToolsProfile"><span class="skeleton-line shimmer" style="width:80%"></span></div>
+            </div>
+        </div>
+
+        <!-- 现金流模拟 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">财务模拟</h4>
+            <div class="ai-tools-grid" style="grid-template-columns:1fr 1fr">
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">现金流预测</div>
+                    <div class="ai-tools-card-body" id="aiToolsCashflow"><span class="skeleton-line shimmer" style="width:60%"></span></div>
+                </div>
+                <div class="ai-tools-card">
+                    <div class="ai-tools-card-header">操作</div>
+                    <div class="ai-tools-card-body" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-ghost btn-sm" id="aiToolsRunCleanup">运行清理</button>
+                        <button class="btn btn-ghost btn-sm" id="aiToolsEmitEvent">触发测试事件</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 直接 API 调用 -->
+        <div class="ai-tools-section">
+            <h4 class="ai-tools-section-title">API 调试</h4>
+            <div class="ai-tools-card" style="grid-column:1/-1">
+                <div class="ai-tools-card-body">
+                    <div class="ai-tools-api-row">
+                        <input type="text" class="ai-tools-api-input" id="aiToolsApiEndpoint" placeholder="/ai/chat" value="/ai/chat" />
+                        <select class="ai-tools-api-select" id="aiToolsApiMethod">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                        </select>
+                        <button class="btn btn-ghost btn-sm" id="aiToolsApiSend">发送</button>
+                    </div>
+                    <div class="ai-tools-api-row" style="margin-top:8px">
+                        <textarea class="ai-tools-api-body" id="aiToolsApiBody" placeholder="JSON 请求体（仅 POST）" rows="3" style="display:none"></textarea>
+                    </div>
+                    <div class="ai-tools-api-row" style="margin-top:8px">
+                        <pre class="ai-tools-api-response" id="aiToolsApiResponse" style="max-height:300px;overflow:auto;background:var(--surface-elevated);padding:12px;border-radius:8px;font-size:12px;white-space:pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .ai-tools-section { margin-top: 20px; }
+    .ai-tools-section-title { font-size: 14px; font-weight: var(--fw-semibold); color: var(--text-secondary); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle); }
+    .ai-tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .ai-tools-card { background: var(--surface-elevated); border-radius: var(--radius-md); padding: 12px; border: 1px solid var(--border-subtle); }
+    .ai-tools-card-header { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .ai-tools-card-body { font-size: 13px; color: var(--text-primary); line-height:1.6; }
+    .ai-tools-card-body .tag-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--surface-hover); margin: 2px; font-size: 12px; }
+    .ai-tools-api-row { display: flex; gap: 8px; align-items: flex-start; }
+    .ai-tools-api-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--text-primary); font-size: 13px; }
+    .ai-tools-api-select { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--text-primary); font-size: 13px; }
+    .ai-tools-api-body { width: 100%; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-elevated); color: var(--text-primary); font-size: 13px; font-family: var(--font-mono); resize: vertical; }
+    .ai-tools-api-response { margin: 0; }
+    </style>
+</section>

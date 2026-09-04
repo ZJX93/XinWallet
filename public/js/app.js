@@ -269,6 +269,7 @@ const PAGE_META = {
     tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
     'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
     'ai-config': { title: 'AI配置', subtitle: 'AI 服务商配置' },
+    'ai-tools': { title: 'AI 运维', subtitle: '系统监控与运维工具' },
     about: { title: '关于', subtitle: '关于 鑫钱包' }
 };
 
@@ -505,6 +506,7 @@ async function refreshPage(page) {
     if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
     if (page === 'ai-evaluation' && M.AIEvaluation) await M.AIEvaluation.refresh();
     if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); }
+    if (page === 'ai-tools' && M.AITools) await M.AITools.refresh();
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
 }
 

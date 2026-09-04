@@ -72,6 +72,16 @@ router.use('/transactions', require('./routes/transactions'));   // /transaction
 router.use('/budgets', require('./routes/budgets'));
 router.use('/reports', require('./routes/reports'));
 // investments 路由同时挂到两个前缀：/investment-types（类型 CRUD）、/investments（持仓）
+// 历史遗留：持仓接口完整路径为 /api/investments/investments（重复段），已固化进
+// Web / Android / 鸿蒙三端客户端，不能直接改名。此处提供语义清晰的别名
+//   /api/investments/holdings/*  →  /api/investments/investments/*
+// 通过 URL 改写复用同一套处理器：新代码用 /holdings，旧路径继续兼容。
+router.use((req, res, next) => {
+    if (req.url.startsWith('/investments/holdings')) {
+        req.url = '/investments/investments' + req.url.slice('/investments/holdings'.length);
+    }
+    next();
+});
 const investmentsRoutes = require('./routes/investments');
 router.use('/investment-types', investmentsRoutes);
 router.use('/investments', investmentsRoutes);

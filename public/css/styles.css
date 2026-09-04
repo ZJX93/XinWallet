@@ -1890,7 +1890,7 @@ header.top-bar.top-bar-sticky {
 .cat-toggle:hover { color: var(--text-primary); background: var(--surface-hover); }
 .cat-toggle.collapsed { transform: rotate(-90deg); }
 
-.dc-actions { display: flex; gap: var(--space-1); }
+.dc-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .btn-ghost-sm {
   width: 32px; height: 32px; border: none; border-radius: var(--radius-md);
   background: transparent; cursor: pointer; font-family: var(--font-button);
@@ -1901,6 +1901,31 @@ header.top-bar.top-bar-sticky {
 }
 .btn-ghost-sm:hover { background: var(--surface-hover); color: var(--text-primary); }
 .btn-danger-sm:hover { background: var(--income-soft); color: var(--expense); }
+
+/* 文字型小按钮：图标 + 文案（纯图标按钮语义不明，补文字降低误操作）
+   与「检查更新」按钮同一套棕色品牌交互色，hover 时填充品牌色背景。 */
+.btn-text-sm {
+  width: auto; min-height: 30px; gap: 5px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+.btn-text-sm:hover {
+  background: color-mix(in oklab, var(--interactive-default) 14%, transparent);
+  border-color: var(--interactive-default);
+  color: var(--interactive-default);
+}
+.btn-text-sm.btn-danger-sm:hover {
+  background: var(--income-soft);
+  border-color: var(--expense);
+  color: var(--expense);
+}
+@media (max-width: 640px) {
+  /* 窄屏隐去文案只留图标，避免表格行被撑破 */
+  .btn-text-sm { padding: 0 var(--space-2); font-size: 13px; }
+}
 
 .badge {
   display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm);

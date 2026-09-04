@@ -1,6 +1,12 @@
 /* ============================================
    鑫钱包 · 理财管理路由模块
    包含：理财类型 CRUD、持仓管理、行情 API
+   ------------------------------------------------
+   路径说明：
+     - 本文件被挂载到 /investment-types 和 /investments 两个前缀
+     - 持仓接口以 /investments 为前缀（如 /investments/investments），
+       导致完整路径为 /api/investments/investments（畸形但已固化进三端客户端）
+     - 清洁别名 /holdings 提供相同功能，旧路径保持兼容不删除
    ============================================ */
 
 const express = require('express');
@@ -260,13 +266,16 @@ router.patch('/:id', async (req, res) => {
     }
 });
 
-// 获取所有持仓
-//
+// ==========================================
+// 持仓管理（清洁路径别名 /holdings，旧路径 /investments 保留兼容）
+// ==========================================
+
 // 修复 m2（重复实现）：calcAnnualizedRate / calcPortfolioMetrics 原先在本文件与
 // stats.js 中各存一份逐字节相同的副本，而 services/portfolio.js 早已提供同名实现
 // 却无人引用 —— 三份代码各自漂移的隐患。现统一复用共享服务。
 const { annualizedRate: calcAnnualizedRate, calcPortfolioMetrics } = require('../services/portfolio');
 
+// 获取所有持仓
 router.get('/investments', async (req, res) => {
     try {
         const todayStr = fmtDateOnly(new Date());

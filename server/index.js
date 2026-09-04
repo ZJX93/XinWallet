@@ -379,6 +379,22 @@ async function start() {
         console.warn('⚠️ Evidence Scheduler 启动失败（不影响启动）:', err.message);
     }
 
+    // ── 卷挂载检查：非生产环境时警告 ENCRYPTION_KEY 持久化风险 ──
+    // 若 /app/data 卷未挂载，自动生成的密钥文件存储在容器层，重启后丢失，
+    // 导致已存的 AI/OCR 凭证无法解密。仅警告，不阻止启动。
+    if (process.env.NODE_ENV !== 'production' && !process.env.ENCRYPTION_KEY) {
+        try {
+            const testFile = '/app/data/.volume-test';
+            fs.writeFileSync(testFile, 'ok');
+            fs.unlinkSync(testFile);
+        } catch (e) {
+            console.warn('⚠️  /app/data 卷不可写（当前容器未挂载持久卷）。');
+            console.warn('   自动生成的 ENCRYPTION_KEY 将存储在容器层，重启后丢失，');
+            console.warn('   届时已存的 AI/OCR 凭证将无法解密。');
+            console.warn('   建议：在 docker-compose.yml 中挂载卷，或设置 ENCRYPTION_KEY 环境变量。');
+        }
+    }
+
     // 确保演示账号存在（使用 bcrypt 真实哈希，避免明文占位符）
     // 安全收紧：仅 ALLOW_DEMO=true 且非 production 时创建，避免误部署暴露可被登录的 demo 账号
     if (process.env.ALLOW_DEMO === 'true' && process.env.NODE_ENV !== 'production') {
@@ -417,6 +433,9 @@ async function start() {
     } catch (err) {
         console.warn('⚠️ 演示数据初始化失败:', err.message);
     }
+
+    // 多实例警告：限流/缓存/熔断器均为进程内内存态，不可横向扩容
+    console.log('⚠️  仅支持单实例部署（限流/缓存/熔断器均为进程内存态）');
 
     const server = app.listen(PORT, () => {
         logger.info('Server started', {
