@@ -45,7 +45,6 @@ const ErrorCodes = {
 const failValidation = (msg) => fail(msg, ErrorCodes.VALIDATION_FAILED); // 业务规则拒绝
 const failNotFound = (msg = '资源不存在') => fail(msg, ErrorCodes.NOT_FOUND);
 const failConflict = (msg) => fail(msg, ErrorCodes.CONFLICT);
-const failForbidden = (msg = '无权访问该资源') => fail(msg, ErrorCodes.FORBIDDEN);
 const failBadRequest = (msg) => fail(msg, ErrorCodes.BAD_REQUEST);
 
 /**
@@ -376,7 +375,7 @@ module.exports = {
     success, fail, normDate, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
     extractJson, stripThinkingTokens, polishChatReply, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
-    ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
+    ErrorCodes, failValidation, failNotFound, failConflict, failBadRequest,
     tryDecrypt,
     // 金额精度工具（M3）：路由统一从 _helpers 取用，避免各处重复使用
     sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf

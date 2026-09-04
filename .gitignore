@@ -74,3 +74,7 @@ docs/harmony-surface-alpha.html
 docs/harmony-transactions-align.html
 docs/quick-add-android-preview.html
 
+
+# 服务端运行日志 / 崩溃诊断堆栈（不入库）
+server.err
+crash.log
