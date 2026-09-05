@@ -43,6 +43,7 @@
                 <button class="theme-btn active" data-theme="dark" title="暗色">🌙</button>
                 <button class="theme-btn" data-theme="system" title="跟随系统">💻</button>
             </div>
+            <button class="btn btn-ghost btn-icon" id="aiStatusBtn" title="AI 系统状态" aria-label="AI 系统状态">⚙️</button>
             <div class="user-menu" id="userMenu">
                 <button class="user-profile-trigger" id="profileTrigger" title="个人资料" type="button">
                     <span class="user-avatar" id="userAvatar">👤</span>
@@ -88,13 +89,9 @@
                     <span class="nav-text">识别</span>
                 </li>
                 <li class="nav-item" data-page="ai-insights"><span class="nav-text">洞察</span></li>
-                <li class="nav-item" data-page="ai-evaluation"><span class="nav-text">模型评测</span></li>
                 <li class="nav-item" data-page="ai-rules"><span class="nav-text">规则</span></li>
                 <li class="nav-item" data-page="ai-config">
                     <span class="nav-text">配置</span>
-                </li>
-                <li class="nav-item" data-page="ai-tools">
-                    <span class="nav-text">运维</span>
                 </li>
 
                 <li class="nav-group-label">设置</li>
@@ -471,11 +468,22 @@
                 </div></div>
             </section>
 
-            <!-- ========== AI 运维 ========== -->
-            <section class="page" id="page-ai-tools" data-lazy="pages/ai-tools.html"></section>
+            <!-- ========== AI 系统状态（从顶栏齿轮进入，原运维页瘦身） ========== -->
+            <section class="page" id="page-ai-status" data-lazy="pages/ai-status.html"></section>
 
             <!-- ========== AI 配置 ========== -->
             <section class="page" id="page-ai-config">
+                <div class="ai-config-tabs" id="aiConfigTabs">
+                    <button class="ai-config-tab active" data-panel="providers">服务商</button>
+                    <button class="ai-config-tab" data-panel="ocr">OCR</button>
+                    <button class="ai-config-tab" data-panel="behavior">识别行为</button>
+                </div>
+                <style>
+                .ai-config-tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); }
+                .ai-config-tab { padding:8px 16px; border:none; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:14px; border-bottom:2px solid transparent; }
+                .ai-config-tab.active { color:var(--interactive-default); border-bottom-color:var(--accent); font-weight:var(--fw-semibold); }
+                </style>
+                <div class="ai-config-panel" id="aiConfigPanel-providers">
                 <div class="glass-card">
                     <div class="ai-config-header">
                         <div>
@@ -574,6 +582,8 @@
                 </div>
 
                 <!-- OCR 配置 -->
+                </div><!-- /aiConfigPanel-providers -->
+                <div class="ai-config-panel" id="aiConfigPanel-ocr" style="display:none">
                 <div class="glass-card" style="margin-top:16px">
                     <h3 class="card-title">OCR 配置</h3>
                     <p class="card-desc">配置腾讯云 OCR 密钥，用于账单截图文字识别。SecretKey 仅保存在服务端。</p>
@@ -604,6 +614,8 @@
                 </div>
 
                 <!-- AI 识别行为设置 -->
+                </div><!-- /aiConfigPanel-ocr -->
+                <div class="ai-config-panel" id="aiConfigPanel-behavior" style="display:none">
                 <div class="glass-card" style="margin-top:16px">
                     <h3 class="card-title">AI 识别行为</h3>
                     <p class="card-desc">调整 AI 账单识别策略，保存后立即生效，无需改服务器环境变量。未保存的项自动沿用服务器 <code>AI_*</code> 默认值。</p>
@@ -649,6 +661,7 @@
                         <div id="aiSettingsMsg" class="form-msg" style="margin-top:12px"></div>
                     </form>
                 </div>
+                </div><!-- /aiConfigPanel-behavior -->
             </section>
 
             <!-- ========== AI 识别 ========== -->

@@ -26,11 +26,9 @@ router.use(require('./parse'));           // /transactions/parse
 router.use(require('./predictions'));     // 预测快照 查询/提交/丢弃
 router.use(require('./rules'));           // 记账规则 CRUD + 证据链
 router.use(require('./learning'));        // 学习统计 + 离线评测
-router.use(require('./insights'));        // AI 洞察
 router.use(require('./conversations'));   // 会话管理
 router.use(require('./profile'));         // AI 画像与偏好
 router.use(require('./events'));          // 事件总线
-router.use(require('./simulate'));        // 现金流/预算/储蓄/债务模拟
 router.use(require('./settings'));        // AI 识别行为设置（Web 设置页读写）
 router.use(require('./v2-ops'));          // V2 运维端点
 

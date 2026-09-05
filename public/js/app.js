@@ -268,8 +268,8 @@ const PAGE_META = {
     reports: { title: '报表中心', subtitle: '专业报表，深度回顾' },
     tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
     'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
-    'ai-config': { title: 'AI配置', subtitle: 'AI 服务商配置' },
-    'ai-tools': { title: 'AI 运维', subtitle: '系统监控与运维工具' },
+    'ai-config': { title: 'AI 配置', subtitle: 'AI 服务商与识别行为设置' },
+    'ai-status': { title: 'AI 系统状态', subtitle: '系统监控与运维工具' },
     about: { title: '关于', subtitle: '关于 鑫钱包' }
 };
 
@@ -280,6 +280,7 @@ let currentPage = 'dashboard';
 const navItems = document.querySelectorAll('.nav-item');
 navItems.forEach(item => item.addEventListener('click', () => switchPage(item.dataset.page)));
 document.querySelectorAll('.see-all').forEach(el => el.addEventListener('click', () => switchPage(el.dataset.page)));
+document.getElementById('aiStatusBtn')?.addEventListener('click', () => switchPage('ai-status'));
 // 移动端底部导航：点击分组标签展开子菜单
 let _bottomNavInited = false;
 const initBottomNav = () => {
@@ -512,6 +513,22 @@ window.addEventListener('popstate', () => {
     showPage(valid.includes(page) ? page : 'dashboard');
 });
 
+function initAIConfigTabs() {
+    const tabs = document.getElementById('aiConfigTabs');
+    if (!tabs || tabs.dataset.bound) return;
+    tabs.dataset.bound = '1';
+    tabs.querySelectorAll('.ai-config-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const panel = btn.dataset.panel;
+            tabs.querySelectorAll('.ai-config-tab').forEach(b => b.classList.toggle('active', b === btn));
+            ['providers', 'ocr', 'behavior'].forEach(p => {
+                const el = document.getElementById('aiConfigPanel-' + p);
+                if (el) el.style.display = p === panel ? '' : 'none';
+            });
+        });
+    });
+}
+
 async function refreshPage(page) {
     // 各 Manager 通过 ES Module 异步注入到 window（见 managers/index.js），
     // 统一使用 window.xxx 避免裸标识符在模块加载前的 ReferenceError
@@ -530,12 +547,13 @@ async function refreshPage(page) {
     if (page === 'ai-recognition') {
         if (M.AIRecognition) await M.AIRecognition.refresh();
         if (M.AISmartEntry) M.AISmartEntry.refresh();
+        if (M.AIChat) M.AIChat.refresh();
     }
     if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
     if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
     if (page === 'ai-evaluation' && M.AIEvaluation) await M.AIEvaluation.refresh();
-    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); }
-    if (page === 'ai-tools' && M.AITools) await M.AITools.refresh();
+    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); initAIConfigTabs(); }
+    if (page === 'ai-status' && M.AITools) await M.AITools.refresh();
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
 }
 
@@ -618,6 +636,7 @@ async function boot() {
     safeInit('AIRecognition', () => AIRecognition.init());
     safeInit('AISmartEntry', () => AISmartEntry.init());
     safeInit('AIAdvice', () => AIAdvice.init());
+    safeInit('AIChat', () => AIChat.init());
     safeInit('AIRules', () => AIRules.init());
     safeInit('AILearning', () => AILearning.init());
     safeInit('AIInsights', () => AIInsights.init());

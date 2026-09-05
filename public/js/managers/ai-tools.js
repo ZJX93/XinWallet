@@ -1,8 +1,9 @@
 /**
- * AI 运维工具管理（对应无消费者后端 API 的管理入口）
+ * AI 系统状态管理（原运维页瘦身：仅系统级监控/运维）
  * ----------------------------------------------------------------
- * 管理页面：ai-tools
- * 功能：系统状态、健康指标、功能开关、对话会话、AI 画像、财务模拟、API 调试
+ * 管理页面：ai-status（顶栏齿轮进入）
+ * 功能：系统状态、健康指标、功能开关、运维操作（清理/触发事件）
+ * 对话会话 / AI 画像 / 现金流预测已迁入「洞察」页
  * ----------------------------------------------------------------
  */
 const AITools = {
@@ -39,23 +40,15 @@ const AITools = {
         el.addEventListener('click', () => this.refresh());
         document.getElementById('aiToolsRunCleanup')?.addEventListener('click', () => this._runCleanup());
         document.getElementById('aiToolsEmitEvent')?.addEventListener('click', () => this._emitTestEvent());
-        document.getElementById('aiToolsApiSend')?.addEventListener('click', () => this._sendApi());
-        document.getElementById('aiToolsApiMethod')?.addEventListener('change', () => {
-            const body = document.getElementById('aiToolsApiBody');
-            body.style.display = document.getElementById('aiToolsApiMethod').value === 'POST' ? '' : 'none';
-        });
     },
 
     async refresh() {
         this.init();
-        // 并行加载所有数据
+        // 并行加载所有系统级数据
         await Promise.all([
             this._loadStatus().catch(() => {}),
             this._loadMetrics().catch(() => {}),
             this._loadFeatures().catch(() => {}),
-            this._loadConversations().catch(() => {}),
-            this._loadProfile().catch(() => {}),
-            this._loadCashflow().catch(() => {}),
         ]);
     },
 
@@ -96,49 +89,6 @@ const AITools = {
             .join('') || 'N/A';
     },
 
-    async _loadConversations() {
-        const data = await this._req('/ai/conversations');
-        if (!data || !data.conversations) return;
-        const convs = data.conversations.slice(0, 10);
-        const el = document.getElementById('aiToolsConversations');
-        if (convs.length === 0) {
-            el.textContent = '暂无对话';
-            return;
-        }
-        el.innerHTML = convs.map(c =>
-            `<div style="padding:4px 0;border-bottom:1px solid var(--border-subtle)">` +
-            `<span style="font-weight:var(--fw-medium)">${escapeHtml(c.title || '未命名')}</span>` +
-            `<span style="color:var(--text-tertiary);font-size:12px;margin-left:8px">${c.model_used || ''} · ${c.message_count || 0} 条消息</span>` +
-            `</div>`
-        ).join('');
-    },
-
-    async _loadProfile() {
-        const data = await this._req('/ai/profile');
-        if (!data || !data.profile) return;
-        const p = data.profile;
-        document.getElementById('aiToolsProfile').innerHTML = Object.entries(p)
-            .filter(([k]) => !['user_id', 'id', 'created_at', 'updated_at'].includes(k))
-            .map(([k, v]) => {
-                const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
-                return `<span class="tag-badge">${k}: ${escapeHtml(val)}</span>`;
-            })
-            .join('') || 'N/A';
-    },
-
-    async _loadCashflow() {
-        const data = await this._req('/ai/forecast/cashflow?months=3');
-        if (!data) return;
-        const el = document.getElementById('aiToolsCashflow');
-        if (data.predicted) {
-            el.innerHTML = `<span>预测未来 3 个月：${data.predicted.inflow ? '入 ¥' + Number(data.predicted.inflow).toFixed(0) : ''} ` +
-                `${data.predicted.outflow ? '出 ¥' + Number(data.predicted.outflow).toFixed(0) : ''} ` +
-                `${data.predicted.balance ? '余额 ¥' + Number(data.predicted.balance).toFixed(0) : ''}</span>`;
-        } else {
-            el.textContent = '现金流数据不足';
-        }
-    },
-
     async _runCleanup() {
         try {
             const btn = document.getElementById('aiToolsRunCleanup');
@@ -167,31 +117,6 @@ const AITools = {
             }
         } catch (err) {
             showToast('触发事件失败: ' + err.message, 'error');
-        }
-    },
-
-    async _sendApi() {
-        const endpoint = document.getElementById('aiToolsApiEndpoint').value.trim();
-        const method = document.getElementById('aiToolsApiMethod').value;
-        const bodyText = document.getElementById('aiToolsApiBody').value.trim();
-        const responseEl = document.getElementById('aiToolsApiResponse');
-        const sendBtn = document.getElementById('aiToolsApiSend');
-
-        if (!endpoint) { showToast('请输入 API 端点路径', 'warning'); return; }
-        sendBtn.disabled = true;
-        responseEl.textContent = '请求中...';
-
-        try {
-            let body = null;
-            if (method === 'POST' && bodyText) {
-                try { body = JSON.parse(bodyText); } catch (e) { showToast('JSON 格式错误', 'error'); sendBtn.disabled = false; return; }
-            }
-            const data = await this._req(endpoint, method, body);
-            responseEl.textContent = JSON.stringify(data, null, 2);
-        } catch (err) {
-            responseEl.textContent = '请求失败: ' + (err.message || '未知错误');
-        } finally {
-            sendBtn.disabled = false;
         }
     }
 };
