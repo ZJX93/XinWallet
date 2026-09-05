@@ -49,7 +49,18 @@ function getKey() {
     // 优先级 1：环境变量（非空字符串）
     let keyHex = process.env.ENCRYPTION_KEY;
     if (keyHex && keyHex.trim()) {
-        return deriveKey(keyHex.trim());
+        const trimmed = keyHex.trim();
+        // 同步到 /app/data/.encryption-key：拉 GHCR 镜像的设备首次启动自动把 .env 里的
+        // ENCRYPTION_KEY 持久化到命名 volume；文件已存在且与 env 不一致时记录警告不覆盖。
+        const existing = readKeyFile();
+        if (existing !== trimmed) {
+            if (!existing) {
+                writeKeyFile(trimmed);
+            } else if (process.env.NODE_ENV !== 'production') {
+                console.warn(`⚠️  ENCRYPTION_KEY 文件值与 env 不一致，保留文件原值`);
+            }
+        }
+        return deriveKey(trimmed);
     }
     // 优先级 2：从数据卷读取
     keyHex = readKeyFile();
