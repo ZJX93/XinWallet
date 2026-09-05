@@ -524,7 +524,7 @@ fun AddTransactionScreen(
                                     Text(acc.icon ?: "💰", fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(acc.name, style = MaterialTheme.typography.bodyLarge)
-                                        Text("余额 ${formatMoney(acc.balance)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("余额 ${formatMoney(acc.balance, acc.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     val currentId = if (isTo) toAccountId else accountId
                                     if (currentId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)

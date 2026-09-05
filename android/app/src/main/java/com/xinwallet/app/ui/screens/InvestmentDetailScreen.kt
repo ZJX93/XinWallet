@@ -191,12 +191,13 @@ private fun InvestmentDetailContent(
             Spacer(Modifier.height(12.dp))
             BalanceCard(
                 "当前市值", inv.currentValue,
-                "总成本 ${formatMoney(inv.totalCost)}",
+                // 多币种 P2-2e：单持仓的 totalCost / profit 跟随投资币种
+                "总成本 ${formatMoney(inv.totalCost, inv.currency)}",
                 Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfitStatCard("收益", formatMoneySigned(inv.profit), profitColor, Modifier.weight(1f))
+                ProfitStatCard("收益", formatMoneySigned(inv.profit, inv.currency), profitColor, Modifier.weight(1f))
                 ProfitStatCard("收益率", "${String.format("%.2f", inv.profitRate)}%", profitColor, Modifier.weight(1f))
             }
             Spacer(Modifier.height(8.dp))
@@ -207,8 +208,9 @@ private fun InvestmentDetailContent(
             InfoRow("代码", if (inv.code.isBlank()) "—" else inv.code)
             InfoRow("类型", "${inv.typeIcon ?: "📈"} ${inv.typeName ?: "理财"}")
             InfoRow("关联账户", inv.accName ?: "—")
-            InfoRow("买入价", formatMoney(inv.buyPrice))
-            InfoRow("现价", formatMoney(inv.currentPrice))
+            // 多币种 P2-2e：单价跟随投资币种
+            InfoRow("买入价", formatMoney(inv.buyPrice, inv.currency))
+            InfoRow("现价", formatMoney(inv.currentPrice, inv.currency))
             InfoRow("持有数量", if (inv.quantity > 0) inv.quantity.toString() else "—")
             InfoRow("买入日期", if (inv.buyDate.isBlank()) "—" else inv.buyDate.take(10))
             if (!inv.note.isNullOrBlank()) InfoRow("备注", inv.note!!)

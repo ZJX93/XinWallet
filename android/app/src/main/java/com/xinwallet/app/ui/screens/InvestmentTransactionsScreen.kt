@@ -220,7 +220,8 @@ private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}, onEdit: 
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "单价 ${formatMoney(tx.price)} · 数量 ${tx.quantity} · 手续费 ${formatMoney(tx.fee)}",
+                    // 多币种 P2-2e：单价 / 手续费跟随理财流水币种
+                    "单价 ${formatMoney(tx.price, tx.currency)} · 数量 ${tx.quantity} · 手续费 ${formatMoney(tx.fee, tx.currency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -228,7 +229,8 @@ private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}, onEdit: 
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    formatMoneySigned(tx.amount),
+                    // 多币种 P2-2e：流水金额按 tx.currency 格式化
+                    formatMoneySigned(tx.amount, tx.currency),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = amountColor
