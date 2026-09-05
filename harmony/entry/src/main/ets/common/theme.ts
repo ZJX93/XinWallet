@@ -469,6 +469,47 @@ export function fmtMoneyShort(n: number, currency: string = 'CNY'): string {
 }
 
 /**
+ * 多币种 P2-3c：把一个含 (currency, amount) 的数组按 currency 聚合为 breakdown。
+ *
+ * 用法：传入 [{currency:'CNY',amount:100}, {currency:'USD',amount:50}, {currency:'CNY',amount:30}]
+ *      返回 {CNY: 130, USD: 50} —— 后端 transactions.js summary 接口同构输出。
+ *
+ * 旧字段 amount 是同结构 number；TransactionItem.amount 也是 number。
+ * 直接用 amount 当数值、currency 当键；缺币种时归到 CNY 兜底（与后端兜底链一致）。
+ *
+ * 与 fmtMoneyMix 配对：sumByCurrency 拿到 breakdown → fmtMoneyMix(breakdown) 智能混显。
+ */
+export function sumByCurrency(
+  items: Array<{ currency?: string; amount: number }>
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it == null) continue;
+    const cur = ((it.currency || 'CNY') + '').toUpperCase();
+    const v = Number(it.amount) || 0;
+    if (out[cur] == null) out[cur] = 0;
+    out[cur] += v;
+  }
+  return out;
+}
+
+/**
+ * 多币种 P2-3c：判断 breakdown 是否只含一种币种（或全空）。
+ * 单币种账本下退化场景：直接用 fmtMoney(value, currency) 渲染比 fmtMoneyMix 更紧凑。
+ */
+export function isSingleCurrency(b: Record<string, number> | null | undefined): boolean {
+  if (!b) return true;
+  let n = 0;
+  const keys = Object.keys(b);
+  for (let i = 0; i < keys.length; i++) {
+    if (Math.abs(Number(b[keys[i]]) || 0) > 0.001) n++;
+    if (n > 1) return false;
+  }
+  return true;
+}
+
+/**
  * 日期标签紧凑化：'2026-08-28' → '8月28日'。
  *
  * ⚠️ 这不是单纯为省宽度做的妥协，而是去掉真正冗余的信息：

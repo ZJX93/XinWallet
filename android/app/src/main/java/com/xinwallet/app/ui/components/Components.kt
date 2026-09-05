@@ -392,8 +392,8 @@ fun TransactionRow(item: TransactionItem) {
             Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
-            // 转账不带正负号（见上方 color 注释）
-            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(if (isTransfer) kotlin.math.abs(item.amount) else item.amount),
+            // 转账不带正负号（见上方 color 注释）；多币种 P2-3c：透出 item.currency
+            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(if (isTransfer) kotlin.math.abs(item.amount) else item.amount, item.currency),
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }
@@ -410,7 +410,7 @@ fun RecentTransactionRow(tx: Transaction) {
             Text(tx.catName ?: "交易", style = MaterialTheme.typography.bodyLarge)
             Text(tx.date.take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(formatMoney(tx.amount), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+        Text(formatMoney(tx.amount, tx.currency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
     }
 }
 

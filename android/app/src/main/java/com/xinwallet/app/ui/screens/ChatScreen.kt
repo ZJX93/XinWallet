@@ -455,7 +455,8 @@ private fun ChatBubble(
                     ) {
                         Column(Modifier.padding(10.dp)) {
                             Text("$actionLabel · $typeLabel", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = contentColor)
-                            Text("$sign${formatMoney(tx.amount)}", style = MaterialTheme.typography.titleMedium, color = contentColor)
+                            // 多币种 P2-3c：AI 已记账卡片金额带币种（ChatTxn.currency 由后端 transactions.currency 透出）
+                            Text("$sign${formatMoney(tx.amount, tx.currency ?: "CNY")}", style = MaterialTheme.typography.titleMedium, color = contentColor)
                             val sub = listOfNotNull(tx.categoryName, tx.accountName, tx.date).joinToString(" · ")
                             if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelSmall, color = contentColor)
                             // 修改 / 删除 按钮（仅对已创建或已更新的交易显示，已删除的不显示）

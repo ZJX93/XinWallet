@@ -127,6 +127,8 @@ data class TransactionItem(
     val id: Int = 0,
     val type: String = "expense",
     val amount: Double = 0.0,
+    /** 多币种 P2-3c：每笔交易的币种。后端列表/单条/ledger 三个接口均已 SELECT 透出 currency 字段，优先级 t.currency > 关联账户 currency > 'CNY' */
+    val currency: String = "CNY",
     val note: String? = null,
     val date: String = "",
     val location: String? = null,
@@ -175,6 +177,8 @@ data class Transaction(
     @SerializedName("category_id") val categoryId: Int = 0,
     val type: String = "expense",
     val amount: Double = 0.0,
+    /** 多币种 P2-3c：仪表盘/最近交易等扁平格式也带币种（dashboard 等接口 SELECT t.* 已带 currency） */
+    val currency: String = "CNY",
     val note: String? = null,
     val date: String = "",
     @SerializedName("cat_name") val catName: String? = null,
@@ -188,6 +192,11 @@ data class CreateTransactionRequest(
     @SerializedName("category_id") val categoryId: Int,
     val type: String,
     val amount: Double,
+    /**
+     * 多币种 P2-3c：新建交易时显式带币种。后端优先级 body.currency > 关联账户 currency > 'CNY'；
+     * 旧客户端不传时后端会按账户币种兜底，向后兼容。
+     */
+    val currency: String? = null,
     val note: String? = null,
     val date: String,
     val location: String? = null,
@@ -207,6 +216,10 @@ data class UpdateTransactionRequest(
     @SerializedName("category_id") val categoryId: Int,
     val type: String,
     val amount: Double,
+    /**
+     * 多币种 P2-3c：编辑交易时允许改币种。后端优先级 body.currency > 新账户 currency > 老 currency > 'CNY'。
+     */
+    val currency: String? = null,
     val note: String? = null,
     val date: String,
     val location: String? = null,
@@ -222,6 +235,14 @@ data class TxSummary(
     val income: Double = 0.0,
     val expense: Double = 0.0,
     val balance: Double = 0.0,
+    /**
+     * 多币种 P2-3c：单值 income/expense/balance 在混币种账本下不再有意义（跨币种累加本就是错的）。
+     * 后端按 currency GROUP BY 后回填这两个 breakdown，前端用 fmtMoneyMix 智能混显。
+     * 老客户端只读 income/expense/balance 仍工作（fallback 单值，无数据则为零）；新客户端优先 breakdown。
+     */
+    val currency: String = "CNY",
+    val incomeBreakdown: Map<String, Double>? = null,
+    val expenseBreakdown: Map<String, Double>? = null,
     val expenseByCategory: List<CategoryTotal> = emptyList(),
     val incomeByCategory: List<CategoryTotal> = emptyList()
 )
@@ -480,6 +501,11 @@ data class ChatTxn(
     val action: String = "created", // created | updated | deleted
     val type: String = "",
     val amount: Double = 0.0,
+    /**
+     * 多币种 P2-3c：AI 已记账卡片上展示用的币种（后端从 transactions.currency 透出）。
+     * 默认 CNY 兜底老数据；模型层不强制非空，传给 formatMoney 时按 null→CNY 处理。
+     */
+    val currency: String? = "CNY",
     val categoryName: String? = null,
     val accountName: String? = null,
     val date: String? = null

@@ -8,7 +8,7 @@ import promptAction from '@ohos.promptAction';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { toast, toastLong } from '../common/ui';
-import { COLORS, fmtMoney, fmtMoneyShort, fmtDayLabel, LAYOUT, RADIUS, TRANSPARENT } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyShort, fmtMoneyMix, fmtDayLabel, sumByCurrency, isSingleCurrency, LAYOUT, RADIUS, TRANSPARENT } from '../common/theme';
 import { TransactionItem, TxSummary, Book, Budget, BooksResponse, Account } from '../common/models';
 import {
   TransactionRow, LoadingBox, PullRefreshBox, HeroGradientCard,
@@ -237,11 +237,35 @@ export struct TransactionsPage {
       .map((e: [string, TransactionItem[]]): Iface1 => ({ date: e[0], rows: e[1] }));
   }
 
-  dayIncome(rows: TransactionItem[]): number {
-    return rows.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
+  /**
+   * 多币种 P2-3c：按 currency 分桶聚合的日收入/支出 breakdown。
+   *
+   * 原来直接 .reduce((s,r) => s + r.amount) 把所有金额累加 —— 混币种账本下是错的：
+   * CNY 100 + USD 50 = 150 这种「跨币种累加」毫无业务意义。
+   * 返回 breakdown 给 fmtMoneyMix 渲染，主币种居中、其他币种括号附注。
+   */
+  dayIncomeBreakdown(rows: TransactionItem[]): Record<string, number> {
+    return sumByCurrency(rows.filter(r => r.type === 'income')
+      .map(r => ({ currency: r.currency, amount: r.amount })));
   }
-  dayExpense(rows: TransactionItem[]): number {
-    return rows.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+  dayExpenseBreakdown(rows: TransactionItem[]): Record<string, number> {
+    return sumByCurrency(rows.filter(r => r.type === 'expense')
+      .map(r => ({ currency: r.currency, amount: r.amount })));
+  }
+  /** 单货币账本下的日收入紧凑值（>=1万才缩），混币种账本退化为 0 由 fmtMoneyMix 单独展示。 */
+  dayIncomeShort(rows: TransactionItem[]): string {
+    const b = this.dayIncomeBreakdown(rows);
+    if (!isSingleCurrency(b)) return '';   // 多币种：日期 header 让位给 fmtMoneyMix，下方汇总卡再展示
+    const keys = Object.keys(b);
+    const cur = keys.length > 0 ? keys[0] : 'CNY';
+    return fmtMoneyShort(b[cur] ?? 0, cur);
+  }
+  dayExpenseShort(rows: TransactionItem[]): string {
+    const b = this.dayExpenseBreakdown(rows);
+    if (!isSingleCurrency(b)) return '';
+    const keys = Object.keys(b);
+    const cur = keys.length > 0 ? keys[0] : 'CNY';
+    return fmtMoneyShort(b[cur] ?? 0, cur);
   }
 
   @Builder ToolBar() {
@@ -339,13 +363,27 @@ export struct TransactionsPage {
     //
     // 第 4 列从「笔数」换成「本月预算 / 本月剩余」：笔数已经在流水列表里
     // 一目了然（划一下就知道多不多），预算才是只有这里能看到的信息。
+    //
+    // 多币种 P2-3c：混币种账本下 income/expense/balance 单值无意义（跨币种累加是错的），
+    // 后端按 currency GROUP BY 后回填 incomeBreakdown/expenseBreakdown。前端优先 breakdown，
+    // 单币种账本下退化为 fmtMoney(value, currency)。
+    const incBreak = this.summary?.incomeBreakdown as Record<string, number> | undefined;
+    const expBreak = this.summary?.expenseBreakdown as Record<string, number> | undefined;
+    const incSingle = incBreak && isSingleCurrency(incBreak) ? incBreak : null;
+    const expSingle = expBreak && isSingleCurrency(expBreak) ? expBreak : null;
+    const singleCur = this.summary?.currency ?? 'CNY';
     Column() {
       HeroGradientCard({
         topLeft: '结余',
-        amount: fmtMoney((this.summary?.balance) ?? 0),
+        amount: fmtMoneyMix(incBreak && expBreak ? (() => {
+          const b: Record<string, number> = {};
+          const keys = new Set<string>([...Object.keys(incBreak), ...Object.keys(expBreak)]);
+          keys.forEach(k => { b[k] = (incBreak[k] ?? 0) - (expBreak[k] ?? 0); });
+          return b;
+        })() : null, singleCur),
         bottomCells: [
-          { label: this.periodPrefix() + '支出', value: fmtMoney(this.summary?.expense ?? 0) },
-          { label: this.periodPrefix() + '收入', value: fmtMoney(this.summary?.income ?? 0) },
+          { label: this.periodPrefix() + '支出', value: expSingle ? fmtMoney(Object.values(expSingle)[0] ?? 0, singleCur) : fmtMoneyMix(expBreak, singleCur) },
+          { label: this.periodPrefix() + '收入', value: incSingle ? fmtMoney(Object.values(incSingle)[0] ?? 0, singleCur) : fmtMoneyMix(incBreak, singleCur) },
           { label: this.periodPrefix() + '预算', value: fmtMoney(this.budgetTotal) },
           { label: this.periodPrefix() + '剩余', value: fmtMoney(this.budgetRemain()) }
         ]
@@ -389,14 +427,19 @@ export struct TransactionsPage {
                     .fontSize(13).fontColor(COLORS.textSecondary)
                     .maxLines(1)
                   Blank()
-                  if (this.dayIncome(g.rows) > 0) {
-                    Text('收 ' + fmtMoneyShort(this.dayIncome(g.rows)))
+                  // 多币种 P2-3c：日期 header 收/支。单币种账本显示 fmtMoneyShort（>=1万 才缩），
+                  // 混币种账本退化为空让位给下方汇总卡展示 —— 同一天的「收 USD 5」和
+                  // 「收 CNY 30」并列无意义。
+                  const incShort = this.dayIncomeShort(g.rows);
+                  if (incShort !== '') {
+                    Text('收 ' + incShort)
                       .fontSize(12).fontColor(COLORS.textSecondary)
                       .maxLines(1)
                       .margin({ right: 10 })
                   }
-                  if (this.dayExpense(g.rows) > 0) {
-                    Text('支 ' + fmtMoneyShort(this.dayExpense(g.rows)))
+                  const expShort = this.dayExpenseShort(g.rows);
+                  if (expShort !== '') {
+                    Text('支 ' + expShort)
                       .fontSize(12).fontColor(COLORS.textSecondary)
                       .maxLines(1)
                   }
@@ -469,7 +512,8 @@ export struct TransactionsPage {
     if (it.transfer) { this.editTransferViaPage(it); return; }
     const data = await promptAction.showDialog({
       title: '交易操作',
-      message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)}`,
+      // 多币种 P2-3c：操作弹窗显示带币种金额（it.currency 由后端列表 SELECT 透出）
+      message: `${it.category?.name ?? ''} ${fmtMoney(it.amount, it.currency)}`,
       buttons: [
         { text: '复制', color: COLORS.brand },
         { text: '编辑', color: COLORS.brand },
@@ -589,13 +633,19 @@ export struct TransactionsPage {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
             Blank()
-            Text('收 ' + fmtMoneyShort(this.dayIncome(this.selectedRows())))
+            // 多币种 P2-3c：日历视图选中日的收/支/结余。单币种账本走 dayIncomeShort/dayExpenseShort；
+            // 混币种账本直接用 fmtMoneyMix 智能混显（breakdown 取代累加）。
+            const incShort = this.dayIncomeShort(this.selectedRows());
+            const expShort = this.dayExpenseShort(this.selectedRows());
+            const incMix = incShort === '' ? fmtMoneyMix(this.dayIncomeBreakdown(this.selectedRows())) : '';
+            const expMix = expShort === '' ? fmtMoneyMix(this.dayExpenseBreakdown(this.selectedRows())) : '';
+            Text('收 ' + (incShort !== '' ? incShort : incMix))
               .fontSize(12).fontColor(COLORS.income).maxLines(1)
-            Text('支 ' + fmtMoneyShort(this.dayExpense(this.selectedRows())))
+            Text('支 ' + (expShort !== '' ? expShort : expMix))
               .fontSize(12).fontColor(COLORS.expense).margin({ left: 10 }).maxLines(1)
             Text('结余 ' + this.dayBalanceLabel())
               .fontSize(12)
-              .fontColor(this.dayBalance() >= 0 ? COLORS.income : COLORS.expense)
+              .fontColor(this.dayBalanceSign() >= 0 ? COLORS.income : COLORS.expense)
               .margin({ left: 10 })
               .maxLines(1)
           }
@@ -651,20 +701,54 @@ export struct TransactionsPage {
       .sort((a: TransactionItem, b: TransactionItem) => b.date.localeCompare(a.date));
   }
 
-  dayBalance(): number {
+  /**
+   * 多币种 P2-3c：结余 breakdown。混币种账本下逐币种相减（CNY 结余 = CNY 收 - CNY 支）。
+   * 不再做跨币种累加 —— 那是错的。
+   */
+  dayBalanceBreakdown(): Record<string, number> {
     const rows = this.selectedRows();
-    return this.dayIncome(rows) - this.dayExpense(rows);
+    const incB = this.dayIncomeBreakdown(rows);
+    const expB = this.dayExpenseBreakdown(rows);
+    const out: Record<string, number> = {};
+    const keys = new Set<string>([...Object.keys(incB), ...Object.keys(expB)]);
+    keys.forEach(k => { out[k] = (incB[k] ?? 0) - (expB[k] ?? 0); });
+    return out;
   }
 
   /**
-   * 结余带正号：+¥12.00 / -¥25.47，光看数字分不出是赚是花。
-   * 用 fmtMoneyShort：这一项在汇总行里最长（多「结余」两字 + 正负号），
-   * 是宽度瓶颈所在，必须和同行的收/支用同一种格式 ——
+   * 结余符号：取绝对值最大币种的符号当整行的正负号。
+   * 多币种账本下「结余」整体的正负号无定义（不同币种符号可能相反），
+   * 用主币种绝对值最大者的符号更接近用户的视觉直觉。
+   */
+  dayBalanceSign(): number {
+    const b = this.dayBalanceBreakdown();
+    const keys = Object.keys(b);
+    if (keys.length === 0) return 0;
+    let bestKey = keys[0];
+    let bestAbs = Math.abs(b[bestKey]);
+    for (let i = 1; i < keys.length; i++) {
+      const k = keys[i];
+      const a = Math.abs(b[k]);
+      if (a > bestAbs) { bestAbs = a; bestKey = k; }
+    }
+    return b[bestKey] >= 0 ? 1 : -1;
+  }
+
+  /**
+   * 结余带正号：+¥12.00 / -¥25.47 / +¥1.90万，单币种账本用 fmtMoneyShort 紧凑化；
+   * 混币种账本走 fmtMoneyMix 智能混显。
+   * 这一项在汇总行里最长（多「结余」两字 + 正负号），必须和同行的收/支用同一种格式 ——
    * 一行里混用 ¥1.90万 和 ¥17,226.00 两种精度会显得是两类数据。
    */
   dayBalanceLabel(): string {
-    const b = this.dayBalance();
-    return (b >= 0 ? '+' : '') + fmtMoneyShort(b);
+    const b = this.dayBalanceBreakdown();
+    const sign = this.dayBalanceSign() >= 0 ? '+' : '';
+    if (isSingleCurrency(b)) {
+      const keys = Object.keys(b);
+      const cur = keys.length > 0 ? keys[0] : 'CNY';
+      return sign + fmtMoneyShort(b[cur] ?? 0, cur);
+    }
+    return sign + fmtMoneyMix(b);
   }
 
   build() {

@@ -568,10 +568,11 @@ private fun TodayBillRow(t: TransactionItem) {
             }
         }
         val signed = when {
-            isTransfer -> formatMoney(t.amount)
-            t.type == "income" || t.type == "transfer_in" -> formatMoney(t.amount)
-            t.type == "expense" || t.type == "transfer_out" -> "-" + formatMoney(t.amount)
-            else -> formatMoney(t.amount)
+            // 多币种 P2-3c：今日账单单条带币种（TransactionItem.currency 由后端 transactions.js 列表 SELECT 透出）
+            isTransfer -> formatMoney(t.amount, t.currency)
+            t.type == "income" || t.type == "transfer_in" -> formatMoney(t.amount, t.currency)
+            t.type == "expense" || t.type == "transfer_out" -> "-" + formatMoney(t.amount, t.currency)
+            else -> formatMoney(t.amount, t.currency)
         }
         val color = when {
             isTransfer -> MaterialTheme.colorScheme.onSurface

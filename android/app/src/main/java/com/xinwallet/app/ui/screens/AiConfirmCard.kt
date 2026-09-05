@@ -916,7 +916,8 @@ private fun AiAccountSheet(
                             Column(Modifier.weight(1f)) {
                                 Text(acc.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "余额 ${formatMoney(acc.balance)}",
+                                    // 多币种 P2-3c：账户余额显示对应币种（Account.currency 由后端透出）
+                                    "余额 ${formatMoney(acc.balance, acc.currency)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

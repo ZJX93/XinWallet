@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   budget_id INT DEFAULT NULL,                         -- 关联预算（可选）
   type VARCHAR(15) NOT NULL CHECK (type IN ('expense','income','transfer_in','transfer_out')),
   amount DECIMAL(15,2) NOT NULL,                      -- 金额
+  -- 多币种 P2-3c：每笔交易的货币（ISO 4217）。转账时取源账户币种；普通收支取关联账户币种。
+  -- 列表/搜索/单条接口统一 JOIN accounts.currency 兜底返回；列表已按 t.currency || acc_currency 优先级回填，
+  -- 即使老数据 currency=NULL 也能展示正确币种。独立存列是为报表混币种汇总 GROUP BY 时不再 JOIN 双表。
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   note VARCHAR(200) DEFAULT '',                       -- 备注
   date TIMESTAMP NOT NULL,                            -- 交易时间（精确到秒）
   transfer_id INT DEFAULT NULL,                       -- 关联转账ID

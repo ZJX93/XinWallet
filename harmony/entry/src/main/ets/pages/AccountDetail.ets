@@ -174,9 +174,9 @@ export struct AccountDetailPage {
   confirmDeleteTxn(it: TransactionItem): void {
     AlertDialog.show({
       title: '删除这笔利息流水？',
-      // it.amount 是 TransactionItem，暂无 currency 字段（后端 transactions.js 列表接口未返回，
-      // 与安卓 TransactionsScreen / SearchScreen 一致），保持 fmtMoney 旧调用。
-      message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)} —— 账户余额将按账本回退，此操作不可恢复。`,
+      // 多币种 P2-3c：TransactionItem.currency 由后端 transactions.js 列表 SELECT 透出，
+      // 删除提示语也要带币种 —— 否则 USD 账户里的 CNY 利息会被误读。
+      message: `${it.category?.name ?? ''} ${fmtMoney(it.amount, it.currency)} —— 账户余额将按账本回退，此操作不可恢复。`,
       primaryButton: {
         value: '删除',
         action: () => { this.deleteTxn(it.id); }

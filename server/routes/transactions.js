@@ -103,9 +103,9 @@ router.get('/', async (req, res) => {
                 start_date, end_date, min_amount, max_amount,
                 category_id, account_id } = req.query;
         let sql = `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
-      a.name as acc_name, a.icon as acc_icon,
-      sa.name as src_name, sa.icon as src_icon,
-      da.name as dst_name, da.icon as dst_icon,
+      a.name as acc_name, a.icon as acc_icon, a.currency as acc_currency,
+      sa.name as src_name, sa.icon as src_icon, sa.currency as src_currency,
+      da.name as dst_name, da.icon as dst_icon, da.currency as dst_currency,
       tr.from_account_id as tr_from, tr.to_account_id as tr_to,
       fa.name as tr_from_name, fa.icon as tr_from_icon,
       ta.name as tr_to_name, ta.icon as tr_to_icon,
@@ -323,10 +323,18 @@ router.get('/', async (req, res) => {
             location: t.location || null,
             link_type: t.link_type || null,
             link_id: t.link_id || null,
+            /**
+             * 多币种 P2-3c：每笔交易的币种。优先级 t.currency > 关联账户 currency > 'CNY'。
+             * 转账：fallback 用源账户（支出/转出口径）；普通收支：fallback 用关联账户。
+             * 老库 ensureColumn 已补齐 transactions.currency DEFAULT 'CNY'，
+             * 所以 SELECT t.* 必然带回非空值；JOIN accounts.currency 仅作为双保险，
+             * 兼容极少数 ensureColumn 漏跑（理论不会发生）。
+             */
+            currency: t.currency || t.acc_currency || t.src_currency || 'CNY',
             category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
-            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon },
-            source: t.source_account_id ? { id: t.source_account_id, name: t.src_name, icon: t.src_icon } : null,
-            destination: t.destination_account_id ? { id: t.destination_account_id, name: t.dst_name, icon: t.dst_icon } : null,
+            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon, currency: t.acc_currency || t.currency || 'CNY' },
+            source: t.source_account_id ? { id: t.source_account_id, name: t.src_name, icon: t.src_icon, currency: t.src_currency || t.currency || 'CNY' } : null,
+            destination: t.destination_account_id ? { id: t.destination_account_id, name: t.dst_name, icon: t.dst_icon, currency: t.dst_currency || t.currency || 'CNY' } : null,
             // 转账对方账户（复式记账：每笔转账展示借贷对方）
             counterparty: t.type === 'transfer_out'
                 ? (t.tr_to_name
@@ -373,11 +381,13 @@ router.get('/', async (req, res) => {
 router.get('/ledger', async (req, res) => {
     try {
         const { month } = req.query;
-        let sql = `SELECT t.id, t.type, t.amount, t.date, t.note, t.transfer_id,
-            sa.name as src_name, sa.icon as src_icon,
-            da.name as dst_name, da.icon as dst_icon,
+        let sql = `SELECT t.id, t.type, t.amount, t.date, t.note, t.transfer_id, t.currency,
+            a.name as acc_name, a.icon as acc_icon, a.currency as acc_currency,
+            sa.name as src_name, sa.icon as src_icon, sa.currency as src_currency,
+            da.name as dst_name, da.icon as dst_icon, da.currency as dst_currency,
             c.name as cat_name, c.icon as cat_icon
             FROM transactions t
+            LEFT JOIN accounts a ON t.account_id = a.id
             LEFT JOIN accounts sa ON t.source_account_id = sa.id
             LEFT JOIN accounts da ON t.destination_account_id = da.id
             LEFT JOIN categories c ON t.category_id = c.id
@@ -397,9 +407,12 @@ router.get('/ledger', async (req, res) => {
             note: t.note || '',
             transfer_id: t.transfer_id,
             investment_txn_id: t.investment_txn_id || null,
+            // 多币种 P2-3c：与列表接口同套 currency 兜底链（t.currency > acc_currency > 'CNY'）
+            currency: t.currency || t.acc_currency || t.src_currency || 'CNY',
             category: { name: t.cat_name, icon: t.cat_icon },
-            source: t.source_account_id ? { name: t.src_name, icon: t.src_icon } : null,
-            destination: t.destination_account_id ? { name: t.dst_name, icon: t.dst_icon } : null
+            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon, currency: t.acc_currency || t.currency || 'CNY' },
+            source: t.source_account_id ? { id: t.source_account_id, name: t.src_name, icon: t.src_icon, currency: t.src_currency || t.currency || 'CNY' } : null,
+            destination: t.destination_account_id ? { id: t.destination_account_id, name: t.dst_name, icon: t.dst_icon, currency: t.dst_currency || t.currency || 'CNY' } : null
         }));
         res.json(success(formatted));
     } catch (err) {
@@ -425,6 +438,14 @@ router.post('/', async (req, res) => {
         // 账户归属校验：必须属于当前用户 + 当前账本（防越权篡改他人账户余额）
         const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('账户不存在'));
+        // 多币种 P2-3c：写入 transactions.currency。优先级 body.currency > 关联账户 currency > 'CNY'。
+        // 调用方（AI 记账 / 编辑表单）若显式传 currency 则尊重之（用户在多币种账户之间手动调整时用）；
+        // 未传则取关联账户币种 —— 这是「同一账户下收支都跟账户走」的标准行为，
+        // 与单账户典型场景保持一致，混币种账本下「CNY 工资卡记 USD 餐费」仍由用户在 UI 显式切币种。
+        const accCurRow = await db.queryOne('SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        const txCurrency = (req.body.currency && String(req.body.currency).trim())
+            ? String(req.body.currency).toUpperCase()
+            : ((accCurRow && accCurRow.currency) || 'CNY');
 
         // 日期归一化（兼容 datetime-local / ISO / 纯日期；缺省回退 now）
         const transDate = normDate(date);
@@ -440,9 +461,9 @@ router.post('/', async (req, res) => {
             // 备注：尊重调用方给定的 note（AI 流程由 AI 自填；手动记账由用户填），无则 fallback 到 merchant，再无则用类目名
             const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
             const insertResult = await conn.query(
-                `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id, location, link_type, link_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, accId, catId, bId, type, amountNum, finalNote, transDate, src, dst, loc, lt, li]
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, currency, note, date, source_account_id, destination_account_id, location, link_type, link_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, accId, catId, bId, type, amountNum, txCurrency, finalNote, transDate, src, dst, loc, lt, li]
             );
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
@@ -501,14 +522,24 @@ router.put('/:id', async (req, res) => {
         const li = link_id ? parseInt(link_id) : null;
         // 日期：提供则归一化（兼容 datetime-local/ISO/纯日期），未提供则保留原值
         const finalDate = date ? normDate(date) : old.date;
+        // 多币种 P2-3c：编辑时可更新 currency。优先级 body.currency > 新关联账户 currency > 原值。
+        // 「保留原值」兜底是为了避免编辑表单没带 currency 字段时把已存在的 USD 误改回 CNY
+        // （前端 AddTransaction 在切换账户时会自动跟随，但旧版本可能不传）。
+        let txCurrency;
+        if (req.body.currency && String(req.body.currency).trim()) {
+            txCurrency = String(req.body.currency).toUpperCase();
+        } else {
+            const accCurRow = await db.queryOne('SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+            txCurrency = (accCurRow && accCurRow.currency) || old.currency || 'CNY';
+        }
 
         await db.transaction(async (conn) => {
             // 备注：尊重调用方给定的 note，无则 fallback 到 merchant，再无则用类目名
             const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
-            // 更新交易记录（含复式记账借贷双方字段 + location/link）
+            // 更新交易记录（含复式记账借贷双方字段 + currency + location/link）
             await conn.query(
-                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
-                [accId, catId, bId, type, amountNum, finalNote, finalDate, src, dst, loc, lt, li, id, req.userId, req.bookId]
+                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, currency=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
+                [accId, catId, bId, type, amountNum, txCurrency, finalNote, finalDate, src, dst, loc, lt, li, id, req.userId, req.bookId]
             );
 
             // 重置交易标签
@@ -653,6 +684,50 @@ router.get('/summary', async (req, res) => {
             [req.userId, req.bookId, month + '%']
         );
 
+        // 多币种 P2-3c：按 currency GROUP BY 取各币种收支（COALESCE 兜底老数据 currency=NULL → CNY）。
+        // 前端用 fmtMoneyMix 智能混显（主货币 + 括号附注其他币种），不再做跨币种累加。
+        const incomeByCurRows = await db.query(
+            `SELECT COALESCE(t.currency, a.currency, 'CNY') AS currency,
+                    COALESCE(SUM(t.amount), 0) AS total
+             FROM transactions t
+             LEFT JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'income'
+               AND CAST(t.date AS CHAR(10)) LIKE ?
+             GROUP BY COALESCE(t.currency, a.currency, 'CNY')`,
+            [req.userId, req.bookId, month + '%']
+        );
+        const expenseByCurRows = await db.query(
+            `SELECT COALESCE(t.currency, a.currency, 'CNY') AS currency,
+                    COALESCE(SUM(t.amount), 0) AS total
+             FROM transactions t
+             LEFT JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense'
+               AND CAST(t.date AS CHAR(10)) LIKE ?
+             GROUP BY COALESCE(t.currency, a.currency, 'CNY')`,
+            [req.userId, req.bookId, month + '%']
+        );
+        /**
+         * breakdown 智能主货币：选 amount 绝对值最大的币种作 base（混币种账本下大概率是用户主力货币），
+         * 单币种账本下就是该币种。返回 primary 字段供前端 fmtMoneyMix 决定哪个币种放主位。
+         * 若总额都为 0（当月无流水），fallback CNY —— 客户端按 CNY 渲染「¥0.00」即可。
+         */
+        const pickPrimary = (rows) => {
+            if (!rows || rows.length === 0) return 'CNY';
+            let best = rows[0];
+            for (const r of rows) {
+                if (Math.abs(parseFloat(r.total)) > Math.abs(parseFloat(best.total))) best = r;
+            }
+            return (best.currency || 'CNY').toUpperCase();
+        };
+        const incomeBreakdown = {};
+        for (const r of incomeByCurRows) incomeBreakdown[(r.currency || 'CNY').toUpperCase()] = parseFloat(r.total);
+        const expenseBreakdown = {};
+        for (const r of expenseByCurRows) expenseBreakdown[(r.currency || 'CNY').toUpperCase()] = parseFloat(r.total);
+        const primaryCurrency = pickPrimary([
+            ...incomeByCurRows.map(r => ({ ...r, total: parseFloat(r.total) })),
+            ...expenseByCurRows.map(r => ({ ...r, total: -parseFloat(r.total) }))
+        ]);
+
         // 类别汇总（子级向父级汇总，数据库层递归 CTE，语义同报表 /reports）：
         // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和，并回传 parent_id 供前端分层展示。
         const expByCat = await db.query(
@@ -702,6 +777,14 @@ router.get('/summary', async (req, res) => {
 
         res.json(success({
             income, expense, balance: income - expense,
+            /**
+             * 多币种 P2-3c：currency / breakdown 与单值并存。
+             * 老客户端/单币种账本读 income/expense/balance 仍工作（数值不再有意义，仅作
+             * fallback —— 真实场景下混币种累加本就是错的，前端用 breakdown 才是对的）。
+             */
+            currency: primaryCurrency,
+            incomeBreakdown,
+            expenseBreakdown,
             expenseByCategory: expByCat.map(r => ({ ...r, total: parseFloat(r.total) })),
             incomeByCategory: incByCat.map(r => ({ ...r, total: parseFloat(r.total) }))
         }));
@@ -728,10 +811,10 @@ router.get('/:id', async (req, res) => {
          */
         const rows = await db.query(
             `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
-                a.name as acc_name, a.icon as acc_icon, b.name as budget_name,
+                a.name as acc_name, a.icon as acc_icon, a.currency as acc_currency, b.name as budget_name,
                 tr.from_account_id as tr_from, tr.to_account_id as tr_to,
-                fa.name as tr_from_name, fa.icon as tr_from_icon,
-                ta.name as tr_to_name, ta.icon as tr_to_icon
+                fa.name as tr_from_name, fa.icon as tr_from_icon, fa.currency as tr_from_currency,
+                ta.name as tr_to_name, ta.icon as tr_to_icon, ta.currency as tr_to_currency
              FROM transactions t
              LEFT JOIN categories c ON t.category_id = c.id
              LEFT JOIN accounts a ON t.account_id = a.id
@@ -756,15 +839,18 @@ router.get('/:id', async (req, res) => {
             amount: parseFloat(t.amount),
             date: fmtDateTime(t.date),
             note: t.note || '',
+            // 多币种 P2-3c：单条接口 currency 与列表接口同优先级（t.currency > 关联账户 > 'CNY'）。
+            // 见列表接口注释；单条一般用于编辑页加载，复用同一兜底链。
+            currency: t.currency || t.acc_currency || t.tr_from_currency || 'CNY',
             category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
-            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon },
+            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon, currency: t.acc_currency || t.currency || 'CNY' },
             // 与列表接口同名同形，客户端一套解析逻辑通吃两个接口
             transfer_id: t.transfer_id ?? null,
             transfer: t.transfer_id && t.tr_from_name && t.tr_to_name
                 ? {
                     id: t.transfer_id,
-                    from: { id: t.tr_from, name: t.tr_from_name, icon: t.tr_from_icon },
-                    to: { id: t.tr_to, name: t.tr_to_name, icon: t.tr_to_icon }
+                    from: { id: t.tr_from, name: t.tr_from_name, icon: t.tr_from_icon, currency: t.tr_from_currency || t.currency || 'CNY' },
+                    to: { id: t.tr_to, name: t.tr_to_name, icon: t.tr_to_icon, currency: t.tr_to_currency || t.currency || 'CNY' }
                 }
                 : null,
             budget_id: t.budget_id,

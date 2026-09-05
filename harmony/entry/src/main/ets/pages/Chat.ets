@@ -17,7 +17,7 @@ import buffer from '@ohos.buffer';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import dataPreferences from '@ohos.data.preferences';
-import { COLORS, fmtMoney, withAlpha } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyMix, sumByCurrency, isSingleCurrency, withAlpha } from '../common/theme';
 import { AppBackground, DropdownField, DropdownOption } from '../common/components/Components';
 import { startRecord, stopRecord } from '../common/audio';
 import { TransactionItem } from '../common/models';
@@ -749,7 +749,8 @@ struct Chat {
               Row({ space: 8 }) {
                 Text(t.category?.icon || '📌').fontSize(18)
                 Column() {
-                  Text(`${t.category?.name || ''} ${t.type === 'income' ? '+' : '-'}${fmtMoney(t.amount)}`)
+                  // 多币种 P2-3c：AI 落账后聊天回执里的交易卡片，每行带币种（t.currency 由后端列表 SELECT 透出）
+                  Text(`${t.category?.name || ''} ${t.type === 'income' ? '+' : '-'}${fmtMoney(t.amount, t.currency)}`)
                     .fontSize(14).fontColor(COLORS.textPrimary)
                   Text(`${t.account?.name || ''} ${t.date || ''}`).fontSize(11).fontColor(COLORS.textSecondary)
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
@@ -828,7 +829,8 @@ struct Chat {
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
 
         Column({ space: 2 }) {
-          Text(`${t.type === 'income' ? '+' : '-'}${fmtMoney(t.amount)}`)
+          // 多币种 P2-3c：候选交易卡片大金额带币种（AiCandidateTxn.currency 由 /ai/transactions/parse 返回）
+          Text(`${t.type === 'income' ? '+' : '-'}${fmtMoney(t.amount, t.currency)}`)
             .fontSize(22).fontWeight(FontWeight.Bold)
             .fontColor(t.type === 'income' ? '#1B7F4B' : (t.type === 'transfer' ? '#4A6FA5' : COLORS.textPrimary))
           this.FieldBadge(t.seq, 'amount')
@@ -995,10 +997,10 @@ struct Chat {
         this.CandidateRow(t)
       }, (t: AiCandidateTxn) => t.seq.toString())
 
-      // 汇总金额
+      // 汇总金额。多币种 P2-3c：单货币账本走 fmtMoney；混币种账本走 fmtMoneyMix breakdown。
       Row({ space: 4 }) {
         Text('合计').fontSize(13).fontColor(COLORS.textSecondary)
-        Text(`${fmtMoney(this.totalAmount())}`).fontSize(16).fontWeight(FontWeight.Bold)
+        Text(this.totalAmountLabel()).fontSize(16).fontWeight(FontWeight.Bold)
           .fontColor(COLORS.textPrimary)
         Text(`(${this.candidates.length} 笔)`).fontSize(12).fontColor(COLORS.textSecondary)
       }.width('100%').justifyContent(FlexAlign.End)
@@ -1027,11 +1029,27 @@ struct Chat {
     .border({ width: 0.5, color: COLORS.outlineVariant })
   }
 
-  /** 候选交易总金额 */
-  totalAmount(): number {
-    let sum = 0;
-    for (const t of this.candidates) sum += (t.amount || 0);
-    return sum;
+  /**
+   * 多币种 P2-3c：候选交易合计 breakdown。
+   * 旧 totalAmount() 返回单值（跨币种累加无意义），前端已切换到 totalAmountLabel()；
+   * 保留 totalAmountBreakdown() 作为底层聚合。
+   */
+  totalAmountBreakdown(): Record<string, number> {
+    return sumByCurrency(this.candidates.map(t => ({ currency: t.currency, amount: t.amount })));
+  }
+
+  /**
+   * 多币种 P2-3c：候选交易合计的渲染串。单货币账本走 fmtMoney 紧凑显示；
+   * 混币种账本走 fmtMoneyMix breakdown 智能混显。
+   */
+  totalAmountLabel(): string {
+    const b = this.totalAmountBreakdown();
+    if (isSingleCurrency(b)) {
+      const keys = Object.keys(b);
+      const cur = keys.length > 0 ? keys[0] : 'CNY';
+      return fmtMoney(b[cur] ?? 0, cur);
+    }
+    return fmtMoneyMix(b);
   }
 
   overallText(): string {

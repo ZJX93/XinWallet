@@ -103,7 +103,12 @@ class AddTransactionViewModel(
                       budgetId: Int? = null, tagIds: List<Int>? = null) {
         val dt = normalizeDateTime(date)
         submit { txRepo.createTransaction(
-            CreateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId, budgetId, tags = tagIds)
+            // 多币种 P2-3c：currency 不显式传，后端按关联账户 currency 兜底
+            CreateTransactionRequest(
+                accountId = accountId, categoryId = categoryId, type = type, amount = amount,
+                note = note, date = dt, location = location, linkType = linkType,
+                linkId = linkId, budgetId = budgetId, tags = tagIds
+            )
         ).toUnit() }
     }
 
@@ -129,7 +134,12 @@ class AddTransactionViewModel(
         val dt = normalizeDateTime(date)
         submit { txRepo.updateTransaction(
             id,
-            UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId, budgetId, tags = tagIds)
+            // 多币种 P2-3c：currency 不显式传，后端按新账户 currency → 老 currency → 'CNY' 兜底
+            UpdateTransactionRequest(
+                accountId = accountId, categoryId = categoryId, type = type, amount = amount,
+                note = note, date = dt, location = location, linkType = linkType,
+                linkId = linkId, budgetId = budgetId, tags = tagIds
+            )
         ) }
     }
 

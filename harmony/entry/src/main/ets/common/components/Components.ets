@@ -311,12 +311,12 @@ export struct TransactionRow {
   /** true = 顶部画 0.5px 分隔线；首条 row 传 false */
   showTopDivider: boolean = true;
   /**
-   * 多币种 P2-3b：金额货币代码（默认 CNY 向后兼容）。
-   * 当前 TransactionItem 模型没 currency 字段（后端 transactions.js 列表接口
-   * 还没 LEFT JOIN accounts），调用方不传时仍按 CNY 展示，单币种账本下表现
-   * 完全正确；混币种账本下等后端加 currency 后再传。
+   * 多币种 P2-3c：金额货币代码。优先取 item.currency（后端 transactions.js
+   * 已 SELECT 透出），调用方不传时也能拿到；显式传入 currency prop 仍能覆盖
+   * （用于详情页根据上下文强制指定币种）。
+   * 老数据没 currency 字段时回落到 CNY，单币种账本下表现完全正确。
    */
-  currency: string = 'CNY';
+  currency: string = '';
 
   /**
    * 是否是「折叠后的转账」。
@@ -329,8 +329,15 @@ export struct TransactionRow {
     return t !== undefined && t !== null;
   }
 
+  /** 多币种 P2-3c：实际使用的币种。prop 优先，未传时取 item.currency，兜底 CNY。 */
+  private effectiveCurrency(): string {
+    if (this.currency && this.currency !== '') return this.currency;
+    if (this.item?.currency && this.item.currency !== '') return this.item.currency;
+    return 'CNY';
+  }
+
   private amountText(): string {
-    const raw = fmtMoney(this.item?.amount ?? 0, this.currency).replace('¥', '');
+    const raw = fmtMoney(this.item?.amount ?? 0, this.effectiveCurrency()).replace('¥', '');
     if (this.isTransfer()) return raw;          // 转账不带正负号
     return (this.item?.type === 'income' ? '+' : '-') + raw;
   }

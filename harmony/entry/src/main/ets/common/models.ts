@@ -171,6 +171,8 @@ export interface TransactionItem {
   id: number;
   type: string;
   amount: number;
+  /** 多币种 P2-3c：每笔交易的币种（后端 transactions.js 列表/单条/ledger 已 LEFT JOIN accounts.currency 并兜底 'CNY'）。调用 TransactionRow 时不传 currency prop 即可让它自动取此字段。 */
+  currency?: string;
   note?: string;
   date: string;
   location?: string;
@@ -194,6 +196,8 @@ export interface Transaction {
   category_id?: number;
   type: string;
   amount: number;
+  /** 多币种 P2-3c：扁平格式也带币种（dashboard 等接口 SELECT t.* 已带 currency） */
+  currency?: string;
   note?: string;
   date: string;
   cat_name?: string;
@@ -207,6 +211,11 @@ export interface CreateTransactionRequest {
   category_id: number;
   type: string;
   amount: number;
+  /**
+   * 多币种 P2-3c：新建交易时显式带币种。后端优先级 body.currency > 关联账户 currency > 'CNY'；
+   * 旧客户端不传时后端会按账户币种兜底，向后兼容。
+   */
+  currency?: string;
   note?: string;
   date: string;
   location?: string;
@@ -221,6 +230,10 @@ export interface UpdateTransactionRequest {
   category_id: number;
   type: string;
   amount: number;
+  /**
+   * 多币种 P2-3c：编辑交易时允许改币种。后端优先级 body.currency > 新账户 currency > 老 currency > 'CNY'。
+   */
+  currency?: string;
   note?: string;
   date: string;
   location?: string;
@@ -257,6 +270,14 @@ export interface TxSummary {
   income: number;
   expense: number;
   balance: number;
+  /**
+   * 多币种 P2-3c：单值 income/expense/balance 在混币种账本下不再有意义（跨币种累加本就是错的）。
+   * 后端按 currency GROUP BY 后回填这两个 breakdown，前端用 fmtMoneyMix 智能混显。
+   * 老客户端只读 income/expense/balance 仍工作（fallback 单值，无数据则为零）；新客户端优先 breakdown。
+   */
+  currency?: string;
+  incomeBreakdown?: Record<string, number>;
+  expenseBreakdown?: Record<string, number>;
   expenseByCategory: CategoryTotal[];
   incomeByCategory: CategoryTotal[];
 }

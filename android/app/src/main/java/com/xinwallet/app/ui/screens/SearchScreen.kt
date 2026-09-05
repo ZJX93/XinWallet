@@ -328,7 +328,8 @@ private fun SearchTxRow(tx: TransactionItem, onClick: () -> Unit) {
             }
         }
         Spacer(Modifier.width(8.dp))
-        Text(formatMoneySigned(tx.amount), style = MaterialTheme.typography.bodyLarge, color = amountColor)
+        // 多币种 P2-3c：搜索结果每行带币种（后端 transactions.js 列表已 SELECT 透出 currency）
+        Text(formatMoneySigned(tx.amount, tx.currency), style = MaterialTheme.typography.bodyLarge, color = amountColor)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 }

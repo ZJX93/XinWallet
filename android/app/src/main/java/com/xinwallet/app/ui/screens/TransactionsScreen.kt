@@ -101,8 +101,10 @@ import com.xinwallet.app.ui.viewmodel.shiftMonth
 import com.xinwallet.app.ui.viewmodel.TransactionsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import com.xinwallet.app.util.formatMoneyShort
 import com.xinwallet.app.util.formatDayLabel
+import com.xinwallet.app.util.sumByCurrency
 import com.xinwallet.app.util.todayDate
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
@@ -175,7 +177,7 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
             text = {
                 Column {
                     Text(
-                        formatMoney(if (item.transfer != null) kotlin.math.abs(item.amount) else item.amount),
+                        formatMoney(if (item.transfer != null) kotlin.math.abs(item.amount) else item.amount, item.currency),
                         style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(4.dp))
@@ -361,10 +363,15 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
                             LazyColumn(Modifier.fillMaxSize()) {
                                 item {
                                     Spacer(Modifier.height(8.dp))
+                                    // 多币种 P2-3c：传 breakdown 而非单值。混币种账本下 income/expense/balance 单值累加没意义，
+                                    // breakdown 按币种 GROUP BY 后用 fmtMoneyMix 智能混显（主货币 + 括号附注其他币种）。
                                     SummaryCard(
                                         income = state.summary?.income ?: 0.0,
                                         expense = state.summary?.expense ?: 0.0,
                                         balance = state.summary?.balance ?: 0.0,
+                                        incomeBreakdown = state.summary?.incomeBreakdown,
+                                        expenseBreakdown = state.summary?.expenseBreakdown,
+                                        currency = state.summary?.currency ?: "CNY",
                                         txCount = state.items.size,
                                         periodMode = state.periodMode
                                     )
@@ -459,7 +466,16 @@ private fun TxTypeMonthBar(
 }
 
 @Composable
-private fun SummaryCard(income: Double, expense: Double, balance: Double, txCount: Int, periodMode: String = "month") {
+private fun SummaryCard(
+    income: Double,
+    expense: Double,
+    balance: Double,
+    incomeBreakdown: Map<String, Double>?,
+    expenseBreakdown: Map<String, Double>?,
+    currency: String,
+    txCount: Int,
+    periodMode: String = "month"
+) {
     val prefix = if (periodMode == "year") "本年" else "本月"
     val gradient = androidx.compose.ui.graphics.Brush.horizontalGradient(
         colors = listOf(Brown500, Brown300)
@@ -473,27 +489,65 @@ private fun SummaryCard(income: Double, expense: Double, balance: Double, txCoun
             Column {
                 Text("结余", style = MaterialTheme.typography.titleMedium, color = Color.White)
                 Spacer(Modifier.height(4.dp))
+                // 多币种 P2-3c：结余 = incomeBreakdown - expenseBreakdown（按币种分别算，不跨币种累加）。
+                // 单币种账本下 breakdown 只有 1 个币种，结果与原 balance 等价；混币种账本下分别展示各币种余额。
+                val balanceMix = buildBalanceMix(incomeBreakdown, expenseBreakdown, currency)
                 Text(
                     // formatMoney 自带 ¥ 前缀，原先又拼了一个，真机上显示成「¥ ¥21,201.34」
-                    formatMoney(balance),
+                    if (balanceMix != null) formatMoneyMix(balanceMix, currency)
+                    else formatMoney(balance, currency),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    KpiCell("${prefix}支出", expense)
-                    KpiCell("${prefix}收入", income)
-                    KpiCell("${prefix}预算", 0.0)
-                    KpiCell("${prefix}剩余", 0.0)
+                    // 支出 / 收入：优先 breakdown 智能混显，老数据无 breakdown 时回退单值 + 主货币
+                    KpiCell(
+                        "${prefix}支出",
+                        if (!expenseBreakdown.isNullOrEmpty()) formatMoneyMix(expenseBreakdown, currency)
+                        else formatMoney(expense, currency)
+                    )
+                    KpiCell(
+                        "${prefix}收入",
+                        if (!incomeBreakdown.isNullOrEmpty()) formatMoneyMix(incomeBreakdown, currency)
+                        else formatMoney(income, currency)
+                    )
+                    KpiCell("${prefix}预算", "—")
+                    KpiCell("${prefix}剩余", "—")
                 }
             }
         }
     }
 }
 
+/**
+ * 多币种 P2-3c：按 incomeBreakdown / expenseBreakdown 算出 balance 的 breakdown（income - expense，按各币种分别相减）。
+ * 单边为 null 时按单边算，单边都为空时返回 null（让 SummaryCard 退回单值 fallback）。
+ * 选主货币时取 |balance| 绝对值最大的币种，结果与 income/expense 的"主货币"独立计算 —— 混币种账本下
+ * 「主收入 CNY + 主支出 USD」场景下 balance 主货币会落在绝对值更大的那侧。
+ */
+private fun buildBalanceMix(
+    incomeBreakdown: Map<String, Double>?,
+    expenseBreakdown: Map<String, Double>?,
+    @Suppress("UNUSED_PARAMETER") baseCurrency: String
+): Map<String, Double>? {
+    if (incomeBreakdown.isNullOrEmpty() && expenseBreakdown.isNullOrEmpty()) return null
+    val out = linkedMapOf<String, Double>()
+    val keys = (incomeBreakdown?.keys ?: emptySet()) + (expenseBreakdown?.keys ?: emptySet())
+    if (keys.isEmpty()) return null
+    keys.forEach { k ->
+        val inc = incomeBreakdown?.get(k) ?: 0.0
+        val exp = expenseBreakdown?.get(k) ?: 0.0
+        out[k] = inc - exp
+    }
+    // 过滤掉绝对值接近零的零头（fmtMoneyMix 内也会过滤，这里再做一遍避免空 map）
+    val nonZero = out.filter { kotlin.math.abs(it.value) > 0.001 }
+    return if (nonZero.isEmpty()) null else nonZero
+}
+
 @Composable
-private fun KpiCell(label: String, value: Double) {
+private fun KpiCell(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             label,
@@ -503,7 +557,7 @@ private fun KpiCell(label: String, value: Double) {
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            formatMoney(value),
+            value,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = Color.White,
@@ -515,8 +569,10 @@ private fun KpiCell(label: String, value: Double) {
 
 @Composable
 private fun DayHeader(day: String, list: List<TransactionItem>) {
-    val income = list.filter { it.type == "income" }.sumOf { it.amount }
-    val expense = list.filter { it.type == "expense" }.sumOf { it.amount }
+    // 多币种 P2-3c：day 汇总按 currency 分组后用 fmtMoneyMix 智能混显。
+    // 单货币账本下 breakdown 只有 1 个币种，混显结果等价于单值；混币种账本下正确区分。
+    val incomeBreakdown = sumByCurrency(list.filter { it.type == "income" }, { it.currency }, { it.amount })
+    val expenseBreakdown = sumByCurrency(list.filter { it.type == "expense" }, { it.currency }, { it.amount })
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -526,8 +582,13 @@ private fun DayHeader(day: String, list: List<TransactionItem>) {
         Text(formatDayLabel(day), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
         Spacer(Modifier.weight(1f))
         val parts = buildList {
-            if (income > 0) add("收 ${formatMoneyShort(income)}")
-            if (expense > 0) add("支 ${formatMoneyShort(expense)}")
+            if (incomeBreakdown.values.any { it > 0 }) {
+                // 优先用混显；单货币账本下 formatMoneyMix 退化为单值
+                add("收 ${formatMoneyMix(incomeBreakdown, incomeBreakdown.keys.first())}")
+            }
+            if (expenseBreakdown.values.any { it > 0 }) {
+                add("支 ${formatMoneyMix(expenseBreakdown, expenseBreakdown.keys.first())}")
+            }
         }
         if (parts.isNotEmpty()) {
             Text(parts.joinToString("  "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -645,8 +706,8 @@ private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) 
         }
         Text(
             // 转账取绝对值：折叠后的那条腿可能是 transfer_out 的负数金额
-            if (isTransfer) formatMoney(kotlin.math.abs(item.amount))
-            else (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount),
+            if (isTransfer) formatMoney(kotlin.math.abs(item.amount), item.currency)
+            else (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount, item.currency),
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }
@@ -879,9 +940,14 @@ private fun CalendarView(
             if (dayItems.isEmpty()) {
                 item { Text("${selectedDay} 暂无记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
             } else {
-                val income = dayItems.filter { it.type == "income" }.sumOf { it.amount }
-                val expense = dayItems.filter { it.type == "expense" }.sumOf { it.amount }
-                val balance = income - expense
+                // 多币种 P2-3c：日历日视图汇总按 currency 分组后 fmtMoneyMix 智能混显（与 DayHeader 同语义）
+                val incomeBreakdown = sumByCurrency(dayItems.filter { it.type == "income" }, { it.currency }, { it.amount })
+                val expenseBreakdown = sumByCurrency(dayItems.filter { it.type == "expense" }, { it.currency }, { it.amount })
+                val balanceMix = if (incomeBreakdown.isEmpty() && expenseBreakdown.isEmpty()) null
+                    else (incomeBreakdown.keys + expenseBreakdown.keys)
+                        .associateWith { k -> (incomeBreakdown[k] ?: 0.0) - (expenseBreakdown[k] ?: 0.0) }
+                        .filter { kotlin.math.abs(it.value) > 0.001 }
+                        .takeIf { it.isNotEmpty() }
                 item {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
@@ -900,16 +966,23 @@ private fun CalendarView(
                             softWrap = false
                         )
                         Spacer(Modifier.weight(1f))
-                        // 三项金额统一 formatMoneyShort：混用会让 '收 ¥1.90万' 和
-                        // '结余 +¥17,226.00' 看起来像两类不同数据
-                        Text("收 ${formatMoneyShort(income)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                        // 三项金额统一 fmtMoneyMix 混显：混币种账本下展示「¥1,000 +$50」，
+                        // 单货币账本下退化为单值（与原 formatMoneyShort 行为等价 —— 都按主货币渲染一次）。
+                        Text("收 ${formatMoneyMix(incomeBreakdown, incomeBreakdown.keys.firstOrNull() ?: "CNY")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                         Spacer(Modifier.width(10.dp))
-                        Text("支 ${formatMoneyShort(expense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                        Text("支 ${formatMoneyMix(expenseBreakdown, expenseBreakdown.keys.firstOrNull() ?: "CNY")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 1)
                         Spacer(Modifier.width(10.dp))
+                        // balance 拆分：分别展示各币种余额，跨币种不累加
+                        val balanceDisplay = if (balanceMix != null) {
+                            balanceMix.entries.joinToString(" ") { (cur, amt) ->
+                                val prefix = if (amt >= 0) "+" else ""
+                                "$prefix${formatMoney(amt, cur)}"
+                            }
+                        } else "—"
                         Text(
-                            "结余 ${if (balance >= 0) "+" else ""}${formatMoneyShort(balance)}",
+                            "结余 $balanceDisplay",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (balance >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1
                         )
                     }
