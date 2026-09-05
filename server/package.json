@@ -24,7 +24,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
-    "mysql2": "^3.11.0",
+    "mysql2": "^3.24.3",
     "pg": "^8.13.1",
     "swagger-ui-dist": "^5.32.11",
     "tencentcloud-sdk-nodejs-ocr": "^4.1.268"
