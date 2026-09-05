@@ -135,13 +135,16 @@ function recreateSelf(oldImageId) {
             }
         }
 
-        // 更新完成后的旧镜像清理命令：
-        //  - 有 oldImageId：精准 rmi 本次被替换的旧镜像（层可能被新镜像共享，删不掉则忽略）
-        //  - 无 oldImageId：退化为 image prune -f（仅删无容器引用的悬空镜像）
-        // 仅 compose 路径真正换镜像才会追加，兜底重启路径不删。
-        const pruneCmd = oldImageId
-            ? `docker rmi ${oldImageId} >/dev/null 2>&1 || true`
-            : 'docker image prune -f >/dev/null 2>&1 || true';
+        // 更新完成后清理被替换掉的旧镜像：
+        //  1) 精准 rmi 本次被替换的旧镜像 ID（层可能被新镜像共享，删不掉则忽略）；
+        //  2) 再统一 image prune -f 清掉所有「无任何容器引用」的悬空镜像。
+        //     pull 新版本后旧 :latest 变成 dangling，compose --force-recreate 删除旧容器后
+        //     该旧镜像即无人引用，必须靠 prune 兜底清掉——否则单靠 rmi 在「新旧镜像共享层」
+        //     时会失败（层被新镜像占用），旧镜像就残留在磁盘上长期占用 NAS 空间。
+        //     prune 只删无引用的悬空镜像，绝不波及当前镜像，安全。
+        // 两种路径都追加该清理：compose 路径真正换镜像后会清掉旧镜像；
+        // 兜底 restart 路径虽不换镜像，但 prune 只清无引用悬空镜像，无害。
+        const cleanCmd = `docker rmi ${oldImageId} >/dev/null 2>&1 || true; docker image prune -f >/dev/null 2>&1 || true`;
 
         const args = ['run', '-d', '--rm', '-v', '/var/run/docker.sock:/var/run/docker.sock'];
         let script;
@@ -155,12 +158,13 @@ function recreateSelf(oldImageId) {
             // sleep 2：等本容器把 HTTP 响应发送完，避免前端拿不到「已开始更新」。
             // --no-deps 只重建 app 不牵动数据库；--force-recreate 确保载入新镜像层。
             // 重建后立即清理被替换掉的旧镜像，避免 dangling 镜像长期占用 NAS 磁盘。
-            script = `sleep 2 && docker compose -p ${project} up -d --no-deps --force-recreate ${service} && ${pruneCmd}`;
+            script = `sleep 2 && docker compose -p ${project} up -d --no-deps --force-recreate ${service} && ${cleanCmd}`;
         } else {
             // 兜底：无 compose 标签（手工 docker run 启动）时无法还原编排配置，
-            // 只能重启容器并记录警告——此路径下镜像不会更新，需用户手动重建。
+            // 只能重启容器——此路径下镜像不会更新，需用户手动重建；
+            // 仍追加 image prune 清理其它无引用的悬空镜像（不影响当前正在运行的镜像）。
             console.warn('[update] 未取到 compose 标签，退化为重启容器（镜像不会更新）');
-            script = `sleep 2 && docker restart ${UPDATE_CONTAINER}`;
+            script = `sleep 2 && docker restart ${UPDATE_CONTAINER} && ${cleanCmd}`;
         }
 
         args.push('docker:cli', 'sh', '-c', script);
