@@ -73,6 +73,7 @@ import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import com.xinwallet.app.util.formatMoneyShort
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -522,12 +523,14 @@ private fun buildKpis(dataType: String, report: com.xinwallet.app.data.model.Fin
     val (avgLabel, avgDivisor) = avgLabelAndDivisor(periodMode, period)
     return when (dataType) {
         "income" -> listOf(
-            KpiSpec("收入金额", formatMoney(s.income), Color(0xFFC11435), "💵"),
-            KpiSpec("${avgLabel}收入", formatMoney(s.income / avgDivisor), Color(0xFFC11435), "📅")
+            // 多币种 P2-2e：收入金额按 breakdown 智能格式化（多币种账本自动附注其他货币）
+            KpiSpec("收入金额", formatMoneyMix(s.incomeBreakdown), Color(0xFFC11435), "💵"),
+            KpiSpec("${avgLabel}收入", formatMoneyMix(s.incomeBreakdown, s.currency), Color(0xFFC11435), "📅")
         )
         "balance" -> listOf(
-            KpiSpec("结余金额", formatMoney(s.balance), main, "🎯"),
-            KpiSpec("${avgLabel}结余", formatMoney(s.balance / avgDivisor), main, "📅")
+            // balance = income - expense 主货币值；非多币种混显场景直接按主货币格式化
+            KpiSpec("结余金额", formatMoney(s.balance, s.currency), main, "🎯"),
+            KpiSpec("${avgLabel}结余", formatMoney(s.balance / avgDivisor, s.currency), main, "📅")
         )
         else -> {
             // 支出：4 张 = 支出金额 / (日均|月均|年均)支出 / (本月|本年)预算 / 剩余预算
@@ -536,9 +539,11 @@ private fun buildKpis(dataType: String, report: com.xinwallet.app.data.model.Fin
             val remaining = totalBudget - totalActual
             val green = Color(0xFF009558)
             listOf(
-                KpiSpec("支出金额", formatMoney(s.expense), green, "💸"),
-                KpiSpec("${avgLabel}支出", formatMoney(s.expense / avgDivisor), green, "📅"),
+                KpiSpec("支出金额", formatMoneyMix(s.expenseBreakdown), green, "💸"),
+                KpiSpec("${avgLabel}支出", formatMoneyMix(s.expenseBreakdown, s.currency), green, "📅"),
+                // 预算总额 = sumOf{it.budget}，预算 amount 自身是 CNY 单货币（stats.js/reports.js 一致）
                 KpiSpec(if (periodPrefix.isEmpty()) "预算" else "${periodPrefix}预算", formatMoney(totalBudget), main, "💰"),
+                // 剩余预算 = 总额 - 主货币实际，多币种账本下近似按主货币展示（预算天然 CNY 单货币）
                 KpiSpec("剩余预算", formatMoney(remaining), main, "⏳")
             )
         }
@@ -592,31 +597,41 @@ private fun TrendCard(
     // 选中日索引：默认峰值日；点击图表切换为点中的那一天
     var selectedIndex by remember(series) { mutableStateOf(peakIndex) }
 
+    // 多币种 P2-2e：series 是按 bucket 主货币提取的序列，整期主货币取首个非零 bucket 的 currency
+    // （混币种账本下 series 不严格同币种，但「累计」/「选中点」展示用单一 currency 比拼接更可读）
+    val primaryCurrency = remember(buckets) {
+        buckets.firstOrNull { it.income > 0 || it.expense > 0 }?.currency ?: "CNY"
+    }
+
     val (title, color, dayLabelPrefix, cumLabel) = when (dataType) {
         "income" -> Quadruple(
             "收入趋势",
             Color(0xFFC11435),
             "收入",
-            "累计收入 ${formatMoney(series.sum())}"
+            "累计收入 ${formatMoney(series.sum(), primaryCurrency)}"
         )
         "balance" -> Quadruple(
             "结余趋势",
             Color(0xFF995F2C),
             "结余",
-            "期末结余 ${formatMoney(series.lastOrNull() ?: 0.0)}"
+            "期末结余 ${formatMoney(series.lastOrNull() ?: 0.0, primaryCurrency)}"
         )
         else -> Quadruple(
             "支出趋势",
             Color(0xFF009558),
             "支出",
-            "累计支出 ${formatMoney(series.sum())}"
+            "累计支出 ${formatMoney(series.sum(), primaryCurrency)}"
         )
     }
 
     // 左：选中桶 + 该桶值（无 ¥ 符号）；累计始终为整期累计
     val dayLabel = selectedIndex
         ?.takeIf { it in buckets.indices && it in series.indices }
-        ?.let { "${bucketLabel(buckets, it)}  $dayLabelPrefix ${formatMoney(series[it])}" }
+        ?.let {
+            // 多币种 P2-2e：选中点的 currency 取该 bucket 的 currency（单日多币种混显场景）
+            val cur = buckets[it].currency
+            "${bucketLabel(buckets, it)}  $dayLabelPrefix ${formatMoney(series[it], cur)}"
+        }
         ?: "本期暂无数据"
 
     Card(
@@ -737,7 +752,8 @@ private fun CategoryRankingCard(
                 DonutChart(
                     data = pieData,
                     centerTitle = centerTitle,
-                    centerAmount = selected?.let { formatMoney(it.total) },
+                    // 多币种 P2-2e：环心金额按该分类的 breakdown 智能格式化（多币种账本自动附注）
+                    centerAmount = selected?.let { formatMoneyMix(it.totalBreakdown) },
                     selectedLabel = selected?.name,
                     onSliceClick = { name -> selectedName = name }
                 )
@@ -806,7 +822,8 @@ private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
                     )
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            (if (isIncome) "" else "-") + formatMoney(tx.amount),
+                            // 多币种 P2-2e：按交易账户币种格式化（reports.js top-transactions 已加 currency 字段）
+                            (if (isIncome) "" else "-") + formatMoney(tx.amount, tx.currency),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (isIncome) Color(0xFFC11435) else Color(0xFF009558)
@@ -828,6 +845,10 @@ private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
 @Composable
 private fun DailyOverviewTable(buckets: List<DailyTrendPoint>) {
     val monthly = isMonthBucket(buckets)
+    // 多币种 P2-2e：汇总行主货币取首个非零 bucket 的 currency；行级用各 bucket 自带 currency
+    val primaryCurrency = remember(buckets) {
+        buckets.firstOrNull { it.income > 0 || it.expense > 0 }?.currency ?: "CNY"
+    }
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         shape = RoundedCornerShape(16.dp),
@@ -862,6 +883,8 @@ private fun DailyOverviewTable(buckets: List<DailyTrendPoint>) {
                 // 原来直接读 report.dailyTrend，按年会渲染 365 个 Row。
                 buckets.forEach { p ->
                     val balance = p.income - p.expense
+                    // 多币种 P2-2e：每行用该 bucket 的 currency；balance 用同币种
+                    val rowCur = p.currency
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceAround,
@@ -874,9 +897,9 @@ private fun DailyOverviewTable(buckets: List<DailyTrendPoint>) {
                             // 四列等分 weight(1f)，360dp 屏每列仅约 82dp；
                             // 12sp 下 -¥123,456.00 需约 92dp 会换行，导致表格行高参差。
                             // 这里是「一行内并排多项金额」，用 formatMoneyShort（≥1万才缩）
-                            if (p.expense > 0) "-${formatMoneyShort(p.expense)}" else "—",
-                            if (p.income > 0) "+${formatMoneyShort(p.income)}" else "—",
-                            if (balance != 0.0) formatMoneyShort(balance) else "—"
+                            if (p.expense > 0) "-${formatMoneyShort(p.expense, rowCur)}" else "—",
+                            if (p.income > 0) "+${formatMoneyShort(p.income, rowCur)}" else "—",
+                            if (balance != 0.0) formatMoneyShort(balance, rowCur) else "—"
                         ).forEachIndexed { idx, text ->
                             val color = when (idx) {
                                 // ⚠️ 原来这里写反了：支出用 0xFFC11435（红）、收入用 0xFF009558（绿），
@@ -918,9 +941,10 @@ private fun DailyOverviewTable(buckets: List<DailyTrendPoint>) {
                 ) {
                     listOf(
                         "汇总",
-                        if (totalExpense > 0) "-${formatMoney(totalExpense)}" else "—",
-                        if (totalIncome > 0) "+${formatMoney(totalIncome)}" else "—",
-                        formatMoney(totalBalance)
+                        // 多币种 P2-2e：汇总行用 primaryCurrency（取首个非零 bucket）
+                        if (totalExpense > 0) "-${formatMoney(totalExpense, primaryCurrency)}" else "—",
+                        if (totalIncome > 0) "+${formatMoney(totalIncome, primaryCurrency)}" else "—",
+                        formatMoney(totalBalance, primaryCurrency)
                     ).forEachIndexed { idx, text ->
                         Text(
                             text,

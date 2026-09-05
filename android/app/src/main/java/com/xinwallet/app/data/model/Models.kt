@@ -920,56 +920,87 @@ data class FinanceReport(
     val compare: ReportCompare? = null
 )
 
-/** 月度预算执行（结余 tab 展示） */
+/** 月度预算执行（结余 tab 展示）。多币种 P2-2e：actualBreakdown 按账户币种给出 */
 data class ReportBudgetExec(
     val id: Int = 0,
     val name: String = "",
     val icon: String? = "💰",
     val budget: Double = 0.0,
     val actual: Double = 0.0,
-    val usage: Double = 0.0
+    val usage: Double = 0.0,
+    /** 多币种 P2-2e：actual 主货币（按 amount 绝对值最大选） */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：actual 按账户币种分布；缺省回退到 {currency: actual} */
+    @SerializedName("actualBreakdown") val actualBreakdown: Map<String, Double>? = null
 )
 
+/** 报表汇总。多币种 P2-2e：breakdown 按交易账户币种分布，income/expense 为主货币值 */
 data class ReportSummary(
     val income: Double = 0.0,
     val expense: Double = 0.0,
     val balance: Double = 0.0,
+    /** 多币种 P2-2e：本期收入/支出主货币 */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：income 按账户币种分布 */
+    @SerializedName("incomeBreakdown") val incomeBreakdown: Map<String, Double>? = null,
+    /** 多币种 P2-2e：expense 按账户币种分布 */
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null,
     @SerializedName("savingsRate") val savingsRate: Double = 0.0,
     @SerializedName("transactionCount") val transactionCount: Int = 0,
     @SerializedName("avgDailyExpense") val avgDailyExpense: Double = 0.0
 )
 
-/** 分类占比切片（支出/收入共用）。total 即该分类在周期内的发生额。 */
+/** 分类占比切片（支出/收入共用）。total 即该分类在周期内的发生额。多币种 P2-2e：totalBreakdown 按交易账户币种分布 */
 data class ReportCategorySlice(
     val id: Int = 0,
     val name: String = "",
     val icon: String? = null,
     @SerializedName("parent_id") val parentId: Int? = null,
-    val total: Double = 0.0
+    val total: Double = 0.0,
+    /** 多币种 P2-2e：total 主货币 */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：total 按账户币种分布 */
+    @SerializedName("totalBreakdown") val totalBreakdown: Map<String, Double>? = null
 )
 
+/** 日趋势点。多币种 P2-2e：breakdown 按交易账户币种分布（income/expense 为主货币值） */
 data class DailyTrendPoint(
     val date: String = "",
     val income: Double = 0.0,
-    val expense: Double = 0.0
+    val expense: Double = 0.0,
+    /** 多币种 P2-2e：该日主货币 */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：income 按账户币种分布 */
+    @SerializedName("incomeBreakdown") val incomeBreakdown: Map<String, Double>? = null,
+    /** 多币种 P2-2e：expense 按账户币种分布 */
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null
 )
 
+/** Top5 支出。多币种 P2-2e：currency 跟随交易账户币种 */
 data class TopExpense(
     val id: Int = 0,
     val date: String = "",
     val amount: Double = 0.0,
     val note: String? = null,
     @SerializedName("category_name") val categoryName: String? = null,
-    @SerializedName("category_icon") val categoryIcon: String? = null
+    @SerializedName("category_icon") val categoryIcon: String? = null,
+    /** 多币种 P2-2e：交易账户币种 */
+    val currency: String = "CNY"
 )
 
-/** 环比：与上个周期对比 */
+/** 环比：与上个周期对比。多币种 P2-2e：breakdown 按账户币种分布 */
 data class ReportCompare(
     val period: String = "",
     val label: String = "",
     val income: Double = 0.0,
     val expense: Double = 0.0,
-    val balance: Double = 0.0
+    val balance: Double = 0.0,
+    /** 多币种 P2-2e：上期主货币 */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：income 按账户币种分布 */
+    @SerializedName("incomeBreakdown") val incomeBreakdown: Map<String, Double>? = null,
+    /** 多币种 P2-2e：expense 按账户币种分布 */
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null
 )
 
 /** GET /reports/top-transactions 返回：按 type 取 Top5 交易 */
@@ -977,13 +1008,16 @@ data class TopTransactionsResponse(
     val items: List<TopTransaction> = emptyList()
 )
 
+/** Top5 交易（按类型区分支出/收入）。多币种 P2-2e：currency 跟随交易账户币种 */
 data class TopTransaction(
     val id: Int = 0,
     val date: String = "",
     val amount: Double = 0.0,
     val note: String? = null,
     @SerializedName("category_name") val categoryName: String? = null,
-    @SerializedName("category_icon") val categoryIcon: String? = null
+    @SerializedName("category_icon") val categoryIcon: String? = null,
+    /** 多币种 P2-2e：交易账户币种 */
+    val currency: String = "CNY"
 )
 
 /* ----------------------------- 标签 ----------------------------- */

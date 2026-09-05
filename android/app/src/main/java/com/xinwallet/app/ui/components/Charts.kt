@@ -53,6 +53,7 @@ import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 
 /**
  * 单条趋势折线图（统计页按维度切换：支出线 / 收入线 / 结余累计线）。
@@ -191,7 +192,8 @@ fun CategoryPie(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            formatMoney(slice.total),
+                            // 多币种 P2-2e：饼图扇区金额按该分类 breakdown 智能格式化
+                            formatMoneyMix(slice.totalBreakdown),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -267,7 +269,8 @@ fun CategoryBars(
                     ) {
                         Text(it.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Text(
-                            "${formatMoney(it.total)} · ${pct.toInt()}%",
+                            // 多币种 P2-2e：分类排行柱状条目金额按该分类 breakdown 智能格式化
+                            "${formatMoneyMix(it.totalBreakdown)} · ${pct.toInt()}%",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
