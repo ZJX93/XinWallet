@@ -98,7 +98,12 @@ router.post('/apply', (req, res) => {
             return;
         }
         console.log('[update] 镜像拉取完成，开始重建容器:', UPDATE_IMAGE);
-        recreateSelf();
+        // 重建前记录当前运行的镜像 ID，更新成功后精准删除被替换掉的旧镜像，
+        // 避免旧 :latest 变 dangling 长期占用 NAS 磁盘。
+        execFile('docker', ['inspect', '-f', '{{.Image}}', UPDATE_CONTAINER], (insErr, insOut) => {
+            const oldImageId = (!insErr && insOut) ? String(insOut).trim() : '';
+            recreateSelf(oldImageId);
+        });
     });
 });
 
@@ -107,7 +112,7 @@ router.post('/apply', (req, res) => {
  * 优先走 compose（能完整还原端口/卷/网络/环境变量等编排配置）；
  * 容器缺少 compose 标签（如手工 docker run 启动）时退回 docker CLI 重建。
  */
-function recreateSelf() {
+function recreateSelf(oldImageId) {
     // compose 项目名/服务名/项目目录一律从自身容器标签读取，不硬编码：
     // 用户可能用 -p 自定义项目名，或把仓库放在任意路径。
     // docker --format 的 Go template `index` 函数对带点的 key
@@ -130,6 +135,14 @@ function recreateSelf() {
             }
         }
 
+        // 更新完成后的旧镜像清理命令：
+        //  - 有 oldImageId：精准 rmi 本次被替换的旧镜像（层可能被新镜像共享，删不掉则忽略）
+        //  - 无 oldImageId：退化为 image prune -f（仅删无容器引用的悬空镜像）
+        // 仅 compose 路径真正换镜像才会追加，兜底重启路径不删。
+        const pruneCmd = oldImageId
+            ? `docker rmi ${oldImageId} >/dev/null 2>&1 || true`
+            : 'docker image prune -f >/dev/null 2>&1 || true';
+
         const args = ['run', '-d', '--rm', '-v', '/var/run/docker.sock:/var/run/docker.sock'];
         let script;
 
@@ -141,7 +154,8 @@ function recreateSelf() {
             args.push('-v', `${workDir}:/compose-dir`, '-w', '/compose-dir');
             // sleep 2：等本容器把 HTTP 响应发送完，避免前端拿不到「已开始更新」。
             // --no-deps 只重建 app 不牵动数据库；--force-recreate 确保载入新镜像层。
-            script = `sleep 2 && docker compose -p ${project} up -d --no-deps --force-recreate ${service}`;
+            // 重建后立即清理被替换掉的旧镜像，避免 dangling 镜像长期占用 NAS 磁盘。
+            script = `sleep 2 && docker compose -p ${project} up -d --no-deps --force-recreate ${service} && ${pruneCmd}`;
         } else {
             // 兜底：无 compose 标签（手工 docker run 启动）时无法还原编排配置，
             // 只能重启容器并记录警告——此路径下镜像不会更新，需用户手动重建。

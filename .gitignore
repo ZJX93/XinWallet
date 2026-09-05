@@ -80,3 +80,5 @@ server.err
 crash.log
 # NAS 部署专用 compose（不含内置 PG），仅本地使用
 docker-compose.nas.yml
+# bind mount 运行时数据（含加密密钥文件，严禁入库）
+/data/

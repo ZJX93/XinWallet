@@ -14,6 +14,7 @@ const { success, fail, handleServerError, computeAccountBalance } = require('./_
 const { toAmount } = require('../validate');
 const { recomputeInvestmentPosition } = require('./transactions');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
+const { encrypt, decrypt } = require('../crypto');
 
 // 备份文件识别标记：导入时校验，避免误读普通 xlsx
 const BACKUP_MARK = '鑫钱包账本备份';
@@ -193,14 +194,16 @@ function buildWorkbook(data) {
         t.goal_name || '', t.account_name || '', t.type, t.amount,
         fmtDateTime(t.date) || fmtDate(t.date), t.note || ''
     ]);
-    // AI 配置（v3 新增「账本配置页」区段）：仅导出非敏感字段，api_key / OCR 密钥不落盘。
+    // AI 配置（v3 新增「账本配置页」区段）：
+    // api_key 解密后以明文导出，便于把 AI 配置完整迁移到其他设备。
+    // 注意：备份 xlsx 本就含完整账本，明文密钥落盘后请妥善保管，勿外传。
     const ai = data.aiConfig || {};
     const aiProviders = ai.providers || [];
-    const aiProviderRows = aiProviders.map(p => ['服务商', p.name || '', p.base_url || '', p.model || '', p.is_active ? '是' : '否', `type=${p.api_type || 'openai'}`]);
+    const aiProviderRows = aiProviders.map(p => ['服务商', p.name || '', p.base_url || '', p.model || '', p.is_active ? '是' : '否', `type=${p.api_type || 'openai'}`, p.api_key || '']);
     const aiOcr = ai.ocr || {};
-    const aiOcrRow = [['OCR', aiOcr.provider || 'tencent', aiOcr.region || 'ap-guangzhou', '', aiOcr.configured ? '已配置' : '未配置', '密钥需在原设备重新填写']];
+    const aiOcrRow = [['OCR', aiOcr.provider || 'tencent', aiOcr.region || 'ap-guangzhou', '', aiOcr.configured ? '已配置' : '未配置', '密钥需在原设备重新填写', '']];
     const aiSettings = ai.settings || {};
-    const aiSettingRows = Object.keys(aiSettings).map(k => ['识别设置', k, '', '', '', aiSettings[k] === true ? '是' : (aiSettings[k] === false ? '否' : String(aiSettings[k] != null ? aiSettings[k] : ''))]);
+    const aiSettingRows = Object.keys(aiSettings).map(k => ['识别设置', k, '', '', '', aiSettings[k] === true ? '是' : (aiSettings[k] === false ? '否' : String(aiSettings[k] != null ? aiSettings[k] : '')), '']);
     const aiConfigRows = [...aiProviderRows, ...aiOcrRow, ...aiSettingRows];
 
     // ---- Sheet 1: 账本配置页（账本/分类/标签/AI配置）----
@@ -214,7 +217,7 @@ function buildWorkbook(data) {
         [[book.name || '默认账本', book.icon || '📒', book.color || '#6366f1', book.is_default ? '是' : '否']]);
     addSection(cfg, '分类', ['编码', '名称', '类型', '图标', '颜色', '系统预设', '父分类'], catRows);
     addSection(cfg, '标签', ['名称', '颜色', '图标'], tagRows);
-    addSection(cfg, 'AI配置', ['类别', '名称', 'Base URL', '模型', '启用', '参数/值'], aiConfigRows);
+    addSection(cfg, 'AI配置', ['类别', '名称', 'Base URL', '模型', '启用', '参数/值', '密钥'], aiConfigRows);
 
     // ---- Sheet 2: 账户页（仅账户）----
     const acc = wb.addWorksheet(SHEET_ACCOUNTS);
@@ -380,7 +383,7 @@ function parseAiConfig(rows) {
         const en = String(r['启用'] || '').trim();
         const param = String(r['参数/值'] || '').trim();
         if (cat === '服务商') {
-            if (name) providers.push({ name, api_type: param.replace(/^type=/, ''), base_url: base, model: r['模型'] != null ? String(r['模型']) : '', is_active: en === '是' });
+            if (name) providers.push({ name, api_type: param.replace(/^type=/, ''), base_url: base, model: r['模型'] != null ? String(r['模型']) : '', is_active: en === '是', api_key: r['密钥'] != null ? String(r['密钥']) : '' });
         } else if (cat === 'OCR') {
             ocr = { provider: name || 'tencent', region: base || 'ap-guangzhou', configured: en === '已配置' };
         } else if (cat === '识别设置') {
@@ -492,8 +495,8 @@ router.get('/export', async (req, res) => {
                   ORDER BY r.paid_at DESC, r.id DESC`,
                 [userId, bookId]
             ),
-            // AI 服务商配置（仅非密钥字段，api_key 加密存储不导出）
-            db.query('SELECT name, api_type, base_url, model, is_active FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [userId]),
+            // AI 服务商配置（含 api_key：解密后明文导出，便于备份迁移到其他设备）
+            db.query('SELECT name, api_type, base_url, model, is_active, api_key FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [userId]),
             // AI 识别行为设置（JSON 列，无密钥，安全导出）
             db.queryOne('SELECT settings FROM ai_settings WHERE user_id = ?', [userId]),
             // OCR 配置（仅 provider/region，secret 加密不导出）
@@ -542,13 +545,13 @@ router.get('/export', async (req, res) => {
             }))
         ];
 
-        // AI 配置归一（仅非敏感字段；api_key / OCR 密钥加密存储，不导出）
+        // AI 配置归一（api_key 解密为明文导出；解密失败则留空）
         let aiSettingsObj = {};
         if (aiSettingsRow && aiSettingsRow.settings) {
             try { aiSettingsObj = typeof aiSettingsRow.settings === 'string' ? JSON.parse(aiSettingsRow.settings) : aiSettingsRow.settings; } catch (e) { aiSettingsObj = {}; }
         }
         const aiConfig = {
-            providers: (aiProviders || []).map(p => ({ name: p.name, api_type: p.api_type, base_url: p.base_url, model: p.model, is_active: !!p.is_active })),
+            providers: (aiProviders || []).map(p => ({ name: p.name, api_type: p.api_type, base_url: p.base_url, model: p.model, is_active: !!p.is_active, api_key: p.api_key ? (decrypt(p.api_key) || '') : '' })),
             settings: aiSettingsObj,
             ocr: aiOcrRow ? { provider: aiOcrRow.provider || 'tencent', region: aiOcrRow.region || 'ap-guangzhou', configured: true } : { provider: 'tencent', region: 'ap-guangzhou', configured: false }
         };
@@ -1126,21 +1129,22 @@ router.post('/import', upload.single('file'), async (req, res) => {
               console.error('[导入] 回填投资台账指针异常（不影响已恢复账本）:', e && e.message);
             }
 
-            // 7.8) AI 配置恢复（仅非敏感字段；api_key / OCR 密钥加密存储，不导出也不覆盖，需用户在原设备重填）
+            // 7.8) AI 配置恢复（api_key 明文重新加密入库；备份文件无密钥则留空，需用户在原设备重填）
             if (aiConfig) {
                 // 识别行为设置：直接覆盖（JSON 列，无密钥，安全）
                 if (aiConfig.settings && Object.keys(aiConfig.settings).length) {
                     const sJson = typeof aiConfig.settings === 'string' ? aiConfig.settings : JSON.stringify(aiConfig.settings);
                     await conn.query(db.upsertSql('ai_settings', ['user_id'], ['settings']), [userId, sJson]);
                 }
-                // 服务商：目标无同名则插入（密钥留空，导入后需重填）
+                // 服务商：目标无同名则插入（有密钥则重新加密入库，导入后可直接使用）
                 for (const p of (aiConfig.providers || [])) {
                     if (!p || !String(p.name || '').trim()) continue;
                     const ex = await conn.query('SELECT id FROM ai_providers WHERE user_id = ? AND name = ?', [userId, p.name]);
                     if (ex.length) continue;
+                    const ak = (p.api_key && String(p.api_key).trim()) ? encrypt(String(p.api_key).trim()) : null;
                     await conn.query(
                         'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                        [userId, p.name, p.api_type || 'openai', p.base_url || '', null, p.model || '', p.is_active ? true : false, 0]
+                        [userId, p.name, p.api_type || 'openai', p.base_url || '', ak, p.model || '', p.is_active ? true : false, 0]
                     );
                     imported.ai_providers = (imported.ai_providers || 0) + 1;
                 }
