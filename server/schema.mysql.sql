@@ -623,6 +623,25 @@ CREATE UNIQUE INDEX idx_savings_user_book_name ON savings_goals (user_id, book_i
 CREATE UNIQUE INDEX idx_debts_user_book_name   ON debts (user_id, book_id, name);
 
 -- ============================================
+-- 多币种 P2-2b · 汇率快照
+-- 数据源：fawazahmed0 currency-api（jsdelivr CDN 镜像，免费、无 key、CORS 友好、每日更新）
+-- 策略：每次 fetch 落一行快照，UNIQUE(base, date) 避免重复；服务层先查最新一条
+--   · base = USD（当前固定），留字段便于未来扩展多 base 视图
+--   · rates key 统一大写（CNY/USD/EUR...），归一化在 fx-rates.js 完成
+--   · MySQL JSON（5.7+）替代 PG JSONB；唯一键写法不同
+-- ============================================
+CREATE TABLE IF NOT EXISTS fx_rates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  base VARCHAR(3) NOT NULL,
+  date DATE NOT NULL,
+  rates JSON NOT NULL,
+  source VARCHAR(100) DEFAULT 'fawazahmed0-currency-api',
+  fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_fx_base_date (base, date)
+);
+CREATE INDEX idx_fx_rates_base_date ON fx_rates (base, date DESC);
+
+-- ============================================
 -- 预测闭环
 -- 核心原则：AI 输出【永不直接写账本】，必经 prediction 快照 → 用户确认 → 原子 commit。
 -- status  = 生命周期（pending/committed/discarded）

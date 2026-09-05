@@ -92,6 +92,7 @@ router.use('/savings-goals', require('./routes/savings'));
 router.use('/debts', require('./routes/debts'));
 router.use('/books', booksRouter);
 router.use('/backup', require('./routes/backup'));   // /backup/export, /backup/import（xlsx 3 工作表备份）
+router.use('/fx', require('./routes/fx'));           // /fx/rates, /fx/refresh（多币种 P2-2b）
 
 // 应用一键更新（检测最新镜像 + 应用更新）；受全局 authMiddleware 保护（仅登录用户）。
 // 限流：10 分钟内最多 10 次（2026-09-05 统一放宽，原 3 次偏紧），防滥用反复重启容器。

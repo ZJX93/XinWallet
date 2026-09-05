@@ -677,6 +677,25 @@ CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions
 CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);
 
 -- ============================================
+-- 多币种 P2-2b · 汇率快照
+-- 数据源：fawazahmed0 currency-api（jsdelivr CDN 镜像，免费、无 key、CORS 友好、每日更新）
+-- 策略：每次 fetch 落一行快照，UNIQUE(base, date) 避免重复；服务层先查最新一条
+--   · base = USD（当前固定），留字段便于未来扩展多 base 视图
+--   · rates key 统一大写（CNY/USD/EUR...），归一化在 fx-rates.js 完成
+--   · 老库启动时由 CREATE TABLE IF NOT EXISTS 自动建表，无需补表逻辑
+-- ============================================
+CREATE TABLE IF NOT EXISTS fx_rates (
+  id SERIAL PRIMARY KEY,
+  base VARCHAR(3) NOT NULL,
+  date DATE NOT NULL,
+  rates JSONB NOT NULL,
+  source VARCHAR(100) DEFAULT 'fawazahmed0-currency-api',
+  fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (base, date)
+);
+CREATE INDEX IF NOT EXISTS idx_fx_rates_base_date ON fx_rates (base, date DESC);
+
+-- ============================================
 -- 预测闭环
 -- 核心原则：AI 输出【永不直接写账本】，必经 prediction 快照 → 用户确认 → 原子 commit。
 -- status  = 生命周期（pending/committed/discarded）

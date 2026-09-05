@@ -570,6 +570,26 @@ const spec = {
         responses: { 200: { description: '{ success, data: { imported } }' } },
       },
     },
+
+    // ============ 汇率（多币种 P2-2b）============
+    '/api/fx/rates': {
+      get: {
+        tags: ['汇率'], summary: '取最新汇率（内存/DB/远端 三级 fallback）',
+        responses: {
+          200: { description: '{ base, date, rates, source, fetchedAt, ageHours, stale }' },
+          500: { description: '无可用汇率（DB 为空且远程拉取失败）' },
+        },
+      },
+    },
+    '/api/fx/refresh': {
+      post: {
+        tags: ['汇率'], summary: '强制刷新汇率（拉远端并落库；设置页「刷新汇率」按钮调用）',
+        responses: {
+          200: { description: '{ base, date, rates, source, fetchedAt, ageHours, stale, warning? }' },
+          500: { description: '远程拉取失败（DB 也无则返回错误）' },
+        },
+      },
+    },
   },
 };
 
