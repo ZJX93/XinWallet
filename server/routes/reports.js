@@ -44,6 +44,86 @@ function setCachedReport(key, data) {
 }
 
 // ==========================================
+// 多币种 P2-2d 辅助函数：rows → breakdown 字典，主货币按 amount 绝对值最大选
+// ==========================================
+function _rowsToBreakdown(rows, valueKey) {
+    const out = {};
+    (rows || []).forEach(r => {
+        const cur = r.currency || 'CNY';
+        out[cur] = parseFloat(r[valueKey] || 0);
+    });
+    return out;
+}
+
+function _rowsToBreakdownMulti(rows, valueKeys) {
+    const out = {};
+    (rows || []).forEach(r => {
+        const cur = r.currency || 'CNY';
+        out[cur] = out[cur] || {};
+        valueKeys.forEach(k => { out[cur][k] = parseFloat(r[k] || 0); });
+    });
+    return out;
+}
+
+function _pickPrimaryCurrency(breakdown) {
+    let primary = 'CNY', max = -1;
+    Object.entries(breakdown).forEach(([cur, v]) => {
+        let total = 0;
+        if (typeof v === 'object' && v !== null) {
+            total = Math.abs(v.income || 0) + Math.abs(v.expense || 0)
+                  + Math.abs(v.total_value || 0) + Math.abs(v.total_cost || 0)
+                  + Math.abs(v.total_income || 0) + Math.abs(v.total_expense || 0);
+        } else {
+            total = Math.abs(v);
+        }
+        if (total > max) { max = total; primary = cur; }
+    });
+    return primary;
+}
+
+// 从 breakdown 取主货币值
+function _primaryValue(breakdown, key) {
+    const cur = _pickPrimaryCurrency(breakdown);
+    const v = breakdown[cur];
+    if (typeof v === 'object' && v !== null) return parseFloat(v[key] || 0);
+    return parseFloat(v || 0);
+}
+
+// 日趋势按 date × currency 双维度分组：[{date, currency, income, expense}] → [{date, breakdown}]
+function _groupDailyByCurrency(rows) {
+    const map = {};
+    (rows || []).forEach(r => {
+        if (!map[r.date]) map[r.date] = {};
+        map[r.date][r.currency || 'CNY'] = {
+            income: parseFloat(r.income || 0),
+            expense: parseFloat(r.expense || 0)
+        };
+    });
+    return Object.entries(map).map(([date, breakdown]) => {
+        const cur = _pickPrimaryCurrency(breakdown);
+        const v = breakdown[cur] || { income: 0, expense: 0 };
+        return {
+            date, currency: cur,
+            income: v.income, expense: v.expense,
+            incomeBreakdown: breakdown, expenseBreakdown: breakdown
+        };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// 解析 budget 子查询返回的 JSON 字符串为 breakdown（与 stats.js 严格一致）
+function _parseJsonBreakdown(jsonStr) {
+    if (!jsonStr) return { CNY: 0 };
+    try {
+        const obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+        const out = {};
+        Object.entries(obj || {}).forEach(([k, v]) => { out[k] = parseFloat(v) || 0; });
+        return Object.keys(out).length ? out : { CNY: 0 };
+    } catch (_) {
+        return { CNY: 0 };
+    }
+}
+
+// ==========================================
 // 辅助函数
 // ==========================================
 
@@ -218,34 +298,40 @@ async function buildReport(userId, bookId, type, period) {
     // 这些查询彼此独立、仅依赖 userId/start/end 等已知参数，统一用 Promise.all 并发执行，
     // 接口延迟降为「最慢一次查询」，在交易量大时收益明显。输出结构与重构前完全一致。
     const [
-        summaryRow, dailyRows, expByCat, incByCat, accountFlows, topExpenses,
-        budgetRows, actualByBudgetCat,
+        summaryRows, dailyRows, expByCat, incByCat, accountFlows, topExpenses,
+        budgetRows,
         accountAssets, invAssets,
-        prevRow,
+        prevRows,
         debtAll, debtRepayments,
     ] = await Promise.all([
-        db.queryOne(
-            `SELECT
-                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
-                COUNT(*) as tx_count
-             FROM transactions
-             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')`,
+        // 多币种 P2-2d：本期合计按账户币种 GROUP BY，rows 数组 → JS 端折 breakdown
+        db.query(
+            `SELECT a.currency AS currency,
+                COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+                COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense,
+                COUNT(*) AS tx_count
+             FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+               AND t.type IN ('expense','income','transfer_in','transfer_out')
+             GROUP BY a.currency`,
             [userId, bookId, start, end]
         ),
+        // 多币种 P2-2d：日趋势按 date × currency 双维度分组；JS 端用 _groupDailyByCurrency 折 breakdown
         db.query(
-            `SELECT CAST(date AS CHAR(10)) as date,
-                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-             FROM transactions
-             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
-             GROUP BY CAST(date AS CHAR(10)) ORDER BY date`,
+            `SELECT CAST(t.date AS CHAR(10)) AS date, a.currency AS currency,
+                COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+                COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+             FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+               AND t.type IN ('expense','income','transfer_in','transfer_out')
+             GROUP BY CAST(t.date AS CHAR(10)), a.currency ORDER BY date`,
             [userId, bookId, start, end]
         ),
         // 分类金额「子级向父级汇总」——在数据库层用递归 CTE 完成，语义同财务成本科目：
         // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和。
         // 做法：先由 categories 自联结生成 (node, ancestor_id) 闭包（每个分类到其所有祖先的映射），
         // 再把每笔交易按其分类 node 累加到该分类及其所有祖先 ancestor_id 上。
+        // 多币种 P2-2d：在 CTE 末端按 (cat_id, currency) 聚合，JSON_OBJECTAGG 返回该分类的币种字典
         db.query(
             `WITH RECURSIVE anc AS (
                SELECT c.id AS node, c.id AS ancestor_id, c.parent_id AS parent_id
@@ -255,19 +341,25 @@ async function buildReport(userId, bookId, type, period) {
                FROM anc a
                JOIN categories p ON p.id = a.parent_id
              ),
-             agg AS (
-               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+             raw AS (
+               SELECT a.ancestor_id AS cat_id, a2.currency AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t
                  ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense'
                 AND t.date >= ? AND t.date <= ?
-               GROUP BY a.ancestor_id
+               LEFT JOIN accounts a2 ON t.account_id = a2.id
+             ),
+             agg AS (
+               SELECT cat_id, currency, COALESCE(SUM(amount), 0) AS total
+               FROM raw GROUP BY cat_id, currency
              )
-             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             SELECT c.id, c.name, c.icon, c.parent_id,
+                    COALESCE(JSON_OBJECTAGG(agg.currency, agg.total), JSON_OBJECT()) AS total_breakdown_json
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
-             ORDER BY agg.total DESC`,
+             GROUP BY c.id, c.name, c.icon, c.parent_id
+             ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
             [userId, bookId, start, end]
         ),
         db.query(
@@ -279,42 +371,61 @@ async function buildReport(userId, bookId, type, period) {
                FROM anc a
                JOIN categories p ON p.id = a.parent_id
              ),
-             agg AS (
-               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+             raw AS (
+               SELECT a.ancestor_id AS cat_id, a2.currency AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t
                  ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'income'
                 AND t.date >= ? AND t.date <= ?
-               GROUP BY a.ancestor_id
+               LEFT JOIN accounts a2 ON t.account_id = a2.id
+             ),
+             agg AS (
+               SELECT cat_id, currency, COALESCE(SUM(amount), 0) AS total
+               FROM raw GROUP BY cat_id, currency
              )
-             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             SELECT c.id, c.name, c.icon, c.parent_id,
+                    COALESCE(JSON_OBJECTAGG(agg.currency, agg.total), JSON_OBJECT()) AS total_breakdown_json
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
-             ORDER BY agg.total DESC`,
+             GROUP BY c.id, c.name, c.icon, c.parent_id
+             ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
             [userId, bookId, start, end]
         ),
+        // 多币种 P2-2d：账户净流加 currency 列（每账户单货币——账户本身就是 currency 的载体）
         db.query(
-            `SELECT a.id, a.name, a.icon, a.type,
+            `SELECT a.id, a.name, a.icon, a.type, a.currency,
                 COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0) as net
              FROM transactions t JOIN accounts a ON t.account_id = a.id
              WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
-             GROUP BY a.id, a.name, a.icon, a.type
+             GROUP BY a.id, a.name, a.icon, a.type, a.currency
              ORDER BY ABS(COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0)) DESC`,
             [userId, bookId, start, end]
         ),
+        // 多币种 P2-2d：top 交易附加 currency（LEFT JOIN accounts）——前端展示按交易币种格式化
         db.query(
-            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
-             FROM transactions t JOIN categories c ON t.category_id = c.id
+            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon, a.currency
+             FROM transactions t
+             JOIN categories c ON t.category_id = c.id
+             LEFT JOIN accounts a ON t.account_id = a.id
              WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
              ORDER BY t.amount DESC LIMIT 5`,
             [userId, bookId, start, end]
         ),
         // 仅当周期含月份时才查预算（无月份范围时预算执行无意义）
+        // 多币种 P2-2d：actual 子查询用 JSON_OBJECTAGG 按账户币种 GROUP BY，合并到 budgetRows 单次查询
         hasMonths
             ? db.query(
                 `SELECT b.id, b.name, b.amount as budget_amount, b.period_type,
-                        c.id as cat_id, c.icon
+                        c.id as cat_id, c.icon,
+                        (SELECT COALESCE(JSON_OBJECTAGG(a.currency, sums.cnt), JSON_OBJECT('CNY', 0))
+                           FROM (SELECT t.account_id, SUM(t.amount) AS cnt FROM transactions t
+                                 LEFT JOIN categories c2 ON t.category_id = c2.id
+                                 WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
+                                   AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+                                   AND (t.budget_id = b.id OR (c2.name = b.name AND c2.type = 'expense'))
+                                 GROUP BY t.account_id) sums
+                           LEFT JOIN accounts a ON sums.account_id = a.id) AS actual_breakdown_json
                  FROM budgets b
                  LEFT JOIN categories c ON c.name = b.name AND c.type = 'expense'
                  WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?
@@ -322,77 +433,93 @@ async function buildReport(userId, bookId, type, period) {
                 [userId, bookId, end, start]
             )
             : Promise.resolve([]),
-        hasMonths
-            ? db.query(
-                `SELECT c.id, COALESCE(SUM(t.amount), 0) as actual
-                 FROM transactions t JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
-                 GROUP BY c.id`,
-                [userId, bookId, start, end]
-            )
-            : Promise.resolve([]),
+        // 多币种 P2-2d：账户余额合计按 currency GROUP BY（账户本身就带 currency）
         db.query(
-            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\'',
+            `SELECT currency, COALESCE(SUM(balance), 0) as total FROM accounts
+             WHERE user_id = ? AND book_id = ? AND status = 'active'
+             GROUP BY currency`,
             [userId, bookId]
         ),
-        db.queryOne(
-            'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND book_id = ? AND status = \'holding\'',
+        // 多币种 P2-2d：持仓合计按 investments.currency GROUP BY（P2-2d 已加 currency 列）
+        db.query(
+            `SELECT currency,
+                COALESCE(SUM(current_value), 0) as total_value,
+                COALESCE(SUM(total_cost), 0) as total_cost
+             FROM investments WHERE user_id = ? AND book_id = ? AND status = 'holding'
+             GROUP BY currency`,
             [userId, bookId]
         ),
+        // 多币种 P2-2d：环比按账户币种 GROUP BY
         prev
-            ? db.queryOne(
-                `SELECT
-                    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-                 FROM transactions
-                 WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?`,
+            ? db.query(
+                `SELECT a.currency AS currency,
+                    COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+                 FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+                 WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+                 GROUP BY a.currency`,
                 [userId, bookId, prevRange.start, prevRange.end]
             )
-            : Promise.resolve({ income: 0, expense: 0 }),
+            : Promise.resolve([]),
+        // 多币种 P2-2c：debts.currency 列已加，SELECT 显式读出
         db.query(
-            `SELECT id, name, type, principal, remaining, monthly_payment, status, due_date
+            `SELECT id, name, type, principal, remaining, monthly_payment, status, due_date, currency
              FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
             [userId, bookId]
         ),
+        // 多币种 P2-2d：debt_repayments.currency 列已加（跟随债务币种），SELECT 显式读出
         db.query(
-            `SELECT debt_id, amount, principal_part, interest_part, paid_at, note
+            `SELECT debt_id, amount, principal_part, interest_part, paid_at, note, currency
              FROM debt_repayments WHERE user_id = ? AND book_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
             [userId, bookId, start, end]
         ),
     ]);
 
-    const income = parseFloat(summaryRow.income);
-    const expense = parseFloat(summaryRow.expense);
+    // 多币种 P2-2d：summary 按 currency GROUP BY → breakdown 字典，主货币按 amount 绝对值最大选
+    const summaryBreakdown = _rowsToBreakdownMulti(summaryRows, ['income', 'expense']);
+    // 同时算 tx_count（全部交易笔数，不分币种）
+    const txCountTotal = summaryRows.reduce((s, r) => s + parseInt(r.tx_count || 0, 10), 0);
+    const summaryCurrency = _pickPrimaryCurrency(summaryBreakdown);
+    const income = (summaryBreakdown[summaryCurrency] && summaryBreakdown[summaryCurrency].income) || 0;
+    const expense = (summaryBreakdown[summaryCurrency] && summaryBreakdown[summaryCurrency].expense) || 0;
     const balance = income - expense;
 
-    // 补齐无交易日期
-    const trendMap = new Map(dailyRows.map(r => [r.date, { income: parseFloat(r.income), expense: parseFloat(r.expense) }]));
+    // 多币种 P2-2d：日趋势按 date × currency 双维度分组，JS 端折 breakdown
+    const dailyMap = _groupDailyByCurrency(dailyRows);
+    // 补齐无交易日期——空日期填充 0 值的 breakdown
     const dailyTrend = [];
     const cur = new Date(start), last = new Date(end);
     while (cur <= last) {
         const iso = fmtDateOnly(cur);
-        const v = trendMap.get(iso) || { income: 0, expense: 0 };
-        dailyTrend.push({ date: iso, ...v });
+        const found = dailyMap.find(d => d.date === iso);
+        if (found) {
+            dailyTrend.push(found);
+        } else {
+            dailyTrend.push({ date: iso, currency: 'CNY', income: 0, expense: 0, incomeBreakdown: { CNY: 0 }, expenseBreakdown: { CNY: 0 } });
+        }
         cur.setDate(cur.getDate() + 1);
     }
 
-    // 预算执行（按预算名称匹配类别，按日期范围筛选当期预算）
+    // 预算执行（多币种 P2-2d：actual 子查询已合并到 budgetRows，每行带 actual_breakdown_json）
     let budgetExecution = [];
     if (hasMonths) {
-        const actualMap = new Map(actualByBudgetCat.map(r => [r.id, parseFloat(r.actual)]));
         // 按预算名称去重合并（同一名称可能有不同周期的预算，取时间重叠的）
         const seen = new Set();
         for (const b of budgetRows) {
             const key = b.name;
             if (seen.has(key)) continue;
             seen.add(key);
-            const actual = (b.cat_id ? actualMap.get(b.cat_id) : 0) || 0;
+            const actualBreakdown = _parseJsonBreakdown(b.actual_breakdown_json);
+            const actualCur = _pickPrimaryCurrency(actualBreakdown);
+            const actual = actualBreakdown[actualCur] || 0;
             const budget = parseFloat(b.budget_amount);
             budgetExecution.push({
                 id: b.cat_id || b.id,
                 name: b.name,
                 icon: b.icon || '💰',
+                currency: actualCur,
                 budget, actual,
+                actualBreakdown,
                 usage: budget > 0 ? (actual / budget * 100) : 0
             });
         }
@@ -401,40 +528,65 @@ async function buildReport(userId, bookId, type, period) {
             .sort((a, b) => b.actual - a.actual);
     }
 
-    const totalAssets = parseFloat(accountAssets[0].total) + parseFloat(invAssets.total);
+    // 多币种 P2-2d：账户/持仓余额合计按 currency GROUP BY → breakdown 字典
+    const accountsBreakdown = _rowsToBreakdown(accountAssets, 'total');
+    const accountsCurrency = _pickPrimaryCurrency(accountsBreakdown);
+    const accountsTotal = accountsBreakdown[accountsCurrency] || 0;
+    const invBreakdown = _rowsToBreakdownMulti(invAssets, ['total_value', 'total_cost']);
+    const invCurrency = _pickPrimaryCurrency(invBreakdown);
+    const investmentsTotal = (invBreakdown[invCurrency] && invBreakdown[invCurrency].total_value) || 0;
+    const investmentsTotalCost = (invBreakdown[invCurrency] && invBreakdown[invCurrency].total_cost) || 0;
+    // 总额 = 账户余额 + 持仓市值（主货币值；前端 kpiHero 用 FxManager 折算 baseCurrency）
+    const totalAssets = accountsTotal + investmentsTotal;
 
-    // 环比
+    // 多币种 P2-2d：环比按 currency GROUP BY → breakdown
     let compare = null;
-    if (prev) {
-        const pi = parseFloat(prevRow.income), pe = parseFloat(prevRow.expense);
+    if (prev && prevRows && prevRows.length) {
+        const compareBreakdown = _rowsToBreakdownMulti(prevRows, ['income', 'expense']);
+        const compareCurrency = _pickPrimaryCurrency(compareBreakdown);
+        const pi = (compareBreakdown[compareCurrency] && compareBreakdown[compareCurrency].income) || 0;
+        const pe = (compareBreakdown[compareCurrency] && compareBreakdown[compareCurrency].expense) || 0;
         compare = {
             period: prev.period, label: prevRange.label,
-            income: pi, expense: pe, balance: pi - pe
+            currency: compareCurrency,
+            income: pi, expense: pe, balance: pi - pe,
+            incomeBreakdown: compareBreakdown, expenseBreakdown: compareBreakdown
         };
     }
 
     // 债务数据汇总（本期）—— debtAll / debtRepayments 已在上方 Promise.all 并发获取，此处直接消费
+    // 多币种 P2-2d：debtRepayments 自身带 currency（P2-2d 加列）；按 currency 累加得 periodPaidBreakdown
     const repByDebt = {};
+    const periodPaidBreakdown = {};
     let periodPaid = 0;
     debtRepayments.forEach(r => {
-        periodPaid += parseFloat(r.amount);
+        const amt = parseFloat(r.amount);
+        const cur = r.currency || 'CNY';
+        periodPaid += amt;
+        periodPaidBreakdown[cur] = (periodPaidBreakdown[cur] || 0) + amt;
         (repByDebt[r.debt_id] = repByDebt[r.debt_id] || []).push({
-            amount: parseFloat(r.amount),
+            amount: amt,
             principal_part: parseFloat(r.principal_part || 0),
             interest_part: parseFloat(r.interest_part || 0),
+            currency: cur,
             paid_at: r.paid_at.toISOString ? r.paid_at.toISOString().slice(0, 10) : String(r.paid_at).slice(0, 10),
             note: r.note || ''
         });
     });
     let overdueCount = 0;
+    // 债务余额合计（多币种 P2-2d：debts.currency 已在 P2-2c 加列）
+    const debtRemainingBreakdown = {};
     const debtList = debtAll.map(d => {
         const reps = repByDebt[d.id] || [];
         const periodPaidForDebt = reps.reduce((s, r) => s + r.amount, 0);
         if (d.status === 'overdue') overdueCount++;
+        const cur = d.currency || 'CNY';
+        debtRemainingBreakdown[cur] = (debtRemainingBreakdown[cur] || 0) + parseFloat(d.remaining);
         return {
             id: d.id,
             name: d.name,
             type: d.type,
+            currency: cur,
             principal: parseFloat(d.principal),
             remaining: parseFloat(d.remaining),
             monthly_payment: parseFloat(d.monthly_payment || 0),
@@ -444,7 +596,8 @@ async function buildReport(userId, bookId, type, period) {
             periodPaid: Math.round(periodPaidForDebt * 100) / 100
         };
     });
-    const totalRemaining = debtList.reduce((s, d) => s + d.remaining, 0);
+    const debtRemainingCurrency = _pickPrimaryCurrency(debtRemainingBreakdown);
+    const totalRemaining = debtRemainingBreakdown[debtRemainingCurrency] || 0;
     const flatRepayments = [];
     Object.keys(repByDebt).forEach(did => {
         const debt = debtAll.find(d => d.id == did);
@@ -453,6 +606,7 @@ async function buildReport(userId, bookId, type, period) {
                 debt_id: parseInt(did),
                 debt_name: debt ? debt.name : '',
                 amount: r.amount,
+                currency: r.currency,
                 principal_part: r.principal_part,
                 interest_part: r.interest_part,
                 paid_at: r.paid_at,
@@ -464,7 +618,7 @@ async function buildReport(userId, bookId, type, period) {
     // 资产负债表与现金流量表彼此独立，与上方查询也无依赖，并发执行进一步压缩延迟
         const [balanceSheet, cashFlow] = await Promise.all([
         buildBalanceSheet(userId, bookId, start, end, totalAssets),
-        buildCashFlow(userId, bookId, start, end, income, expense, periodPaid),
+        buildCashFlow(userId, bookId, start, end, income, expense, periodPaid, periodPaidBreakdown),
     ]);
 
     return {
@@ -473,26 +627,44 @@ async function buildReport(userId, bookId, type, period) {
         start, end, days,
         summary: {
             income, expense, balance,
+            currency: summaryCurrency,
+            incomeBreakdown: summaryBreakdown, expenseBreakdown: summaryBreakdown,
             savingsRate: income > 0 ? ((balance / income) * 100) : 0,
-            transactionCount: parseInt(summaryRow.tx_count),
+            transactionCount: txCountTotal,
             avgDailyExpense: expense / days
         },
         dailyTrend,
-        expenseByCategory: expByCat.map(r => ({ ...r, total: parseFloat(r.total) })),
-        incomeByCategory: incByCat.map(r => ({ ...r, total: parseFloat(r.total) })),
-        accountFlows: accountFlows.map(r => ({ ...r, net: parseFloat(r.net) })),
-        topExpenses: topExpenses.map(t => ({ ...t, amount: parseFloat(t.amount) })),
+        expenseByCategory: expByCat.map(r => ({
+            ...r,
+            totalBreakdown: _parseJsonBreakdown(r.total_breakdown_json),
+            currency: _pickPrimaryCurrency(_parseJsonBreakdown(r.total_breakdown_json)),
+            total: (() => { const bd = _parseJsonBreakdown(r.total_breakdown_json); const cur = _pickPrimaryCurrency(bd); return bd[cur] || 0; })()
+        })),
+        incomeByCategory: incByCat.map(r => ({
+            ...r,
+            totalBreakdown: _parseJsonBreakdown(r.total_breakdown_json),
+            currency: _pickPrimaryCurrency(_parseJsonBreakdown(r.total_breakdown_json)),
+            total: (() => { const bd = _parseJsonBreakdown(r.total_breakdown_json); const cur = _pickPrimaryCurrency(bd); return bd[cur] || 0; })()
+        })),
+        accountFlows: accountFlows.map(r => ({ ...r, net: parseFloat(r.net), currency: r.currency || 'CNY' })),
+        topExpenses: topExpenses.map(t => ({ ...t, amount: parseFloat(t.amount), currency: t.currency || 'CNY' })),
         budgetExecution,
         assets: {
             totalAssets,
             netWorth: totalAssets - totalRemaining,
-            accounts: parseFloat(accountAssets[0].total),
-            investments: parseFloat(invAssets.total)
+            accounts: accountsTotal,
+            investments: investmentsTotal,
+            currency: accountsCurrency,
+            accountsBreakdown,
+            investmentsBreakdown: invBreakdown
         },
         debts: {
             count: debtList.length,
             totalRemaining,
+            currency: debtRemainingCurrency,
+            totalRemainingBreakdown: debtRemainingBreakdown,
             paidInPeriod: Math.round(periodPaid * 100) / 100,
+            paidInPeriodBreakdown: periodPaidBreakdown,
             repaymentCount: debtRepayments.length,
             overdue: overdueCount,
             list: debtList,
@@ -507,7 +679,7 @@ async function buildReport(userId, bookId, type, period) {
             debtRatio: totalAssets > 0 ? Math.round((totalRemaining / totalAssets * 100) * 10) / 10 : 0,
             debtPaymentRatio: income > 0 ? Math.round((periodPaid / income * 100) * 10) / 10 : 0,
             assetLiabilityRatio: totalAssets > 0 ? Math.round((totalRemaining / totalAssets * 100) * 10) / 10 : 0,
-            currentRatio: totalAssets > 0 ? Math.round((parseFloat(accountAssets[0].total) / Math.max(0.01, totalRemaining)) * 100) / 100 : 0
+            currentRatio: totalAssets > 0 ? Math.round((accountsTotal / Math.max(0.01, totalRemaining)) * 100) / 100 : 0
         }
     };
 }
@@ -515,20 +687,21 @@ async function buildReport(userId, bookId, type, period) {
 // ==================== 资产负债表（期末快照+期初对比）====================
 async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, currentTotalAssets) {
     // 资产明细 / 投资持仓 / 长期负债 / 期初前交易净额 —— 彼此独立，并发查询压缩延迟
+    // 多币种 P2-2d：accounts/investments/debts.currency 列已就位（P2-2a/2c/2d），SELECT 显式读出
     const [accounts, investments, longTermDebts, txBefore] = await Promise.all([
         db.query(
-            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY balance DESC',
+            'SELECT id, name, type, balance, credit_limit, currency FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY balance DESC',
             [userId, bookId]
         ),
         db.query(
-            `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, it.category, it.name AS type_name 
-             FROM investments i 
-             LEFT JOIN investment_types it ON i.investment_type_id = it.id 
+            `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, i.currency, it.category, it.name AS type_name
+             FROM investments i
+             LEFT JOIN investment_types it ON i.investment_type_id = it.id
              WHERE i.user_id = ? AND i.book_id = ? AND i.status = 'holding'`,
             [userId, bookId]
         ),
         db.query(
-            `SELECT id, name, type, remaining, term_months FROM debts
+            `SELECT id, name, type, remaining, term_months, currency FROM debts
              WHERE user_id = ? AND book_id = ? AND status != 'paid_off'
              ORDER BY term_months DESC`,
             [userId, bookId]
@@ -544,18 +717,37 @@ async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, current
 
     // 现金 = 余额为正的账户
     const liquidAssets = accounts.filter(a => parseFloat(a.balance) > 0);
-    const liquidTotal = liquidAssets.reduce((s, a) => s + parseFloat(a.balance), 0);
+    // 多币种 P2-2d：流动资产按 currency 分组得 breakdown；主货币按余额绝对值最大选
+    const liquidTotalBreakdown = {};
+    liquidAssets.forEach(a => {
+        const cur = a.currency || 'CNY';
+        liquidTotalBreakdown[cur] = (liquidTotalBreakdown[cur] || 0) + parseFloat(a.balance);
+    });
+    const liquidTotalCurrency = _pickPrimaryCurrency(liquidTotalBreakdown);
+    const liquidTotal = liquidTotalBreakdown[liquidTotalCurrency] || 0;
 
-    // 投资资产
-    const investTotal = investments.reduce((s, i) => s + parseFloat(i.current_value), 0);
+    // 投资资产——多币种 P2-2d：按 investments.currency 分组
+    const investTotalBreakdown = {};
+    investments.forEach(i => {
+        const cur = i.currency || 'CNY';
+        investTotalBreakdown[cur] = (investTotalBreakdown[cur] || 0) + parseFloat(i.current_value);
+    });
+    const investTotalCurrency = _pickPrimaryCurrency(investTotalBreakdown);
+    const investTotal = investTotalBreakdown[investTotalCurrency] || 0;
 
     // 信用卡已用额度：余额为负时 = -balance（欠款）；余额为正时 = limit - balance（可用额度）
-    const ccDebt = accounts.filter(a => a.credit_limit).reduce((s, a) => {
+    // 多币种 P2-2d：按 currency 分组
+    const ccDebtBreakdown = {};
+    accounts.filter(a => a.credit_limit).forEach(a => {
         const limit = parseFloat(a.credit_limit) || 0;
         const bal = parseFloat(a.balance) || 0;
-        if (bal <= 0) return s + Math.max(0, -bal);
-        return s + Math.max(0, limit - bal);
-    }, 0);
+        const owed = bal <= 0 ? Math.max(0, -bal) : Math.max(0, limit - bal);
+        if (owed <= 0) return;
+        const cur = a.currency || 'CNY';
+        ccDebtBreakdown[cur] = (ccDebtBreakdown[cur] || 0) + owed;
+    });
+    const ccDebtCurrency = _pickPrimaryCurrency(ccDebtBreakdown);
+    const ccDebt = ccDebtBreakdown[ccDebtCurrency] || 0;
 
         // 账户类型 → 显示名称
     const accountTypeNames = {
@@ -612,12 +804,22 @@ async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, current
             total: Math.round(item.total * 100) / 100
         }));
 
-    // 非流动负债 = 长期贷款（>1年）
-    const longTermDebt = longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12)
-        .reduce((s, d) => s + parseFloat(d.remaining), 0);
+    // 多币种 P2-2d：长期/短期负债均按 currency 分组
+    const longTermDebtBreakdown = {};
+    longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12).forEach(d => {
+        const cur = d.currency || 'CNY';
+        longTermDebtBreakdown[cur] = (longTermDebtBreakdown[cur] || 0) + parseFloat(d.remaining);
+    });
+    const longTermDebtCurrency = _pickPrimaryCurrency(longTermDebtBreakdown);
+    const longTermDebt = longTermDebtBreakdown[longTermDebtCurrency] || 0;
     // 短期负债：term < 12 个月 或 term = 0（如个人借款、无期限）且 type != credit_card
-    const shortTermDebt = longTermDebts.filter(d => (parseInt(d.term_months) || 0) < 12 && d.type !== 'credit_card')
-        .reduce((s, d) => s + parseFloat(d.remaining), 0);
+    const shortTermDebtBreakdown = {};
+    longTermDebts.filter(d => (parseInt(d.term_months) || 0) < 12 && d.type !== 'credit_card').forEach(d => {
+        const cur = d.currency || 'CNY';
+        shortTermDebtBreakdown[cur] = (shortTermDebtBreakdown[cur] || 0) + parseFloat(d.remaining);
+    });
+    const shortTermDebtCurrency = _pickPrimaryCurrency(shortTermDebtBreakdown);
+    const shortTermDebt = shortTermDebtBreakdown[shortTermDebtCurrency] || 0;
     // 信用卡已用部分 = 信用卡的负债（按 credit_limit 减去可用余额）
     const creditCardLiab = ccDebt;
 
@@ -630,77 +832,112 @@ async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, current
     const openingAssets = totalAssets - netBefore;
     const openingNetWorth = openingAssets - totalLiabilities;
 
+    // 多币种 P2-2d：负债总额按 currency 合并 breakdown（长/短/信用卡三段同币种叠加）
+    const liabilitiesBreakdown = {};
+    Object.entries(longTermDebtBreakdown).forEach(([k, v]) => { liabilitiesBreakdown[k] = (liabilitiesBreakdown[k] || 0) + v; });
+    Object.entries(shortTermDebtBreakdown).forEach(([k, v]) => { liabilitiesBreakdown[k] = (liabilitiesBreakdown[k] || 0) + v; });
+    Object.entries(ccDebtBreakdown).forEach(([k, v]) => { liabilitiesBreakdown[k] = (liabilitiesBreakdown[k] || 0) + v; });
+
     return {
         period: { start: periodStart, end: periodEnd },
         assets: {
             current: {
                 items: currentItems,
-                total: Math.round(liquidTotal * 100) / 100
+                total: Math.round(liquidTotal * 100) / 100,
+                currency: liquidTotalCurrency,
+                totalBreakdown: liquidTotalBreakdown
             },
             investment: {
                 items: investmentItems,
-                total: Math.round(investTotal * 100) / 100
+                total: Math.round(investTotal * 100) / 100,
+                currency: investTotalCurrency,
+                totalBreakdown: investTotalBreakdown
             },
             total: Math.round(totalAssets * 100) / 100,
-            opening: Math.round(openingAssets * 100) / 100
+            currency: liquidTotalCurrency,
+            totalBreakdown: { [liquidTotalCurrency]: totalAssets }
         },
         liabilities: {
             shortTerm: {
                 items: longTermDebts.filter(d => (parseInt(d.term_months) || 0) < 12 && d.type !== 'credit_card').map(d => ({
-                    id: d.id, name: d.name, type: d.type, remaining: parseFloat(d.remaining), term_months: d.term_months
+                    id: d.id, name: d.name, type: d.type, currency: d.currency || 'CNY', remaining: parseFloat(d.remaining), term_months: d.term_months
                 })),
-                total: Math.round(shortTermDebt * 100) / 100
+                total: Math.round(shortTermDebt * 100) / 100,
+                currency: shortTermDebtCurrency,
+                totalBreakdown: shortTermDebtBreakdown
             },
             creditCard: {
                 total: Math.round(creditCardLiab * 100) / 100,
+                currency: ccDebtCurrency,
+                totalBreakdown: ccDebtBreakdown,
                 note: '信用卡已用额度（实时余额为负时表示欠款）'
             },
             longTerm: {
                 items: longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12 || d.type === 'loan').filter((d, idx, arr) => arr.findIndex(x => x.id === d.id) === idx).map(d => ({
-                    id: d.id, name: d.name, type: d.type, remaining: parseFloat(d.remaining), term_months: d.term_months
+                    id: d.id, name: d.name, type: d.type, currency: d.currency || 'CNY', remaining: parseFloat(d.remaining), term_months: d.term_months
                 })),
-                total: Math.round(longTermDebt * 100) / 100
+                total: Math.round(longTermDebt * 100) / 100,
+                currency: longTermDebtCurrency,
+                totalBreakdown: longTermDebtBreakdown
             },
-            total: Math.round(totalLiabilities * 100) / 100
+            total: Math.round(totalLiabilities * 100) / 100,
+            currency: _pickPrimaryCurrency(liabilitiesBreakdown),
+            totalBreakdown: liabilitiesBreakdown
         },
         netWorth: Math.round(netWorth * 100) / 100,
+        netWorthBreakdown: { [liquidTotalCurrency]: netWorth },
         openingNetWorth: Math.round(openingNetWorth * 100) / 100,
         change: Math.round((netWorth - openingNetWorth) * 100) / 100
     };
 }
 
 // ==================== 现金流量表（按活动分类）====================
-async function buildCashFlow(userId, bookId, start, end, income, expense, debtRepayment) {
+async function buildCashFlow(userId, bookId, start, end, income, expense, debtRepayment, periodPaidBreakdown = null) {
     // 经营活动：日常收支（expense + income，不含投资交易和转账的净额）
     const operatingIncome = income;
     const operatingExpense = expense;
     const operatingNet = operatingIncome - operatingExpense;
 
     // 投资活动：投资增减（买入/卖出/新借债务彼此独立，并发查询）
+    // 多币种 P2-2d：investment_transactions.currency 与 debts.currency 列已就位，
+    // 按 currency GROUP BY 直接返回 breakdown，JS 端不再 JOIN
     const [investBuy, investSell, debtNew] = await Promise.all([
         db.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-             WHERE user_id = ? AND book_id = ? AND type = 'buy' AND date BETWEEN ? AND ?`,
+            `SELECT currency, COALESCE(SUM(amount), 0) AS total FROM investment_transactions
+             WHERE user_id = ? AND book_id = ? AND type = 'buy' AND date BETWEEN ? AND ?
+             GROUP BY currency`,
             [userId, bookId, start, end]
         ),
         db.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-             WHERE user_id = ? AND book_id = ? AND type = 'sell' AND date BETWEEN ? AND ?`,
+            `SELECT currency, COALESCE(SUM(amount), 0) AS total FROM investment_transactions
+             WHERE user_id = ? AND book_id = ? AND type = 'sell' AND date BETWEEN ? AND ?
+             GROUP BY currency`,
             [userId, bookId, start, end]
         ),
         db.query(
-            `SELECT COALESCE(SUM(principal), 0) as total FROM debts
-             WHERE user_id = ? AND book_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?`,
+            `SELECT currency, COALESCE(SUM(principal), 0) AS total FROM debts
+             WHERE user_id = ? AND book_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?
+             GROUP BY currency`,
             [userId, bookId, start + ' 00:00:00', end + ' 23:59:59']
         ),
     ]);
-    const investInflow = parseFloat(investSell[0]?.total || 0);  // 卖出 = 现金流入
-    const investOutflow = parseFloat(investBuy[0]?.total || 0);  // 买入 = 现金流出
+    // 多币种 P2-2d：投资活动按 currency 累加得 breakdown；主货币按绝对值最大选
+    const investInflowBreakdown = _rowsToBreakdown(investSell, 'total');
+    const investOutflowBreakdown = _rowsToBreakdown(investBuy, 'total');
+    const investInflowCur = _pickPrimaryCurrency(investInflowBreakdown);
+    const investOutflowCur = _pickPrimaryCurrency(investOutflowBreakdown);
+    const investInflow = investInflowBreakdown[investInflowCur] || 0;  // 卖出 = 现金流入
+    const investOutflow = investOutflowBreakdown[investOutflowCur] || 0;  // 买入 = 现金流出
     const investNet = investInflow - investOutflow; // 正数表示投资变现>投入
 
-    // 筹资活动：债务增减 + 转账净额
-    const financingInflow = parseFloat(debtNew[0]?.total || 0); // 借入
-    const financingOutflow = debtRepayment; // 还款流出
+    // 筹资活动：债务增减 + 转账净额——多币种 P2-2d：breakdown
+    const financingInflowBreakdown = _rowsToBreakdown(debtNew, 'total');
+    const financingInflowCur = _pickPrimaryCurrency(financingInflowBreakdown);
+    const financingInflow = financingInflowBreakdown[financingInflowCur] || 0; // 借入
+    // 还款 outflow 来自 buildReport 主段的 debtRepayments 累加（已含 currency breakdown → periodPaidBreakdown）
+    const financingOutflowBreakdown = periodPaidBreakdown || { CNY: debtRepayment };
+    const financingOutflowCur = _pickPrimaryCurrency(financingOutflowBreakdown);
+    const financingOutflow = financingOutflowBreakdown[financingOutflowCur] || debtRepayment; // 还款流出
     const financingNet = financingInflow - financingOutflow;
 
     const netChange = operatingNet + investNet + financingNet;
@@ -716,12 +953,18 @@ async function buildCashFlow(userId, bookId, start, end, income, expense, debtRe
             inflow: Math.round(investInflow * 100) / 100,
             outflow: Math.round(investOutflow * 100) / 100,
             net: Math.round(investNet * 100) / 100,
+            currency: investInflowCur,
+            inflowBreakdown: investInflowBreakdown,
+            outflowBreakdown: investOutflowBreakdown,
             label: '投资活动'
         },
         financing: {
             inflow: Math.round(financingInflow * 100) / 100,
             outflow: Math.round(financingOutflow * 100) / 100,
             net: Math.round(financingNet * 100) / 100,
+            currency: financingInflowCur,
+            inflowBreakdown: financingInflowBreakdown,
+            outflowBreakdown: financingOutflowBreakdown,
             label: '筹资活动（债务）'
         },
         netChange: Math.round(netChange * 100) / 100,

@@ -261,6 +261,9 @@ CREATE TABLE IF NOT EXISTS investment_transactions (
   price DECIMAL(15,4) DEFAULT 0,
   quantity DECIMAL(15,4) DEFAULT 0,
   date TIMESTAMP NOT NULL,                               -- 理财交易日期（买/卖/分红/计息，精确到秒）
+  -- 多币种 P2-2d：跟随关联持仓币种（investment_id → investments.currency），
+  -- 报表汇总时直接 GROUP BY 不再 JOIN 双表
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -597,6 +600,9 @@ CREATE TABLE IF NOT EXISTS debt_repayments (
   principal_part DECIMAL(15,2) DEFAULT 0,
   interest_part DECIMAL(15,2) DEFAULT 0,
   paid_at TIMESTAMP NOT NULL,                        -- 还款日期（精确到秒）
+  -- 多币种 P2-2d：跟随关联债务币种（debt_id → debts.currency），
+  -- 报表现金流量「本期还款」GROUP BY 不再 JOIN
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   note VARCHAR(200) DEFAULT '',
   transaction_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -613,6 +619,9 @@ CREATE TABLE IF NOT EXISTS savings_transactions (
   type VARCHAR(10) NOT NULL CHECK (type IN ('deposit','withdraw')),
   amount DECIMAL(15,2) NOT NULL,
   date TIMESTAMP NOT NULL,                           -- 储蓄流水日期（精确到秒）
+  -- 多币种 P2-2d：跟随关联账户币种（account_id → accounts.currency），
+  -- 储蓄汇总 GROUP BY 不再 JOIN
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   note VARCHAR(200) DEFAULT '',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
