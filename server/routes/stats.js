@@ -245,9 +245,9 @@ router.get('/dashboard', async (req, res) => {
              GROUP BY a.currency`,
                 [req.userId, req.bookId]
             ),
-            // 活跃债务
+            // 活跃债务（多币种 P2-2d：SELECT 加 currency，calcDebtDueSummary 按货币分组）
             db.query(
-                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND book_id = ? AND status = \'active\'',
+                'SELECT id, currency, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND book_id = ? AND status = \'active\'',
                 [req.userId, req.bookId]
             ),
             // 全部还款记录
@@ -453,8 +453,10 @@ router.get('/dashboard', async (req, res) => {
                 totalMonthlyBreakdown: debtMonthlyBreakdown,
                 dueThisMonth: dueSummary.dueThisMonth,
                 dueAmount: dueSummary.dueAmount,
+                dueAmountBreakdown: dueSummary.dueAmountBreakdown || {},
                 overdue: dueSummary.overdue,
                 overdueAmount: dueSummary.overdueAmount,
+                overdueAmountBreakdown: dueSummary.overdueAmountBreakdown || {},
                 count: parseInt(debtCount.cnt),
                 activeCount: parseInt(debtCount.active_cnt)
             }

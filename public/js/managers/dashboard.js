@@ -353,8 +353,8 @@ const DashboardManager = {
             </div>
             <div class="bo-debt-info">
                 <span>活跃债务 <strong>${debts.activeCount || 0}</strong> 笔</span>
-                <span>月供 <strong>${fmt(monthlyPayment, debts.currency || 'CNY')}</strong></span>
-                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmt(dueAmount, debts.currency || 'CNY')}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
+                <span>月供 <strong>${fmtMix(debts.totalMonthlyBreakdown || { [debts.currency || 'CNY']: monthlyPayment }, baseCur)}</strong></span>
+                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmtMix(debts.dueAmountBreakdown && Object.keys(debts.dueAmountBreakdown).length ? debts.dueAmountBreakdown : { [debts.currency || 'CNY']: dueAmount }, baseCur)}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
             </div>
         `;
     },

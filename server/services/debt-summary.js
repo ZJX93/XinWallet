@@ -37,12 +37,20 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
     let dueAmount = 0;
     let overdue = 0;
     let overdueAmount = 0;
+    // 多币种 P2-2d：按债务 currency 分组累计 dueAmount / overdueAmount
+    const dueAmountBreakdown = {};
+    const overdueAmountBreakdown = {};
+    const addBreakdown = (map, currency, amount) => {
+        const cur = currency || 'CNY';
+        map[cur] = (parseFloat(map[cur]) || 0) + amount;
+    };
 
     activeDebts.forEach(d => {
         const remaining = parseFloat(d.remaining) || 0;
         if (remaining <= 0) return;
 
         const type = (d.type || '').toLowerCase();
+        const cur = (d.currency || 'CNY').toUpperCase();  // 多币种 P2-2d：每笔债务的货币
 
         if (type === 'credit_card') {
             // ===== 信用卡：按账单周期判断 =====
@@ -70,7 +78,9 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
                 // 已过还款截止日但还在本月 → 本月需还（按剩余最低还款计）
                 if (paidInMonth + 0.005 < minPmt) {
                     dueThisMonth++;
-                    dueAmount += Math.max(0, minPmt - paidInMonth);
+                    const r = Math.max(0, minPmt - paidInMonth);
+                    dueAmount += r;
+                    addBreakdown(dueAmountBreakdown, cur, r);
                 }
                 // 已还清则不计
             } else {
@@ -81,6 +91,7 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
                 if (remaining > 0.005) {
                     dueThisMonth++;
                     dueAmount += remaining;
+                    addBreakdown(dueAmountBreakdown, cur, remaining);
                 }
             }
 
@@ -127,9 +138,11 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
                     if (ym < curYm) {
                         overdue++;
                         overdueAmount += monthly;
+                        addBreakdown(overdueAmountBreakdown, cur, monthly);
                     } else {
                         dueThisMonth++;
                         dueAmount += monthly;
+                        addBreakdown(dueAmountBreakdown, cur, monthly);
                     }
                 }
                 m++;
@@ -138,11 +151,18 @@ function calcDebtDueSummary(activeDebts, repaymentsByDebt, todayStr) {
         }
     });
 
+    // 多币种 P2-2d：breakdown 数字保留两位小数
+    Object.keys(dueAmountBreakdown).forEach(k => { dueAmountBreakdown[k] = Math.round(dueAmountBreakdown[k] * 100) / 100; });
+    Object.keys(overdueAmountBreakdown).forEach(k => { overdueAmountBreakdown[k] = Math.round(overdueAmountBreakdown[k] * 100) / 100; });
+
     return {
         dueThisMonth,
         dueAmount: Math.round(dueAmount * 100) / 100,
         overdue,
-        overdueAmount: Math.round(overdueAmount * 100) / 100
+        overdueAmount: Math.round(overdueAmount * 100) / 100,
+        // 多币种 P2-2d：breakdown 按 currency 分组
+        dueAmountBreakdown,
+        overdueAmountBreakdown
     };
 }
 
