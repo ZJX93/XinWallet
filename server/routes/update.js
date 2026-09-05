@@ -110,14 +110,25 @@ router.post('/apply', (req, res) => {
 function recreateSelf() {
     // compose 项目名/服务名/项目目录一律从自身容器标签读取，不硬编码：
     // 用户可能用 -p 自定义项目名，或把仓库放在任意路径。
+    // docker --format 的 Go template `index` 函数对带点的 key
+    // （如 "com.docker.compose.project"）在部分 docker CLI 版本上解析报错
+    // （function "com" not defined），导致 inspect 失败、走 docker restart 兜底分支
+    // ——容器只是被重启、镜像不变，表现为「点了立即更新、版本没变」。
+    // 改用 {{json .Config.Labels}} 输出 JSON map，绕开该 bug。
     execFile('docker', [
-        'inspect', UPDATE_CONTAINER, '--format',
-        '{{index .Config.Labels "com.docker.compose.project"}}\n' +
-        '{{index .Config.Labels "com.docker.compose.service"}}\n' +
-        '{{index .Config.Labels "com.docker.compose.project.working_dir"}}',
+        'inspect', UPDATE_CONTAINER, '--format', '{{json .Config.Labels}}'
     ], (inspectErr, stdout) => {
-        const [project, service, workDir] = String(stdout || '')
-            .split('\n').map(s => s.trim());
+        let project, service, workDir;
+        if (!inspectErr && stdout) {
+            try {
+                const labels = JSON.parse(String(stdout).trim());
+                project = labels['com.docker.compose.project'];
+                service = labels['com.docker.compose.service'];
+                workDir = labels['com.docker.compose.project.working_dir'];
+            } catch (e) {
+                console.error('[update] 解析 compose labels JSON 失败:', e.message);
+            }
+        }
 
         const args = ['run', '-d', '--rm', '-v', '/var/run/docker.sock:/var/run/docker.sock'];
         let script;

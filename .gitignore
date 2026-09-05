@@ -78,3 +78,5 @@ docs/quick-add-android-preview.html
 # 服务端运行日志 / 崩溃诊断堆栈（不入库）
 server.err
 crash.log
+# NAS 部署专用 compose（不含内置 PG），仅本地使用
+docker-compose.nas.yml

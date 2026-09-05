@@ -430,7 +430,10 @@ async function showPage(page) {
                         if (d.error) {
                             // 取不到最新版本时如实提示，绝不显示「已是最新」
                             msg += ` · 无法获取最新版本（${d.error}）`;
-                            if (applyBtn) applyBtn.style.display = 'none';
+                            // dev 构建用户不受 GitHub API 限流/超时影响，
+                            // 仍可强制更新到 ghcr.io 最新镜像（不需要版本号比对）
+                            if (applyBtn && !d.isDevBuild) applyBtn.style.display = 'none';
+                            else if (applyBtn) msg += '；可强制更新到最新镜像';
                         } else {
                             if (d.latestVersion) msg += ` / 最新 ${d.latestVersion}`;
                             if (d.hasUpdate) {
