@@ -4,6 +4,20 @@ const db = require('../db');
 const { toAmount } = require('../validate');
 const { success, fail, handleServerError, fmtDateOnly, fmtDateTime } = require('./_helpers');
 
+// 多币种 P2-2e：解析预算 actual 子查询返回的 JSON 字符串为 breakdown 字典
+// （与 stats.js / reports.js 的同名函数严格同语义，便于跨文件复用）
+function _parseJsonBreakdown(jsonStr) {
+    if (!jsonStr) return { CNY: 0 };
+    try {
+        const obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+        const out = {};
+        Object.entries(obj || {}).forEach(([k, v]) => { out[k] = parseFloat(v) || 0; });
+        return Object.keys(out).length ? out : { CNY: 0 };
+    } catch (_) {
+        return { CNY: 0 };
+    }
+}
+
 // 计算周期时间范围辅助函数
 function calcPeriodRange(type, baseDate) {
     // 兼容 monthly/weekly/yearly → month/week/year
@@ -55,13 +69,17 @@ router.get('/', async (req, res) => {
         // 日期用 CAST(date AS CHAR(10)) BETWEEN，跨方言且与 monthData 口径一致，且包含月末当天非零点时刻。
         let sql = `SELECT b.*,
              COALESCE((
-               SELECT SUM(t.amount) FROM transactions t
-               LEFT JOIN categories c ON t.category_id = c.id
-               WHERE t.user_id = b.user_id AND t.book_id = b.book_id
-                 AND t.type = 'expense'
-                 AND DATE(t.date) BETWEEN b.start_date AND b.end_date
-                 AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
-             ), 0) as actual
+               SELECT JSON_OBJECTAGG(a.currency, sums.cnt) FROM (
+                 SELECT t.account_id, SUM(t.amount) AS cnt
+                 FROM transactions t
+                 LEFT JOIN categories c ON t.category_id = c.id
+                 WHERE t.user_id = b.user_id AND t.book_id = b.book_id
+                   AND t.type = 'expense'
+                   AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+                   AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
+                 GROUP BY t.account_id
+               ) sums LEFT JOIN accounts a ON sums.account_id = a.id
+             ), JSON_OBJECT('CNY', 0)) AS actual_breakdown_json
              FROM budgets b
              WHERE b.user_id = ? AND b.book_id = ?`;
         const params = [req.userId, req.bookId];
@@ -77,15 +95,24 @@ router.get('/', async (req, res) => {
         }
         sql += ' GROUP BY b.id ORDER BY b.start_date DESC, b.id DESC';
         const budgets = await db.query(sql, params);
-        res.json(success(budgets.map(b => ({
-            ...b,
-            start_date: fmtDateOnly(b.start_date),
-            end_date: fmtDateOnly(b.end_date),
-            created_at: fmtDateTime(b.created_at),
-            updated_at: fmtDateTime(b.updated_at),
-            amount: parseFloat(b.amount),
-            actual: parseFloat(b.actual)
-        }))));
+        res.json(success(budgets.map(b => {
+            // 多币种 P2-2e：actual 走 breakdown 字典（按交易账户币种累加）
+            const actualBreakdown = _parseJsonBreakdown(b.actual_breakdown_json);
+            const actualCur = Object.keys(actualBreakdown).length
+                ? Object.entries(actualBreakdown).reduce((a, x) => Math.abs(x[1]) > Math.abs(actualBreakdown[a] || 0) ? x[0] : a, 'CNY')
+                : 'CNY';
+            return {
+                ...b,
+                start_date: fmtDateOnly(b.start_date),
+                end_date: fmtDateOnly(b.end_date),
+                created_at: fmtDateTime(b.created_at),
+                updated_at: fmtDateTime(b.updated_at),
+                amount: parseFloat(b.amount),
+                actual: actualBreakdown[actualCur] || 0,
+                currency: actualCur,
+                actualBreakdown
+            };
+        })));
     } catch (err) {
         handleServerError(res, err);
     }

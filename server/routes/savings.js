@@ -9,23 +9,29 @@ const { ensureCategory } = require('./utils');
 // 获取储蓄目标列表
 router.get('/', async (req, res) => {
     try {
+        // 多币种 P2-2e：SELECT 显式读 a.currency / sa.currency——current_amount 镜像账户余额，单 currency
         const goals = await db.query(
-            `SELECT g.*, a.name as acc_name, a.icon as acc_icon, a.balance as acc_balance,
-                    sa.name as source_acc_name
+            `SELECT g.*, a.name as acc_name, a.icon as acc_icon, a.balance as acc_balance, a.currency as acc_currency,
+                    sa.name as source_acc_name, sa.currency as source_currency
              FROM savings_goals g
              LEFT JOIN accounts a ON g.account_id = a.id
              LEFT JOIN accounts sa ON g.source_account_id = sa.id
              WHERE g.user_id = ? AND g.book_id = ? ORDER BY g.status, g.id`,
             [req.userId, req.bookId]
         );
-        res.json(success(goals.map(g => ({
-            ...g,
-            target_amount: parseFloat(g.target_amount),
-            // 关联真实账户时，current_amount 直接镜像该账户余额（single source of truth）
-            current_amount: g.account_id ? parseFloat(g.acc_balance || 0) : parseFloat(g.current_amount || 0),
-            source_account_id: g.source_account_id || null,
-            source_acc_name: g.source_acc_name || null
-        }))));
+        res.json(success(goals.map(g => {
+            // 多币种 P2-2e：currency 跟随关联储蓄账户；无关联账户时默认 CNY
+            const cur = g.acc_currency || 'CNY';
+            return {
+                ...g,
+                target_amount: parseFloat(g.target_amount),
+                // 关联真实账户时，current_amount 直接镜像该账户余额（single source of truth）
+                current_amount: g.account_id ? parseFloat(g.acc_balance || 0) : parseFloat(g.current_amount || 0),
+                currency: cur,
+                source_account_id: g.source_account_id || null,
+                source_acc_name: g.source_acc_name || null
+            };
+        })));
     } catch (err) { handleServerError(res, err); }
 });
 
@@ -90,6 +96,10 @@ router.post('/:id/allocate', async (req, res) => {
         if (srcId === goal.account_id) return res.status(400).json(fail('来源账户不能与储蓄账户相同'));
         const src = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [srcId, req.userId, req.bookId]);
         if (!src) return res.status(400).json(fail('来源账户不存在'));
+        // 多币种 P2-2e：储蓄流水 currency 跟随储蓄账户币种（P2-2d 已加 savings_transactions.currency 列）
+        const savAcc = await db.queryOne('SELECT id, currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?',
+            [goal.account_id, req.userId, req.bookId]);
+        const savCurrency = (savAcc && savAcc.currency) || 'CNY';
         await db.transaction(async (conn) => {
             const opDate = normDate();
             const catId = await ensureCategory(conn, req.userId, '储蓄存入', 'expense', '🏦');
@@ -114,8 +124,8 @@ router.post('/:id/allocate', async (req, res) => {
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [srcBal, srcId, req.userId, req.bookId]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
-            await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, ?, \'deposit\', ?, ?, ?)',
-                [req.userId, req.bookId, id, srcId, amount, opDate, `存入「${goal.name}」`]);
+            await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note, currency) VALUES (?, ?, ?, ?, \'deposit\', ?, ?, ?, ?)',
+                [req.userId, req.bookId, id, srcId, amount, opDate, `存入「${goal.name}」`, savCurrency]);
         });
         res.json(success(null, '已存入目标'));
     } catch (err) { handleServerError(res, err); }
@@ -135,6 +145,8 @@ router.post('/:id/withdraw', async (req, res) => {
         if (destId === goal.account_id) return res.status(400).json(fail('目标账户不能与储蓄账户相同'));
         const sav = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [goal.account_id, req.userId, req.bookId]);
         if (!sav) return res.status(400).json(fail('储蓄账户不存在'));
+        // 多币种 P2-2e：储蓄流水 currency 跟随储蓄账户币种（P2-2d 已加 savings_transactions.currency 列）
+        const savCurrency = (sav && sav.currency) || 'CNY';
         await db.transaction(async (conn) => {
             const opDate = normDate();
             const catId = await ensureCategory(conn, req.userId, '储蓄取出', 'income', '🏦');
@@ -159,8 +171,8 @@ router.post('/:id/withdraw', async (req, res) => {
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [destBal, destId, req.userId, req.bookId]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
-            await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, ?, \'withdraw\', ?, ?, ?)',
-                [req.userId, req.bookId, id, destId, amount, opDate, `取出「${goal.name}」`]);
+            await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note, currency) VALUES (?, ?, ?, ?, \'withdraw\', ?, ?, ?, ?)',
+                [req.userId, req.bookId, id, destId, amount, opDate, `取出「${goal.name}」`, savCurrency]);
         });
         res.json(success(null, '已取回'));
     } catch (err) { handleServerError(res, err); }
@@ -179,20 +191,37 @@ router.get('/:id/transactions', async (req, res) => {
     try {
         const goal = await db.queryOne('SELECT id, name FROM savings_goals WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         if (!goal) return res.status(404).json(fail('目标不存在'));
+        // 多币种 P2-2e：SELECT 显式读 st.currency（流水表 P2-2d 加列）
         const transactions = await db.query(
-            `SELECT st.type, st.amount, st.date, st.note, st.account_id, a.name AS account_name
+            `SELECT st.type, st.amount, st.date, st.note, st.account_id, st.currency, a.name AS account_name
              FROM savings_transactions st
              LEFT JOIN accounts a ON st.account_id = a.id
              WHERE st.goal_id = ? AND st.user_id = ? AND st.book_id = ?
              ORDER BY st.date DESC, st.id DESC`,
             [req.params.id, req.userId, req.bookId]
         );
-        const deposit = transactions.filter(t => t.type === 'deposit').reduce((s, t) => s + parseFloat(t.amount), 0);
-        const withdraw = transactions.filter(t => t.type === 'withdraw').reduce((s, t) => s + parseFloat(t.amount), 0);
+        // 多币种 P2-2e：summary 按 currency 累加得 breakdown；主货币按 amount 绝对值最大选
+        const depositBreakdown = {};
+        const withdrawBreakdown = {};
+        transactions.forEach(t => {
+            const cur = t.currency || 'CNY';
+            const amt = parseFloat(t.amount);
+            if (t.type === 'deposit') depositBreakdown[cur] = (depositBreakdown[cur] || 0) + amt;
+            if (t.type === 'withdraw') withdrawBreakdown[cur] = (withdrawBreakdown[cur] || 0) + amt;
+        });
+        const pick = (bd) => Object.entries(bd).reduce((a, x) => Math.abs(x[1]) > Math.abs(bd[a] || 0) ? x[0] : a, 'CNY');
+        const depositCur = pick(depositBreakdown);
+        const withdrawCur = pick(withdrawBreakdown);
+        const deposit = depositBreakdown[depositCur] || 0;
+        const withdraw = withdrawBreakdown[withdrawCur] || 0;
         res.json(success({
             goal: { id: goal.id, name: goal.name },
-            transactions: transactions.map(t => ({ ...t, amount: parseFloat(t.amount) })),
-            summary: { deposit, withdraw, net: deposit - withdraw }
+            transactions: transactions.map(t => ({ ...t, amount: parseFloat(t.amount), currency: t.currency || 'CNY' })),
+            summary: {
+                deposit, withdraw, net: deposit - withdraw,
+                currency: depositCur,
+                depositBreakdown, withdrawBreakdown
+            }
         }));
     } catch (err) { handleServerError(res, err); }
 });
