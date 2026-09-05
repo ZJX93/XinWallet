@@ -30,6 +30,8 @@ const { EVIDENCE_WEIGHTS, STATUS_THRESHOLDS, HALF_LIFE_DAYS, listRules, ruleEvid
 
 // 运行时（复杂度路由 / 熔断 / 成本）
 const { breakerStates, resetBreakers } = require('./runtime/model-router');
+// 服务商故障转移：经桶统一导出，避免路由层违反「不得直接 require modules/ai 子目录」的约束
+const { resolveProviderChain, callWithFailover } = require('./providers/provider-gateway');
 const { usageMetrics } = require('./runtime/cost-tracker');
 const { analyzeComplexity } = require('./runtime/complexity-analyzer');
 
@@ -121,6 +123,8 @@ module.exports = {
     HALF_LIFE_DAYS,
 
     // ---- 运行时可观测（§10 / §12）----
+    // 服务商故障转移（自动切换，无需手动干预）
+    resolveProviderChain, callWithFailover,
     breakerStates,
     resetBreakers,
     usageMetrics,

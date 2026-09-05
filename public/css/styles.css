@@ -681,7 +681,16 @@ header.top-bar.top-bar-sticky {
 }
 .provider-cap-badge.cap-chat { background: color-mix(in srgb, var(--info-500) 14%, transparent); color: var(--info-600); }
 .provider-cap-badge.cap-tools { background: color-mix(in srgb, var(--accent-500) 14%, transparent); color: var(--accent-600); }
-.provider-cap-badge.cap-voice { background: color-mix(in srgb, var(--success-500) 14%, transparent); color: var(--success-600); }
+.provider-health { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--text-caption); }
+.provider-health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-tertiary); }
+.provider-health-dot.healthy { background: var(--success-500); }
+.provider-health-dot.error { background: var(--expense); }
+.provider-health-dot.checking { background: var(--warning-500); animation: provider-health-pulse 1s ease-in-out infinite; }
+@keyframes provider-health-pulse { 50% { opacity: 0.25; } }
+.provider-health-text { color: var(--text-tertiary); }
+.provider-health-text.healthy { color: var(--success-600); font-weight: var(--fw-medium); }
+/* 异常文案可能是很长的上游原始报错：单行省略，完整内容见 title 属性 */
+.provider-health-text.error { color: var(--expense); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
 
 .preset-region-tag {
   display: inline-block;

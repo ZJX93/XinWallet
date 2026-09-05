@@ -17,6 +17,28 @@ const { recordFailure, recordSuccess } = require('../runtime/model-router');
 const { buildMemoryHints } = require('./prompt-builder');
 const { buildParserMessages } = require('../prompts/parser-prompt');
 
+/**
+ * 判断一次失败是否值得换下一个服务商重试。
+ *
+ * ⚠️ 只有「服务商侧/网络侧」故障才切换：
+ *    - 可切换：连接失败、DNS、TLS、超时、5xx、429 —— 换个服务商可能就好了
+ *    - 不切换：400（请求参数错）、401/403（Key 无效或无权限）——
+ *      这些换到哪家都是同样的错，只会让每个请求都白跑一遍整条链，徒增延迟
+ *
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isRetryableProviderError(err) {
+    if (!err) return false;
+    // AiProviderError 已把网络层失败/超时统一包装成 502/504，可直接看状态码
+    if (err.isAiProviderError && typeof err.statusCode === 'number') {
+        return err.statusCode >= 500 || err.statusCode === 429;
+    }
+    const msg = String(err.message || '');
+    // 兜底：底层抛出的网络错误没有状态码，按文案特征识别
+    return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|socket hang up|timeout|超时|无法连接/i.test(msg);
+}
+
 // 全局开关：
 //   - 显式设为 false / 0 → 强制关闭（保留给想省成本的部署）。
 //   - 显式设为 true / 1 → 强制打开。
@@ -36,6 +58,85 @@ function isModelRouteAllowed(settings) {
     // 未显式设置：依赖调用方在路由前用 resolveProvider 探测；此处乐观返回 true，
     // 真正无 provider 时 route() 会落到 local/fallback，不影响兜底。
     return true;
+}
+
+/**
+ * 解析可用 provider 候选链（含 cheap/strong 模型名），供故障转移使用。
+ * ⚠️ 永不抛异常：取不到就返回空数组。
+ *
+ * @param {number} userId
+ * @returns {Promise<Array<{id:number, name:string, api_type:string, base_url:string,
+ *                         api_key:string, model:string, cheap_model:string, strong_model:string}>>}
+ */
+async function resolveProviderChain(userId) {
+    try {
+        const { getProviderChain } = require('../../../services/ai');
+        const rows = await getProviderChain(userId);
+        return (rows || []).map(p => ({
+            id: p.id,
+            name: p.name,
+            api_type: p.api_type,
+            base_url: p.base_url,
+            api_key: p.api_key,
+            model: p.model,
+            cheap_model: process.env.AI_CHEAP_MODEL || p.model,
+            strong_model: process.env.AI_STRONG_MODEL || p.model,
+        }));
+    } catch (_) {
+        return [];
+    }
+}
+
+/**
+ * 沿候选链依次尝试调用，服务商故障时自动切下一个。
+ *
+ * 设计要点：
+ *  - 只重试「服务商侧故障」（见 isRetryableProviderError）；Key 错 / 参数错直接抛出，
+ *    避免每个请求都把整条链白跑一遍。
+ *  - 复用既有熔断器：已熔断的服务商直接跳过，不浪费一次超时等待。
+ *  - 成功/失败都回写熔断器，让坏服务商在一段时间内不再被选中。
+ *  - 全部失败时抛出【最后一个】错误，保留最贴近真实原因的提示。
+ *
+ * @param {object[]} chain  resolveProviderChain 的结果
+ * @param {(provider:object)=>Promise<any>} invoke 用某个服务商执行一次调用
+ * @param {object} [opts]
+ * @param {(provider:object, err:Error)=>void} [opts.onFailover] 切换时回调（用于审计/日志）
+ * @returns {Promise<{result:any, provider:object, attempts:object[]}>}
+ */
+async function callWithFailover(chain, invoke, opts = {}) {
+    if (!Array.isArray(chain) || chain.length === 0) {
+        throw new Error('未配置可用的 AI 服务商');
+    }
+    const { isOpen } = require('../runtime/model-router');
+    const attempts = [];
+    let lastErr = null;
+
+    for (const provider of chain) {
+        // 已熔断：直接跳过，省掉一次完整超时等待
+        if (isOpen(provider.id)) {
+            attempts.push({ id: provider.id, name: provider.name, skipped: 'circuit_open' });
+            continue;
+        }
+        try {
+            const result = await invoke(provider);
+            recordSuccess(provider.id);
+            return { result, provider, attempts };
+        } catch (err) {
+            recordFailure(provider.id);
+            lastErr = err;
+            attempts.push({
+                id: provider.id, name: provider.name,
+                error: String((err && err.message) || err).slice(0, 200),
+                retryable: isRetryableProviderError(err),
+            });
+            // 不可重试的错误（Key 无效、参数错误）立即放弃整条链
+            if (!isRetryableProviderError(err)) break;
+            if (typeof opts.onFailover === 'function') {
+                try { opts.onFailover(provider, err); } catch (_) { /* 回调不影响主流程 */ }
+            }
+        }
+    }
+    throw lastErr || new Error('全部 AI 服务商均不可用');
 }
 
 /**
@@ -73,8 +174,8 @@ async function resolveProvider(userId) {
  *
  * 契约：
  *   - 成功 → { ok:true, transactions, request, response, usage }
- *   - 失败 → { ok:false, error, request } 且已记录熔断失败计数
- *   - ⛔ 无论如何都不抛异常，也不写库（写库由调用方决定）
+ *   - 失败 → { ok:false, error, request, _err? }（_err 为原始错误对象，供故障转移判定）
+ *   - ⛔ 无论如何都不抛异常、不写库、不记录熔断（熔断由调用方/故障转移统一处理）
  *
  * @param {object} params
  * @param {object} params.provider
@@ -130,7 +231,6 @@ async function reviewWithModel({
         );
         const parsed = safeParseJson(stripFence(raw));
         if (!parsed || !Array.isArray(parsed.transactions)) {
-            recordFailure(provider.id);
             return { ok: false, error: '模型返回格式不合法', request, latency_ms: Date.now() - started };
         }
 
@@ -165,7 +265,6 @@ async function reviewWithModel({
             };
         });
 
-        recordSuccess(provider.id);
         return {
             ok: true,
             transactions: cleaned,
@@ -179,13 +278,15 @@ async function reviewWithModel({
             },
         };
     } catch (err) {
-        recordFailure(provider.id);
         return {
             ok: false,
             error: err && err.message ? err.message : String(err),
             request,
             latency_ms: Date.now() - started,
             timeout: /timeout/i.test(String(err && err.message)),
+            // 保留原始错误对象：故障转移要靠它区分「服务商挂了（可换）」与
+            // 「Key 无效 / 参数错（换哪家都一样）」，只留字符串会丢失 statusCode。
+            _err: err,
         };
     }
 }
@@ -292,4 +393,8 @@ function safeParseJson(s) {
     try { return JSON.parse(s); } catch { return null; }
 }
 
-module.exports = { resolveProvider, reviewWithModel, isModelRouteAllowed };
+module.exports = {
+    resolveProvider, reviewWithModel, isModelRouteAllowed,
+    // 自动故障转移：沿候选链依次尝试，服务商侧故障时自动切下一个
+    resolveProviderChain, callWithFailover, isRetryableProviderError,
+};

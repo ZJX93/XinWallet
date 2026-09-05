@@ -28,7 +28,7 @@ const { retrieveMemory, snapshotMemory, emptyMemory } = require('../memory/memor
 const { selectFewShotExamples, isFewShotEnabled } = require('../memory/few-shot-selector');
 const { analyzeComplexity } = require('../runtime/complexity-analyzer');
 const { route, isSimpleModelRouteAllowed, isLlmFirstEnabled } = require('../runtime/model-router');
-const { resolveProvider, reviewWithModel, isModelRouteAllowed } = require('../providers/provider-gateway');
+const { resolveProvider, reviewWithModel, isModelRouteAllowed, resolveProviderChain, callWithFailover } = require('../providers/provider-gateway');
 // 用户级 AI 识别设置（DB 优先，env 兜底；Web「AI 配置」页可改）
 const { getAiSettings } = require('../services/ai-settings-service');
 
@@ -142,8 +142,11 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     // 只有当开启「简单输入也过模型」（env AI_MODEL_ROUTE_SIMPLE / 设置页）时才为 simple 也解析 provider。
     const simpleToModel = isSimpleModelRouteAllowed(aiSettings);
     let provider = null;
+    let providerChain = [];
     if (modelAllowed && (complexity.level !== 'simple' || simpleToModel)) {
         provider = await resolveProvider(userId);
+        // 候选链（含其他备用服务商），供故障时自动切换
+        providerChain = await resolveProviderChain(userId);
     }
     const routing = route({
         complexity, provider, allowModel: modelAllowed, allowSimpleModel: simpleToModel,
@@ -154,7 +157,7 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
     let modelResponse = null;
     let modelUsage = null;
 
-    if ((routing.route === 'cheap_model' || routing.route === 'strong_model') && provider) {
+    if ((routing.route === 'cheap_model' || routing.route === 'strong_model') && (provider || providerChain.length)) {
         // Few-shot 先例：从历史交易里挑出与本次输入最相似的几条真实归类。
         // ⛔ 仅在开关打开时才检索（它会把历史消费明细发给第三方模型）。
         //    检索失败一律降级为「无先例」，绝不让记账链路挂掉。
@@ -175,18 +178,43 @@ async function parseTransactions(db, { userId, bookId, text, context = {}, allow
         //   独立抽取后模型能给出本地压根没识别出的笔数与语义。
         const llmFirst = isLlmFirstEnabled(aiSettings);
 
-        const review = await reviewWithModel({
-            provider, model: routing.model, text,
-            candidates: llmFirst ? [] : decision.transactions,
-            categories: ctx.categories,
-            // 把第 3 步已检索好的记忆（规则/习惯/历史分布/否证）交给模型，
-            // 让它的"修正与补全"有据可依，而不是凭常识盲猜用户习惯。
-            accounts: ctx.accounts,
-            memory,
-            fewShot,
-            // 设置页可调 prompt 版本（v3 能力全集 / v2 / v1 冻结基线）
-            promptVersion: aiSettings ? aiSettings.prompt_version : null,
-        });
+        // 自动故障转移：沿候选链依次尝试，服务商侧故障时自动切下一个，
+        // 用户无需手动改配置。全部候选不可用则降级为「仅靠本地」，记账链路不挂。
+        const candidates = providerChain.length ? providerChain : (provider ? [provider] : []);
+        let review;
+        try {
+            const r = await callWithFailover(candidates, async (cand) => {
+                const m = routing.route === 'strong_model'
+                    ? (cand.strong_model || cand.model)
+                    : (cand.cheap_model || cand.model);
+                const res = await reviewWithModel({
+                    provider: cand, model: m, text,
+                    candidates: llmFirst ? [] : decision.transactions,
+                    categories: ctx.categories,
+                    // 把第 3 步已检索好的记忆（规则/习惯/历史分布/否证）交给模型，
+                    // 让它的"修正与补全"有据可依，而不是凭常识盲猜用户习惯。
+                    accounts: ctx.accounts,
+                    memory,
+                    fewShot,
+                    // 设置页可调 prompt 版本（v3 能力全集 / v2 / v1 冻结基线）
+                    promptVersion: aiSettings ? aiSettings.prompt_version : null,
+                });
+                // reviewWithModel 不抛异常；把失败转成异常交给 failover 判定是否切换
+                if (!res.ok) {
+                    const e = new Error(res.error || '模型复核失败');
+                    e._review = res;
+                    if (res._err) {
+                        e.isAiProviderError = res._err.isAiProviderError;
+                        e.statusCode = res._err.statusCode;
+                    }
+                    throw e;
+                }
+                return res;
+            });
+            review = r.result;
+        } catch (e) {
+            review = { ok: false, error: (e && e.message) || '全部 AI 服务商均不可用' };
+        }
         modelRequest = review.request || null;
 
         if (review.ok) {

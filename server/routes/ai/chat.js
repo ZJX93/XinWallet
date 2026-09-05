@@ -455,35 +455,67 @@ ${accRef}`;
         let unfinished = false;
         let writeSucceeded = false;
         const MAX_LOOPS = 5;
-        for (let i = 0; i < MAX_LOOPS; i++) {
-            const msg = await chatWithTools(provider, conv, tools);
-            conv.push(msg);
-            if (!msg.toolCalls || msg.toolCalls.length === 0) { reply = stripThinkingTokens(msg.content || ''); break; }
-            for (const tc of msg.toolCalls) {
-                const result = await executeTool(tc.name, tc.arguments || {});
-                conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
-                if (!result.ok) toolErrors.push(result.error || '操作失败');
-                if (result.ok && result.transaction_id) {
-                    writeSucceeded = true;
-                    const action = result.action || 'created';
-                    if (action === 'deleted') {
-                        mutations.push({
-                            id: result.transaction_id, action,
-                            type: result.type || 'expense',
-                            amount: parseFloat(result.amount || 0),
-                            categoryName: '', accountName: '', date: ''
-                        });
-                    } else {
-                        const t = await db.queryOne(
-                            `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
-                             FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
-                             WHERE t.id=? AND t.user_id=? AND t.book_id = ?`,
-                            [result.transaction_id, req.userId, req.bookId]
-                        );
-                        if (t) mutations.push({ id: result.transaction_id, action, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
-                    }
+
+        // 处理单条工具调用并写回 conv；抽成 helper 以便「首轮」与「循环轮」复用
+        const handleTool = async (tc) => {
+            const result = await executeTool(tc.name, tc.arguments || {});
+            conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
+            if (!result.ok) toolErrors.push(result.error || '操作失败');
+            if (result.ok && result.transaction_id) {
+                writeSucceeded = true;
+                const action = result.action || 'created';
+                if (action === 'deleted') {
+                    mutations.push({
+                        id: result.transaction_id, action,
+                        type: result.type || 'expense',
+                        amount: parseFloat(result.amount || 0),
+                        categoryName: '', accountName: '', date: ''
+                    });
+                } else {
+                    const t = await db.queryOne(
+                        `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
+                         FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
+                         WHERE t.id=? AND t.user_id=? AND t.book_id = ?`,
+                        [result.transaction_id, req.userId, req.bookId]
+                    );
+                    if (t) mutations.push({ id: result.transaction_id, action, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
                 }
             }
+        };
+
+        // 自动故障转移（保守方案）：循环前用 callWithFailover 选定一个可用服务商跑首轮，
+        // 选定后整个对话循环固定用它，中途不切换（避免跨服务商上下文/工具格式不兼容、
+        // 也避免已执行的写操作被重放）。首轮若全部候选都失败，退用原始 provider 按既有逻辑报错。
+        let activeProvider = provider;
+        const candidates = await aiModule.resolveProviderChain(req.userId);
+        const chainForFailover = candidates.length ? candidates : [provider];
+        let firstMsg = null;
+        try {
+            const r = await aiModule.callWithFailover(chainForFailover, (p) => chatWithTools(p, conv, tools));
+            firstMsg = r.result;
+            activeProvider = r.provider;
+        } catch (_) {
+            activeProvider = provider;
+        }
+
+        // 首轮已成功确定服务商：若首轮就直接回复则无需循环；若首轮调了工具则先执行工具、再续循环
+        let startLoop = 0;
+        if (firstMsg) {
+            conv.push(firstMsg);
+            if (!firstMsg.toolCalls || firstMsg.toolCalls.length === 0) {
+                reply = stripThinkingTokens(firstMsg.content || '');
+                startLoop = MAX_LOOPS; // 跳过循环
+            } else {
+                for (const tc of firstMsg.toolCalls) await handleTool(tc);
+                startLoop = 1;
+            }
+        }
+
+        for (let i = startLoop; i < MAX_LOOPS; i++) {
+            const msg = await chatWithTools(activeProvider, conv, tools);
+            conv.push(msg);
+            if (!msg.toolCalls || msg.toolCalls.length === 0) { reply = stripThinkingTokens(msg.content || ''); break; }
+            for (const tc of msg.toolCalls) await handleTool(tc);
             // 最后一轮仍要求调工具：说明步骤太多/循环用尽，本次未完整执行
             if (i === MAX_LOOPS - 1) unfinished = true;
         }

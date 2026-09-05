@@ -72,30 +72,41 @@ async function transcribeImage({ db, userId, imageBase64, mime = 'image/jpeg', p
     // ── 通道 A：大模型多模态直读（主路）────────────────────────────
     // force='tencent_ocr' 时直接跳过：用户已经说了模型读得不对，再读一遍没意义
     const skipModel = force === 'tencent_ocr';
-    if (!skipModel && provider && provider.api_key) {
-        const support = resolveVisionSupport(provider);
-        if (support === 'no') {
-            attempts.push({ source: 'model', ok: false, skipped: true, reason: 'vision_unsupported' });
-        } else {
+    if (!skipModel) {
+        // 自动故障转移：优先用当前启用的服务商，服务商侧故障时沿候选链自动切换。
+        // 场景：一家厂商的图片接口临时不可用，不必让用户手动去配置页换服务商。
+        const chain = await buildModelChain({ userId, provider });
+        if (chain.length === 0) {
+            attempts.push({ source: 'model', ok: false, skipped: true, reason: 'no_provider' });
+        }
+
+        for (const cand of chain) {
+            const support = resolveVisionSupport(cand);
+            if (support === 'no') {
+                attempts.push({ source: 'model', ok: false, skipped: true, reason: 'vision_unsupported', provider: cand.name });
+                continue;
+            }
             // 已知支持：给 10s；未知模型只给 6s 探针，避免用户空等 30s。
             const timeoutMs = support === 'yes' ? 10000 : 6000;
-            const r = await transcribeByModel({ provider, imageBase64, mime, timeoutMs });
+            const r = await transcribeByModel({ provider: cand, imageBase64, mime, timeoutMs });
             attempts.push({
                 source: 'model', ok: r.ok, reason: r.ok ? undefined : r.error,
                 vision_unsupported: r.visionUnsupported || undefined,
+                provider: cand.name,
             });
 
             // 把「到底支不支持读图」的真实结论记回 DB，下次不用再试错
             if (support === 'unknown' || r.visionUnsupported) {
-                await rememberVisionSupport(db, provider.id, r.visionUnsupported ? 'no' : (r.ok ? 'yes' : null));
+                await rememberVisionSupport(db, cand.id, r.visionUnsupported ? 'no' : (r.ok ? 'yes' : null));
             }
 
             if (r.ok) {
                 return { ok: true, text: r.text, source: 'model', attempts };
             }
+            // 只有服务商侧故障才继续换下一家；Key 无效/参数错换哪家都一样，
+            // 直接跳出，避免把整条链白跑一遍拖慢响应。
+            if (!isRetryable(r._err)) break;
         }
-    } else if (!skipModel) {
-        attempts.push({ source: 'model', ok: false, skipped: true, reason: 'no_provider' });
     }
 
     // ── 通道 B：腾讯云 OCR 兜底（只转录，不学习）──────────────────
@@ -113,6 +124,33 @@ async function transcribeImage({ db, userId, imageBase64, mime = 'image/jpeg', p
         // 供前端决定引导去哪个配置页
         needs_ocr_config: ocr.needsConfig || false,
     };
+}
+
+/**
+ * 构建图片转录的服务商候选链：当前启用项排最前，其余按 sort_order 补位。
+ * 取不到候选链时退回只含传入 provider 的单元素数组，保证行为与改造前一致。
+ */
+async function buildModelChain({ userId, provider }) {
+    const head = (provider && provider.api_key && !provider._decryptFailed) ? [provider] : [];
+    try {
+        const { getProviderChain } = require('../../../services/ai');
+        const rows = await getProviderChain(userId);
+        const seen = new Set(head.map(p => p.id));
+        const rest = (rows || []).filter(p => !seen.has(p.id));
+        return [...head, ...rest];
+    } catch (_) {
+        return head;
+    }
+}
+
+/** 是否值得换下一家服务商重试（复用 provider-gateway 的统一判定） */
+function isRetryable(err) {
+    try {
+        const { isRetryableProviderError } = require('../providers/provider-gateway');
+        return isRetryableProviderError(err);
+    } catch (_) {
+        return false;
+    }
 }
 
 /** 通道 A 实现：大模型读图 */
@@ -151,6 +189,9 @@ async function transcribeByModel({ provider, imageBase64, mime, timeoutMs = 1200
             ok: false,
             error: msg,
             visionUnsupported: looksLikeVisionUnsupported({ errorMessage: msg }),
+            // 保留原始错误对象：故障转移要靠它区分「服务商挂了（可换）」与
+            // 「Key 无效/参数错（换哪家都一样）」，只留字符串会丢失 statusCode。
+            _err: err,
         };
     }
 }

@@ -205,6 +205,7 @@ const AIProviderManager = {
             if (btn.classList.contains('ai-provider-edit')) this.openModal(id);
             if (btn.classList.contains('ai-provider-delete')) this.delete(id);
             if (btn.classList.contains('ai-provider-activate')) this.activate(id);
+            if (btn.classList.contains('ai-provider-check')) this.checkHealth(id);
         });
         this.initOcrConfig();
     },
@@ -244,14 +245,55 @@ const AIProviderManager = {
                     <div>Key：${p.api_key ? '已保存' : '未设置'}</div>
                 </div>
                 <div class="provider-card-caps">${capBadges}</div>
+                <div class="provider-health" data-health-for="${p.id}">${this.renderHealth(p.id)}</div>
                 <div class="provider-card-actions">
                     ${p.is_active ? '<span class="btn btn-ghost btn-sm" disabled>已启用</span>' : `<button class="btn btn-ghost btn-sm ai-provider-activate" data-id="${p.id}">启用</button>`}
+                    <button class="btn btn-ghost btn-sm ai-provider-check" data-id="${p.id}">检测</button>
                     <button class="btn btn-ghost btn-sm ai-provider-edit" data-id="${p.id}">编辑</button>
                     <button class="btn btn-ghost btn-sm ai-provider-delete" data-id="${p.id}">删除</button>
                 </div>
             </div>
             `;
         }).join('');
+    },
+
+    // 各服务商最近一次检测结果：{ [id]: { state, text, at } }
+    // state: checking | healthy | error；仅存内存，刷新页面即重置（不污染后端数据）
+    health: {},
+
+    renderHealth(id) {
+        const h = this.health[id];
+        if (!h) return '<span class="provider-health-dot unknown"></span><span class="provider-health-text">状态未知，点「检测」</span>';
+        const title = h.text ? ` title="${escapeHtml(h.text)}"` : '';
+        return `<span class="provider-health-dot ${h.state}"></span><span class="provider-health-text ${h.state}"${title}>${escapeHtml(h.label)}</span>`;
+    },
+
+    // 局部更新单张卡片的健康区域，避免整列表重绘打断用户操作
+    paintHealth(id) {
+        const el = document.querySelector(`[data-health-for="${id}"]`);
+        if (el) el.innerHTML = this.renderHealth(id);
+    },
+
+    /**
+     * 检测单个服务商连通性。
+     * 复用后端 /providers/:id/test（只发一句「回复 OK」，轻量且不产生业务副作用）。
+     */
+    async checkHealth(id) {
+        this.health[id] = { state: 'checking', label: '检测中…' };
+        this.paintHealth(id);
+        const started = Date.now();
+        try {
+            const res = await api(`/ai/providers/${id}/test`, 'POST', {}, { silent: true });
+            const ms = Date.now() - started;
+            if (res && res.ok) {
+                this.health[id] = { state: 'healthy', label: `健康 · ${ms}ms`, text: res.reply || '' };
+            } else {
+                this.health[id] = { state: 'error', label: '异常', text: (res && res.error) || '未知错误' };
+            }
+        } catch (err) {
+            this.health[id] = { state: 'error', label: '异常', text: err.message || '网络错误' };
+        }
+        this.paintHealth(id);
     },
 
     // 根据服务商配置推断能力标签
@@ -526,22 +568,45 @@ const AIProviderManager = {
             return this.setMsg('新建服务商时必须填写 API Key', 'error');
         }
         this.setMsg('正在测试连接...', 'info');
-        // 临时保存到后端再调用 advice（确保后端有 key）
+
+        // 先落库拿到 id（后端测试接口按 id 取解密后的 key）。
+        // 注意：这里不再顺带把服务商置为启用 —— 测试只应验证连通性，
+        // 不该在用户没点「启用」时就悄悄切换全局对话服务商。
         const isEdit = !!this.editingId;
-        const saveRes = isEdit
-            ? await api(`/ai/providers/${this.editingId}`, 'PUT', { ...payload, is_active: true })
-            : await api('/ai/providers', 'POST', { ...payload, is_active: true });
-        if (!saveRes) {
-            this.setMsg('保存失败，无法测试', 'error');
+        let pid = this.editingId;
+        try {
+            const saveRes = isEdit
+                ? await api(`/ai/providers/${this.editingId}`, 'PUT', payload, { silent: true })
+                : await api('/ai/providers', 'POST', payload, { silent: true });
+            if (!isEdit) {
+                pid = saveRes && saveRes.id;
+                if (!pid) { this.setMsg('保存成功但未取到服务商 ID，无法测试', 'error'); return; }
+                this.editingId = pid;
+            }
+        } catch (err) {
+            this.setMsg(`保存失败，无法测试：${err.message || '未知错误'}`, 'error');
             return;
         }
-        const res = await api('/ai/advice', 'POST', {});
-        if (res) {
-            showToast('连接成功，AI 接口可用', 'success');
-            this.setMsg('连接成功！点击「保存」保留或「取消」关闭。如需切换对话服务商，请在列表中点击「启用」。', 'success');
+
+        // 用专用轻量测试接口（只发一句「回复 OK」），而不是走 /ai/advice。
+        // /ai/advice 会拉全量账务数据并生成完整建议，耗时长，且任何业务侧异常
+        // （数据为空、超时、tool 调用失败）都会被笼统报成「内部错误」，
+        // 让用户误以为是 Key/地址配错。
+        // 另注意 api() 失败时是 throw 而非返回 null，必须 try/catch，
+        // 否则错误分支永远走不到（旧代码 `if (res)` 即因此失效）。
+        try {
+            const res = await api(`/ai/providers/${pid}/test`, 'POST', {}, { silent: true });
             await this.refresh();
-        } else {
-            this.setMsg('连接测试失败，请检查 Key、模型名和接口地址', 'error');
+            if (res && res.ok) {
+                showToast('连接成功，AI 接口可用', 'success');
+                this.setMsg('连接成功！点击「保存」保留配置。如需切换对话服务商，请在列表中点击「启用」。', 'success');
+            } else {
+                // 后端把上游真实报错放在 error 字段回传，原样展示便于定位
+                this.setMsg(`连接失败：${(res && res.error) || '未知错误'}`, 'error');
+            }
+        } catch (err) {
+            await this.refresh();
+            this.setMsg(`连接失败：${err.message || '网络错误'}`, 'error');
         }
     },
 

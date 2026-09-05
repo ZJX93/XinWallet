@@ -90,10 +90,14 @@ router.post('/advice', async (req, res) => {
             上月支出: Math.round(prevExpense * 100) / 100
         };
 
-        const content = await callProvider(provider, [
-            {
-                role: 'system',
-                content: `你是一位资深个人理财顾问。基于用户完整财务数据，一次性输出两段：
+        // 自动故障转移：服务商不可用时沿候选链自动切换，用户无需手动改配置
+        const chain = await aiModule.resolveProviderChain(req.userId);
+        const { result: content } = await aiModule.callWithFailover(
+            chain.length ? chain : [provider],
+            (p) => callProvider(p, [
+                {
+                    role: 'system',
+                    content: `你是一位资深个人理财顾问。基于用户完整财务数据，一次性输出两段：
 1) insights 观察型分析 3-5 条：本月发生了什么（异常、环比、债务负担、储蓄率、资金健康度）
 2) advice 建议型条目 3-5 条：下月怎么做（可量化动作、含 impact 预期效果）
 
@@ -110,9 +114,10 @@ router.post('/advice', async (req, res) => {
 }
 
 不要 markdown、不要解释、不要超出字段。`
-            },
-            { role: 'user', content: JSON.stringify(context, null, 0) }
-        ]);
+                },
+                { role: 'user', content: JSON.stringify(context, null, 0) }
+            ])
+        );
         const json = extractJson(content);
         const advice = (json && Array.isArray(json.advice)) ? json.advice : [];
         const insights = (json && Array.isArray(json.insights)) ? json.insights : [];

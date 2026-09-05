@@ -73,21 +73,53 @@ async function httpsPostJson(url, headers, body) {
     });
 }
 
-// 获取当前激活的 AI 服务商（含解密 api_key）。
-// api_key 解密失败（密钥变更/数据损坏）→ 返回 null，让路由层提示用户重新配置。
-async function getActiveProvider(userId) {
-    const provider = await db.queryOne('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE LIMIT 1', [userId]);
+// 解密单条服务商记录的 api_key；失败时标记 _decryptFailed 而不是静默丢弃。
+function withDecryptedKey(provider, userId) {
     if (!provider) return null;
     if (provider.api_key) {
         provider.api_key = decrypt(provider.api_key);
         if (!provider.api_key) {
             // 配置存在但密钥不匹配（极可能是重部署后 ENCRYPTION_KEY 变更），
             // 标记后由路由层提示用户前往「AI 配置」页重新保存，而非静默当作「未配置」。
-            console.error(`[AI] 用户 ${userId} 的活跃服务商 API Key 解密失败（密钥不匹配或数据损坏）`);
+            console.error(`[AI] 用户 ${userId} 的服务商 ${provider.id} API Key 解密失败（密钥不匹配或数据损坏）`);
             provider._decryptFailed = true;
         }
     }
     return provider;
+}
+
+// 获取当前激活的 AI 服务商（含解密 api_key）。
+// api_key 解密失败（密钥变更/数据损坏）→ 返回 null，让路由层提示用户重新配置。
+async function getActiveProvider(userId) {
+    const provider = await db.queryOne('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE LIMIT 1', [userId]);
+    return withDecryptedKey(provider, userId);
+}
+
+/**
+ * 按优先级列出可用于故障转移的服务商候选链。
+ *
+ * 顺序：当前启用的排最前，其余按 sort_order、id 升序（复用既有排序字段，不新增列）。
+ * 过滤掉：未填 key 的、key 解密失败的（换了也调不通，只会拖慢响应）。
+ *
+ * 与 getActiveProvider 的区别：那个只返回单个启用项（供「必须用指定服务商」的场景），
+ * 这个返回整条链（供自动故障转移使用）。
+ *
+ * @param {number} userId
+ * @returns {Promise<object[]>} 已解密 key 的候选，最多 MAX_CHAIN 个
+ */
+const MAX_CHAIN = 5;
+async function getProviderChain(userId) {
+    const rows = await db.query(
+        'SELECT * FROM ai_providers WHERE user_id = ? ORDER BY is_active DESC, sort_order, id LIMIT ?',
+        [userId, MAX_CHAIN]
+    );
+    const chain = [];
+    for (const r of rows || []) {
+        const p = withDecryptedKey(r, userId);
+        if (!p || !p.api_key || p._decryptFailed) continue;
+        chain.push(p);
+    }
+    return chain;
 }
 
 // 启动自检：扫描所有用户的 AI/OCR 凭证。若记录存在但用当前 ENCRYPTION_KEY 解密失败，
@@ -347,7 +379,7 @@ async function httpsPostRaw(url, headers, bufferBody) {
     });
 }
 
-module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools, auditProviderKeys,
+module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getProviderChain, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools, auditProviderKeys,
     // 多模态 content 归一化：图片转录层（modules/ai/vision）也要用。
     // ⛔ 必须导出复用，不许各处抄一份 —— 两份实现漂移后，同一张图在
     //    「对话通道」和「图片记账通道」会发出不同格式的请求，且只在某一端报错。
