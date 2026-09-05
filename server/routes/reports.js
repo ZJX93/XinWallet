@@ -1015,14 +1015,23 @@ router.get('/top-transactions', async (req, res) => {
             return res.status(400).json(fail('请指定周期（YYYY-MM / YYYY / YYYY-MM~YYYY-MM）'));
         }
         const tType = type === 'income' ? 'income' : 'expense';
+        // 多币种 P2-2d：LEFT JOIN accounts 取 currency——交易本身无 currency 列，币种跟随账户
         const rows = await db.query(
-            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
-             FROM transactions t JOIN categories c ON t.category_id = c.id
+            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon, a.currency
+             FROM transactions t
+             JOIN categories c ON t.category_id = c.id
+             LEFT JOIN accounts a ON t.account_id = a.id
              WHERE t.user_id = ? AND t.book_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
              ORDER BY t.amount DESC LIMIT 5`,
             [req.userId, req.bookId, tType, start, end]
         );
-        res.json(success({ items: rows.map(r => ({ ...r, amount: parseFloat(r.amount) })) }));
+        res.json(success({
+            items: rows.map(r => ({
+                ...r,
+                amount: parseFloat(r.amount),
+                currency: r.currency || 'CNY'
+            }))
+        }));
     } catch (err) {
         handleServerError(res, err, '查询 Top 交易');
     }
