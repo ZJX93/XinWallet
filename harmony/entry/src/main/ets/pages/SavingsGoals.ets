@@ -144,7 +144,7 @@ export struct SavingsGoalsPage {
                     Column() {
                       Text(g.name).fontSize(15).fontColor(COLORS.textPrimary)
                     }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-                    Text(`${fmtMoney(g.current || 0)} / ${fmtMoney(g.target || 0)}`)
+                    Text(`${fmtMoney(g.current || 0, g.currency)} / ${fmtMoney(g.target || 0, g.currency)}`)
                       .fontSize(13).fontColor(COLORS.textSecondary)
                   }
                   LinearProgress({

@@ -6,7 +6,7 @@ import { BudgetRequest, Budget } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { toast, toastLong } from '../common/ui';
-import { COLORS, fmtMoney, LAYOUT } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyMix, LAYOUT } from '../common/theme';
 import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, IconCircle, FloatingButton, Chip, BottomSheet, SheetHeader, AppBackground , ConfirmDialog } from '../common/components/Components';
 
 const PERIODS: string[] = ['月', '周', '季', '半年', '年'];
@@ -100,7 +100,8 @@ export struct BudgetsPage {
                     }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                   }
                   Row() {
-                    Text(fmtMoney(this.used(b))).fontSize(14).fontColor(COLORS.textPrimary)
+                    // 多币种 P2-3b：actual 按 breakdown 智能混显，amount 仍 CNY 单货币
+                    Text(fmtMoneyMix(b.actualBreakdown, b.currency)).fontSize(14).fontColor(COLORS.textPrimary)
                     Text(` / ${fmtMoney(b.amount)}`).fontSize(12).fontColor(COLORS.textSecondary)
                   }
                   LinearProgress({
@@ -109,6 +110,7 @@ export struct BudgetsPage {
                     showPercent: true
                   })
                   if (this.used(b) > b.amount) {
+                    // 多币种 P2-3b：超支 = 实际值 - 预算值，按预算币种（CNY 单货币）展示
                     Text(`已超支 ${fmtMoney(this.used(b) - b.amount)}`).fontSize(12).fontColor(COLORS.danger)
                   }
                 }.width('100%').padding(14).backgroundColor(COLORS.cardGlass).borderRadius(12)

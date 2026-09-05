@@ -236,6 +236,8 @@ export interface RepaymentItem {
   debt_id?: number;
   amount?: number;
   paid_at?: string;
+  /** 多币种 P2-3b：还款币种（debt_repayments 表 P2-2d 加的 currency 列） */
+  currency?: string;
 }
 export interface DebtDetail {
   repayments?: RepaymentItem[];
@@ -562,6 +564,7 @@ export interface SavingsGoalRequest {
 /* ----------------------------- 首页卡片复用实体 ----------------------------- */
 
 /** 预算实体（首页预算卡与预算管理页共用） */
+/** 预算。多币种 P2-3b：amount 是 CNY 单货币（budgets.js / reports.js 一致），actual 按交易账户币种分布 */
 export interface Budget {
   id: number;
   name: string;
@@ -570,9 +573,13 @@ export interface Budget {
   startDate?: string;
   spent?: number;
   used?: number;
+  /** 多币种 P2-3b：actual 主货币 */
+  currency?: string;
+  /** 多币种 P2-3b：actual 按交易账户币种分布 */
+  actualBreakdown?: Record<string, number>;
 }
 
-/** 储蓄目标实体（首页目标卡与储蓄目标页共用） */
+/** 储蓄目标实体（首页目标卡与储蓄目标页共用）。多币种 P2-3b：跟随关联储蓄账户 currency */
 export interface Goal {
   id: number;
   name: string;
@@ -580,6 +587,8 @@ export interface Goal {
   accountId?: number;
   current?: number;
   target?: number;
+  /** 多币种 P2-3b：储蓄目标币种（跟随关联账户） */
+  currency?: string;
 }
 
 /** 分类支出聚合项（首页分类榜卡本地聚合产物） */

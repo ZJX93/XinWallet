@@ -9,7 +9,7 @@ import { toast, toastLong } from '../common/ui';
 import { COLORS, fmtMoney, LAYOUT } from '../common/theme';
 import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton, BottomSheet, AppBackground , ConfirmDialog } from '../common/components/Components';
 
-interface Debt { id: number; name: string; type?: string; principal?: number; remaining?: number; monthly?: number; paid?: number; dueDate?: string; icon?: string; }
+interface Debt { id: number; name: string; type?: string; principal?: number; remaining?: number; monthly?: number; paid?: number; dueDate?: string; icon?: string; currency?: string; }
 
 @Component
 export struct DebtsPage {
@@ -157,7 +157,8 @@ export struct DebtsPage {
           if (d.dueDate) Text(`到期 ${d.dueDate}`).fontSize(11).fontColor(COLORS.textSecondary)
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
         Column() {
-          Text(fmtMoney(d.remaining ?? d.principal ?? 0)).fontSize(15).fontWeight(FontWeight.Medium)
+          // 多币种 P2-3b：剩余本金跟随债务币种
+          Text(fmtMoney(d.remaining ?? d.principal ?? 0, d.currency)).fontSize(15).fontWeight(FontWeight.Medium)
             .fontColor(d.type === 'receivable' ? COLORS.expense : COLORS.income)
         }.alignItems(HorizontalAlign.End)
       }
@@ -270,7 +271,8 @@ export struct DebtsPage {
           ForEach(this.detailRepayments, (r: ESObject) => {
             Row({ space: 8 }) {
               Column() {
-                Text(fmtMoney(r['amount'] ?? 0)).fontSize(15).fontColor(COLORS.income)
+                // 多币种 P2-3b：还款金额跟随还款记录币种
+                Text(fmtMoney(r['amount'] ?? 0, r['currency'])).fontSize(15).fontColor(COLORS.income)
                 Text((r['paid_at'] ? (r['paid_at'] as string).slice(0, 10) : '') + (r['note'] ? ' · ' + (r['note'] as string) : ''))
                   .fontSize(11).fontColor(COLORS.textSecondary)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)

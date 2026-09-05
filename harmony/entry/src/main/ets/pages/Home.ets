@@ -9,7 +9,7 @@
 import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney, fmtMoneyShort, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyMix, fmtMoneyShort, SPACING, RADIUS, FONT_SIZE, LAYOUT } from '../common/theme';
 import {
   TransactionItem, Dashboard, CalendarSummary, CalendarDay, Book, BooksResponse,
   Budget, Goal, Account, AccountsResponse, CategoryStat, TxRef
@@ -37,8 +37,8 @@ function weekdayOf(s: string): number {
   let w = d.getDay() - 1; if (w < 0) w = 6; return w;
 }
 
-interface DashMonth { income?: number; expense?: number; balance?: number; }
-interface DashData { month?: DashMonth; income?: number; expense?: number; balance?: number; }
+interface DashMonth { income?: number; expense?: number; balance?: number; currency?: string; incomeBreakdown?: Record<string, number>; expenseBreakdown?: Record<string, number>; }
+interface DashData { month?: DashMonth; income?: number; expense?: number; balance?: number; currency?: string; totalIncome?: number; totalExpense?: number; totalIncomeBreakdown?: Record<string, number>; totalExpenseBreakdown?: Record<string, number>; }
 
 @Component
 
@@ -59,6 +59,12 @@ export struct HomePage {
   @StorageLink('mainTabIndex') mainTabIndex: number = 0;
   @State monthExpenseVal: number = 0;
   @State monthIncomeVal: number = 0;
+  // 多币种 P2-3b：本月收/支 breakdown + 主货币（来自 dashboard.month）
+  @State monthExpenseBreakdown: Record<string, number> | null = null;
+  @State monthIncomeBreakdown: Record<string, number> | null = null;
+  @State monthCurrency: string = 'CNY';
+  // 多币种 P2-3b：总资产 breakdown（客户端按 accounts[].currency 重新分组）
+  @State totalAssetsBreakdown: Record<string, number> | null = null;
   @State selectedDate: string = '';
 
   /** 卡片可见性（key -> bool），来源 preferences */
@@ -142,6 +148,10 @@ export struct HomePage {
         const dd = d.data as DashData;
         this.monthExpenseVal = (dd.month?.expense ?? dd.expense ?? 0) as number;
         this.monthIncomeVal = (dd.month?.income ?? dd.income ?? 0) as number;
+        // 多币种 P2-3b：本月收/支 breakdown + 主货币
+        this.monthExpenseBreakdown = dd.month?.expenseBreakdown ?? dd.totalExpenseBreakdown ?? null;
+        this.monthIncomeBreakdown = dd.month?.incomeBreakdown ?? dd.totalIncomeBreakdown ?? null;
+        this.monthCurrency = dd.month?.currency ?? dd.currency ?? 'CNY';
       }
       if (c.success) this.cal = c.data;
       if (t.success) {
@@ -189,6 +199,15 @@ export struct HomePage {
         this.accounts = list.sort((a: Account, b: Account) => (b.balance ?? 0) - (a.balance ?? 0));
         this.totalAssets = d.totalAssets ?? this.accounts.reduce(
           (s: number, a: Account) => s + (a.balance ?? 0), 0);
+        // 多币种 P2-3b：客户端按 accounts[].currency 重新分组累加，混币种账本下后端
+        // SUM(balance) 没意义（USD 100 + CNY 1000 ≠ 1100）。account.currency 可能是
+        // null（老部署），统一兜底 CNY。
+        const bd: Record<string, number> = {};
+        list.filter((a: Account) => a.status === 'active').forEach((a: Account) => {
+          const cur: string = (a.currency || 'CNY').toUpperCase();
+          bd[cur] = (bd[cur] || 0) + (a.balance ?? 0);
+        });
+        this.totalAssetsBreakdown = bd;
       }
     } catch (e) { /* 读失败静默降级：该区块不显示即可，不打扰用户 */ }
   }
@@ -350,11 +369,14 @@ export struct HomePage {
   @Builder MonthSummaryCard() {
     HeroGradientCard({
       topLeft: '本月支出',
-      amount: fmtMoney(this.monthExpenseVal),
+      // 多币种 P2-3b：本月支出按 breakdown 智能混显
+      amount: fmtMoneyMix(this.monthExpenseBreakdown, this.monthCurrency),
       topRight: this.monthRangeLabel(),
       topRightPill: true,
-      bottomLeft: '本月收入 ' + fmtMoney(this.monthIncomeVal),
-      bottomRight: '日均支出 ' + fmtMoney(this.monthExpenseVal / this.daysInCurMonth())
+      // 多币种 P2-3b：本月收入按 breakdown 混显
+      bottomLeft: '本月收入 ' + fmtMoneyMix(this.monthIncomeBreakdown, this.monthCurrency),
+      // 多币种 P2-3b：日均 = 主货币值 / dayOfMonth，按月主货币格式化
+      bottomRight: '日均支出 ' + fmtMoney(this.monthExpenseVal / this.daysInCurMonth(), this.monthCurrency)
     })
   }
 
@@ -394,13 +416,15 @@ export struct HomePage {
           Row({ space: 8 }) {
             Row({ space: 4 }) {
               Text('收入').fontSize(FONT_SIZE.caption).fontColor(COLORS.textSecondary)
-              Text(fmtMoneyShort(this.todayInc()))
+              // 多币种 P2-3b：今日收入按月主货币格式化（严格拆分待 list SQL 加 currency 后再做）
+              Text(fmtMoneyShort(this.todayInc(), this.monthCurrency))
                 .fontSize(FONT_SIZE.label).fontWeight(FontWeight.Medium)
                 .fontColor(COLORS.income).maxLines(1)
             }
             Row({ space: 4 }) {
               Text('支出').fontSize(FONT_SIZE.caption).fontColor(COLORS.textSecondary)
-              Text(fmtMoneyShort(this.todayExp()))
+              // 多币种 P2-3b：今日支出按月主货币格式化（同上）
+              Text(fmtMoneyShort(this.todayExp(), this.monthCurrency))
                 .fontSize(FONT_SIZE.label).fontWeight(FontWeight.Medium)
                 .fontColor(COLORS.expense).maxLines(1)
             }
@@ -475,12 +499,14 @@ export struct HomePage {
         Row({ space: SPACING.xl }) {
           Row({ space: 4 }) {
             Text('收').fontSize(FONT_SIZE.caption).fontColor(COLORS.textSecondary)
-            Text(fmtMoney(this.sumCal('income'))).fontSize(FONT_SIZE.caption)
+            // 多币种 P2-3b：日历汇总按月主货币格式化（CalendarSummary 目前无 breakdown）
+            Text(fmtMoney(this.sumCal('income'), this.monthCurrency)).fontSize(FONT_SIZE.caption)
               .fontWeight(FontWeight.Medium).fontColor(COLORS.income)
           }
           Row({ space: 4 }) {
             Text('支').fontSize(FONT_SIZE.caption).fontColor(COLORS.textSecondary)
-            Text(fmtMoney(this.sumCal('expense'))).fontSize(FONT_SIZE.caption)
+            // 多币种 P2-3b：日历汇总按月主货币格式化（同上）
+            Text(fmtMoney(this.sumCal('expense'), this.monthCurrency)).fontSize(FONT_SIZE.caption)
               .fontWeight(FontWeight.Medium).fontColor(COLORS.expense)
           }
         }
@@ -519,7 +545,8 @@ export struct HomePage {
           .fontSize(FONT_SIZE.body).fontColor(COLORS.textPrimary)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
-        Text(fmtMoney(this.budgetUsed(b)) + ' / ' + fmtMoney(b.amount))
+        // 多币种 P2-3b：实际按 breakdown 混显，预算 amount 仍 CNY 单货币
+        Text(fmtMoneyMix(b.actualBreakdown, b.currency) + ' / ' + fmtMoney(b.amount))
           .fontSize(FONT_SIZE.label)
           .fontColor(this.budgetOver(b) ? COLORS.expense : COLORS.textSecondary)
       }.width('100%').alignItems(VerticalAlign.Center)
@@ -616,7 +643,8 @@ export struct HomePage {
             Row() {
               Text('净资产').fontSize(FONT_SIZE.label).fontColor(COLORS.textSecondary)
                 .layoutWeight(1)
-              Text(fmtMoney(this.totalAssets))
+              // 多币种 P2-3b：总资产按 breakdown 混显（按 accounts[].currency 客户端分组）
+              Text(fmtMoneyMix(this.totalAssetsBreakdown, this.monthCurrency))
                 .fontSize(FONT_SIZE.title - 2).fontWeight(FontWeight.Bold)
                 .fontColor(COLORS.textPrimary)
             }
@@ -643,7 +671,8 @@ export struct HomePage {
         .fontSize(FONT_SIZE.body).fontColor(COLORS.textPrimary)
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(fmtMoney(a.balance ?? 0))
+      // 多币种 P2-3b：账户余额跟随账户币种
+      Text(fmtMoney(a.balance ?? 0, a.currency))
         .fontSize(FONT_SIZE.body).fontWeight(FontWeight.Medium)
         // 负余额（如信用卡欠款）用支出色，一眼区分资产与负债
         .fontColor((a.balance ?? 0) < 0 ? COLORS.expense : COLORS.textPrimary)
@@ -688,7 +717,8 @@ export struct HomePage {
           .fontSize(FONT_SIZE.body).fontColor(COLORS.textPrimary)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
-        Text(fmtMoney(g.current ?? 0) + ' / ' + fmtMoney(g.target ?? 0))
+        // 多币种 P2-3b：储蓄目标 current / target 跟随目标币种
+        Text(fmtMoney(g.current ?? 0, g.currency) + ' / ' + fmtMoney(g.target ?? 0, g.currency))
           .fontSize(FONT_SIZE.label).fontColor(COLORS.textSecondary)
       }.width('100%').alignItems(VerticalAlign.Center)
 
