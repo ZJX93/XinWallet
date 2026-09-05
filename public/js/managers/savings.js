@@ -47,11 +47,11 @@ const SavingsGoalManager = {
     },
     populateAccounts() {
         const sel = document.getElementById('goalAccount');
-        sel.innerHTML = '<option value="">请选择储蓄账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+        sel.innerHTML = '<option value="">请选择储蓄账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance, a.currency || 'CNY')})</option>`).join('');
     },
     populateSourceAccounts() {
         const sel = document.getElementById('goalSource');
-        sel.innerHTML = '<option value="">请选择来源账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+        sel.innerHTML = '<option value="">请选择来源账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance, a.currency || 'CNY')})</option>`).join('');
     },
     edit(id) {
         const g = (this.goals || []).find(x => x.id === id);
@@ -129,7 +129,7 @@ const SavingsGoalManager = {
         // 填充账户下拉（排除目标自身关联的储蓄账户，避免存入/取回时选到它自己）
         const accSel = document.getElementById('goalAmountAccount');
         accSel.innerHTML = '<option value="">-- 请选择账户 * --</option>' +
-            (cache.accounts || []).filter(a => Number(a.id) !== Number(g.account_id)).map(a => `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+            (cache.accounts || []).filter(a => Number(a.id) !== Number(g.account_id)).map(a => `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance, a.currency || 'CNY')})</option>`).join('');
         // 默认带出目标的来源账户（存入时即默认来源；取回时默认回到来源账户）
         if (g.source_account_id && Number(g.source_account_id) !== Number(g.account_id)) accSel.value = g.source_account_id;
         const quick = document.getElementById('goalQuickAmounts');
