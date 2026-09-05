@@ -647,15 +647,43 @@ function initCurrencySwitcher() {
     if (!btn || !menu) return;
     const supported = (window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']);
     const symbolMap = { CNY:'¥', USD:'$', EUR:'€', HKD:'HK$', JPY:'¥', GBP:'£', AUD:'A$', CAD:'C$' };
-    menu.innerHTML = supported.map(function (c) {
+
+    // 多币种 P2-2b：汇率元信息行（订阅 FxManager，refresh 后自动刷新）
+    const metaEl = document.createElement('div');
+    metaEl.style.cssText = 'padding:6px 12px;font-size:11px;color:var(--text-tertiary);border-bottom:1px solid var(--border-subtle);margin-bottom:4px';
+    menu.appendChild(metaEl);
+
+    // 货币选项（点击切换 baseCurrency + 整页 reload）
+    menu.insertAdjacentHTML('beforeend', supported.map(function (c) {
         return '<button class="lang-opt" data-cur="' + c + '" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">' + c + ' ' + (symbolMap[c] || '') + '</button>';
-    }).join('');
+    }).join(''));
+
+    // 分隔线 + 刷新按钮
+    menu.insertAdjacentHTML('beforeend', '<div style="border-top:1px solid var(--border-subtle);margin:4px 0"></div>');
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'lang-opt';
+    refreshBtn.dataset.act = 'refresh';
+    refreshBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px';
+    refreshBtn.textContent = '🔄 刷新汇率';
+    menu.appendChild(refreshBtn);
+
+    const updateFxMeta = function () {
+        const r = window.FxManager && FxManager.rates;
+        metaEl.textContent = r
+            ? ('汇率 ' + r.date + (r.stale ? '（过期）' : ''))
+            : '汇率加载中…';
+    };
+    updateFxMeta();
+    if (window.FxManager && FxManager.subscribe) FxManager.subscribe(updateFxMeta);
+
     const syncActive = function () {
         const cur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
         btn.textContent = symbolMap[cur] || cur;
         const opts = menu.querySelectorAll('.lang-opt');
         for (let i = 0; i < opts.length; i++) {
-            opts[i].style.background = (opts[i].dataset.cur === cur) ? 'var(--surface-hover)' : 'none';
+            if (opts[i].dataset.cur) {
+                opts[i].style.background = (opts[i].dataset.cur === cur) ? 'var(--surface-hover)' : 'none';
+            }
         }
     };
     syncActive();
@@ -664,7 +692,8 @@ function initCurrencySwitcher() {
         menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
     });
     document.addEventListener('click', function () { menu.style.display = 'none'; });
-    const opts = menu.querySelectorAll('.lang-opt');
+    // 货币点击：保持原有行为（切 baseCurrency + reload）
+    const opts = menu.querySelectorAll('.lang-opt[data-cur]');
     for (let i = 0; i < opts.length; i++) {
         opts[i].addEventListener('click', async function (e) {
             e.stopPropagation();
@@ -674,6 +703,23 @@ function initCurrencySwitcher() {
             location.reload();
         });
     }
+    // 刷新按钮：手动拉远端汇率
+    refreshBtn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        if (!window.FxManager) return;
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '⏳ 拉取中…';
+        try {
+            await FxManager.refresh();
+            if (typeof showToast === 'function') showToast('汇率已更新', 'success');
+        } catch (err) {
+            if (typeof showToast === 'function') showToast('汇率刷新失败：' + (err.message || '未知错误'), 'error');
+        } finally {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = '🔄 刷新汇率';
+            menu.style.display = 'none';
+        }
+    });
     window.addEventListener('preferences:changed', syncActive);
     window.addEventListener('currency:changed', syncActive);
 }
@@ -687,6 +733,7 @@ async function boot() {
     const prefLang = PreferencesManager.lang;
     if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log('  ✅ 语言按偏好同步 -> ' + prefLang); }
     initLangSwitcher();
+    safeInit('FxManager', () => FxManager.init());   // 多币种 P2-2b：拉取汇率（顶栏刷新按钮依赖）
     initCurrencySwitcher();
     const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
     try { await initCache(); log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
