@@ -43,13 +43,24 @@
                 <button class="theme-btn active" data-theme="dark" title="暗色">🌙</button>
                 <button class="theme-btn" data-theme="system" title="跟随系统">💻</button>
             </div>
+            <div class="currency-switcher" id="currencySwitcher" style="position:relative;display:inline-flex">
+                <button class="btn btn-ghost btn-icon" id="currencyBtn" aria-label="本位币" title="Base Currency" style="font-size:14px">¥</button>
+                <div class="currency-menu" id="currencyMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.25)"></div>
+            </div>
+            <div class="lang-switcher" id="langSwitcher" style="position:relative;display:inline-flex">
+                <button class="btn btn-ghost btn-icon" id="langBtn" aria-label="语言" title="Language" style="font-size:14px">🌐</button>
+                <div class="lang-menu" id="langMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:120px;box-shadow:0 8px 24px rgba(0,0,0,.25)">
+                    <button class="lang-opt" data-lang="zh-CN" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">中文</button>
+                    <button class="lang-opt" data-lang="en-US" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">English</button>
+                </div>
+            </div>
             <button class="btn btn-ghost btn-icon" id="aiStatusBtn" title="AI 系统状态" aria-label="AI 系统状态">⚙️</button>
             <div class="user-menu" id="userMenu">
                 <button class="user-profile-trigger" id="profileTrigger" title="个人资料" type="button">
                     <span class="user-avatar" id="userAvatar">👤</span>
                     <span class="user-name" id="userName">demo</span>
                 </button>
-                <button class="btn btn-ghost btn-sm" id="logoutBtn">退出</button>
+                <button class="btn btn-ghost btn-sm" id="logoutBtn" data-i18n="header.logout">退出</button>
             </div>
         </div>
     </header>
@@ -61,45 +72,45 @@
         <nav class="sidebar" id="sidebar">
             <ul class="nav-menu">
                 <li class="nav-item active" data-page="dashboard">
-                    <span class="nav-text">仪表盘</span>
+                    <span class="nav-text" data-i18n="nav.dashboard">仪表盘</span>
                 </li>
 
-                <li class="nav-group-label">资金管理</li>
+                <li class="nav-group-label" data-i18n="nav.group.funds">资金管理</li>
                 <li class="nav-item" data-page="budget">
-                    <span class="nav-text">预算</span>
+                    <span class="nav-text" data-i18n="nav.budget">预算</span>
                 </li>
                 <li class="nav-item" data-page="transactions">
-                    <span class="nav-text">交易</span>
+                    <span class="nav-text" data-i18n="nav.transactions">交易</span>
                 </li>
                 <li class="nav-item" data-page="investments">
-                    <span class="nav-text">理财</span>
+                    <span class="nav-text" data-i18n="nav.investments">理财</span>
                 </li>
                 <li class="nav-item" data-page="debts">
-                    <span class="nav-text">债务</span>
+                    <span class="nav-text" data-i18n="nav.debts">债务</span>
                 </li>
                 <li class="nav-item" data-page="accounts">
-                    <span class="nav-text">账户</span>
+                    <span class="nav-text" data-i18n="nav.accounts">账户</span>
                 </li>
                 <li class="nav-item" data-page="reports">
-                    <span class="nav-text">报表</span>
+                    <span class="nav-text" data-i18n="nav.reports">报表</span>
                 </li>
 
-                <li class="nav-group-label">AI 实验室</li>
+                <li class="nav-group-label" data-i18n="nav.group.ai">AI 实验室</li>
                 <li class="nav-item" data-page="ai-recognition">
-                    <span class="nav-text">识别</span>
+                    <span class="nav-text" data-i18n="nav.ai-recognition">识别</span>
                 </li>
-                <li class="nav-item" data-page="ai-insights"><span class="nav-text">洞察</span></li>
-                <li class="nav-item" data-page="ai-rules"><span class="nav-text">规则</span></li>
+                <li class="nav-item" data-page="ai-insights"><span class="nav-text" data-i18n="nav.ai-insights">洞察</span></li>
+                <li class="nav-item" data-page="ai-rules"><span class="nav-text" data-i18n="nav.ai-rules">规则</span></li>
                 <li class="nav-item" data-page="ai-config">
-                    <span class="nav-text">配置</span>
+                    <span class="nav-text" data-i18n="nav.ai-config">配置</span>
                 </li>
 
-                <li class="nav-group-label">设置</li>
+                <li class="nav-group-label" data-i18n="nav.group.settings">设置</li>
                 <li class="nav-item" data-page="data-center">
-                    <span class="nav-text">基础数据</span>
+                    <span class="nav-text" data-i18n="nav.data-center">基础数据</span>
                 </li>
                 <li class="nav-item" data-page="about">
-                    <span class="nav-text">关于</span>
+                    <span class="nav-text" data-i18n="nav.about">关于</span>
                 </li>
             </ul>
         </nav>
@@ -111,7 +122,7 @@
                     <p class="page-subtitle" id="pageSubtitle">财务总览与快速洞察</p>
                 </div>
                 <div class="top-bar-right">
-                    <div class="quick-add-btn" id="quickAddBtn">快速记账</div>
+                    <div class="quick-add-btn" id="quickAddBtn" data-i18n="header.quickAdd">快速记账</div>
                 </div>
             </header>
 
@@ -833,7 +844,9 @@
     <!-- Chart.js vendor（~205KB）：置于 body 末尾、app 脚本之前，消除首屏渲染阻塞；
          仍保证在 app.js / managers 之前加载，图表初始化不受影响 -->
     <script src="js/vendor/chart.umd.min.js"></script>
+    <script src="js/i18n.js"></script>
     <script src="js/utils.js?v=28"></script>
+    <script src="js/preferences.js"></script>
     <script src="js/page-loader.js"></script>
     <script type="module" src="js/auth.js"></script>
     <script src="js/app.js?v=3"></script>

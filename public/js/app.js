@@ -616,10 +616,78 @@ function initColorSwatches(containerId, inputId) {
 // ==========================================
 // 应用启动
 // ==========================================
+function initLangSwitcher() {
+    const btn = document.getElementById('langBtn');
+    const menu = document.getElementById('langMenu');
+    if (!btn || !menu) return;
+    const syncActive = () => menu.querySelectorAll('.lang-opt').forEach(o =>
+        o.style.background = (o.dataset.lang === I18N.lang) ? 'var(--surface-hover)' : 'none');
+    syncActive();
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
+    });
+    document.addEventListener('click', () => { menu.style.display = 'none'; });
+    menu.querySelectorAll('.lang-opt').forEach(opt => {
+        opt.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const lang = opt.dataset.lang;
+            await I18N.setLang(lang); // 本地字典切换 + applyDOM + dispatch
+            try { await PreferencesManager.setLanguage(lang); } catch (_) {} // 持久化到后端 preferences（best-effort）
+            menu.style.display = 'none';
+            location.reload(); // I3 起改为无刷新重渲染当前页
+        });
+    });
+    window.addEventListener('i18n:changed', syncActive);
+}
+
+function initCurrencySwitcher() {
+    const btn = document.getElementById('currencyBtn');
+    const menu = document.getElementById('currencyMenu');
+    if (!btn || !menu) return;
+    const supported = (window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']);
+    const symbolMap = { CNY:'¥', USD:'$', EUR:'€', HKD:'HK$', JPY:'¥', GBP:'£', AUD:'A$', CAD:'C$' };
+    menu.innerHTML = supported.map(function (c) {
+        return '<button class="lang-opt" data-cur="' + c + '" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">' + c + ' ' + (symbolMap[c] || '') + '</button>';
+    }).join('');
+    const syncActive = function () {
+        const cur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
+        btn.textContent = symbolMap[cur] || cur;
+        const opts = menu.querySelectorAll('.lang-opt');
+        for (let i = 0; i < opts.length; i++) {
+            opts[i].style.background = (opts[i].dataset.cur === cur) ? 'var(--surface-hover)' : 'none';
+        }
+    };
+    syncActive();
+    btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
+    });
+    document.addEventListener('click', function () { menu.style.display = 'none'; });
+    const opts = menu.querySelectorAll('.lang-opt');
+    for (let i = 0; i < opts.length; i++) {
+        opts[i].addEventListener('click', async function (e) {
+            e.stopPropagation();
+            await PreferencesManager.setBaseCurrency(opts[i].dataset.cur);
+            menu.style.display = 'none';
+            window.dispatchEvent(new CustomEvent('currency:changed', { detail: { baseCurrency: opts[i].dataset.cur } }));
+            location.reload();
+        });
+    }
+    window.addEventListener('preferences:changed', syncActive);
+    window.addEventListener('currency:changed', syncActive);
+}
+
 async function boot() {
     const DEBUG = window.XIN_DEBUG === true || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     const log = (...a) => { if (DEBUG) console.log(...a); };  // 启动横幅仅在本地/调试态打印
     log('🚀 鑫钱包启动...');
+    try { await I18N.init(); log('  ✅ i18n'); } catch(e) { console.warn('  ⚠️  i18n init 失败(跳过):', e.message); }
+    try { await PreferencesManager.load(); log('  ✅ preferences'); } catch(e) { console.warn('  ⚠️  preferences (跳过):', e.message); }
+    const prefLang = PreferencesManager.lang;
+    if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log('  ✅ 语言按偏好同步 -> ' + prefLang); }
+    initLangSwitcher();
+    initCurrencySwitcher();
     const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
     try { await initCache(); log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
     // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后

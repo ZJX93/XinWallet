@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   type VARCHAR(30) NOT NULL CHECK (type IN ('cash','bank_card','credit_card','electronic_payment','financial_account','digital','other')),
   icon VARCHAR(10) DEFAULT '💰',                      -- 图标
   balance DECIMAL(15,2) NOT NULL DEFAULT 0,           -- 当前余额
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',         -- 账户币种（ISO 4217，如 CNY/USD/EUR）；多币种 P2-2a 引入，老库由 db.js ensureColumn 启动补齐
   opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,   -- 期初余额（复式记账）
   credit_limit DECIMAL(15,2) DEFAULT 0,               -- 信用额度(信用卡)
   is_default BOOLEAN DEFAULT 0,                   -- 是否默认账户

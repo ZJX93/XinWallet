@@ -9,26 +9,40 @@ function escapeHtml(s) {
     }[c]));
 }
 
-// 货币格式化（统一：使用 Intl.NumberFormat，兼容大量数字）
-// 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 → "-¥74.14"
-const _moneyFmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function fmt(n) {
+// 货币格式化（多币种 P2-2a）：按 currency（ISO 4217）选 locale 与符号，去除硬编码 ¥
+// 负数标准格式：符号在前、负号在最前，例如 -74.14 USD → "-$74.14"
+const _currencyLocale = { CNY: 'zh-CN', USD: 'en-US', EUR: 'en-IE', HKD: 'en-US', JPY: 'ja-JP', GBP: 'en-GB', AUD: 'en-AU', CAD: 'en-CA' };
+const _currencySymbol = { CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: '¥', GBP: '£', AUD: 'A$', CAD: 'C$' };
+const _supportedCurrencies = Object.keys(_currencyLocale); // ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']
+const _fmtCache = {};
+function _getFmt(locale) {
+    if (!_fmtCache[locale]) _fmtCache[locale] = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return _fmtCache[locale];
+}
+function _resolveCur(currency) {
+    const cur = String(currency || 'CNY').toUpperCase();
+    return { cur, locale: _currencyLocale[cur] || 'en-US', symbol: _currencySymbol[cur] || (cur + ' ') };
+}
+function fmt(n, currency = 'CNY') {
     const v = Number(n);
-    if (!isFinite(v)) return '¥0.00';
-    return (v < 0 ? '-' : '') + '¥' + _moneyFmt.format(Math.abs(v));
+    if (!isFinite(v)) return _resolveCur(currency).symbol + '0.00';
+    const { locale, symbol } = _resolveCur(currency);
+    return (v < 0 ? '-' : '') + symbol + _getFmt(locale).format(Math.abs(v));
 }
 
 // 紧凑货币格式：窄列场景下按中文习惯压缩为「万 / 亿」，避免长数字被截断
 // ¥1,110,800.00 → ¥111.08万 ；¥123,456,789.00 → ¥1.23亿 ；¥1,234.56 → ¥1,234.56（原样）
-function fmtCompact(n) {
+// 仅 CNY 用万/亿压缩（中文单位），其他货币退化为 fmt 避免语义偏差。
+function fmtCompact(n, currency = 'CNY') {
+    const cur = String(currency || 'CNY').toUpperCase();
+    if (cur !== 'CNY') return fmt(n, cur);
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
     const sign = v < 0 ? '-' : '';
     const abs = Math.abs(v);
-    const _c = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (abs >= 1e8) return sign + '¥' + _c.format(abs / 1e8) + '亿';
-    if (abs >= 1e4) return sign + '¥' + _c.format(abs / 1e4) + '万';
-    return sign + '¥' + _c.format(abs);
+    if (abs >= 1e8) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e8) + '亿';
+    if (abs >= 1e4) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e4) + '万';
+    return sign + '¥' + _getFmt('zh-CN').format(abs);
 }
 
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
@@ -133,6 +147,7 @@ if (typeof window !== 'undefined') {
     window.api = api;
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
+    window.supportedCurrencies = _supportedCurrencies;
     window.csvCell = csvCell;
     window.blobToBase64 = blobToBase64;
     window.formatRelativeTime = formatRelativeTime;
@@ -146,5 +161,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, csvCell, api, blobToBase64, formatRelativeTime };
+    module.exports = { escapeHtml, fmt, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, supportedCurrencies: _supportedCurrencies };
 }

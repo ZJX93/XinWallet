@@ -39,8 +39,12 @@ function resolveCreditLimit(type, credit_limit, existingLimit = 0) {
 // 新增账户
 router.post('/', async (req, res) => {
     try {
-        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle } = req.body;
+        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle, currency } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
+
+        // 币种代码：ISO 4217 三位大写字母，默认 CNY；前端 utils.supportedCurrencies 提供下拉
+        const cur = String(currency || 'CNY').toUpperCase().slice(0, 3);
+        if (!/^[A-Z]{3}$/.test(cur)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('币种代码必须是 3 位字母'));
 
         const limitRes = resolveCreditLimit(type, credit_limit);
         if (!limitRes.ok) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation(limitRes.msg));
@@ -52,11 +56,11 @@ router.post('/', async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, req.bookId, name, type, icon || '💰', initialOpening, initialOpening, limitRes.limit,
+            `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, currency, opening_balance, credit_limit, annual_rate, interest_cycle) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, req.bookId, name, type, icon || '💰', initialOpening, cur, initialOpening, limitRes.limit,
              parseFloat(annual_rate) || 0, interest_cycle || 'monthly']
         );
-        res.json(success({ id: result.insertId, balance: initialOpening, opening_balance: initialOpening, credit_limit: limitRes.limit }, '账户已创建'));
+        res.json(success({ id: result.insertId, balance: initialOpening, currency: cur, opening_balance: initialOpening, credit_limit: limitRes.limit }, '账户已创建'));
     } catch (err) {
         handleServerError(res, err);
     }
@@ -65,7 +69,7 @@ router.post('/', async (req, res) => {
 // 更新账户
 router.put('/:id', async (req, res) => {
     try {
-        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle } = req.body;
+        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle, currency } = req.body;
         const id = parseInt(req.params.id);
 
         const existing = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
@@ -73,6 +77,10 @@ router.put('/:id', async (req, res) => {
 
         const limitRes = resolveCreditLimit(type, credit_limit, parseFloat(existing.credit_limit) || 0);
         if (!limitRes.ok) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation(limitRes.msg));
+
+        // 币种代码：缺省沿用账户已有币种，保证旧客户端不传时不变更
+        const cur = String(currency || existing.currency || 'CNY').toUpperCase().slice(0, 3);
+        if (!/^[A-Z]{3}$/.test(cur)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('币种代码必须是 3 位字母'));
 
         // 用户编辑的是「初始余额」，实时余额由账本流水动态算出
         const newOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
@@ -84,14 +92,14 @@ router.put('/:id', async (req, res) => {
         }
 
         await db.query(
-            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=?, annual_rate=?, interest_cycle=? WHERE id=? AND user_id=? AND book_id=?`,
-            [name, type, icon, newBalance, newOpening, limitRes.limit,
+            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, currency=?, opening_balance=?, credit_limit=?, annual_rate=?, interest_cycle=? WHERE id=? AND user_id=? AND book_id=?`,
+            [name, type, icon, newBalance, cur, newOpening, limitRes.limit,
              parseFloat(annual_rate) || 0, interest_cycle || 'monthly', id, req.userId, req.bookId]
         );
         // 改额度 / 改类型后，授信账户（信用卡 + 带额度的电子支付）的已用额度可能变化，
         // 同步一次债务，避免存量负余额一直进不了债务管理
         await syncCreditCardDebt(db, req.userId, id);
-        res.json(success({ balance: newBalance, opening_balance: newOpening, credit_limit: limitRes.limit }, '账户已更新'));
+        res.json(success({ balance: newBalance, currency: cur, opening_balance: newOpening, credit_limit: limitRes.limit }, '账户已更新'));
     } catch (err) {
         handleServerError(res, err);
     }
