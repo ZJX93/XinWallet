@@ -7,6 +7,7 @@ import com.xinwallet.app.data.model.CreateAccountRequest
 import com.xinwallet.app.data.model.UpdateAccountRequest
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AccountRepository
+import com.xinwallet.app.util.sumByCurrency
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -91,16 +92,8 @@ class AccountsViewModel(private val repo: AccountRepository) : ViewModel() {
      * 信用卡口径：balance 是已欠金额（负数或正数取决于后端约定），这里原样
      * 累加，与后端 SUM(balance) 保持一致，不改变现有语义。
      */
-    private fun buildAssetsBreakdown(accounts: List<Account>): Map<String, Double> {
-        val out = linkedMapOf<String, Double>()
-        accounts.filter { it.status == "active" }.forEach { acc ->
-            // currency 声明是非空 String，但 Gson 可能塞 null（见上方注释），?: 兜底
-            @Suppress("USELESS_ELVIS")
-            val cur = (acc.currency ?: "CNY").uppercase()
-            out[cur] = (out[cur] ?: 0.0) + acc.balance
-        }
-        return out
-    }
+    private fun buildAssetsBreakdown(accounts: List<Account>): Map<String, Double> =
+        sumByCurrency(accounts.filter { it.status == "active" }, { it.currency }, { it.balance })
 
     fun consumeError() { _state.value = _state.value.copy(error = null) }
     fun consumeFormDone() { _state.value = _state.value.copy(formDone = false) }

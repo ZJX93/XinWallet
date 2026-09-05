@@ -67,6 +67,7 @@ import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.SavingsGoalsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 
 private val GOAL_ICONS = listOf("🎯", "💰", "🏠", "🚗", "✈️", "📈", "🎓", "💍")
 
@@ -216,8 +217,9 @@ private fun GoalRow(goal: SavingGoal, onClick: () -> Unit, onLongClick: () -> Un
                 Text("储蓄账户 ${goal.accName ?: "-"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(formatMoney(goal.currentAmount), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color)
-                Text("/ ${formatMoney(goal.targetAmount)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 多币种 P2-2e：目标当前/目标金额按关联储蓄账户币种格式化
+                Text(formatMoney(goal.currentAmount, goal.currency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color)
+                Text("/ ${formatMoney(goal.targetAmount, goal.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -358,7 +360,8 @@ private fun TxnsDialog(goal: SavingGoal, txns: com.xinwallet.app.data.model.Savi
                     com.xinwallet.app.ui.components.LoadingBox()
                 } else {
                     txns?.summary?.let { s ->
-                        Text("累计存入 ${formatMoney(s.deposit)} · 取回 ${formatMoney(s.withdraw)}", style = MaterialTheme.typography.labelMedium)
+                        // 多币种 P2-2e：累计存入/取回按 breakdown 混显（跨账户存入会跨币种）
+                        Text("累计存入 ${formatMoneyMix(s.depositBreakdown)} · 取回 ${formatMoneyMix(s.withdrawBreakdown)}", style = MaterialTheme.typography.labelMedium)
                         Spacer(Modifier.height(8.dp))
                     }
                     if (txns?.transactions.isNullOrEmpty()) {
@@ -372,7 +375,8 @@ private fun TxnsDialog(goal: SavingGoal, txns: com.xinwallet.app.data.model.Savi
                                         Text(t.date.take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         t.accountName?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     }
-                                    Text(formatMoney(t.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    // 多币种 P2-2e：流水金额按储蓄账户币种格式化
+                                    Text(formatMoney(t.amount, t.currency), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }

@@ -69,6 +69,7 @@ import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.BudgetsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import com.xinwallet.app.util.todayDate
 
 private val BUDGET_PERIODS = listOf(
@@ -181,15 +182,19 @@ private fun BudgetRow(budget: Budget, onClick: () -> Unit, onLongClick: () -> Un
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth()) {
-            Text("已用 ${formatMoney(budget.actual)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 多币种 P2-2e：「已用」按 actualBreakdown 混显（预算卡的实际支出来自
+            // 各账户交易，混币种账本下会跨币种）
+            Text("已用 ${formatMoneyMix(budget.actualBreakdown)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(8.dp))
+            // 预算金额本身是 CNY 单货币估算（budgets.js / reports.js 同口径），不参与混显
             Text("预算 ${formatMoney(budget.amount)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(6.dp))
         LinearProgress(ratio, color)
         if (over) {
             Spacer(Modifier.height(4.dp))
-            Text("已超支 ${formatMoney(budget.actual - budget.amount)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            // 超支额 = actual 主货币值 - amount（两者同为主货币口径，可用单值）
+            Text("已超支 ${formatMoney(budget.actual - budget.amount, budget.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }

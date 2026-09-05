@@ -102,6 +102,33 @@ fun formatMoneyMix(breakdown: Map<String, Double>?, baseCurrency: String? = "CNY
 }
 
 /**
+ * 多币种 P2-2e：把一组带 currency 的对象按币种分组累加，得到 breakdown。
+ *
+ * 用途：后端很多合计（accounts.totalAssets、debts summary 的 remaining /
+ * monthlyPayment 等）是 SQL SUM 不分 currency 的单值，混币种账本下没有意义。
+ * 客户端拿到明细列表后可以用这个函数重新按币种分组，再交给 formatMoneyMix。
+ *
+ * 例：sumByCurrency(debts, { it.currency }, { it.remaining })
+ *     → { "CNY": 1000.0, "USD": 50.0 }
+ *
+ * ⚠️ currencyOf 返回 null 时兜底 "CNY"（Gson 反序列化不调构造器，data class
+ * 的 `= "CNY"` 默认值不生效，老部署数据里 currency 实际是 null）。
+ */
+fun <T> sumByCurrency(
+    items: List<T>,
+    currencyOf: (T) -> String?,
+    amountOf: (T) -> Double
+): Map<String, Double> {
+    val out = linkedMapOf<String, Double>()
+    items.forEach { item ->
+        @Suppress("USELESS_ELVIS")
+        val cur = (currencyOf(item) ?: "CNY").uppercase()
+        out[cur] = (out[cur] ?: 0.0) + amountOf(item)
+    }
+    return out
+}
+
+/**
  * 日期标签紧凑化（与鸿蒙 theme.ts#fmtDayLabel 严格同语义）：
  *   '2026-08-28' → '8月28日'
  *   '2026-08'    → '2026年8月'

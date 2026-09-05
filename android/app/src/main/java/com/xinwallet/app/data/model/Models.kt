@@ -622,6 +622,7 @@ data class AiSimpleMessage(val message: String = "")
 
 /* ----------------------------- 预算 ----------------------------- */
 
+/** 预算（列表）。多币种 P2-2e：amount 是 CNY 单货币估算，actual 按账户币种分布 */
 data class Budget(
     val id: Int = 0,
     val name: String = "",
@@ -629,7 +630,11 @@ data class Budget(
     @SerializedName("start_date") val startDate: String = "",
     @SerializedName("end_date") val endDate: String = "",
     val amount: Double = 0.0,
-    val actual: Double = 0.0
+    val actual: Double = 0.0,
+    /** 多币种 P2-2e：actual 主货币（budgets.js 按 amount 绝对值最大选） */
+    val currency: String = "CNY",
+    /** 多币种 P2-2e：actual 按交易账户币种分布 */
+    @SerializedName("actualBreakdown") val actualBreakdown: Map<String, Double>? = null
 )
 
 data class CreateBudgetRequest(
@@ -676,18 +681,24 @@ data class SavingsWithdrawRequest(
     @SerializedName("account_id") val accountId: Int
 )
 
+/** 储蓄流水。多币种 P2-2e：currency 是 savings_transactions 表 currency 列 */
 data class SavingsTxn(
     val type: String = "",
     val amount: Double = 0.0,
     val date: String = "",
     val note: String? = null,
-    @SerializedName("account_name") val accountName: String? = null
+    @SerializedName("account_name") val accountName: String? = null,
+    val currency: String = "CNY"
 )
 
+/** 储蓄流水汇总。多币种 P2-2e：deposit/withdraw 主货币值 + 按币种分布 */
 data class SavingsTxnSummary(
     val deposit: Double = 0.0,
     val withdraw: Double = 0.0,
-    val net: Double = 0.0
+    val net: Double = 0.0,
+    val currency: String = "CNY",
+    val depositBreakdown: Map<String, Double>? = null,
+    val withdrawBreakdown: Map<String, Double>? = null
 )
 
 data class SavingsTxnResponse(
@@ -747,9 +758,12 @@ data class Debt(
     val note: String? = null,
     val status: String = "active",
     @SerializedName("paid_total") val paidTotal: Double = 0.0,
-    @SerializedName("account_id") val accountId: Int? = null
+    @SerializedName("account_id") val accountId: Int? = null,
+    /** 多币种 P2-2c：ISO 4217 货币代码（debts 表 currency 列，SELECT * 会带出） */
+    val currency: String = "CNY"
 )
 
+/** 还款流水。多币种 P2-2e：currency 是 debt_repayments 表 currency 列 */
 data class DebtRepayment(
     val id: Int = 0,
     val amount: Double = 0.0,
@@ -758,7 +772,8 @@ data class DebtRepayment(
     @SerializedName("paid_at") val paidAt: String = "",
     val note: String? = null,
     @SerializedName("account_id") val accountId: Int? = null,
-    @SerializedName("account_name") val accountName: String? = null
+    @SerializedName("account_name") val accountName: String? = null,
+    val currency: String = "CNY"
 )
 
 data class DebtScheduleItem(

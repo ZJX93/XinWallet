@@ -73,6 +73,8 @@ import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.DebtsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
+import com.xinwallet.app.util.sumByCurrency
 import com.xinwallet.app.util.todayDate
 import com.xinwallet.app.util.todayDateTime
 
@@ -229,11 +231,20 @@ fun DebtsTab() {
                     LazyColumn(Modifier.fillMaxSize()) {
                         item {
                             Spacer(Modifier.height(12.dp))
+                            // 多币种 P2-2e：「我欠别人/别人欠我」后端是 SUM(remaining) 不分
+                            // currency 的单值，混币种账本下无意义 —— 客户端按 debt.currency
+                            // 重新分组，交给 formatMoneyMix 混显。
+                            // 「本月待还/逾期」来自 calcDebtDueSummary（基于月供逐期 FIFO），
+                            // 客户端无法还原，仍用单值 + 主货币展示。
                             DebtSummaryCard(
                                 payableRemaining = state.summary?.payable?.remaining ?: 0.0,
+                                payableBreakdown = sumByCurrency(payable, { it.currency }, { it.remaining }),
                                 receivableRemaining = state.summary?.receivable?.remaining ?: 0.0,
+                                receivableBreakdown = sumByCurrency(receivable, { it.currency }, { it.remaining }),
                                 dueThisMonth = state.summary?.payable?.dueThisMonth ?: 0.0,
-                                overdue = state.summary?.payable?.overdueAmount ?: 0.0
+                                overdue = state.summary?.payable?.overdueAmount ?: 0.0,
+                                currency = sumByCurrency(payable, { it.currency }, { it.remaining })
+                                    .entries.maxByOrNull { kotlin.math.abs(it.value) }?.key ?: "CNY"
                             )
                         }
                         if (payable.isNotEmpty()) item { SectionTitle("我欠别人（应付）") }
@@ -260,15 +271,26 @@ fun DebtsTab() {
 }
 
 @Composable
-private fun DebtSummaryCard(payableRemaining: Double, receivableRemaining: Double, dueThisMonth: Double, overdue: Double) {
+private fun DebtSummaryCard(
+    payableRemaining: Double,
+    /** 多币种 P2-2e：应付剩余按币种分布（客户端按 debt.currency 分组） */
+    payableBreakdown: Map<String, Double>?,
+    receivableRemaining: Double,
+    /** 多币种 P2-2e：应收剩余按币种分布 */
+    receivableBreakdown: Map<String, Double>?,
+    dueThisMonth: Double,
+    overdue: Double,
+    /** 多币种 P2-2e：本月待还 / 逾期的 display 货币（后端聚合值无法按币种还原） */
+    currency: String
+) {
     val dark = LocalIsDark.current
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("我欠别人", formatMoney(payableRemaining), if (dark) ExpenseColorDark else ExpenseColor, Modifier.weight(1f))
-        StatCard("别人欠我", formatMoney(receivableRemaining), if (dark) IncomeColorDark else IncomeColor, Modifier.weight(1f))
+        StatCard("我欠别人", formatMoneyMix(payableBreakdown), if (dark) ExpenseColorDark else ExpenseColor, Modifier.weight(1f))
+        StatCard("别人欠我", formatMoneyMix(receivableBreakdown), if (dark) IncomeColorDark else IncomeColor, Modifier.weight(1f))
     }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("本月待还", formatMoney(dueThisMonth), MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
-        StatCard("逾期未还", formatMoney(overdue), MaterialTheme.colorScheme.error, Modifier.weight(1f))
+        StatCard("本月待还", formatMoney(dueThisMonth, currency), MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+        StatCard("逾期未还", formatMoney(overdue, currency), MaterialTheme.colorScheme.error, Modifier.weight(1f))
     }
 }
 
@@ -308,13 +330,14 @@ private fun DebtRow(debt: Debt, onClick: () -> Unit, onLongClick: () -> Unit) {
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth()) {
-            Text("${directionLabel(debt.direction)} · 剩余 ${formatMoney(debt.remaining)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            // 多币种 P2-2e：单条债务各金额按债务自身币种格式化（debts.currency，P2-2c 加列）
+            Text("${directionLabel(debt.direction)} · 剩余 ${formatMoney(debt.remaining, debt.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             if (!debt.dueDate.isNullOrBlank()) Text("到期 ${debt.dueDate}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(6.dp))
         LinearProgress(ratio, color)
         Spacer(Modifier.height(4.dp))
-        Text("本金 ${formatMoney(debt.principal)} · 月供 ${formatMoney(debt.monthlyPayment)} · 已还 ${formatMoney(debt.paidTotal)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("本金 ${formatMoney(debt.principal, debt.currency)} · 月供 ${formatMoney(debt.monthlyPayment, debt.currency)} · 已还 ${formatMoney(debt.paidTotal, debt.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -462,9 +485,10 @@ private fun DebtDetailDialog(
                 val d = detail.debt
                 Column(Modifier.fillMaxWidth().heightIn(max = 460.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column { Text("剩余", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.remaining), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                        Column { Text("本金", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.principal), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                        Column { Text("月供", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.monthlyPayment), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                        // 多币种 P2-2e：详情三档金额按债务自身币种格式化
+                        Column { Text("剩余", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.remaining, d.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                        Column { Text("本金", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.principal, d.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                        Column { Text("月供", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(d.monthlyPayment, d.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                     }
                     if (d.note.isNullOrBlank().not()) {
                         Spacer(Modifier.height(6.dp))
@@ -486,7 +510,8 @@ private fun DebtDetailDialog(
                                         Text(r.paidAt.take(10), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         r.accountName?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     }
-                                    Text(formatMoney(r.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    // 多币种 P2-2e：还款金额按 debt_repayments.currency 格式化
+                                    Text(formatMoney(r.amount, r.currency), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
