@@ -11,6 +11,8 @@ interface Inv {
   id: number; name: string; code?: string; type?: string; accountId?: number;
   buyPrice?: number; currentPrice?: number; quantity?: number;
   cost?: number; currentValue?: number; profit?: number; profitRate?: number;
+  // 多币种 P2-3b：投资持仓币种（investments 表 currency 列）
+  currency?: string;
 }
 
 @Component
@@ -48,11 +50,14 @@ export struct InvestmentDetailPage {
       else {
         Scroll() {
           Column({ space: 12 }) {
-            BalanceCard({ title: '当前市值', amount: this.inv!.currentValue || 0, subtitle: `总成本 ${fmtMoney(this.inv!.cost || 0)}` })
+            // 多币种 P2-3b：单持仓的总成本跟随投资币种（BalanceCard 金额会通过外层 wrapper 切换，
+            // 此处仅切副标题里的成本；amount 当前硬传主货币值，混币种账本下为已知局限）
+            BalanceCard({ title: '当前市值', amount: this.inv!.currentValue || 0, subtitle: `总成本 ${fmtMoney(this.inv!.cost || 0, this.inv!.currency)}` })
             Row({ space: 10 }) {
               Column({ space: 4 }) {
                 Text('收益').fontSize(13).fontColor(COLORS.textSecondary)
-                Text(fmtMoney(this.inv!.profit || 0)).fontSize(18).fontWeight(FontWeight.Bold)
+                // 多币种 P2-3b：单条投资收益跟随投资币种
+                Text(fmtMoney(this.inv!.profit || 0, this.inv!.currency)).fontSize(18).fontWeight(FontWeight.Bold)
                   // 红涨绿跌：投资盈利用 income(红)、亏损用 expense(绿)。
                   // 原写法正负色反了（盈利显示绿色）——与项目其余部分及中国习惯矛盾
                   .fontColor((this.inv!.profit || 0) >= 0 ? COLORS.income : COLORS.expense)
@@ -79,8 +84,9 @@ export struct InvestmentDetailPage {
               this.InfoRow('名称', this.inv!.name)
               if (this.inv!.code) this.InfoRow('代码', this.inv!.code!)
               this.InfoRow('类型', this.inv!.type || '-')
-              this.InfoRow('买入价', fmtMoney(this.inv!.buyPrice || 0))
-              this.InfoRow('现价', fmtMoney(this.inv!.currentPrice || 0))
+              // 多币种 P2-3b：买入价 / 现价跟随投资币种
+              this.InfoRow('买入价', fmtMoney(this.inv!.buyPrice || 0, this.inv!.currency))
+              this.InfoRow('现价', fmtMoney(this.inv!.currentPrice || 0, this.inv!.currency))
               this.InfoRow('持有数量', String(this.inv!.quantity || 0))
             }.padding(12).backgroundColor(COLORS.cardGlass).borderRadius(12)
               .border({ width: 0.5, color: COLORS.outlineVariant })

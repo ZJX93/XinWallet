@@ -92,11 +92,18 @@ export struct BalanceCard {
   title: string = '';
   @Prop amount: number = 0;
   subtitle?: string = '';
+  /**
+   * 多币种 P2-3b：金额货币代码（ISO 4217）。amount 是该币种下的主货币值。
+   * 不传时默认 CNY，向后兼容所有旧调用方。
+   * 混币种账本下应传主货币（如 dashboard.month.currency）；
+   * 多币种混显由调用方在 subtitle 文本里手工拼接（如「¥1,000.00 ($50.00)」）。
+   */
+  currency: string = 'CNY';
   onTap?: () => void;
   build() {
     Column({ space: 6 }) {
       Text(this.title).fontSize(14).fontColor(COLORS.brand)
-      Text(fmtMoney(this.amount)).fontSize(30).fontWeight(FontWeight.Bold).fontColor(COLORS.brand)
+      Text(fmtMoney(this.amount, this.currency)).fontSize(30).fontWeight(FontWeight.Bold).fontColor(COLORS.brand)
       if (this.subtitle) {
         Text(this.subtitle).fontSize(12).fontColor(COLORS.brand).opacity(0.7)
       }
@@ -217,6 +224,12 @@ export struct CategoryBars {
    * 与环图上那一块的读数对不上。
    */
   @Prop baseTotal: number = 0;
+  /**
+   * 多币种 P2-3b：金额货币代码（默认 CNY）。
+   * 混币种账本下若需要每行混显，应在外层用 fmtMoneyMix 生成
+   * 字符串后通过 items[i].value 转 string 后传入（未支持，留待 P2-3c）。
+   */
+  currency: string = 'CNY';
   /** 调色板起始偏移：传父类在环图中的色号，让这一段颜色与选中色块产生视觉关联 */
   @Prop colorOffset: number = 0;
   onItemClick?: (index: number) => void;
@@ -235,7 +248,7 @@ export struct CategoryBars {
             Column() {
               Row() {
                 Text(it.name).fontSize(14).fontColor(COLORS.textPrimary).fontWeight(FontWeight.Medium).layoutWeight(1)
-                Text(`${fmtMoney(it.value)} · ${Math.round((it.value || 0) / this.total() * 100)}%`)
+                Text(`${fmtMoney(it.value, this.currency)} · ${Math.round((it.value || 0) / this.total() * 100)}%`)
                   .fontSize(12).fontColor(COLORS.textSecondary)
               }.width('100%')
               LinearProgress({
@@ -297,6 +310,13 @@ export struct TransactionRow {
   compact: boolean = false;
   /** true = 顶部画 0.5px 分隔线；首条 row 传 false */
   showTopDivider: boolean = true;
+  /**
+   * 多币种 P2-3b：金额货币代码（默认 CNY 向后兼容）。
+   * 当前 TransactionItem 模型没 currency 字段（后端 transactions.js 列表接口
+   * 还没 LEFT JOIN accounts），调用方不传时仍按 CNY 展示，单币种账本下表现
+   * 完全正确；混币种账本下等后端加 currency 后再传。
+   */
+  currency: string = 'CNY';
 
   /**
    * 是否是「折叠后的转账」。
@@ -310,7 +330,7 @@ export struct TransactionRow {
   }
 
   private amountText(): string {
-    const raw = fmtMoney(this.item?.amount ?? 0).replace('¥', '');
+    const raw = fmtMoney(this.item?.amount ?? 0, this.currency).replace('¥', '');
     if (this.isTransfer()) return raw;          // 转账不带正负号
     return (this.item?.type === 'income' ? '+' : '-') + raw;
   }
@@ -544,6 +564,8 @@ export struct StatKpiCard {
   title: string = '';
   @Prop amount: number = 0;
   icon: string = '💰';
+  /** 多币种 P2-3b：amount 货币代码（默认 CNY 向后兼容） */
+  currency: string = 'CNY';
   onTap?: () => void;
   build() {
     Column({ space: 8 }) {
@@ -551,7 +573,7 @@ export struct StatKpiCard {
         CategoryIcon({ icon: this.icon, bg: COLORS.brandBgLight, iconSize: 28 })
         Text(this.title).fontSize(13).fontColor(COLORS.textSecondary)
       }
-      Text(fmtMoney(this.amount)).fontSize(20).fontWeight(FontWeight.Bold).fontColor(COLORS.brand)
+      Text(fmtMoney(this.amount, this.currency)).fontSize(20).fontWeight(FontWeight.Bold).fontColor(COLORS.brand)
     }
     .width('100%')
     .padding(14)
@@ -585,9 +607,11 @@ export struct AccountListItem {
         Text(accountTypeLabel(this.account?.type ?? '')).fontSize(12).fontColor(COLORS.textSecondary)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Column() {
-        Text(fmtMoney(this.account?.balance ?? 0)).fontSize(15).fontWeight(FontWeight.Medium).fontColor(COLORS.textPrimary)
+        // 多币种 P2-3b：账户余额跟随账户币种
+        Text(fmtMoney(this.account?.balance ?? 0, this.account?.currency)).fontSize(15).fontWeight(FontWeight.Medium).fontColor(COLORS.textPrimary)
         if (this.account?.type === 'credit_card' && (this.account?.credit_limit ?? 0) > 0) {
-          Text(`额度 ${fmtMoney(this.account?.credit_limit ?? 0)}`).fontSize(11).fontColor(COLORS.textSecondary)
+          // 多币种 P2-3b：信用额度跟随账户币种
+          Text(`额度 ${fmtMoney(this.account?.credit_limit ?? 0, this.account?.currency)}`).fontSize(11).fontColor(COLORS.textSecondary)
         }
       }.alignItems(HorizontalAlign.End)
       if (this.onMore) {

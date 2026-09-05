@@ -20,6 +20,8 @@ interface Inv {
   id: number; name: string; code?: string; type?: string; accountId?: number; status?: string;
   buyPrice?: number; currentPrice?: number; quantity?: number;
   cost?: number; currentValue?: number; profit?: number; profitRate?: number; icon?: string;
+  // 多币种 P2-3b：投资持仓币种（investments 表 P2-2d 加的 currency 列，SELECT * 自动返回）
+  currency?: string;
 }
 
 /** 理财类型（investment_types 表，服务端预置 11 条） */
@@ -292,8 +294,10 @@ export struct InvestmentsPage {
                         }
                       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                       Column() {
-                        Text(fmtMoney(x.currentValue || 0)).fontSize(15).fontWeight(FontWeight.Medium)
-                        Text(`${(x.profit || 0) >= 0 ? '+' : ''}${fmtMoney(x.profit || 0)} (${((x.profitRate || 0) * 100).toFixed(2)}%)`)
+                        // 多币种 P2-3b：单条投资当前市值跟随投资币种
+                        Text(fmtMoney(x.currentValue || 0, x.currency)).fontSize(15).fontWeight(FontWeight.Medium)
+                        // 多币种 P2-3b：单条投资收益跟随投资币种
+                        Text(`${(x.profit || 0) >= 0 ? '+' : ''}${fmtMoney(x.profit || 0, x.currency)} (${((x.profitRate || 0) * 100).toFixed(2)}%)`)
                           .fontSize(11).fontColor((x.profit || 0) >= 0 ? COLORS.expense : COLORS.income)
                       }.alignItems(HorizontalAlign.End)
                     }.width('100%').padding({ top: 12, bottom: 12 }).backgroundColor(COLORS.cardGlass).borderRadius(12)

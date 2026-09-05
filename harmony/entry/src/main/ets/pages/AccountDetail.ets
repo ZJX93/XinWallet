@@ -174,6 +174,8 @@ export struct AccountDetailPage {
   confirmDeleteTxn(it: TransactionItem): void {
     AlertDialog.show({
       title: '删除这笔利息流水？',
+      // it.amount 是 TransactionItem，暂无 currency 字段（后端 transactions.js 列表接口未返回，
+      // 与安卓 TransactionsScreen / SearchScreen 一致），保持 fmtMoney 旧调用。
       message: `${it.category?.name ?? ''} ${fmtMoney(it.amount)} —— 账户余额将按账本回退，此操作不可恢复。`,
       primaryButton: {
         value: '删除',
@@ -296,7 +298,8 @@ export struct AccountDetailPage {
             BalanceCard({
               title: '当前余额',
               amount: this.account?.balance ?? 0,
-              subtitle: `${this.account?.type ?? ''}${this.account?.credit_limit ? ' · 额度 ' + fmtMoney(this.account.credit_limit) : ''}${this.account?.last_interest_date ? ' · 上次计息 ' + this.account.last_interest_date : ''}${(this.account?.status ?? 'active') !== 'active' ? ' · 已销户' : ''}`
+              // 多币种 P2-3b：信用额度跟随账户币种
+              subtitle: `${this.account?.type ?? ''}${this.account?.credit_limit ? ' · 额度 ' + fmtMoney(this.account.credit_limit, this.account?.currency) : ''}${this.account?.last_interest_date ? ' · 上次计息 ' + this.account.last_interest_date : ''}${(this.account?.status ?? 'active') !== 'active' ? ' · 已销户' : ''}`
             })
             if (this.account) {
               /*

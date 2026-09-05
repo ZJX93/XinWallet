@@ -11,6 +11,8 @@ import { toast, toastLong } from '../common/ui';
 interface Tx {
   id: number; type: string; type_label?: string; amount?: number; price?: number;
   quantity?: number; fee?: number; date?: string; note?: string;
+  // 多币种 P2-3b：理财流水币种（investment_transactions 表 currency 列）
+  currency?: string;
 }
 
 interface InvestmentItem { id: number; name?: string }
@@ -137,14 +139,16 @@ struct InvestmentTransactions {
             .backgroundColor(withAlpha(this.incomeColor(tx.type), 0.13)).borderRadius(4).padding({ left: 8, right: 8, top: 2, bottom: 2 })
           Text((tx.date || '').slice(0, 10)).fontSize(11).fontColor(COLORS.textSecondary)
         }
-        Text(`单价 ${fmtMoney(tx.price || 0)} · 数量 ${tx.quantity ?? 0} · 手续费 ${fmtMoney(tx.fee || 0)}`)
+        // 多币种 P2-3b：单价 / 手续费跟随理财流水币种
+        Text(`单价 ${fmtMoney(tx.price || 0, tx.currency)} · 数量 ${tx.quantity ?? 0} · 手续费 ${fmtMoney(tx.fee || 0, tx.currency)}`)
           .fontSize(11).fontColor(COLORS.textSecondary)
         if (this.noteText(tx).length > 0) {
           Text(this.noteText(tx)).fontSize(11).fontColor(COLORS.textSecondary)
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Column({ space: 4 }) {
-        Text(`${this.isIncome(tx.type) ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
+        // 多币种 P2-3b：流水金额跟随 tx.currency
+        Text(`${this.isIncome(tx.type) ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0), tx.currency)}`)
           .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.incomeColor(tx.type))
         Button('改')
           .fontSize(11).fontColor('#fff').backgroundColor(COLORS.brand)
