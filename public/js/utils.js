@@ -45,6 +45,45 @@ function fmtCompact(n, currency = 'CNY') {
     return sign + '¥' + _getFmt('zh-CN').format(abs);
 }
 
+// 多币种 P2-2d：合计 breakdown 智能格式化
+// 输入：breakdown { CNY: 1000, USD: 50 }
+// 输出：
+//   空 / 全零 → fmt(0, baseCurrency)
+//   单货币 → 直接 fmt(value, currency)
+//   多货币 + 主货币 == baseCurrency → 主值 + 括号附注其他货币明细（"¥1,000.00 ($50.00)"）
+//   多货币 + 主货币 != baseCurrency 且 FxManager 可用 → 全部折算到 baseCurrency 显示
+//   多货币 + 主货币 != baseCurrency 且无 FxManager → 降级主货币 + 附注
+function fmtMix(breakdown, baseCurrency = 'CNY') {
+    if (!breakdown || typeof breakdown !== 'object') return fmt(0, baseCurrency || 'CNY');
+    const base = String(baseCurrency || 'CNY').toUpperCase();
+    const entries = Object.entries(breakdown).filter(([, v]) => Math.abs(parseFloat(v) || 0) > 0.001);
+    if (entries.length === 0) return fmt(0, base);
+    if (entries.length === 1) {
+        const [cur, val] = entries[0];
+        return fmt(val, cur);
+    }
+    // 多货币：选主货币（amount 绝对值最大）
+    const [primary, primaryVal] = entries.reduce((a, b) => Math.abs(parseFloat(b[1])) > Math.abs(parseFloat(a[1])) ? b : a);
+    const fx = (typeof window !== 'undefined' && window.FxManager) ? window.FxManager : null;
+    if (primary === base) {
+        // 主货币 == base：主值 + 括号附注其他货币明细
+        const others = entries.filter(([c]) => c !== primary).map(([c, v]) => fmt(v, c)).join(' + ');
+        return fmt(primaryVal, primary) + (others ? ` (${others})` : '');
+    }
+    // 主货币 != base：有 fxManager → 折算到 base 显示
+    if (fx && typeof fx.convert === 'function') {
+        const baseSum = entries.reduce((sum, [c, v]) => {
+            const num = parseFloat(v) || 0;
+            return sum + (c === base ? num : (fx.convert(num, c, base) || 0));
+        }, 0);
+        const others = entries.filter(([c]) => c !== base).map(([c, v]) => fmt(v, c)).join(' + ');
+        return fmt(baseSum, base) + (others ? ` (${others})` : '');
+    }
+    // 无 fxManager：降级主货币 + 附注其他
+    const others = entries.filter(([c]) => c !== primary).map(([c, v]) => fmt(v, c)).join(' + ');
+    return fmt(primaryVal, primary) + (others ? ` (${others})` : '');
+}
+
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
 function csvCell(v) {
     const s = String(v == null ? '' : v);
@@ -147,6 +186,7 @@ if (typeof window !== 'undefined') {
     window.api = api;
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
+    window.fmtMix = fmtMix;
     window.supportedCurrencies = _supportedCurrencies;
     window.csvCell = csvCell;
     window.blobToBase64 = blobToBase64;
@@ -161,5 +201,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, supportedCurrencies: _supportedCurrencies };
+    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, supportedCurrencies: _supportedCurrencies };
 }

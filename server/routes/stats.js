@@ -226,11 +226,13 @@ router.get('/dashboard', async (req, res) => {
        ORDER BY t.date DESC, t.id DESC LIMIT 8`,
                 [req.userId, req.bookId]
             ),
-            // 债务汇总
-            db.queryOne(
-                `SELECT COALESCE(SUM(remaining), 0) as total_remaining,
-                    COALESCE(SUM(CASE WHEN status != 'paid_off' THEN monthly_payment ELSE 0 END), 0) as total_monthly
-             FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
+            // 债务汇总（多币种 P2-2d：按 debts.currency GROUP BY 返回 breakdown）
+            db.query(
+                `SELECT currency,
+                    COALESCE(SUM(remaining), 0) AS total_remaining,
+                    COALESCE(SUM(CASE WHEN status != 'paid_off' THEN monthly_payment ELSE 0 END), 0) AS total_monthly
+             FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'
+             GROUP BY currency`,
                 [req.userId, req.bookId]
             ),
             // 全部历史累计收入/支出（多币种 P2-2d：按账户币种 GROUP BY）
@@ -284,6 +286,13 @@ router.get('/dashboard', async (req, res) => {
         const yearCurrency = _pickPrimaryCurrency(yearBreakdown);
         const lifetimeCurrency = _pickPrimaryCurrency(lifetimeBreakdown);
         const invCurrency = _pickPrimaryCurrency(invBreakdown);
+
+        // 多币种 P2-2d：债务余额/月供按 currency GROUP BY
+        const debtRemainingBreakdown = _rowsToBreakdown(debtSum, 'total_remaining');
+        const debtMonthlyBreakdown = _rowsToBreakdown(debtSum, 'total_monthly');
+        const debtCurrency = _pickPrimaryCurrency(debtRemainingBreakdown);
+        const debtTotalRemaining = debtRemainingBreakdown[debtCurrency] || 0;
+        const debtTotalMonthly = debtMonthlyBreakdown[debtCurrency] || 0;
 
         const todayExpense = todayExpenseBreakdown[todayCurrency] || 0;
         const weekIncome = (weekBreakdown[weekCurrency] && weekBreakdown[weekCurrency].income) || 0;
@@ -410,8 +419,8 @@ router.get('/dashboard', async (req, res) => {
                 incomeBreakdown: yearBreakdown, expenseBreakdown: yearBreakdown,
                 balance: subtractAmounts(yearIncome, yearExpense)
             },
-            // 净资产 = 总资产 - 债务余额，首屏核心指标，精确计算
-            netWorth: subtractAmounts(totalAssets, debtSum.total_remaining || 0),
+            // 净资产 = 总资产 - 债务余额，首屏核心指标，精确计算（主货币值；前端 kpiHero 已用 FxManager 折算 baseCurrency）
+            netWorth: subtractAmounts(totalAssets, debtTotalRemaining),
             income: monthIncome, expense: monthExpense, currency: monthCurrency,
             balance: subtractAmounts(monthIncome, monthExpense),
             // 全部历史累计金额（前端用于储蓄率 = 累计净储蓄 / 总资产）
@@ -437,8 +446,11 @@ router.get('/dashboard', async (req, res) => {
                 account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon }
             })),
             debts: {
-                totalRemaining: parseFloat(debtSum.total_remaining),
-                totalMonthly: parseFloat(debtSum.total_monthly),
+                totalRemaining: debtTotalRemaining,
+                totalMonthly: debtTotalMonthly,
+                currency: debtCurrency,
+                totalRemainingBreakdown: debtRemainingBreakdown,
+                totalMonthlyBreakdown: debtMonthlyBreakdown,
                 dueThisMonth: dueSummary.dueThisMonth,
                 dueAmount: dueSummary.dueAmount,
                 overdue: dueSummary.overdue,

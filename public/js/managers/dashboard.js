@@ -99,8 +99,8 @@ const DashboardManager = {
         } else {
             const isDual = ['month', 'year'].includes(type);
             summaryEl.innerHTML = isDual
-                ? `<div class="detail-total"><span class="detail-total-label">汇总</span><span class="detail-total-value income">收 ${fmt(data.totalIncome)}</span><span class="detail-total-value expense">支 ${fmt(data.totalExpense)}</span><span class="detail-total-value">结余 ${fmt(data.balance)}</span></div>`
-                : `<div class="detail-total"><span class="detail-total-label">总支出</span><span class="detail-total-value expense">${fmt(data.totalExpense)}</span></div>`;
+                ? `<div class="detail-total"><span class="detail-total-label">汇总</span><span class="detail-total-value income">收 ${fmtMix(data.totalIncomeBreakdown, baseCur)}</span><span class="detail-total-value expense">支 ${fmtMix(data.totalExpenseBreakdown, baseCur)}</span><span class="detail-total-value">结余 ${fmtMix({[data.currency || 'CNY']: data.balance}, baseCur)}</span></div>`
+                : `<div class="detail-total"><span class="detail-total-label">总支出</span><span class="detail-total-value expense">${fmtMix(data.totalExpenseBreakdown, baseCur)}</span></div>`;
 
             if (!data.transactions || data.transactions.length === 0) {
                 listEl.innerHTML = '<div class="empty-state"><div class="empty-text">暂无交易记录</div></div>';
@@ -220,7 +220,7 @@ const DashboardManager = {
                 if (netSavings === 0 && totalIncome === 0) {
                     summaryEl.textContent = '暂无储蓄数据';
                 } else {
-                    summaryEl.textContent = `累计净储蓄 ${fmt(netSavings)}`;
+                    summaryEl.textContent = `累计净储蓄 ${fmtMix({ [data.currency || 'CNY']: netSavings }, baseCur)}`;
                 }
             }
             const srBadge = document.getElementById('dashSavingsRateBadge');
@@ -240,7 +240,7 @@ const DashboardManager = {
             }
             const monthChangeEl = document.getElementById('dashMonthChange');
             if (monthChangeEl) {
-                monthChangeEl.textContent = `收 ${fmt(monthIncome)} 支 ${fmt(monthExpense)}`;
+                monthChangeEl.textContent = `收 ${fmtMix(data.month.incomeBreakdown, baseCur)} 支 ${fmtMix(data.month.expenseBreakdown, baseCur)}`;
             }
 
             // 本周结余
@@ -253,7 +253,7 @@ const DashboardManager = {
                 weekBalEl.className = 'kpi-value ' + (weekBalance >= 0 ? 'positive' : 'negative');
             }
             const weekDet = document.getElementById('dashWeekDetail');
-            if (weekDet) weekDet.textContent = `收 ${fmt(weekIncome)} 支 ${fmt(weekExpense)}`;
+            if (weekDet) weekDet.textContent = `收 ${fmtMix(data.week.incomeBreakdown, baseCur)} 支 ${fmtMix(data.week.expenseBreakdown, baseCur)}`;
 
             // 理财盈亏（与储蓄率卡片风格一致：label 带 badge，sub 显示总投入 + 收益率）
             const invProfit = data.investments.totalProfit;
@@ -274,7 +274,7 @@ const DashboardManager = {
             const invRateEl = document.getElementById('dashInvRate');
             if (invRateEl) {
                 invRateEl.textContent = invCost > 0
-                    ? `总投入 ${fmt(invCost)} · 收益率 ${invRate >= 0 ? '+' : ''}${invRate.toFixed(1)}%`
+                    ? `总投入 ${fmtMix(data.investments.totalCostBreakdown, baseCur)} · 收益率 ${invRate >= 0 ? '+' : ''}${invRate.toFixed(1)}%`
                     : '暂无持仓';
             }
 
@@ -285,7 +285,7 @@ const DashboardManager = {
                 yearBalEl.className = 'kpi-value ' + (data.year.balance >= 0 ? 'positive' : 'negative');
             }
             const yearDetailEl = document.getElementById('dashYearDetail');
-            if (yearDetailEl) yearDetailEl.textContent = `收 ${fmt(data.year.income)} 支 ${fmt(data.year.expense)}`;
+            if (yearDetailEl) yearDetailEl.textContent = `收 ${fmtMix(data.year.incomeBreakdown, baseCur)} 支 ${fmtMix(data.year.expenseBreakdown, baseCur)}`;
 
             // 总资产
             const totalAssetsCard = document.getElementById('dashTotalAssets');
@@ -294,7 +294,7 @@ const DashboardManager = {
             const totalDebtCard = document.getElementById('dashTotalDebt');
             if (totalDebtCard) countUp(totalDebtCard, totalDebt, 850, fmt);
             const debtSub = document.getElementById('dashDebtSub');
-            if (debtSub) debtSub.textContent = `月供 ${fmt(data.debts?.totalMonthly || 0)}`;
+            if (debtSub) debtSub.textContent = `月供 ${fmtMix(data.debts?.totalMonthlyBreakdown || { CNY: data.debts?.totalMonthly || 0 }, baseCur)}`;
         });
 
         // === 资产负债概览 ===
@@ -353,8 +353,8 @@ const DashboardManager = {
             </div>
             <div class="bo-debt-info">
                 <span>活跃债务 <strong>${debts.activeCount || 0}</strong> 笔</span>
-                <span>月供 <strong>${fmt(monthlyPayment)}</strong></span>
-                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmt(dueAmount)}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
+                <span>月供 <strong>${fmt(monthlyPayment, debts.currency || 'CNY')}</strong></span>
+                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmt(dueAmount, debts.currency || 'CNY')}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
             </div>
         `;
     },
