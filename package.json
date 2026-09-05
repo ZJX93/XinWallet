@@ -35,7 +35,7 @@
     "mysql2": "^3.11.0",
     "pg": "^8.13.1",
     "swagger-ui-dist": "^5.32.11",
-    "tencentcloud-sdk-nodejs-ocr": "^4.1.268"
+    "tencentcloud-sdk-nodejs-ocr": "^4.1.305"
   },
   "overrides": {
     "uuid": "^11.1.1"
