@@ -537,6 +537,8 @@ CREATE TABLE IF NOT EXISTS debts (
   method VARCHAR(20) DEFAULT 'equal_installment' CHECK (method IN ('equal_installment','equal_principal','interest_only','minimum','lump_sum','manual')),
   monthly_payment DECIMAL(15,2) DEFAULT 0,
   start_date DATE DEFAULT NULL,
+  -- 多币种 P2-2c：债务货币（ISO 4217）。独立于关联账户——「我欠张三 100 美元」场景下，关联账户可能是 CNY 储蓄卡。
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   due_date DATE DEFAULT NULL,
   billing_day SMALLINT DEFAULT NULL,
   payment_day SMALLINT DEFAULT NULL,

@@ -231,6 +231,12 @@ async function initCache() {
     const accData = await api('/accounts');
     cache.accounts = accData ? accData.accounts : [];
 
+    // 多币种 P2-2c：缓存 debt 列表（含 currency 字段，供 dashboard totalDebt 前端折算）
+    try {
+        const debtsData = await api('/debts');
+        cache.debts = (debtsData && debtsData.debts) || [];
+    } catch (e) { console.warn('initCache 加载 debts 失败（dashboard totalDebt 将保留后端默认值）:', e.message); cache.debts = []; }
+
     const catData = await api('/categories?flat=1');
     cache.categories = catData || [];
 

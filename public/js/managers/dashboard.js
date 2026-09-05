@@ -175,8 +175,20 @@ const DashboardManager = {
 
         // === KPI 核心卡 ===
         safe('kpiHero', () => {
-            const totalAssets = data.totalAssets;
-            const totalDebt = data.debts?.totalRemaining || 0;
+            // 多币种 P2-2c：baseCurrency != 'CNY' 时用 cache.accounts / cache.debts 前端折算
+            //  - totalAssets 后端 SQL 是 SUM(balance) 不分 currency，前端按 FxManager 折算
+            //  - totalDebt 类似（debt 表新加 currency 列，P2-2c 起）
+            //  - 其他合计（monthIncome/Expense / weekIncome/Expense / yearIncome/Expense /
+            //    investments.totalProfit/totalCost）暂保留后端聚合值；
+            //    baseCurrency != CNY 时这些合计近似以 CNY 显示在 baseCurrency 符号下，
+            //    后续 P2-2d 再扩 stats API 返回 currency_breakdown 后统一切换。
+            const baseCur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
+            const totalAssets = baseCur === 'CNY'
+                ? data.totalAssets
+                : ((window.FxManager && FxManager.aggregateToBase(cache.accounts || [], baseCur)) ?? data.totalAssets);
+            const totalDebt = baseCur === 'CNY'
+                ? (data.debts?.totalRemaining || 0)
+                : ((window.FxManager && FxManager.aggregateToBase((cache.debts || []).map(d => ({ amount: d.remaining, currency: d.currency })), baseCur)) ?? (data.debts?.totalRemaining || 0));
             const netWorth = data.netWorth || (totalAssets - totalDebt);
 
             // 净资产（最核心指标）

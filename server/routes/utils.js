@@ -77,7 +77,7 @@ function isCreditAccount(account) {
 
 async function syncCreditCardDebt(conn, userId, accountId) {
     const acctRows = await conn.query(
-        'SELECT name, type, balance, credit_limit, book_id FROM accounts WHERE id = ? AND user_id = ?',
+        'SELECT name, type, balance, credit_limit, book_id, currency FROM accounts WHERE id = ? AND user_id = ?',
         [accountId, userId]
     );
     const account = acctRows[0];
@@ -125,9 +125,9 @@ async function syncCreditCardDebt(conn, userId, accountId) {
             );
         } else {
             await conn.query(
-                `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, billing_day, payment_day, min_payment, status, note)
-                 VALUES (?, ?, ?, ?, ?, 'payable', ?, 0, ?, 0, 0, 'minimum', 0, 15, 5, ?, 'active', ?)`,
-                [userId, bookId, accountId, account.name, debtType, account.name, owes, minPmt, syncNote]
+                `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, billing_day, payment_day, min_payment, status, note, currency)
+                 VALUES (?, ?, ?, ?, ?, 'payable', ?, 0, ?, 0, 0, 'minimum', 0, 15, 5, ?, 'active', ?, ?)`,
+                [userId, bookId, accountId, account.name, debtType, account.name, owes, minPmt, syncNote, account.currency || 'CNY']
             );
         }
     }

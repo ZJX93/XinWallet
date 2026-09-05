@@ -339,10 +339,13 @@
                                 <option value="other">其他</option>
                             </select></div>
                         </div>
-                        <div class="form-group"><label>关联账户（可选）</label><select id="debtAccount"><option value="">— 不关联 —</option></select></div>
+                        <div class="form-row">
+                            <div class="form-group"><label>关联账户（可选）</label><select id="debtAccount"><option value="">— 不关联 —</option></select></div>
+                            <div class="form-group"><label>债务币种</label><select id="debtCurrency"></select></div>
+                        </div>
                         <div class="form-row">
                             <div class="form-group"><label data-counterparty-label>对方单位 / 个人</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三"></div>
-                            <div class="form-group"><label>本金 (¥) <span class="req">*</span></label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
+                            <div class="form-group"><label>本金 <span class="req">*</span></label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>年利率 (%)</label><input type="number" id="debtRate" step="0.0001" min="0" autocomplete="off" placeholder="可精确到小数点后4位"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">按银行公示利率填写即可；若账单月供与公式不符，优先直接填写「每期应还」而非微调利率</small></div>
@@ -357,7 +360,7 @@
                                 <option value="minimum">最低还款额（信用卡）</option>
                                 <option value="lump_sum">一次性还本付息</option>
                             </select></div>
-                            <div class="form-group"><label>每期应还 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">留空按公式生成理论值；填写银行实际月供后，应用以该月供为准生成计划，末期自动抹平尾差</small></div>
+                            <div class="form-group"><label>每期应还</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">留空按公式生成理论值；填写银行实际月供后，应用以该月供为准生成计划，末期自动抹平尾差</small></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>起息日</label><input type="date" id="debtStart"></div>
@@ -366,7 +369,7 @@
                         <div class="form-row debt-cc-fields" style="display:none">
                             <div class="form-group"><label>账单日 (1-28)</label><input type="number" id="debtBillingDay" min="1" max="28"></div>
                             <div class="form-group"><label>还款日 (1-28)</label><input type="number" id="debtPaymentDay" min="1" max="28"></div>
-                            <div class="form-group"><label>最低还款额 (¥)</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
+                            <div class="form-group"><label>最低还款额</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
                         </div>
                         <div class="form-group"><label>备注</label><input type="text" id="debtNote" placeholder="可选"></div>
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>

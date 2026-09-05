@@ -245,7 +245,7 @@ const DebtManager = {
                 </div>
                 ${stTag}
             </div>
-            <div class="goal-amounts"><span>${leftLabel} ${fmt(leftVal)}</span><span>${rightLabel} ${fmt(rightVal)}</span></div>
+            <div class="goal-amounts"><span>${leftLabel} ${fmt(leftVal, d.currency)}</span><span>${rightLabel} ${fmt(rightVal, d.currency)}</span></div>
             <div class="goal-progress"><div class="goal-progress-fill ${d.status === 'overdue' ? 'danger' : ''}" style="width:${Math.min(pct, 100)}%"></div></div>
             <div class="goal-amounts"><span class="goal-pct">${metaLeft}</span><span>${metaRight}</span></div>
             <div class="goal-actions">
@@ -329,6 +329,17 @@ const DebtManager = {
         if (current) sel.value = current;
     },
 
+    // 多币种 P2-2c：填充债务币种下拉（沿用 supportedCurrencies，与账户货币一致）
+    _populateCurrencySelect(selId, selected) {
+        const sel = document.getElementById(selId);
+        if (!sel) return;
+        const list = window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD'];
+        const cur = (selected || 'CNY').toUpperCase();
+        sel.innerHTML = list.map(c => `<option value="${c}">${c}</option>`).join('');
+        if (list.includes(cur)) sel.value = cur;
+        else sel.value = 'CNY';
+    },
+
     onDirChange() {
         const isRecv = this._currentDir === 'receivable';
         const editId = document.getElementById('debtEditId').value;
@@ -358,6 +369,7 @@ const DebtManager = {
         this.onDirChange();
         this.onTypeChange();
         this._populateAccountSelect('debtAccount', '');
+        this._populateCurrencySelect('debtCurrency', 'CNY');
     },
 
     openEditModal(d) {
@@ -381,6 +393,7 @@ const DebtManager = {
         this.onDirChange();
         this.onTypeChange();
         this._populateAccountSelect('debtAccount', d.account_id || '');
+        this._populateCurrencySelect('debtCurrency', d.currency || 'CNY');
     },
 
     closeModal() { document.getElementById('debtModal').classList.remove('show'); },
@@ -403,6 +416,8 @@ const DebtManager = {
             payment_day: parseInt(document.getElementById('debtPaymentDay').value) || null,
             min_payment: parseFloat(document.getElementById('debtMinPayment').value) || 0,
             account_id: document.getElementById('debtAccount').value || null,
+            // 多币种 P2-2c：债务币种（独立于关联账户币种）
+            currency: document.getElementById('debtCurrency').value || 'CNY',
             note: document.getElementById('debtNote').value.trim()
         };
         if (!payload.name) { showToast('请填写项目名称', 'error'); return; }
@@ -549,11 +564,11 @@ const DebtManager = {
         // 仅有真实利息记录时才展示「已产生利息 + 等效年化」，避免凭空显示利率上限
         const interestPaid = parseFloat(d.interest_paid_total) || 0;
         const interestLine = interestPaid > 0
-            ? `<div class="rh-sub">📈 已产生利息 ${fmt(interestPaid)} · 等效年化 ≈ ${d.effective_rate != null ? d.effective_rate.toFixed(2) : '—'}%</div>`
+            ? `<div class="rh-sub">📈 已产生利息 ${fmt(interestPaid, d.currency)} · 等效年化 ≈ ${d.effective_rate != null ? d.effective_rate.toFixed(2) : '—'}%</div>`
             : '';
         const head = `<div class="rh-head">
             <div class="rh-debt">${escapeHtml(safe(d.name))} · ${isRecv ? '应收账款' : '应付账款'}</div>
-            <div class="rh-sub">对方：${escapeHtml(safe(d.creditor, '—'))} · ${isRecv ? '待收' : '剩余'}本金 ${fmt(d.remaining || 0)} · 累计${isRecv ? '已收' : '已偿'} ${fmt(d.paid_total || 0)} · 共 ${list.length} 笔</div>
+            <div class="rh-sub">对方：${escapeHtml(safe(d.creditor, '—'))} · ${isRecv ? '待收' : '剩余'}本金 ${fmt(d.remaining || 0, d.currency)} · 累计${isRecv ? '已收' : '已偿'} ${fmt(d.paid_total || 0, d.currency)} · 共 ${list.length} 笔</div>
             ${interestLine}
         </div>`;
         if (!list.length) {
@@ -563,7 +578,7 @@ const DebtManager = {
         const rows = list.map(r => `
             <div class="rh-item" data-repay-id="${r.id}">
                 <div class="rh-row1">
-                    <span class="rh-amount">${fmt(r.amount)}</span>
+                    <span class="rh-amount">${fmt(r.amount, d.currency)}</span>
                     <span class="rh-date">${r.paid_at || ''}</span>
                     <span class="rh-actions">
                         <button class="rh-edit-btn" data-repay-id="${r.id}" data-debt-id="${id}">修改</button>
@@ -571,7 +586,7 @@ const DebtManager = {
                     </span>
                 </div>
                 <div class="rh-row2">
-                    <span class="rh-tag">本金 ${fmt(r.principal_part)} / 利息 ${fmt(r.interest_part)}</span>
+                    <span class="rh-tag">本金 ${fmt(r.principal_part, d.currency)} / 利息 ${fmt(r.interest_part, d.currency)}</span>
                     ${r.account_name ? `<span class="rh-acc">${escapeHtml(r.account_icon || '')} ${escapeHtml(r.account_name)}</span>` : ''}
                 </div>
                 ${safeNote(r.note) ? `<div class="rh-note">📝 ${escapeHtml(safeNote(r.note))}</div>` : ''}

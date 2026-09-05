@@ -404,6 +404,8 @@ async function healSchemaColumns() {
   await ensureColumn('accounts', 'last_interest_date', `${liType} DEFAULT NULL`);
   // 多币种 P2-2a：账户币种（ISO 4217 三位字母），默认 CNY；新库由 schema CREATE TABLE 覆盖，老库启动补齐
   await ensureColumn('accounts', 'currency', "VARCHAR(3) NOT NULL DEFAULT 'CNY'");
+  // 多币种 P2-2c：债务货币（独立于关联账户），默认 CNY；老库补齐
+  await ensureColumn('debts', 'currency', "VARCHAR(3) NOT NULL DEFAULT 'CNY'");
   // 理财类型：全局可见性开关（关闭后不再出现在新增理财下拉），升级老库时补齐，新库由 CREATE TABLE 覆盖
   await ensureColumn('investment_types', 'is_active', 'BOOLEAN NOT NULL DEFAULT TRUE');
   // 老库 last_interest_date 原为 DATE（只到天），升级为带秒类型，使计息日期精确到秒（幂等，重复执行无害）
