@@ -745,6 +745,10 @@
                 </div>
             </div>
             <div class="form-row">
+                <div class="form-group"><label>币种</label><select id="accCurrency" required><option value="CNY">CNY ¥ 人民币</option><option value="USD">USD $ 美元</option><option value="EUR">EUR € 欧元</option><option value="HKD">HKD HK$ 港币</option><option value="JPY">JPY ¥ 日元</option><option value="GBP">GBP £ 英镑</option><option value="AUD">AUD A$ 澳元</option><option value="CAD">CAD C$ 加元</option></select></div>
+                <div class="form-group"></div>
+            </div>
+            <div class="form-row">
                 <div class="form-group"><label>年利率 (%) <small style="color:var(--text-secondary)">可选，用于展示与「预计利息」估算</small></label><input type="number" id="accAnnualRate" step="0.0001" min="0" max="100" value="0" placeholder="0.0000" autocomplete="off"></div>
                 <div class="form-group"><label>计息周期</label><select id="accInterestCycle"><option value="monthly">按月</option><option value="yearly">按年</option><option value="daily">按日</option></select></div>
             </div>

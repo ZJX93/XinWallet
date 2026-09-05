@@ -104,7 +104,7 @@ const AccountManager = {
             const owes = bal <= 0 ? Math.max(0, -bal) : Math.max(0, limit - bal);
             const avail = limit > 0 ? Math.max(0, limit - owes) : 0;
             const limitText = limit > 0
-                ? `可用 <strong>${fmt(avail)}</strong> / 额度 ${fmt(limit)}`
+                ? `可用 <strong>${fmt(avail, a.currency || 'CNY')}</strong> / 额度 ${fmt(limit, a.currency || 'CNY')}`
                 : '';
             return `
             <div class="goal-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
@@ -120,7 +120,7 @@ const AccountManager = {
                 </div>
                 <div class="acc-card-mid">
                     <div class="inv-cover-profit-label">当前余额</div>
-                    <div class="acc-card-amount">${fmt(a.balance)}</div>
+                    <div class="acc-card-amount">${fmt(a.balance, a.currency || 'CNY')}</div>
                 </div>
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
@@ -195,7 +195,7 @@ const AccountManager = {
                     </div>
                     <div class="acc-card-mid">
                         <div class="inv-cover-profit-label">历史余额</div>
-                        <div class="acc-card-amount is-closed">${fmt(a.balance)}</div>
+                        <div class="acc-card-amount is-closed">${fmt(a.balance, a.currency || 'CNY')}</div>
                     </div>
                     <div class="goal-actions">
                         <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
@@ -274,6 +274,7 @@ const AccountManager = {
             document.getElementById('accCreditLimit').value = a.credit_limit ?? 0;
             document.getElementById('accAnnualRate').value = a.annual_rate ?? 0;
             document.getElementById('accInterestCycle').value = a.interest_cycle || 'monthly';
+            document.getElementById('accCurrency').value = a.currency || 'CNY';
             document.getElementById('accModalTitle').textContent = '编辑账户';
         } else {
             document.getElementById('accEditId').value = '';
@@ -285,6 +286,7 @@ const AccountManager = {
             document.getElementById('accCreditLimit').value = 0;
             document.getElementById('accAnnualRate').value = 0;
             document.getElementById('accInterestCycle').value = 'monthly';
+            document.getElementById('accCurrency').value = 'CNY';
             document.getElementById('accModalTitle').textContent = '新增账户';
         }
         this.toggleCreditLimit();
@@ -307,7 +309,8 @@ const AccountManager = {
             opening_balance: parseFloat(document.getElementById('accBalance').value),
             credit_limit: limit,
             annual_rate: parseFloat(document.getElementById('accAnnualRate').value) || 0,
-            interest_cycle: document.getElementById('accInterestCycle').value || 'monthly'
+            interest_cycle: document.getElementById('accInterestCycle').value || 'monthly',
+            currency: document.getElementById('accCurrency').value || 'CNY'
         };
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
@@ -325,7 +328,7 @@ const AccountManager = {
         const acc = getAcc(id);
         if (!acc) return;
         this._delId = id;
-        document.getElementById('accDelName').textContent = `${acc.icon || ''} ${acc.name}（余额 ${fmt(acc.balance)}）`;
+        document.getElementById('accDelName').textContent = `${acc.icon || ''} ${acc.name}（余额 ${fmt(acc.balance, acc.currency || 'CNY')}）`;
         const usageEl = document.getElementById('accDelUsage');
         const hardBtn = document.getElementById('accDelHardBtn');
         usageEl.textContent = '正在检查关联数据…';
@@ -435,7 +438,7 @@ const AccountManager = {
                 return `
                 <div class="rh-item">
                     <div class="rh-row1">
-                        <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount)}</span>
+                        <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount, acc.currency || 'CNY')}</span>
                         <span class="rh-date">${t.date || ''}</span>
                         ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}">删除</button></span>` : ''}
                     </div>
@@ -602,7 +605,7 @@ const AccountManager = {
                 <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
                 <div class="goal-title">${escapeHtml(a.name)}</div>
             </div>
-            <div class="goal-amounts"><span>${typeLabels[a.type] || a.type}</span><span><strong>${fmt(a.balance)}</strong></span></div>
+            <div class="goal-amounts"><span>${typeLabels[a.type] || a.type}</span><span><strong>${fmt(a.balance, a.currency || 'CNY')}</strong></span></div>
         </div>`;
     },
     openAccGrid(type) {
