@@ -153,25 +153,29 @@ async function auditProviderKeys() {
     }
 }
 
-// 查找支持语音转写的服务商：优先激活的 OpenAI 兼容服务商，其次查所有服务商
+// 查找支持语音转写的服务商：优先激活的 OpenAI 兼容服务商，其次查所有服务商。
+// ⚠️ 关键：优先生效「原生支持音频的官方端点」（base_url 含 groq.com / openai.com）。
+//    本地中转（如 one-api/new-api，base_url 为内网 IP）通常未透传 /audio/transcriptions（实测 404），
+//    若它排在 Groq/OpenAI 直连前面，会抢走语音转写请求并必然失败；故本地中转仅作为 fallback。
 async function getTranscriptionProvider(userId) {
-    // 1. 先在激活的服务商中找 OpenAI 兼容的
-    let providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE ORDER BY id', [userId]);
-    for (const p of providers) {
-        if (p.api_type === 'openai' && !isMiniMaxHost(p.base_url)) {
+    const pick = (providers) => {
+        const native = [];   // 原生支持音频的官方端点（Groq / OpenAI 直连）
+        const others = [];   // 本地中转等其他 OpenAI 兼容服务商
+        for (const p of providers) {
+            if (p.api_type !== 'openai' || isMiniMaxHost(p.base_url)) continue;
             if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
-            return p;
+            if (/groq\.com|openai\.com/i.test(p.base_url || '')) native.push(p);
+            else others.push(p);
         }
-    }
+        return native[0] || others[0] || null;
+    };
+    // 1. 先在激活的服务商中找
+    let providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE ORDER BY id', [userId]);
+    let r = pick(providers);
+    if (r) return r;
     // 2. 再在所有服务商中找（即使未激活，只要有 Key 就行）
     providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? ORDER BY is_active DESC, id', [userId]);
-    for (const p of providers) {
-        if (p.api_type === 'openai' && !isMiniMaxHost(p.base_url)) {
-            if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
-            return p;
-        }
-    }
-    return null;
+    return pick(providers);
 }
 
 // 调用 OpenAI 兼容接口
