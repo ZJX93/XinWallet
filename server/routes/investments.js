@@ -367,7 +367,7 @@ router.get('/investments', async (req, res) => {
 
 router.post('/investments', async (req, res) => {
     try {
-        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note } = req.body;
+        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note, currency } = req.body;
 
         if (!name || !investment_type_id) return res.status(400).json(fail('参数不完整'));
 
@@ -376,24 +376,28 @@ router.post('/investments', async (req, res) => {
         const valueVal = parseFloat(current_value) || costVal || 0;
         const accId = parseInt(account_id) || null;
         // 关联账户归属校验：若指定了账户，必须属于当前用户 + 当前账本（防越权篡改他人账户余额）
+        let accCurrency = 'CNY';
         if (account_id && !Number.isNaN(accId) && accId > 0) {
-            const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+            const acc = await db.queryOne('SELECT id, currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
             if (!acc) return res.status(404).json(fail('关联账户不存在'));
+            accCurrency = acc.currency || 'CNY';
         }
+        // 多币种 P2-2d：持仓币种（独立于关联账户币种），缺省取账户币种
+        const curVal = (currency || accCurrency || 'CNY').toUpperCase();
         const buyDate = normDate(buy_date);
         const riskVal = ['low', 'medium', 'high', 'very_high'].includes(risk_level) ? risk_level : null;
 
         const result = await db.transaction(async (conn) => {
             const invResult = await conn.query(
-                `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note, currency)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [req.userId, req.bookId, accId, parseInt(investment_type_id), name, code || '',
                     parseFloat(buy_price) || 0, parseFloat(current_price) || parseFloat(buy_price) || 0,
                     parseFloat(quantity) || 0, costVal,
                     valueVal,
                     feeVal,
                     buyDate, parseFloat(expected_rate) || 0, riskVal,
-                    note || '']
+                    note || '', curVal]
             );
             const invId = invResult.insertId;
 
@@ -423,7 +427,7 @@ router.post('/investments', async (req, res) => {
 router.put('/investments/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, actual_rate, risk_level, note, status } = req.body;
+        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, actual_rate, risk_level, note, status, currency } = req.body;
 
         // 区分行情刷新（仅 current_price/current_value/actual_rate）和完整编辑
         const isQuoteRefresh = name === undefined;
@@ -456,7 +460,8 @@ router.put('/investments/:id', async (req, res) => {
                 `UPDATE investments SET
                     account_id=?, investment_type_id=?, name=?, code=?,
                     buy_price=?, current_price=?, quantity=?, total_cost=?, current_value=?, fee=?,
-                    buy_date=?, expected_rate=?, actual_rate=?, risk_level=?, note=?, status=?
+                    buy_date=?, expected_rate=?, actual_rate=?, risk_level=?, note=?, status=?,
+                    currency=?
                  WHERE id=? AND user_id=? AND book_id=?`,
                 [
                     newAccId, parseInt(investment_type_id), newName, code || '',
@@ -465,7 +470,9 @@ router.put('/investments/:id', async (req, res) => {
                     newBuyDate,
                     parseFloat(expected_rate) || 0, parseFloat(actual_rate) || 0,
                     ['low', 'medium', 'high', 'very_high'].includes(risk_level) ? risk_level : null,
-                    note || '', status || 'holding', id, req.userId, req.bookId
+                    note || '', status || 'holding',
+                    (currency || old.currency || 'CNY').toUpperCase(),
+                    id, req.userId, req.bookId
                 ]
             );
 

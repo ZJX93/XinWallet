@@ -222,6 +222,8 @@ CREATE TABLE IF NOT EXISTS investments (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   account_id INT DEFAULT NULL,                        -- 关联账户
+  -- 多币种 P2-2d：持仓币种（独立于关联账户币种——「USD 基金关联 CNY 储蓄卡」场景下独立记录）
+  currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
   investment_type_id INT NOT NULL,                    -- 理财产品类型
   name VARCHAR(100) NOT NULL,
   code VARCHAR(50) DEFAULT '',                        -- 产品代码

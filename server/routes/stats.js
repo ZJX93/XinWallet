@@ -12,6 +12,78 @@ const { calcPortfolioMetrics } = require('../services/portfolio');
 const router = express.Router();
 
 // ==========================================
+// 多币种 P2-2d 辅助函数：rows → breakdown 字典，主货币按 amount 绝对值最大选
+// ==========================================
+function _rowsToBreakdown(rows, valueKey) {
+    const out = {};
+    (rows || []).forEach(r => {
+        const cur = r.currency || 'CNY';
+        out[cur] = parseFloat(r[valueKey] || 0);
+    });
+    return out;
+}
+
+function _rowsToBreakdownMulti(rows, valueKeys) {
+    const out = {};
+    (rows || []).forEach(r => {
+        const cur = r.currency || 'CNY';
+        out[cur] = out[cur] || {};
+        valueKeys.forEach(k => { out[cur][k] = parseFloat(r[k] || 0); });
+    });
+    return out;
+}
+
+function _pickPrimaryCurrency(breakdown) {
+    let primary = 'CNY', max = -1;
+    Object.entries(breakdown).forEach(([cur, v]) => {
+        let total = 0;
+        if (typeof v === 'object' && v !== null) {
+            total = Math.abs(v.income || 0) + Math.abs(v.expense || 0)
+                  + Math.abs(v.total_value || 0) + Math.abs(v.total_cost || 0)
+                  + Math.abs(v.total_income || 0) + Math.abs(v.total_expense || 0);
+        } else {
+            total = Math.abs(v);
+        }
+        if (total > max) { max = total; primary = cur; }
+    });
+    return primary;
+}
+
+// 从 breakdown 取主货币值（如 weekBreakdown['CNY'].income）
+function _primaryValue(breakdown, key) {
+    const cur = _pickPrimaryCurrency(breakdown);
+    const v = breakdown[cur];
+    if (typeof v === 'object' && v !== null) return parseFloat(v[key] || 0);
+    return parseFloat(v || 0);
+}
+
+// months 数组按月分组：[{month, currency, income, expense}] → [{month, breakdown:{CNY:{income,expense},...}}]
+function _groupMonthsByCurrency(rows) {
+    const map = {};
+    (rows || []).forEach(r => {
+        if (!map[r.month]) map[r.month] = {};
+        map[r.month][r.currency || 'CNY'] = {
+            income: parseFloat(r.income || 0),
+            expense: parseFloat(r.expense || 0)
+        };
+    });
+    return Object.entries(map).map(([month, breakdown]) => ({ month, breakdown })).sort((a, b) => b.month.localeCompare(a.month));
+}
+
+// 解析 budget 子查询返回的 JSON 字符串为 breakdown；兼容 PG/MySQL（key 已是字符串）
+function _parseJsonBreakdown(jsonStr) {
+    if (!jsonStr) return { CNY: 0 };
+    try {
+        const obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+        const out = {};
+        Object.entries(obj || {}).forEach(([k, v]) => { out[k] = parseFloat(v) || 0; });
+        return Object.keys(out).length ? out : { CNY: 0 };
+    } catch (e) {
+        return { CNY: 0 };
+    }
+}
+
+// ==========================================
 // 综合统计 API
 // ==========================================
 
@@ -46,42 +118,53 @@ router.get('/dashboard', async (req, res) => {
             recentTrans, debtSum, lifetimeTotals, activeDebts, allReps, debtCount,
             savingsData
         ] = await Promise.all([
-            // 今日支出
-            db.queryOne(
-                `SELECT COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND book_id = ? AND date = ?`,
+            // 今日支出（多币种 P2-2d：按账户币种 GROUP BY，前端折算 baseCurrency）
+            db.query(
+                `SELECT a.currency AS currency,
+                    COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+       FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.user_id = ? AND t.book_id = ? AND t.date = ?
+       GROUP BY a.currency`,
                 [req.userId, req.bookId, today]
             ),
-            // 本周收支（周一~今天）
-            db.queryOne(
-                `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?`,
+            // 本周收支（周一~今天，多币种 P2-2d）
+            db.query(
+                `SELECT a.currency AS currency,
+                    COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+       FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+       GROUP BY a.currency`,
                 [req.userId, req.bookId, weekStart, weekEnd]
             ),
-            // 本月收支
-            db.queryOne(
-                `SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+            // 本月收支（多币种 P2-2d）
+            db.query(
+                `SELECT a.currency AS currency,
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+       FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+       GROUP BY a.currency`,
                 [req.userId, req.bookId, currentMonth + '%']
             ),
-            // 本年收支
-            db.queryOne(
-                `SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+            // 本年收支（多币种 P2-2d）
+            db.query(
+                `SELECT a.currency AS currency,
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+       FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+       GROUP BY a.currency`,
                 [req.userId, req.bookId, currentYear + '%']
             ),
-            // 最近6月趋势
+            // 最近6月趋势（多币种 P2-2d：month × currency 双维度分组）
             db.query(
-                `SELECT LEFT(CAST(date AS CHAR(10)), 7) as month,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
-       FROM transactions WHERE user_id = ? AND book_id = ?
-       GROUP BY LEFT(CAST(date AS CHAR(10)), 7) ORDER BY month DESC LIMIT 6`,
+                `SELECT LEFT(CAST(t.date AS CHAR(10)), 7) AS month, a.currency AS currency,
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
+       FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.user_id = ? AND t.book_id = ?
+       GROUP BY month, a.currency ORDER BY month DESC LIMIT 60`,
                 [req.userId, req.bookId]
             ),
             // 账户总览
@@ -89,20 +172,26 @@ router.get('/dashboard', async (req, res) => {
                 'SELECT * FROM accounts WHERE user_id = ? AND book_id = ? AND status = \'active\' ORDER BY sort_order',
                 [req.userId, req.bookId]
             ),
-            // 理财总资产
-            db.queryOne(
-                `SELECT COALESCE(SUM(total_cost), 0) as total_cost, COALESCE(SUM(current_value), 0) as total_value
-       FROM investments WHERE user_id = ? AND book_id = ? AND status = 'holding'`,
+            // 理财总资产（多币种 P2-2d：按 investments.currency GROUP BY）
+            db.query(
+                `SELECT currency,
+                    COALESCE(SUM(total_cost), 0) AS total_cost,
+                    COALESCE(SUM(current_value), 0) AS total_value
+       FROM investments WHERE user_id = ? AND book_id = ? AND status = 'holding'
+       GROUP BY currency`,
                 [req.userId, req.bookId]
             ),
-            // 预算执行（口径与 budgets.js 列表接口一致：周期内分类名=预算名 或 直接 budget_id 关联）
+            // 预算执行（多币种 P2-2d：actual 子查询按账户币种 GROUP BY 拆分 JSON 行；JS 端解析为 actual_breakdown）
             db.query(
                 `SELECT b.*,
-                    (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t
-                       LEFT JOIN categories c ON t.category_id = c.id
-                       WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
-                         AND DATE(t.date) BETWEEN b.start_date AND b.end_date
-                         AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))) as actual
+                    (SELECT COALESCE(JSON_OBJECTAGG(a.currency, sums.cnt), JSON_OBJECT('CNY', 0))
+                       FROM (SELECT t.account_id, SUM(t.amount) AS cnt FROM transactions t
+                             LEFT JOIN categories c ON t.category_id = c.id
+                             WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
+                               AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+                               AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
+                             GROUP BY t.account_id) sums
+                       LEFT JOIN accounts a ON sums.account_id = a.id) AS actual_breakdown_json
              FROM budgets b
              WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?
              ORDER BY b.start_date`,
@@ -144,12 +233,14 @@ router.get('/dashboard', async (req, res) => {
              FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
                 [req.userId, req.bookId]
             ),
-            // 全部历史累计收入/支出
-            db.queryOne(
-                `SELECT
-              COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
-              COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense
-             FROM transactions WHERE user_id = ? AND book_id = ?`,
+            // 全部历史累计收入/支出（多币种 P2-2d：按账户币种 GROUP BY）
+            db.query(
+                `SELECT a.currency AS currency,
+              COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS total_income,
+              COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS total_expense
+             FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.book_id = ?
+             GROUP BY a.currency`,
                 [req.userId, req.bookId]
             ),
             // 活跃债务
@@ -178,16 +269,46 @@ router.get('/dashboard', async (req, res) => {
             })
         ]);
 
-        // 趋势增强：储蓄额/储蓄率 + 与上月环比
-        const monthsAsc = [...months].sort((a, b) => a.month.localeCompare(b.month));
+        // 多币种 P2-2d：把各 SUM 数组结果转 breakdown + 选主货币
+        const todayExpenseBreakdown = _rowsToBreakdown(todayData, 'expense');
+        const weekBreakdown = _rowsToBreakdownMulti(weekData, ['income', 'expense']);
+        const monthBreakdown = _rowsToBreakdownMulti(monthData, ['income', 'expense']);
+        const yearBreakdown = _rowsToBreakdownMulti(yearData, ['income', 'expense']);
+        const lifetimeBreakdown = _rowsToBreakdownMulti(lifetimeTotals, ['total_income', 'total_expense']);
+        const invBreakdown = _rowsToBreakdownMulti(invSummary, ['total_cost', 'total_value']);
+        const monthsGrouped = _groupMonthsByCurrency(months);
+
+        const todayCurrency = _pickPrimaryCurrency(todayExpenseBreakdown);
+        const weekCurrency = _pickPrimaryCurrency(weekBreakdown);
+        const monthCurrency = _pickPrimaryCurrency(monthBreakdown);
+        const yearCurrency = _pickPrimaryCurrency(yearBreakdown);
+        const lifetimeCurrency = _pickPrimaryCurrency(lifetimeBreakdown);
+        const invCurrency = _pickPrimaryCurrency(invBreakdown);
+
+        const todayExpense = todayExpenseBreakdown[todayCurrency] || 0;
+        const weekIncome = (weekBreakdown[weekCurrency] && weekBreakdown[weekCurrency].income) || 0;
+        const weekExpense = (weekBreakdown[weekCurrency] && weekBreakdown[weekCurrency].expense) || 0;
+        const monthIncome = (monthBreakdown[monthCurrency] && monthBreakdown[monthCurrency].income) || 0;
+        const monthExpense = (monthBreakdown[monthCurrency] && monthBreakdown[monthCurrency].expense) || 0;
+        const yearIncome = (yearBreakdown[yearCurrency] && yearBreakdown[yearCurrency].income) || 0;
+        const yearExpense = (yearBreakdown[yearCurrency] && yearBreakdown[yearCurrency].expense) || 0;
+        const totalIncome = (lifetimeBreakdown[lifetimeCurrency] && lifetimeBreakdown[lifetimeCurrency].total_income) || 0;
+        const totalExpense = (lifetimeBreakdown[lifetimeCurrency] && lifetimeBreakdown[lifetimeCurrency].total_expense) || 0;
+        const invTotalCost = (invBreakdown[invCurrency] && invBreakdown[invCurrency].total_cost) || 0;
+        const invTotalValue = (invBreakdown[invCurrency] && invBreakdown[invCurrency].total_value) || 0;
+
+        // 趋势增强：储蓄额/储蓄率 + 与上月环比（按月×主货币）
+        const monthsAsc = [...monthsGrouped].sort((a, b) => a.month.localeCompare(b.month));
         let prevMonth = null;
         const monthsEnhanced = monthsAsc.map(m => {
-            const income = parseFloat(m.income);
-            const expense = parseFloat(m.expense);
+            const primaryCur = _pickPrimaryCurrency(m.breakdown);
+            const income = (m.breakdown[primaryCur] && m.breakdown[primaryCur].income) || 0;
+            const expense = (m.breakdown[primaryCur] && m.breakdown[primaryCur].expense) || 0;
             // 金额精度（M3）：月度储蓄额与储蓄率走整数分域
             const savings = subtractAmounts(income, expense);
             const rec = {
-                month: m.month, income, expense, savings,
+                month: m.month, currency: primaryCur, income, expense, savings,
+                incomeBreakdown: m.breakdown, expenseBreakdown: m.breakdown,
                 savingsRate: percentOf(savings, income, 1),
                 incomeMoM: null, expenseMoM: null, balanceMoM: null
             };
@@ -203,8 +324,8 @@ router.get('/dashboard', async (req, res) => {
         });
         const monthsOut = monthsEnhanced.reverse();
 
-        // 金额精度（M3）：总资产 = 账户余额 + 投资市值，用整数分精确累加
-        const totalAssets = addAmounts(sumAmounts(accounts, a => a.balance), parseFloat(invSummary.total_value || 0));
+        // 金额精度（M3）：总资产 = 账户余额 + 投资市值（主货币值；前端 kpiHero 已用 FxManager 折算 baseCurrency）
+        const totalAssets = addAmounts(sumAmounts(accounts, a => a.balance), invTotalValue);
 
         const budgetMonthLastDay = parseInt(monthEnd.slice(8, 10));
         const budgetDayOfMonth = now.getDate();
@@ -212,7 +333,9 @@ router.get('/dashboard', async (req, res) => {
 
         const budgets = budgetRows.map(b => {
             const amount = parseFloat(b.amount);
-            const actual = parseFloat(b.actual || 0);
+            const actualBreakdown = _parseJsonBreakdown(b.actual_breakdown_json);
+            const actualPrimary = _pickPrimaryCurrency(actualBreakdown);
+            const actual = actualBreakdown[actualPrimary] || 0;
             const ratio = amount > 0 ? Math.min(actual / amount * 100, 999) : 0;
             const remain = Math.max(amount - actual, 0);
             const over = actual > amount;
@@ -226,6 +349,8 @@ router.get('/dashboard', async (req, res) => {
             else if (ratio >= 80) alertLevel = 'warning';
             return {
                 name: b.name, amount, actual,
+                currency: actualPrimary,
+                actualBreakdown,
                 ratio: Math.round(ratio * 10) / 10,
                 remain, over,
                 daysLeft: budgetDaysLeft, daysTotal: budgetMonthLastDay,
@@ -240,19 +365,15 @@ router.get('/dashboard', async (req, res) => {
         const savingsGoals = goalRows.map(g => {
             const target = parseFloat(g.target_amount);
             const current = parseFloat(g.current_amount);
-            return { id: g.id, name: g.name, icon: g.icon, target_amount: target, current_amount: current, ratio: target > 0 ? Math.round(current / target * 1000) / 10 : 0 };
+            return { id: g.id, name: g.name, icon: g.icon, target_amount: target, current_amount: current, currency: g.currency || 'CNY', ratio: target > 0 ? Math.round(current / target * 1000) / 10 : 0 };
         });
 
         const investmentHoldings = holdingRows.map(h => {
             const cost = parseFloat(h.total_cost);
             const value = parseFloat(h.current_value);
             const profit = parseFloat(h.profit);
-            return { name: h.name, code: h.code, total_cost: cost, current_value: value, profit, profit_rate: cost > 0 ? Math.round(profit / cost * 1000) / 10 : 0, type_icon: h.type_icon, type_name: h.type_name };
+            return { name: h.name, code: h.code, total_cost: cost, current_value: value, profit, currency: h.currency || 'CNY', profit_rate: cost > 0 ? Math.round(profit / cost * 1000) / 10 : 0, type_icon: h.type_icon, type_name: h.type_name };
         });
-
-        // 全部历史累计收入/支出（用于计算总体储蓄率 = 累计净结余 / 累计收入）
-        const totalIncome = parseFloat(lifetimeTotals.total_income || 0);
-        const totalExpense = parseFloat(lifetimeTotals.total_expense || 0);
 
         const repaymentsByDebt = {};
         allReps.forEach(r => {
@@ -266,35 +387,36 @@ router.get('/dashboard', async (req, res) => {
         // 本月储蓄净额（查询已并入上方 Promise.all，失败时返回 null 并已记录警告，
         // 修复报告 m4「空 catch 吞异常」——不再静默丢弃错误）
         const monthNetSavings = savingsData ? parseFloat(savingsData.net_savings || 0) : 0;
-        const monthIncome = parseFloat(monthData.income);
         // 金额精度（M3）：储蓄率用整数分域计算比值，避免浮点除法误差
         const savingsRate = percentOf(monthNetSavings, monthIncome, 1);
 
         res.json(success({
             currentMonth,
-            today: { expense: parseFloat(todayData.expense) },
-            week: { income: parseFloat(weekData.income), expense: parseFloat(weekData.expense), start: weekStart, end: weekEnd },
+            today: { expense: todayExpense, currency: todayCurrency, expenseBreakdown: todayExpenseBreakdown },
+            week: {
+                income: weekIncome, expense: weekExpense, currency: weekCurrency,
+                incomeBreakdown: weekBreakdown, expenseBreakdown: weekBreakdown,
+                start: weekStart, end: weekEnd
+            },
             month: {
-                income: monthIncome,
-                expense: parseFloat(monthData.expense),
-                // 金额精度（M3）：收支结余改用整数分精确减法
-                balance: subtractAmounts(monthIncome, monthData.expense),
+                income: monthIncome, expense: monthExpense, currency: monthCurrency,
+                incomeBreakdown: monthBreakdown, expenseBreakdown: monthBreakdown,
+                balance: subtractAmounts(monthIncome, monthExpense),
                 savings: roundAmount(monthNetSavings),
                 savingsRate
             },
             year: {
-                income: parseFloat(yearData.income),
-                expense: parseFloat(yearData.expense),
-                balance: subtractAmounts(yearData.income, yearData.expense)
+                income: yearIncome, expense: yearExpense, currency: yearCurrency,
+                incomeBreakdown: yearBreakdown, expenseBreakdown: yearBreakdown,
+                balance: subtractAmounts(yearIncome, yearExpense)
             },
             // 净资产 = 总资产 - 债务余额，首屏核心指标，精确计算
             netWorth: subtractAmounts(totalAssets, debtSum.total_remaining || 0),
-            income: parseFloat(monthData.income),
-            expense: parseFloat(monthData.expense),
-            balance: subtractAmounts(monthData.income, monthData.expense),
+            income: monthIncome, expense: monthExpense, currency: monthCurrency,
+            balance: subtractAmounts(monthIncome, monthExpense),
             // 全部历史累计金额（前端用于储蓄率 = 累计净储蓄 / 总资产）
-            totalIncome,
-            totalExpense,
+            totalIncome, totalExpense, currency: lifetimeCurrency,
+            totalIncomeBreakdown: lifetimeBreakdown, totalExpenseBreakdown: lifetimeBreakdown,
             totalSavings: subtractAmounts(totalIncome, totalExpense),
             months: monthsOut,
             accounts: accounts.map(a => ({ ...a, balance: parseFloat(a.balance) })),
@@ -302,10 +424,10 @@ router.get('/dashboard', async (req, res) => {
             budgets,
             savingsGoals,
             investments: {
-                totalCost: parseFloat(invSummary.total_cost),
-                totalValue: parseFloat(invSummary.total_value),
+                totalCost: invTotalCost, totalValue: invTotalValue, currency: invCurrency,
+                totalCostBreakdown: invBreakdown, totalValueBreakdown: invBreakdown,
                 // 金额精度（M3）：浮盈 = 市值 - 成本，整数分精确减法
-                totalProfit: subtractAmounts(invSummary.total_value, invSummary.total_cost),
+                totalProfit: subtractAmounts(invTotalValue, invTotalCost),
                 holdings: investmentHoldings
             },
             recentTransactions: recentTrans.map(t => ({
