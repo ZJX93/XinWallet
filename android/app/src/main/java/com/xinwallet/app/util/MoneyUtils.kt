@@ -6,15 +6,27 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-fun formatMoney(value: Double): String {
-    val df = DecimalFormat("#,##0.00")
-    // 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 → "-¥74.14"
-    return (if (value < 0) "-" else "") + "¥" + df.format(kotlin.math.abs(value))
+// 多币种 P2-2e：货币符号表（与 public/js/utils.js#_currencySymbol 严格同语义）
+// 鸿蒙 theme.ts 也引用本表，保证三端展示一致
+private val CURRENCY_SYMBOLS = mapOf(
+    "CNY" to "¥", "USD" to "$", "EUR" to "€", "HKD" to "HK$",
+    "JPY" to "¥", "GBP" to "£", "AUD" to "A$", "CAD" to "C$"
+)
+
+fun currencySymbol(currency: String?): String {
+    val cur = (currency ?: "CNY").uppercase()
+    return CURRENCY_SYMBOLS[cur] ?: "$cur "
 }
 
-fun formatMoneySigned(value: Double): String {
+fun formatMoney(value: Double, currency: String = "CNY"): String {
+    val df = DecimalFormat("#,##0.00")
+    // 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 CNY → "-¥74.14"
+    return (if (value < 0) "-" else "") + currencySymbol(currency) + df.format(kotlin.math.abs(value))
+}
+
+fun formatMoneySigned(value: Double, currency: String = "CNY"): String {
     val sign = if (value >= 0) "+" else "-"
-    return sign + formatMoney(kotlin.math.abs(value))
+    return sign + formatMoney(kotlin.math.abs(value), currency)
 }
 
 /**
@@ -29,15 +41,53 @@ fun formatMoneySigned(value: Double): String {
  *
  * 用于「一行里并排多项金额」的场景（日期 + 收 + 支 + 结余）。
  * 单独展示一个金额的地方（详情、大卡主数值）仍用 formatMoney，不要缩。
+ *
+ * 多币种 P2-2e：currency 非 CNY 时退回 formatMoney（保留两位小数不压缩），
+ * 避免对非中文货币做语义不明的"万/亿"压缩。
  */
-fun formatMoneyShort(value: Double): String {
+fun formatMoneyShort(value: Double, currency: String = "CNY"): String {
+    val cur = currency.uppercase()
+    if (cur != "CNY") return formatMoney(value, cur)
     val a = kotlin.math.abs(value)
     val sign = if (value < 0) "-" else ""
     return when {
         a >= 100_000_000 -> sign + "¥" + String.format("%.2f", a / 100_000_000) + "亿"
         a >= 10_000 -> sign + "¥" + String.format("%.2f", a / 10_000) + "万"
-        else -> formatMoney(value)
+        else -> formatMoney(value, cur)
     }
+}
+
+/**
+ * 多币种 P2-2e：合计 breakdown 智能格式化（与 public/js/utils.js#fmtMix 严格同语义）
+ *   空 / 全零              → formatMoney(0, baseCurrency)
+ *   单货币                → formatMoney(value, currency)
+ *   多货币 + 主货币 == base → 主值 + 括号附注其他货币明细（"¥1,000.00 ($50.00)"）
+ *   多货币 + 主货币 != base → 降级主货币 + 附注（无 FxManager 暂不折算）
+ *
+ * 输入 breakdown 形如 { "CNY": 1000.0, "USD": 50.0 }；主货币按 amount 绝对值最大选。
+ */
+fun formatMoneyMix(breakdown: Map<String, Double>?, baseCurrency: String = "CNY"): String {
+    val base = (baseCurrency.ifBlank { "CNY" }).uppercase()
+    if (breakdown.isNullOrEmpty()) return formatMoney(0.0, base)
+    val entries = breakdown.entries.filter { kotlin.math.abs(it.value) > 0.001 }
+    if (entries.isEmpty()) return formatMoney(0.0, base)
+    if (entries.size == 1) {
+        val e = entries.first()
+        return formatMoney(e.value, e.key)
+    }
+    // 多货币：选主货币（amount 绝对值最大）
+    val primaryEntry = entries.maxBy { kotlin.math.abs(it.value) }
+    val primary = primaryEntry.key
+    val primaryVal = primaryEntry.value
+    if (primary == base) {
+        val others = entries.filter { it.key != primary }
+            .joinToString(" + ") { formatMoney(it.value, it.key) }
+        return formatMoney(primaryVal, primary) + if (others.isNotEmpty()) " ($others)" else ""
+    }
+    // 主货币 != base：安卓端无 FxManager → 降级主货币 + 附注其他
+    val others = entries.filter { it.key != primary }
+        .joinToString(" + ") { formatMoney(it.value, it.key) }
+    return formatMoney(primaryVal, primary) + if (others.isNotEmpty()) " ($others)" else ""
 }
 
 /**
