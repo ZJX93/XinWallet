@@ -277,7 +277,7 @@ const TransactionManager = {
     },
     updateTransferAccSelect() {
         const populate = (sel) => {
-            sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+            sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)} (${fmt(a.balance, a.currency || 'CNY')})</option>`).join('');
         };
         populate(document.getElementById('transAccount'));
         populate(document.getElementById('transToAccount'));

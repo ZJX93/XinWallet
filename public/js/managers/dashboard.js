@@ -92,8 +92,8 @@ const DashboardManager = {
             listEl.innerHTML = data.accounts.map(a => `
                 <div class="detail-row">
                     <div class="detail-row-icon">${escapeHtml(a.icon || "💰")}</div>
-                    <div class="detail-row-info"><span class="detail-row-name">${escapeHtml(a.name)}</span><span class="detail-row-sub">${a.type === 'credit_card' ? '信用卡' : a.type === 'cash' ? '现金' : a.type === 'electronic_payment' ? '电子支付' : a.type === 'financial_account' ? '金融账户' : a.type === 'digital' ? '数字货币' : '银行账户'}${a.inv_value > 0 ? ' · 含理财' + fmt(a.inv_value) : ''}</span></div>
-                    <div class="detail-row-right"><span class="detail-row-value">${fmt(a.balance)}</span><div class="detail-bar-wrap"><div class="detail-bar" style="width:${Math.max(a.ratio, 2)}%"></div></div></div>
+                    <div class="detail-row-info"><span class="detail-row-name">${escapeHtml(a.name)}</span><span class="detail-row-sub">${a.type === 'credit_card' ? '信用卡' : a.type === 'cash' ? '现金' : a.type === 'electronic_payment' ? '电子支付' : a.type === 'financial_account' ? '金融账户' : a.type === 'digital' ? '数字货币' : '银行账户'}${a.inv_value > 0 ? ' · 含理财' + fmt(a.inv_value, a.currency || 'CNY') : ''}</span></div>
+                    <div class="detail-row-right"><span class="detail-row-value">${fmt(a.balance, a.currency || 'CNY')}</span><div class="detail-bar-wrap"><div class="detail-bar" style="width:${Math.max(a.ratio, 2)}%"></div></div></div>
                 </div>
             `).join('');
         } else {
