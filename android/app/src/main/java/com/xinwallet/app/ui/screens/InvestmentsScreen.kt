@@ -69,7 +69,9 @@ import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.InvestmentsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import com.xinwallet.app.util.formatMoneySigned
+import com.xinwallet.app.util.sumByCurrency
 import com.xinwallet.app.util.todayDateTime
 
 /**
@@ -128,11 +130,18 @@ fun InvestmentsContent(
                 }
                 item {
                     Spacer(Modifier.height(12.dp))
+                    // 多币种 P2-2e：后端 summary（calcPortfolioMetrics）是纯金额累加
+                    // **不分 currency**，混币种账本下无意义 —— 客户端按
+                    // investments[].currency 重新分组，交给 formatMoneyMix 混显。
+                    val valueBd = sumByCurrency(state.investments, { it.currency }, { it.currentValue })
                     if (sum != null) {
-                        val sub = "总成本 ${formatMoney(sum.totalCost)} · 总收益 ${formatMoneySigned(sum.totalProfit)}"
-                        BalanceCard("理财总市值", sum.totalValue, sub, Modifier.padding(horizontal = 16.dp))
+                        val costBd = sumByCurrency(state.investments, { it.currency }, { it.totalCost })
+                        // 总收益用单值 + 主货币（成本/市值混显已足够表达币种构成）
+                        val cur = valueBd.entries.maxByOrNull { kotlin.math.abs(it.value) }?.key ?: "CNY"
+                        val sub = "总成本 ${formatMoneyMix(costBd)} · 总收益 ${formatMoneySigned(sum.totalProfit, cur)}"
+                        BalanceCard("理财总市值", sum.totalValue, sub, Modifier.padding(horizontal = 16.dp), breakdown = valueBd)
                     } else {
-                        BalanceCard("理财总市值", state.investments.sumOf { it.currentValue }, null, Modifier.padding(horizontal = 16.dp))
+                        BalanceCard("理财总市值", state.investments.sumOf { it.currentValue }, null, Modifier.padding(horizontal = 16.dp), breakdown = valueBd)
                     }
                 }
                 grouped.forEach { (typeName, list) ->
@@ -229,9 +238,10 @@ private fun InvestmentRow(inv: Investment, onClick: () -> Unit) {
             }
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(formatMoney(inv.currentValue), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            // 多币种 P2-2e：单条理财的市值/收益按该理财自身币种格式化
+            Text(formatMoney(inv.currentValue, inv.currency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Text(
-                "${formatMoneySigned(inv.profit)}  (${String.format("%.2f", inv.profitRate)}%)",
+                "${formatMoneySigned(inv.profit, inv.currency)}  (${String.format("%.2f", inv.profitRate)}%)",
                 style = MaterialTheme.typography.labelSmall, color = profitColor
             )
         }
@@ -327,7 +337,12 @@ private fun InvestmentFormDialog(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("总成本", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    Text(formatMoney(totalCost), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    // 多币种 P2-2e：按所选扣款账户币种回显（未关联账户时默认 CNY）。
+                    // 提交时 currency 留空，由后端按同一规则推断（investments.js：
+                    // currency || 账户 currency || 'CNY'），两端口径一致。
+                    val formCurrency = if (accountId == 0) "CNY"
+                    else accounts.firstOrNull { it.id == accountId }?.currency ?: "CNY"
+                    Text(formatMoney(totalCost, formCurrency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 }
                 DateTimePickerField(
                     label = "买入日期",

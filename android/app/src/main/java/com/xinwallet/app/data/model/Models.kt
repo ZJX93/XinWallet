@@ -297,7 +297,9 @@ data class Investment(
     @SerializedName("acc_name") val accName: String? = null,
     val profit: Double = 0.0,
     @SerializedName("profit_rate") val profitRate: Double = 0.0,
-    val annualizedRate: Double = 0.0
+    val annualizedRate: Double = 0.0,
+    /** 多币种 P2-2d：ISO 4217 货币代码（investments 表 currency 列，SELECT i.* 会带出） */
+    val currency: String = "CNY"
 )
 
 data class InvestmentsResponse(
@@ -306,6 +308,7 @@ data class InvestmentsResponse(
     val byType: Map<String, TypeGroup>? = null
 )
 
+/** 理财流水。多币种 P2-2e：currency 是 investment_transactions 表 currency 列 */
 data class InvestmentTransaction(
     val id: Int = 0,
     val type: String = "buy",
@@ -315,7 +318,8 @@ data class InvestmentTransaction(
     val quantity: Double = 0.0,
     @SerializedName("fee") val fee: Double = 0.0,
     val date: String = "",
-    val note: String? = null
+    val note: String? = null,
+    val currency: String = "CNY"
 )
 
 /** 新增理财流水（买入/卖出/分红/利息/红利再投）。后端 POST /investments/:id/transactions */
@@ -351,20 +355,37 @@ data class InvestmentTransactionsResponse(
     val transactions: List<InvestmentTransaction> = emptyList()
 )
 
+/**
+ * 组合汇总（后端 calcPortfolioMetrics，纯金额累加**不分 currency**）。
+ *
+ * 多币种 P2-2e：currency / costBreakdown / valueBreakdown 由安卓端按
+ * investments[].currency 用 sumByCurrency 算出（后端 TODO 暂未返回，
+ * 所以这三个字段暂时一直是默认值，占位以免后续改动要动调用点）。
+ */
 data class PortfolioSummary(
     val totalCost: Double = 0.0,
     val totalValue: Double = 0.0,
     val totalProfit: Double = 0.0,
-    val totalProfitRate: Double = 0.0
+    val totalProfitRate: Double = 0.0,
+    val currency: String = "CNY",
+    val costBreakdown: Map<String, Double>? = null,
+    val valueBreakdown: Map<String, Double>? = null
 )
 
+/**
+ * 按理财类型分组。多币种 P2-2e：total_cost / total_value 是后端不分 currency
+ * 的累加值；分组内的实际币种构成由 UI 层对 items[] 用 sumByCurrency 现算。
+ */
 data class TypeGroup(
     val type_name: String = "",
     val icon: String? = null,
     val risk_level: String? = null,
     val total_cost: Double = 0.0,
     val total_value: Double = 0.0,
-    val items: List<Investment> = emptyList()
+    val items: List<Investment> = emptyList(),
+    val currency: String = "CNY",
+    val costBreakdown: Map<String, Double>? = null,
+    val valueBreakdown: Map<String, Double>? = null
 )
 
 data class CreateInvestmentRequest(
