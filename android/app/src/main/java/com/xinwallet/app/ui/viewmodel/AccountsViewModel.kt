@@ -20,7 +20,16 @@ data class AccountsUiState(
     val submitting: Boolean = false,
     val toast: String? = null,
     /** 表单提交成功一次性信号，UI 收到后关闭弹窗 */
-    val formDone: Boolean = false
+    val formDone: Boolean = false,
+    /**
+     * 多币种 P2-2e：总资产按账户币种分布 { "CNY": 1000.0, "USD": 50.0 }。
+     *
+     * 后端 totalAssets 是 SQL SUM(balance) **不分 currency**，混币种账本下这个
+     * 数字没有意义（USD 100 + CNY 1000 ≠ 1100）。这里由客户端按
+     * accounts[].currency 重新分组累加，交给 formatMoneyMix 展示成
+     * 「¥1,000.00 ($50.00)」。账户数据本身已经带 currency，不需要改后端。
+     */
+    val totalAssetsBreakdown: Map<String, Double>? = null
 )
 
 class AccountsViewModel(private val repo: AccountRepository) : ViewModel() {
@@ -35,7 +44,9 @@ class AccountsViewModel(private val repo: AccountRepository) : ViewModel() {
                     loading = false,
                     error = null,
                     accounts = r.data.accounts,
-                    totalAssets = r.data.totalAssets
+                    totalAssets = r.data.totalAssets,
+                    // 多币种 P2-2e：按账户币种重新分组，混币种账本下 totalAssets 单值无意义
+                    totalAssetsBreakdown = buildAssetsBreakdown(r.data.accounts)
                 )
                 is ApiResult.Error -> _state.value = _state.value.copy(loading = false, error = r.message)
             }
@@ -66,6 +77,31 @@ class AccountsViewModel(private val repo: AccountRepository) : ViewModel() {
     }
 
     fun consumeToast() { _state.value = _state.value.copy(toast = null) }
+
+    /**
+     * 多币种 P2-2e：按账户币种分组累加余额，得到总资产 breakdown。
+     *
+     * 只统计 status == "active" 的账户，与后端 totalAssets 口径一致
+     * （后端 SQL 也是 WHERE status='active'）。
+     *
+     * ⚠️ account.currency 可能是 null：Gson 反序列化 Kotlin data class 走
+     * Unsafe 分配对象（不调构造器），`val currency: String = "CNY"` 的默认值
+     * 不生效 —— 服务端还没返回该字段的老部署数据里它是 null，这里统一兜底 CNY。
+     *
+     * 信用卡口径：balance 是已欠金额（负数或正数取决于后端约定），这里原样
+     * 累加，与后端 SUM(balance) 保持一致，不改变现有语义。
+     */
+    private fun buildAssetsBreakdown(accounts: List<Account>): Map<String, Double> {
+        val out = linkedMapOf<String, Double>()
+        accounts.filter { it.status == "active" }.forEach { acc ->
+            // currency 声明是非空 String，但 Gson 可能塞 null（见上方注释），?: 兜底
+            @Suppress("USELESS_ELVIS")
+            val cur = (acc.currency ?: "CNY").uppercase()
+            out[cur] = (out[cur] ?: 0.0) + acc.balance
+        }
+        return out
+    }
+
     fun consumeError() { _state.value = _state.value.copy(error = null) }
     fun consumeFormDone() { _state.value = _state.value.copy(formDone = false) }
 }

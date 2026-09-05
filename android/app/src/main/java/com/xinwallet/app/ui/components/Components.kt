@@ -80,6 +80,7 @@ import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -113,7 +114,28 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun BalanceCard(title: String, amount: Double, subtitle: String? = null, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+fun BalanceCard(
+    title: String,
+    amount: Double,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    /**
+     * 多币种 P2-2e：金额按币种分布 { "CNY": 1000.0, "USD": 50.0 }。
+     * 非空时**优先**用它展示（formatMoneyMix，多币种自动附注），
+     * 为 null 时退回 currency / 单值 —— 老调用点无需改。
+     */
+    breakdown: Map<String, Double>? = null,
+    /**
+     * 多币种 P2-2e：单币种场景的货币代码（如账户详情的「当前余额」）。
+     * breakdown 为 null 且 currency 非 null 时用 formatMoney(amount, currency)；
+     * 两者都为 null 时维持老的 formatMoney(amount)（默认 CNY）。
+     *
+     * 声明为 String? 是有意为之：Gson 反序列化 data class 走 Unsafe 不调构造器，
+     * `val currency: String = "CNY"` 的默认值不生效，老部署数据里它实际是 null。
+     */
+    currency: String? = null
+) {
     Card(
         modifier = Modifier.fillMaxWidth().then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
@@ -122,7 +144,17 @@ fun BalanceCard(title: String, amount: Double, subtitle: String? = null, modifie
         Column(Modifier.padding(20.dp)) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Spacer(Modifier.height(6.dp))
-            Text(formatMoney(amount), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(
+                // 多币种 P2-2e：breakdown > currency > 单值（默认 CNY）三级降级
+                when {
+                    breakdown != null -> formatMoneyMix(breakdown)
+                    currency != null -> formatMoney(amount, currency)
+                    else -> formatMoney(amount)
+                },
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
             if (subtitle != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
@@ -272,9 +304,10 @@ fun AccountListItem(account: Account, onClick: () -> Unit) {
             Text(accountTypeLabel(account.type), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(formatMoney(account.balance), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            // 多币种 P2-2e：账户余额/额度按账户自身币种格式化（accounts.currency，P2-2a 加列）
+            Text(formatMoney(account.balance, account.currency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             if (account.type == "credit_card" && account.creditLimit > 0) {
-                Text("额度 ${formatMoney(account.creditLimit)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("额度 ${formatMoney(account.creditLimit, account.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

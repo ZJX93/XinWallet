@@ -143,7 +143,15 @@ fun AccountsScreen(navController: NavHostController) {
                 LazyColumn(Modifier.fillMaxSize()) {
                     item {
                         Spacer(Modifier.height(12.dp))
-                        BalanceCard("总资产", state.totalAssets, "所有活跃账户余额合计", Modifier.padding(horizontal = 16.dp))
+                        // 多币种 P2-2e：总资产按币种 breakdown 混显（state.totalAssets 是
+                        // 后端 SUM(balance) 不分 currency 的单值，混币种账本下无意义）
+                        BalanceCard(
+                            title = "总资产",
+                            amount = state.totalAssets,
+                            subtitle = "所有活跃账户余额合计",
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            breakdown = state.totalAssetsBreakdown
+                        )
                     }
                     if (grouped.isEmpty()) {
                         item {
@@ -205,9 +213,10 @@ private fun AccountRowWithActions(
             Text(accountTypeLabel(account.type), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(formatMoney(account.balance), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            // 多币种 P2-2e：账户余额/额度按账户自身币种格式化（accounts.currency，P2-2a 加列）
+            Text(formatMoney(account.balance, account.currency), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             if (account.type == "credit_card" && account.creditLimit > 0) {
-                Text("额度 ${formatMoney(account.creditLimit)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("额度 ${formatMoney(account.creditLimit, account.currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

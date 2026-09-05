@@ -175,7 +175,9 @@ fun AccountDetailScreen(navController: NavHostController, accountId: Int) {
                             interestSubmitting = false
                             showInterestDialog = false
                             account = account?.copy(balance = r.data.balance, lastInterestDate = r.data.lastInterestDate)
-                            snackbar.showSnackbar("利息已入账，最新余额 ${formatMoney(r.data.balance)}")
+                            // 多币种 P2-2e：入账利息按账户自身币种格式化
+                            // （这里是 AddInterestDialog 作用域，账户变量是 account 不是 acc）
+                            snackbar.showSnackbar("利息已入账，最新余额 ${formatMoney(r.data.balance, account?.currency)}")
                             vm.load(accountId = accountId)
                         }
                         is ApiResult.Error -> {
@@ -202,11 +204,12 @@ fun AccountDetailScreen(navController: NavHostController, accountId: Int) {
                         account?.let { acc ->
                             val sub = buildString {
                                 append(accountTypeLabel(acc.type))
-                                if (acc.creditLimit > 0) append(" · 额度 ${formatMoney(acc.creditLimit)}")
+                                if (acc.creditLimit > 0) append(" · 额度 ${formatMoney(acc.creditLimit, acc.currency)}")
                                 acc.lastInterestDate?.takeIf { it.isNotBlank() }?.let { append(" · 上次计息 ${it.take(10)}") }
                                 if (acc.status != "active") append(" · 已销户")
                             }
-                            BalanceCard("当前余额", acc.balance, sub)
+                            // 多币种 P2-2e：当前余额按账户自身币种格式化
+                            BalanceCard("当前余额", acc.balance, sub, currency = acc.currency)
                             Spacer(Modifier.height(12.dp))
                             /*
                              * 操作区：与投资详情页同款 chip 排布（见 InvestmentDetailScreen）。
