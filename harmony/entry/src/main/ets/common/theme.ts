@@ -359,12 +359,85 @@ export function amountColor(type: string): string {
   return COLORS.textPrimary;
 }
 
-/** ¥ 金额格式化，保留两位 */
-export function fmtMoney(n: number): string {
+/** 货币符号表（ISO 4217）。未列出的代码用「代码+空格」兜底（如「KRW 」）。 */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  CNY: '¥', USD: '$', EUR: '€', GBP: '£', JPY: '¥',
+  HKD: 'HK$', TWD: 'NT$', KRW: '₩', AUD: 'A$', CAD: 'C$',
+  SGD: 'S$', CHF: 'CHF ', NZD: 'NZ$', THB: '฿', INR: '₹',
+  RUB: '₽', BRL: 'R$', MXN: 'MX$'
+};
+
+/**
+ * 多币种 P2-3a：取货币符号。null/undefined/空串统一兜底 CNY。
+ *
+ * ⚠️ 为什么参数是 string 而不是 string | null：
+ * ArkTS 1.1 严格模式下函数签名不允许 `?:` 标记可空参数，调用方必须传值。
+ * 但服务端返回的 currency 字段可能是 undefined（字段缺失）或空串（脏数据），
+ * 内部统一 `(cur || 'CNY')` 兜底，保证 UI 不显示「undefined」、「 」这种脏值。
+ */
+export function currencySymbol(cur: string): string {
+  const c = (cur || 'CNY').toUpperCase();
+  const sym = CURRENCY_SYMBOLS[c];
+  if (sym) return sym;
+  return c + ' ';
+}
+
+/** ¥ 金额格式化，保留两位。多币种 P2-3a：currency 可选，默认 CNY，向后兼容。 */
+export function fmtMoney(n: number, currency: string = 'CNY'): string {
   const v = Number(n) || 0;
   const neg = v < 0;
   const s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return (neg ? '-¥' : '¥') + s;
+  return (neg ? '-' : '') + currencySymbol(currency) + s;
+}
+
+/** 带正负号金额（收支/收益用），多币种 P2-3a：currency 可选 */
+export function fmtMoneySigned(n: number, currency: string = 'CNY'): string {
+  const sign = n >= 0 ? '+' : '-';
+  return sign + fmtMoney(Math.abs(n), currency);
+}
+
+/**
+ * 多币种 P2-3a：按 breakdown 智能格式化。
+ *
+ * - breakdown 为空：返回「¥0.00」
+ * - 单币种：等同于 fmtMoney
+ * - 多币种：主货币值用大字号展示，附属币种以小括号附注
+ *   例：¥1,000.00 ($50.00) +€20.00
+ *
+ * baseCurrency 默认 CNY；调用方传对应主货币（dashboard.month.currency
+ * / report.summary.currency 等）以决定哪个币种被放到主位。
+ */
+export function fmtMoneyMix(
+  breakdown: Record<string, number> | null | undefined,
+  baseCurrency: string = 'CNY'
+): string {
+  const base = (baseCurrency || 'CNY').toUpperCase();
+  if (breakdown == null) return fmtMoney(0, base);
+  const entries: Array<[string, number]> = [];
+  const keys = Object.keys(breakdown);
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const v = breakdown[k];
+    if (v != null && Math.abs(v) > 0.001) {
+      entries.push([k.toUpperCase(), v]);
+    }
+  }
+  if (entries.length === 0) return fmtMoney(0, base);
+  let baseVal = 0;
+  const others: Array<[string, number]> = [];
+  for (let i = 0; i < entries.length; i++) {
+    const item = entries[i];
+    if (item[0] === base) {
+      baseVal = item[1];
+    } else {
+      others.push(item);
+    }
+  }
+  let s = fmtMoney(baseVal, base);
+  for (let i = 0; i < others.length; i++) {
+    s += ' (' + fmtMoney(others[i][1], others[i][0]) + ')';
+  }
+  return s;
 }
 
 /**
@@ -379,14 +452,20 @@ export function fmtMoney(n: number): string {
  * 分档而不是统一缩写：日常单天金额几乎都在 1 万以下（¥50.00 / ¥1,797.00），
  * 这部分零精度损失；只有大额日才缩写，而缩写恰好也是宽度最紧张的时候。
  * 保留 2 位小数 → ¥1.90万 精确到百元，配合下方明细列表足够读懂量级。
+ *
+ * 多币种 P2-3a：非 CNY 直接走 fmtMoney（不缩写，避免误读）。缩写档位
+ * 仅对 CNY 生效，因为「¥1.90万」这种「中文 + 万」是大陆习惯，外币用
+ * 全精度显示更准确。
  */
-export function fmtMoneyShort(n: number): string {
+export function fmtMoneyShort(n: number, currency: string = 'CNY'): string {
+  const cur = (currency || 'CNY').toUpperCase();
+  if (cur !== 'CNY') return fmtMoney(n, cur);
   const v = Number(n) || 0;
   const a = Math.abs(v);
   const sign = v < 0 ? '-' : '';
   if (a >= 100000000) return sign + '¥' + (a / 100000000).toFixed(2) + '亿';
   if (a >= 10000) return sign + '¥' + (a / 10000).toFixed(2) + '万';
-  return fmtMoney(v);
+  return fmtMoney(v, cur);
 }
 
 /**

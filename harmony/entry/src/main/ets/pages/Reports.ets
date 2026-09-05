@@ -13,7 +13,7 @@
 import router from '@ohos.router';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtDayLabel, fmtMoney, fmtMoneyShort, LAYOUT, RADIUS, SPACING, TRANSPARENT } from '../common/theme';
+import { COLORS, fmtDayLabel, fmtMoney, fmtMoneyMix, fmtMoneyShort, LAYOUT, RADIUS, SPACING, TRANSPARENT } from '../common/theme';
 import { Book, BooksResponse } from '../common/models';
 import { DonutChart, DonutPiece, TrendChart } from '../common/components/Charts';
 import {
@@ -34,7 +34,7 @@ function shiftMonth(y: number, m: number, byMonths: number): string {
   return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`;
 }
 
-interface RSummary { income?: number; expense?: number; balance?: number; savingsRate?: number; transactionCount?: number; avgDailyExpense?: number; }
+interface RSummary { income?: number; expense?: number; balance?: number; savingsRate?: number; transactionCount?: number; avgDailyExpense?: number; currency?: string; incomeBreakdown?: Record<string, number>; expenseBreakdown?: Record<string, number>; }
 /**
  * ⚠️ 服务端 SQL 是 `SELECT c.id, c.name, c.icon, c.parent_id, agg.total`——
  * 字段名是 **parent_id**（下划线），不是 parentId。原来这里写 `parentId?: number`
@@ -42,10 +42,10 @@ interface RSummary { income?: number; expense?: number; balance?: number; saving
  * 安卓端靠 `@SerializedName("parent_id")` 做了映射，鸿蒙没有序列化框架，
  * 必须按服务端原名声明。
  */
-interface RSlice { id?: number; name?: string; icon?: string; parent_id?: number; total?: number; color?: string; }
-interface RTrend { date?: string; income?: number; expense?: number; }
-interface RBudgetExec { id?: number; name?: string; icon?: string; budget?: number; actual?: number; usage?: number; }
-interface RTopTx { id?: number; date?: string; amount?: number; note?: string; category_name?: string; category_icon?: string; }
+interface RSlice { id?: number; name?: string; icon?: string; parent_id?: number; total?: number; color?: string; currency?: string; totalBreakdown?: Record<string, number>; }
+interface RTrend { date?: string; income?: number; expense?: number; currency?: string; incomeBreakdown?: Record<string, number>; expenseBreakdown?: Record<string, number>; }
+interface RBudgetExec { id?: number; name?: string; icon?: string; budget?: number; actual?: number; usage?: number; currency?: string; actualBreakdown?: Record<string, number>; }
+interface RTopTx { id?: number; date?: string; amount?: number; note?: string; category_name?: string; category_icon?: string; currency?: string; }
 interface RData {
   type?: string; period?: string; label?: string; days?: number;
   summary?: RSummary; dailyTrend?: RTrend[];
@@ -298,16 +298,18 @@ export struct ReportsPage {
     // KPI 卡是「看具体数」的地方，缩写到 ¥1.91万 会让「本月预算」和「剩余预算」
     // 显示成同一个值，掩盖掉几百块的差额。宽度由 KpiCard 的自适应缩字负责。
     if (this.type === 'income') {
+      // 多币种 P2-3b：收入金额按 breakdown 智能混显（多币种账本自动附注其他货币）
       return [
-        { title: '收入金额', value: fmtMoney(s.income ?? 0), accent: COLORS.income, icon: '💵' },
-        { title: `${av.label}收入`, value: fmtMoney((s.income ?? 0) / av.divisor), accent: COLORS.income, icon: '📅' }
+        { title: '收入金额', value: fmtMoneyMix(s.incomeBreakdown, s.currency), accent: COLORS.income, icon: '💵' },
+        { title: `${av.label}收入`, value: fmtMoney((s.income ?? 0) / av.divisor, s.currency), accent: COLORS.income, icon: '📅' }
       ];
     }
     if (this.type === 'balance') {
       const b = s.balance ?? 0;
       return [
-        { title: '结余金额', value: fmtMoney(b), accent: b >= 0 ? COLORS.income : COLORS.expense, icon: '🎯' },
-        { title: `${av.label}结余`, value: fmtMoney(b / av.divisor), accent: COLORS.brand, icon: '📅' }
+        // balance = income - expense 主货币值；按主货币格式化
+        { title: '结余金额', value: fmtMoney(b, s.currency), accent: b >= 0 ? COLORS.income : COLORS.expense, icon: '🎯' },
+        { title: `${av.label}结余`, value: fmtMoney(b / av.divisor, s.currency), accent: COLORS.brand, icon: '📅' }
       ];
     }
     // 支出：4 张。预算/剩余取 budgetExecution 汇总（服务端已按当期筛选）
@@ -318,8 +320,10 @@ export struct ReportsPage {
     be.forEach((b: RBudgetExec) => { budget += b.budget ?? 0; actual += b.actual ?? 0; });
     const remain = budget - actual;
     return [
-      { title: '支出金额', value: fmtMoney(s.expense ?? 0), accent: COLORS.expense, icon: '💸' },
-      { title: `${av.label}支出`, value: fmtMoney((s.expense ?? 0) / av.divisor), accent: COLORS.expense, icon: '📅' },
+      // 多币种 P2-3b：支出金额按 breakdown 混显
+      { title: '支出金额', value: fmtMoneyMix(s.expenseBreakdown, s.currency), accent: COLORS.expense, icon: '💸' },
+      { title: `${av.label}支出`, value: fmtMoney((s.expense ?? 0) / av.divisor, s.currency), accent: COLORS.expense, icon: '📅' },
+      // 预算 amount 自身是 CNY 单货币（reports.js / stats.js 一致），不参与混显
       { title: `${prefix}预算`, value: budget > 0 ? fmtMoney(budget) : '未设置', accent: COLORS.brand, icon: '💰' },
       // 未设预算时剩余是 0-实际=负数，显示「-¥1,692.67 剩余预算」纯属误导。
       // 安卓端就是这么显示的（截图里两个 ¥0.00），这里不照抄。
@@ -439,24 +443,36 @@ export struct ReportsPage {
       const y0: string = (t[0].date || '').slice(0, 4);
       const yN: string = (t[t.length - 1].date || '').slice(0, 4);
       const label: string = y0 === yN ? `${Number(d.slice(5, 7))}月` : `${d.slice(0, 4)}年${Number(d.slice(5, 7))}月`;
-      return `${label}  ${word} ${fmtMoney(pts[i])}`;
+      // 多币种 P2-3b：选中点的 currency 取该 bucket 的 currency
+      return `${label}  ${word} ${fmtMoney(pts[i], t[i].currency)}`;
     }
 
     // 日桶用 fmtDayLabel 压成「8月12日」而不是「2026-08-12」：
     // 顶部周期导航已写明「2026年8月」，这里重复年份等于用 5 个字符表达 0 比特信息。
     // 省下的约 18vp 正好让右侧累计金额可以用完整格式而不挤。
-    return `${fmtDayLabel(d)}  ${word} ${fmtMoney(pts[i])}`;
+    return `${fmtDayLabel(d)}  ${word} ${fmtMoney(pts[i], t[i].currency)}`;
   }
 
   /** 趋势卡副标题右侧：累计（结余维度是累计曲线，取末值即期末结余） */
   trendCumLabel(): string {
     const pts = this.trendPoints();
+    const t = this.dailyTrend();
+    // 多币种 P2-3b：series 提取了 bucket 主货币值，整期主货币取首个非零 bucket 的 currency
+    const primaryCurrency: string = (() => {
+      for (let i = 0; i < t.length; i++) {
+        const item = t[i];
+        if ((item.income ?? 0) > 0 || (item.expense ?? 0) > 0) {
+          return item.currency || 'CNY';
+        }
+      }
+      return 'CNY';
+    })();
     if (this.type === 'balance') {
-      return `期末结余 ${fmtMoney(pts.length > 0 ? pts[pts.length - 1] : 0)}`;
+      return `期末结余 ${fmtMoney(pts.length > 0 ? pts[pts.length - 1] : 0, primaryCurrency)}`;
     }
     let sum = 0;
     pts.forEach((v: number) => { sum += v; });
-    return `${this.type === 'income' ? '累计收入' : '累计支出'} ${fmtMoney(sum)}`;
+    return `${this.type === 'income' ? '累计收入' : '累计支出'} ${fmtMoney(sum, primaryCurrency)}`;
   }
 
   trendColor(): string {
@@ -547,7 +563,9 @@ export struct ReportsPage {
       .map((c: RSlice): DonutPiece => ({
         name: c.name || '',
         value: c.total ?? 0,
-        icon: c.icon || '📌'
+        icon: c.icon || '📌',
+        // 多币种 P2-3b：把源 RSlice 挂上去，环心按 breakdown 智能混显
+        source: c
       }));
   }
 
@@ -575,7 +593,12 @@ export struct ReportsPage {
   donutCenterValue(): string {
     const p = this.pieces();
     const idx = this.effIdx();
-    if (idx >= 0) return fmtMoney(p[idx].value);
+    // 多币种 P2-3b：环心金额按该分类的 breakdown 智能混显
+    if (idx >= 0) {
+      const src = p[idx].source as RSlice | undefined;
+      if (src != null) return fmtMoneyMix(src.totalBreakdown);
+      return fmtMoney(p[idx].value);
+    }
     return fmtMoney(this.total());
   }
 
@@ -822,7 +845,8 @@ export struct ReportsPage {
               // 金额用完整格式：这一列宽度由内容决定（类目名吃 layoutWeight 被压缩），
               // 实测 14sp 下 -¥1,234,567.89 只占 94vp，类目名仍剩 142vp（约 10 个汉字），
               // 不构成宽度竞争 —— 按 §39 判据这里就该用完整精度。
-              Text((this.type === 'income' ? '' : '-') + fmtMoney(tx.amount ?? 0))
+              // 多币种 P2-3b：按交易账户币种格式化（reports.js top-transactions 已返回 currency 字段）
+              Text((this.type === 'income' ? '' : '-') + fmtMoney(tx.amount ?? 0, tx.currency))
                 .fontSize(14).fontWeight(FontWeight.Medium)
                 .fontColor(this.type === 'income' ? COLORS.income : COLORS.expense)
                 .maxLines(1)
@@ -950,13 +974,15 @@ export struct ReportsPage {
       const inc = p.income ?? 0;
       const bal = inc - ex;
       const d: string = p.date || '';
+      // 多币种 P2-3b：每行用该 bucket 的 currency
+      const rowCur: string = p.currency || 'CNY';
       out.push({
         // 日桶：'YYYY-MM-DD' → '08.15'
         // 月桶：'YYYY-MM'    → '8月'
         day: monthly ? `${Number(d.slice(5, 7))}月` : d.slice(5, 10).replace('-', '.'),
-        expense: ex > 0 ? `-${fmtMoneyShort(ex)}` : '—',
-        income: inc > 0 ? `+${fmtMoneyShort(inc)}` : '—',
-        balance: bal !== 0 ? fmtMoneyShort(bal) : '—',
+        expense: ex > 0 ? `-${fmtMoneyShort(ex, rowCur)}` : '—',
+        income: inc > 0 ? `+${fmtMoneyShort(inc, rowCur)}` : '—',
+        balance: bal !== 0 ? fmtMoneyShort(bal, rowCur) : '—',
         balanceNeg: bal < 0
       });
     });
@@ -984,9 +1010,18 @@ export struct ReportsPage {
     let ex = 0;
     let inc = 0;
     t.forEach((p: RTrend) => { ex += p.expense ?? 0; inc += p.income ?? 0; });
-    if (kind === 'expense') return ex > 0 ? `-${fmtMoney(ex)}` : '—';
-    if (kind === 'income') return inc > 0 ? `+${fmtMoney(inc)}` : '—';
-    return fmtMoney(inc - ex);
+    // 多币种 P2-3b：汇总行主货币取首个非零 bucket 的 currency
+    let primaryCurrency = 'CNY';
+    for (let i = 0; i < t.length; i++) {
+      const item = t[i];
+      if ((item.income ?? 0) > 0 || (item.expense ?? 0) > 0) {
+        primaryCurrency = item.currency || 'CNY';
+        break;
+      }
+    }
+    if (kind === 'expense') return ex > 0 ? `-${fmtMoney(ex, primaryCurrency)}` : '—';
+    if (kind === 'income') return inc > 0 ? `+${fmtMoney(inc, primaryCurrency)}` : '—';
+    return fmtMoney(inc - ex, primaryCurrency);
   }
 
   /**

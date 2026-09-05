@@ -36,6 +36,14 @@ export interface DonutPiece {
   value: number;
   color?: string;
   icon?: string;
+  /**
+   * 多币种 P2-3b：源数据引用，用于环心按源对象 breakdown 智能混显。
+   *
+   * 用 ESObject 兜底（Charts.ets 不该耦合报表的 RSlice 类型），调用方按
+   * 自己领域语义转型（如 Reports.ets: `as RSlice`）后访问 totalBreakdown 等。
+   * ArkTS 1.1 不支持 `?.`，调用方需显式 null 检查。
+   */
+  source?: ESObject;
 }
 
 /**
