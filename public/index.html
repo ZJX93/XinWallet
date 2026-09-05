@@ -544,8 +544,12 @@
                                 </div>
                                 <div class="form-group">
                                     <label>模型名</label>
-                                    <input type="text" id="aiProviderModel" list="aiModelList" required>
+                                    <div style="display:flex;gap:8px;align-items:center">
+                                        <input type="text" id="aiProviderModel" list="aiModelList" required placeholder="选择或输入模型名" style="flex:1">
+                                        <button type="button" class="btn btn-ghost btn-sm" id="aiFetchModelsBtn">拉取模型</button>
+                                    </div>
                                     <datalist id="aiModelList"></datalist>
+                                    <small class="form-hint">点「拉取模型」自动获取该服务商可用模型（OpenAI 兼容 / Ollama 支持；Anthropic 请手动输入）</small>
                                 </div>
                             </div>
                             <div class="form-group full-width">

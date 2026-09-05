@@ -54,13 +54,13 @@ app.use(cors({
 }));
 
 // 登录/注册接口限流，防止暴力破解与凭据爆破
-// 默认：5 分钟内每 IP 最多 20 次尝试（可通过 AUTH_RATE_LIMIT_MAX / AUTH_RATE_LIMIT_WINDOW_MIN 调整）
+// 默认：5 分钟内每 IP 最多 60 次尝试（可通过 AUTH_RATE_LIMIT_MAX / AUTH_RATE_LIMIT_WINDOW_MIN 调整）
 // 修复（P2 降级点）：原实现依赖 req.body.username，但 limiter 早于 express.json 挂载，
 // username 永远为空导致 keyGenerator 退化为纯 IP。改用纯 IP 限流 + 数据库层 per-account
 // 锁定（users.fail_count + locked_until）作为第二道防线，效果更强也更可靠。
 const authLimiter = rateLimit({
     windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MIN || '5', 10) * 60 * 1000,
-    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '20', 10),
+    max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '60', 10),
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: '操作过于频繁，请稍后再试' },

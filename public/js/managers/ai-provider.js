@@ -182,6 +182,7 @@ const AIProviderManager = {
         document.getElementById('aiProviderCancelBtn').addEventListener('click', () => this.closeModal());
         document.getElementById('aiProviderForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
         document.getElementById('aiProviderTestBtn').addEventListener('click', () => this.test());
+        document.getElementById('aiFetchModelsBtn').addEventListener('click', () => this.fetchModels());
         document.querySelectorAll('#aiProviderPresets .btn').forEach(btn => {
             btn.addEventListener('click', () => this.applyPreset(btn.dataset.preset));
         });
@@ -486,6 +487,56 @@ const AIProviderManager = {
             return;
         }
         datalist.innerHTML = models.map(m => `<option value="${m}">`).join('');
+    },
+
+    // 拉取服务商可用模型：已保存走 GET /providers/:id/models（用已存 Key），
+    // 新建未保存走 POST /providers/preview-models（用临时 Key，不落库）。Key 始终不出服务端。
+    async fetchModels() {
+        const btn = document.getElementById('aiFetchModelsBtn');
+        const baseUrl = document.getElementById('aiProviderBaseUrl').value.trim();
+        const apiType = document.getElementById('aiProviderType').value;
+        if (!baseUrl) return this.setMsg('请先填写接口地址再拉取模型', 'error');
+        const isEdit = !!this.editingId;
+        let endpoint, method, payload = null;
+        if (isEdit) {
+            endpoint = `/ai/providers/${this.editingId}/models`;
+            method = 'GET';
+        } else {
+            const key = document.getElementById('aiProviderKey').value.trim();
+            if (!key) return this.setMsg('新建服务商请先填写 API Key 再拉取模型', 'error');
+            endpoint = '/ai/providers/preview-models';
+            method = 'POST';
+            payload = { base_url: baseUrl, api_key: key, api_type: apiType };
+        }
+        const oldText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '拉取中…';
+        try {
+            const res = await api(endpoint, method, payload, { silent: true });
+            if (!res) { this.setMsg('拉取失败：无响应', 'error'); return; }
+            if (res.ok === false) { this.setMsg('拉取失败：' + (res.error || res.message || '未知错误'), 'error'); return; }
+            if (res.supported === false) {
+                this.setMsg(res.message || '该服务商不支持自动列出模型，请手动输入', 'info');
+                return;
+            }
+            const models = res.models || [];
+            if (!models.length) {
+                this.setMsg(res.error ? `拉取失败：${res.error}` : '未获取到可用模型，请确认地址/Key 或手动输入', 'error');
+                return;
+            }
+            // HTML <datalist> 只会显示与输入框当前文字前缀匹配的 option；
+            // 为让用户看到刚拉取的全部模型（而非仅以旧值为前缀的那一项），
+            // 拉取成功后先清空输入框。用户点「拉取模型」的意图就是「换/选模型」，
+            // 不点保存则不会影响 db（下次打开 modal 会从 db 回填）。
+            document.getElementById('aiProviderModel').value = '';
+            this.updateModelList(models);
+            this.setMsg(`已拉取 ${models.length} 个模型，请从模型名下拉中选择`, 'success');
+        } catch (err) {
+            this.setMsg(`拉取失败：${err.message || '网络错误'}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = oldText;
+        }
     },
 
     showPresetDesc(preset, region) {

@@ -29,12 +29,12 @@ const apiLimiter = rateLimit({
 });
 
 /**
- * 写操作限流：每分钟 60 次 / 每用户（防止刷接口）
+ * 写操作限流：每分钟 120 次 / 每用户（防止刷接口）
  * 用于 POST/PUT/DELETE
  */
 const writeLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: parseInt(process.env.WRITE_RATE_LIMIT_MAX || '60', 10),
+    max: parseInt(process.env.WRITE_RATE_LIMIT_MAX || '120', 10),
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: userKeyGenerator,
@@ -43,18 +43,23 @@ const writeLimiter = rateLimit({
 });
 
 /**
- * AI 接口限流：每分钟 10 次（成本高）
+ * AI 接口限流：每分钟 60 次（成本高）
  *
  * ⚠️ 例外：v0.2 的规则治理 / 学习统计 / 评测接口【不调用模型】，成本为零。
- *    若一并按 10 次/分限流，用户打开一次「记账习惯」页（列表 + 证据 + 统计 ≥3 次请求）
+ *    若一并按 60 次/分限流，用户打开一次「记账习惯」页（列表 + 证据 + 统计 ≥3 次请求）
  *    就会吃掉当天大半配额，反而记不了账 —— 限流应该约束成本，不是约束路径前缀。
  *    这些路径退回通用 apiLimiter（200 次/分）即可。
+ *
+ * 📈 2026-09-05 用户反馈：原先 10 次/分过紧，聊天+语音+配置一起用很快就 429。
+ *    统一放宽所有频率限制，AI 限流由 10→30→60，拉取模型另入 AI_FREE_PATHS 免限。
  */
 const AI_FREE_PATHS = [
     /^\/rules(\/|$)/,          // 规则列表 / 创建 / 停用 / 启用 / 证据流水
     /^\/learning\//,           // 学习统计面板
     /^\/evaluation\//,         // 评测跑批（纯 CPU 离线，不调模型）
     /^\/predictions\/\d+$/,    // 读取预测快照（只读库）
+    /^\/providers\/[^/]+\/models$/,    // GET /providers/:id/models：拉取可用模型（只列名，不调模型）
+    /^\/providers\/preview-models$/,   // POST /providers/preview-models：新建未保存时预览
 ];
 
 /**
@@ -69,11 +74,11 @@ const AI_FREE_PATHS = [
  * ⛔ 为什么也不能像规则接口那样直接免限流：
  *    腾讯云 OCR 是【按次计费】的真实成本，不设限等于给刷接口留口子。
  *
- * ⇒ 独立且更宽松的配额（默认 30 次/分）：够连续重试，又挡得住滥刷。
+ * ⇒ 独立且更宽松的配额（默认 60 次/分）：够连续重试，又挡得住滥刷。
  */
 const ocrRetranscribeLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: parseInt(process.env.OCR_RETRANSCRIBE_RATE_LIMIT_MAX || '30', 10),
+    max: parseInt(process.env.OCR_RETRANSCRIBE_RATE_LIMIT_MAX || '60', 10),
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: userKeyGenerator,
@@ -82,7 +87,7 @@ const ocrRetranscribeLimiter = rateLimit({
 
 const aiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: parseInt(process.env.AI_RATE_LIMIT_MAX || '10', 10),
+    max: parseInt(process.env.AI_RATE_LIMIT_MAX || '60', 10),
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: userKeyGenerator,
