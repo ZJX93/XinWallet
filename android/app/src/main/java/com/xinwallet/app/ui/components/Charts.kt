@@ -193,7 +193,8 @@ fun CategoryPie(
                         )
                         Text(
                             // 多币种 P2-2e：饼图扇区金额按该分类 breakdown 智能格式化
-                            formatMoneyMix(slice.totalBreakdown),
+                            // （slice 是私有 PieSlice，原始 ReportCategorySlice 在 slice.source）
+                            formatMoneyMix(slice.source.totalBreakdown),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -78,6 +78,7 @@ import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.viewmodel.HomeViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.formatMoneyMix
 import com.xinwallet.app.util.formatMoneyShort
 import com.xinwallet.app.util.todayDate
 import androidx.compose.ui.text.style.TextAlign
@@ -218,6 +219,10 @@ fun HomeScreen(navController: NavHostController) {
                     MonthSummaryCard(
                         monthIncome = state.dashboard?.month?.income ?: 0.0,
                         monthExpense = state.dashboard?.month?.expense ?: 0.0,
+                        // 多币种 P2-2e：本月收/支按 breakdown 智能格式化
+                        monthExpenseBreakdown = state.dashboard?.month?.expenseBreakdown,
+                        monthIncomeBreakdown = state.dashboard?.month?.incomeBreakdown,
+                        monthCurrency = state.dashboard?.month?.currency ?: "CNY",
                         monthYear = calYear,
                         monthNumber = calMonth,
                         onOpenMonthDetail = {
@@ -238,8 +243,12 @@ fun HomeScreen(navController: NavHostController) {
                 if (enabled.contains("today_bills")) {
                     TodayBillsCard(
                         bills = state.todayBills,
+                        // 多币种 P2-2e：今日收/支沿用 dashboard.month.currency 作 display 货币
+                        // （多币种账本下 HomeViewModel 的 sumOf{it.amount} 仍是单值近似，
+                        //  严格多币种拆分待 list SQL 加 account currency 后再实现）
                         todayIncome = state.todayIncome,
-                        todayExpense = state.todayExpense
+                        todayExpense = state.todayExpense,
+                        todayCurrency = state.dashboard?.month?.currency ?: "CNY"
                     )
                 }
                 if (enabled.contains("calendar") && state.calendar != null) {
@@ -249,6 +258,8 @@ fun HomeScreen(navController: NavHostController) {
                         days = state.calendar?.monthDays.orEmpty(),
                         monthIncome = state.calendar?.monthSummary?.income ?: 0.0,
                         monthExpense = state.calendar?.monthSummary?.expense ?: 0.0,
+                        // 多币种 P2-2e：本月汇总沿用 dashboard.month.currency；breakdown 后续 CalendarSummary 扩字段再加
+                        monthCurrency = state.dashboard?.month?.currency ?: "CNY",
                         onPrev = { shiftMonth(calYear, calMonth, -1) { y, m -> calYear = y; calMonth = m } },
                         onNext = { shiftMonth(calYear, calMonth, 1) { y, m -> calYear = y; calMonth = m } }
                     )
@@ -288,7 +299,14 @@ fun HomeScreen(navController: NavHostController) {
 @Composable
 private fun MonthSummaryCard(
     monthIncome: Double,
+    /** 多币种 P2-2e：本月支出主货币值（dailyAvg 计算用，展示走 breakdown） */
     monthExpense: Double,
+    /** 多币种 P2-2e：本月收入按账户币种分布（monthIncome 是主货币值） */
+    monthIncomeBreakdown: Map<String, Double>?,
+    /** 多币种 P2-2e：本月支出按账户币种分布（monthExpense 是主货币值） */
+    monthExpenseBreakdown: Map<String, Double>?,
+    /** 多币种 P2-2e：本月主货币（来自 dashboard.month.currency） */
+    monthCurrency: String,
     monthYear: Int,
     monthNumber: Int,
     onOpenMonthDetail: () -> Unit
@@ -308,7 +326,8 @@ private fun MonthSummaryCard(
     }
 
     // 金额自适应字号：字符串越长字号越小，保证单行不溢出
-    val amountStr = formatMoney(monthExpense)
+    // 多币种 P2-2e：本月支出按 breakdown 智能格式化（多币种账本自动附注其他货币）
+    val amountStr = formatMoneyMix(monthExpenseBreakdown)
     val amountStyle = when {
         amountStr.length <= 7 -> MaterialTheme.typography.displaySmall     // < 1万
         amountStr.length <= 9 -> MaterialTheme.typography.headlineLarge     // 1-99万
@@ -400,7 +419,8 @@ private fun MonthSummaryCard(
                     maxLines = 1
                 )
                 Text(
-                    formatMoney(monthIncome),
+                    // 多币种 P2-2e：本月收入按 breakdown 智能格式化
+                    formatMoneyMix(monthIncomeBreakdown),
                     style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
@@ -416,7 +436,8 @@ private fun MonthSummaryCard(
                     maxLines = 1
                 )
                 Text(
-                    formatMoney(dailyAvg),
+                    // 多币种 P2-2e：日均支出 = 主货币值 / dayOfMonth，按月主货币格式化
+                    formatMoney(dailyAvg, monthCurrency),
                     style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
@@ -434,7 +455,9 @@ private fun MonthSummaryCard(
 private fun TodayBillsCard(
     bills: List<TransactionItem>,
     todayIncome: Double,
-    todayExpense: Double
+    todayExpense: Double,
+    /** 多币种 P2-2e：今日收/支 display 货币（来自 dashboard.month.currency） */
+    todayCurrency: String
 ) {
     Card(
         Modifier
@@ -456,10 +479,11 @@ private fun TodayBillsCard(
                 // 与账单页同源：一行并排多项金额时用 formatMoneyShort。
                 // 这行现状不溢出，但余量很小 —— 一个 ¥123,456.00 就会挤，提前换掉成本为零
                 Text("收入 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(formatMoneyShort(todayIncome), style = MaterialTheme.typography.labelMedium, color = Brown500, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                // 多币种 P2-2e：今日按 display 货币格式化（多币种账本下是单值近似，严格拆分待 list SQL 加 currency 后再做）
+                Text(formatMoneyShort(todayIncome, todayCurrency), style = MaterialTheme.typography.labelMedium, color = Brown500, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Spacer(Modifier.width(10.dp))
                 Text("支出 ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(formatMoneyShort(todayExpense), style = MaterialTheme.typography.labelMedium, color = ExpenseColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(formatMoneyShort(todayExpense, todayCurrency), style = MaterialTheme.typography.labelMedium, color = ExpenseColor, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
             HorizontalDivider(color = Color(0xFFF0EDEE))
             if (bills.isEmpty()) {
@@ -569,6 +593,8 @@ private fun CalendarCard(
     days: List<com.xinwallet.app.data.model.CalendarDay>,
     monthIncome: Double,
     monthExpense: Double,
+    /** 多币种 P2-2e：本月主货币（来自 dashboard.month.currency） */
+    monthCurrency: String,
     onPrev: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -650,10 +676,11 @@ private fun CalendarCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("本月收入 ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatMoney(monthIncome), style = MaterialTheme.typography.titleMedium, color = Brown500, fontWeight = FontWeight.Bold)
+                // 多币种 P2-2e：CalendarSummary 目前无 breakdown，按本月主货币格式化（后续扩字段再切 breakdown）
+                Text(formatMoney(monthIncome, monthCurrency), style = MaterialTheme.typography.titleMedium, color = Brown500, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(24.dp))
                 Text("本月支出 ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatMoney(monthExpense), style = MaterialTheme.typography.titleMedium, color = ExpenseColor, fontWeight = FontWeight.Bold)
+                Text(formatMoney(monthExpense, monthCurrency), style = MaterialTheme.typography.titleMedium, color = ExpenseColor, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
         }

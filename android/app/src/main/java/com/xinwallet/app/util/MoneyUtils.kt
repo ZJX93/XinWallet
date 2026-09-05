@@ -18,13 +18,23 @@ fun currencySymbol(currency: String?): String {
     return CURRENCY_SYMBOLS[cur] ?: "$cur "
 }
 
-fun formatMoney(value: Double, currency: String = "CNY"): String {
+/**
+ * 金额格式化。
+ *
+ * ⚠️ currency 声明为 String? 是**有意为之**，不是笔误：
+ * Gson 反序列化 Kotlin data class 时走 Unsafe 分配对象（不调构造器），
+ * 所以 `val currency: String = "CNY"` 的默认值**不生效** —— 服务端还没
+ * 返回该字段的老部署 / 旧缓存数据里，它实际是 null。声明为非空 String
+ * 只在编译期好看，运行期照样是 null，一调 .uppercase() 就 NPE。
+ * 因此这里全部按可空收，内部统一兜底 "CNY"。
+ */
+fun formatMoney(value: Double, currency: String? = "CNY"): String {
     val df = DecimalFormat("#,##0.00")
     // 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 CNY → "-¥74.14"
     return (if (value < 0) "-" else "") + currencySymbol(currency) + df.format(kotlin.math.abs(value))
 }
 
-fun formatMoneySigned(value: Double, currency: String = "CNY"): String {
+fun formatMoneySigned(value: Double, currency: String? = "CNY"): String {
     val sign = if (value >= 0) "+" else "-"
     return sign + formatMoney(kotlin.math.abs(value), currency)
 }
@@ -45,8 +55,8 @@ fun formatMoneySigned(value: Double, currency: String = "CNY"): String {
  * 多币种 P2-2e：currency 非 CNY 时退回 formatMoney（保留两位小数不压缩），
  * 避免对非中文货币做语义不明的"万/亿"压缩。
  */
-fun formatMoneyShort(value: Double, currency: String = "CNY"): String {
-    val cur = currency.uppercase()
+fun formatMoneyShort(value: Double, currency: String? = "CNY"): String {
+    val cur = (currency ?: "CNY").uppercase()
     if (cur != "CNY") return formatMoney(value, cur)
     val a = kotlin.math.abs(value)
     val sign = if (value < 0) "-" else ""
@@ -66,10 +76,11 @@ fun formatMoneyShort(value: Double, currency: String = "CNY"): String {
  *
  * 输入 breakdown 形如 { "CNY": 1000.0, "USD": 50.0 }；主货币按 amount 绝对值最大选。
  */
-fun formatMoneyMix(breakdown: Map<String, Double>?, baseCurrency: String = "CNY"): String {
-    val base = (baseCurrency.ifBlank { "CNY" }).uppercase()
+fun formatMoneyMix(breakdown: Map<String, Double>?, baseCurrency: String? = "CNY"): String {
+    // 同上：baseCurrency 可能是 null（Gson 不走构造器，默认值不生效），统一兜底
+    val base = ((baseCurrency ?: "CNY").ifBlank { "CNY" }).uppercase()
     if (breakdown.isNullOrEmpty()) return formatMoney(0.0, base)
-    val entries = breakdown.entries.filter { kotlin.math.abs(it.value) > 0.001 }
+    val entries = breakdown.entries.filter { it.value != null && kotlin.math.abs(it.value) > 0.001 }
     if (entries.isEmpty()) return formatMoney(0.0, base)
     if (entries.size == 1) {
         val e = entries.first()

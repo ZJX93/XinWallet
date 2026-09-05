@@ -58,6 +58,8 @@ data class Account(
     @SerializedName("is_default") val isDefault: Boolean = false,
     val status: String = "active",
     @SerializedName("sort_order") val sortOrder: Int = 0,
+    /** 多币种 P2-2a：ISO 4217 货币代码，账户默认币种 */
+    val currency: String = "CNY",
     /** 年利率（%），如 3.5 表示 3.5% */
     @SerializedName("annual_rate") val annualRate: Double? = 0.0,
     /** 计息周期：monthly / yearly / daily */
@@ -850,26 +852,67 @@ data class Dashboard(
     @SerializedName("netWorth") val netWorth: Double = 0.0,
     @SerializedName("totalAssets") val totalAssets: Double = 0.0,
     @SerializedName("totalSavings") val totalSavings: Double = 0.0,
-    @SerializedName("savingsRate") val savingsRate: Double = 0.0
+    @SerializedName("savingsRate") val savingsRate: Double = 0.0,
+    // 多币种 P2-2e：顶层字段（累计）
+    @SerializedName("totalIncome") val totalIncome: Double = 0.0,
+    @SerializedName("totalExpense") val totalExpense: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("totalIncomeBreakdown") val totalIncomeBreakdown: Map<String, Double>? = null,
+    @SerializedName("totalExpenseBreakdown") val totalExpenseBreakdown: Map<String, Double>? = null
 )
 
-data class AmountOnly(val expense: Double = 0.0)
-data class IncomeExpense(val income: Double = 0.0, val expense: Double = 0.0)
-data class MonthTrend(val month: String = "", val income: Double = 0.0, val expense: Double = 0.0)
+/** today 今日支出。多币种 P2-2e：currency 主货币，expenseBreakdown 按账户币种分布 */
+data class AmountOnly(
+    val expense: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null
+)
+
+/** week/month/year 收支。多币种 P2-2e：breakdown 按账户币种分布 */
+data class IncomeExpense(
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("incomeBreakdown") val incomeBreakdown: Map<String, Double>? = null,
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null
+)
+
+/** months 趋势项。多币种 P2-2e：savings/savingsRate；breakdown 按账户币种分布 */
+data class MonthTrend(
+    val month: String = "",
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val savings: Double = 0.0,
+    @SerializedName("savingsRate") val savingsRate: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("incomeBreakdown") val incomeBreakdown: Map<String, Double>? = null,
+    @SerializedName("expenseBreakdown") val expenseBreakdown: Map<String, Double>? = null
+)
+
+/** 投资汇总。多币种 P2-2e：breakdown 按投资 currency 分布 */
 data class InvData(
     @SerializedName("totalCost") val totalCost: Double = 0.0,
     @SerializedName("totalValue") val totalValue: Double = 0.0,
     @SerializedName("totalProfit") val totalProfit: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("totalCostBreakdown") val totalCostBreakdown: Map<String, Double>? = null,
+    @SerializedName("totalValueBreakdown") val totalValueBreakdown: Map<String, Double>? = null,
     val holdings: List<HoldingRow> = emptyList()
 )
+
+/** 预算执行。多币种 P2-2e：actualBreakdown 按交易账户币种分布（amount 是 CNY 单货币估算） */
 data class BudgetRow(
     val id: Int = 0,
     val name: String = "",
     @SerializedName("start_date") val startDate: String = "",
     @SerializedName("end_date") val endDate: String = "",
     val amount: Double = 0.0,
-    val actual: Double = 0.0
+    val actual: Double = 0.0,
+    val currency: String = "CNY",
+    @SerializedName("actualBreakdown") val actualBreakdown: Map<String, Double>? = null
 )
+
+/** 储蓄目标。多币种 P2-2e：currency 跟随关联储蓄账户 currency */
 data class SavingGoal(
     val id: Int = 0,
     val name: String = "",
@@ -877,12 +920,16 @@ data class SavingGoal(
     @SerializedName("target_amount") val targetAmount: Double = 0.0,
     @SerializedName("current_amount") val currentAmount: Double = 0.0,
     val status: String = "active",
+    val currency: String = "CNY",
+    val ratio: Double = 0.0,
     @SerializedName("account_id") val accountId: Int? = null,
     @SerializedName("acc_name") val accName: String? = null,
     @SerializedName("source_account_id") val sourceAccountId: Int? = null,
     @SerializedName("source_acc_name") val sourceAccName: String? = null,
     val note: String? = null
 )
+
+/** 持仓行。多币种 P2-2e：currency 跟随投资 currency（P2-2d 加列） */
 data class HoldingRow(
     val name: String = "",
     val code: String? = null,
@@ -890,6 +937,7 @@ data class HoldingRow(
     @SerializedName("current_value") val currentValue: Double = 0.0,
     val profit: Double = 0.0,
     @SerializedName("profit_rate") val profitRate: Double = 0.0,
+    val currency: String = "CNY",
     @SerializedName("type_icon") val typeIcon: String? = null,
     @SerializedName("type_name") val typeName: String? = null
 )
@@ -901,7 +949,11 @@ data class DebtSummary(
     val overdue: Int = 0,
     @SerializedName("overdueAmount") val overdueAmount: Double = 0.0,
     val count: Int = 0,
-    val activeCount: Int = 0
+    val activeCount: Int = 0,
+    // 多币种 P2-2e：主货币 + breakdown（与 web dashboard.js / debt.js 对齐）
+    val currency: String = "CNY",
+    @SerializedName("totalMonthlyBreakdown") val totalMonthlyBreakdown: Map<String, Double>? = null,
+    @SerializedName("dueAmountBreakdown") val dueAmountBreakdown: Map<String, Double>? = null
 )
 
 /* ----------------------------- 报表 ----------------------------- */
