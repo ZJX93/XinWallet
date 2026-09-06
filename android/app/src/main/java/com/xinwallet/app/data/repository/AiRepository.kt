@@ -6,7 +6,6 @@ import com.xinwallet.app.data.model.AiCommitRequest
 import com.xinwallet.app.data.model.AiDiscardRequest
 import com.xinwallet.app.data.model.AiParseContext
 import com.xinwallet.app.data.model.AiEvaluationRunPayload
-import com.xinwallet.app.data.model.AiInsightRequest
 import com.xinwallet.app.data.model.AiParseRequest
 import com.xinwallet.app.data.model.AiProviderPayload
 import com.xinwallet.app.data.model.AiRuleCreatePayload
@@ -113,7 +112,7 @@ class AiRepository(private val apiProvider: () -> ApiService) {
 
     /* ---------------- AI 消费洞察 ----------------
      * ⚠️ 2026-08-27 合并：insight 改由 advice() 一并返回（AiAdviceResponse.insights）。
-     *   /ai/insight 路由服务端已置 410 软弃；此处不再提供 insight() 方法，
+     *   /ai/insight 路由服务端已删除；此处不再提供 insight() 方法，
      *   AiInsightViewModel.kt 已删除。 */
 
     /* ---------------- AI 服务商配置 ----------------

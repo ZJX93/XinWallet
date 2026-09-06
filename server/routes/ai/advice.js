@@ -125,13 +125,4 @@ router.post('/advice', async (req, res) => {
     } catch (err) { handleServerError(res, err); }
 });
 
-// ⚠️ /ai/insight 已合并进 /ai/advice（v0.2.1，2026-08-27）：insights 改为随 advice 一起返回。
-// 路由保留仅作软弃过渡，前端切完可整体删除。任何调用都返回 410 + 引导文案，避免静默拿空数据。
-router.post('/insight', async (req, res) => {
-    return res.status(410).json(fail(
-        '/ai/insight 已废弃，请改用 POST /ai/advice（同时返回 insights + advice）。',
-        { deprecated: true, replacement: '/ai/advice' }
-    ));
-});
-
 module.exports = router;

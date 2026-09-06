@@ -547,14 +547,6 @@ const spec = {
     '/api/ai/advice': {
       post: { tags: ['AI'], summary: 'AI 理财建议（基于本月/上月数据 + 预算/储蓄/债务）', responses: { 200: { description: '{ advice[] }' } } },
     },
-    '/api/ai/insight': {
-      post: {
-        tags: ['AI'], summary: 'AI 消费洞察（已废弃）',
-        description: '已合并进 /ai/advice（v0.2.1，2026-08-27）。所有调用都返回 410 Gone + replacement 提示。',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { month: { type: 'string', example: '2026-07' } } } } } },
-        responses: { 410: { description: '已废弃，请改用 POST /ai/advice' } },
-      },
-    },
 
     // ============ 账本备份（xlsx 3 工作表） ============
     '/api/backup/export': {

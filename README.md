@@ -1085,9 +1085,7 @@ AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-2
 
 汇总本月 / 上月收支、预算、储蓄目标、账户、债务，调用模型一次性生成建议与洞察。**响应** `200` — `data: { advice: [{ title, content, impact, priority }], insights: [{ title, description, action, level }], generatedAt }`；`400` 未配置服务商。
 
-#### `POST /ai/insight` — AI 消费洞察（已废弃）
-
-已合并进 `POST /ai/advice`，该端点返回 `410 Gone` 并提示改用 `/ai/advice`。
+> ⚠️ 原 `POST /ai/insight` 已删除（v0.2.1，2026-08-27 起合并进 `/ai/advice` 的 `insights` 字段）。
 
 #### `GET /ai/ocr-config` — 获取 OCR 配置
 

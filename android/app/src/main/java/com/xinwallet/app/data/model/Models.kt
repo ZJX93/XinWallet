@@ -1257,12 +1257,10 @@ data class ImportBackupResult(
     val imported: ImportedCounts = ImportedCounts()
 )
 
-/* ================= AI 消费洞察（POST /ai/insight） ================= */
-
-/** POST /ai/insight 请求体。month 为 "YYYY-MM"，null 时服务端取本月。 */
-data class AiInsightRequest(
-    val month: String? = null
-)
+/* ================= AI 消费洞察（POST /ai/advice 返回的 insights[]） =================
+ * ⚠️ 原 /ai/insight 已合并进 /ai/advice（v0.2.1，2026-08-27），insights 字段随 advice 一起返回。
+ * 原 AiInsightRequest / AiInsightResponse 已删除——请求响应契约就是 AiAdviceResponse 自身。
+ */
 
 /**
  * 单条洞察。level 三态：warning（需重视）/ info（关注）/ tip（小建议）。
@@ -1273,12 +1271,6 @@ data class AiInsightItem(
     val description: String = "",
     val action: String = "",
     val level: String = "info"
-)
-
-/** POST /ai/insight 响应体。generatedAt 是服务端生成时间，ISO8601 字符串。 */
-data class AiInsightResponse(
-    val insights: List<AiInsightItem> = emptyList(),
-    @SerializedName("generated_at") val generatedAt: String? = null
 )
 
 /* ================= AI 服务商配置（/ai/providers 系列） =================

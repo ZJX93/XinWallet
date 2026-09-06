@@ -369,7 +369,7 @@ interface ApiService {
     suspend fun importBackup(@Part file: MultipartBody.Part): Response<ApiResponse<ImportBackupResult>>
 
     /* ---------- AI 消费洞察（v0.2.1 起合并进 /ai/advice，insights 字段随之返回）----------
-     * ⚠️ 原 /ai/insight 端点已废弃（服务端返回 410 + replacement 提示）。
+     * ⚠️ 原 /ai/insight 端点已删除（v0.2.1，2026-08-27）。
      *   此处移除 aiInsight 端点声明；调用方改用 aiAdvice() 拿 AiAdviceResponse.insights。 */
 
     /** 读取 AI 设置（含 web 端给 AI 起的名字 ai_name，安卓端标题展示用） */

@@ -202,7 +202,7 @@ export async function aiDiscardPrediction(id: number, req: AiDiscardRequest): Pr
 }
 
 /* AI 消费洞察（v0.2.1 起合并进 /ai/advice，insights 字段随之返回）
-   ⚠️ 原 /ai/insight 端点已废弃（服务端返回 410 + replacement 提示）。
+   ⚠️ 原 /ai/insight 端点已删除（v0.2.1，2026-08-27）。
      aiInsight() 已移除；调用方改用 aiAdvice() 拿 AiAdviceResponse.insights。
      AiInsightItem interface 保留供 advice 响应解析。 */
 
@@ -420,7 +420,7 @@ export interface AiAdviceItem {
 
 export interface AiAdviceResponse {
   advice: AiAdviceItem[];
-  /* v0.2.1 起 /ai/advice 一并返回洞察（原 /ai/insight 合并进来）；老服务端可能缺省 */
+  /* v0.2.1 起 /ai/advice 一并返回洞察（原 /ai/insight 已删除，2026-08-27）；老服务端可能缺省 */
   insights?: AiInsightItem[];
   generated_at?: string;
 }
