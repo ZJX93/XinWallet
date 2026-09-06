@@ -296,6 +296,20 @@ async function api(path, method = 'GET', body = null, opts = {}) {
             err.status = res.status;
             throw err;
         }
+        if (data.success === undefined && typeof data.ok === 'boolean') {
+            // AI v2 运维/会话/画像/预测类端点是历史契约 `{ ok: true, ... }`（无 success/data 包装）。
+            // 在统一出口做契约归一，免得每个 AI manager 各自复制一份 fetch 封装
+            // （ai-tools / ai-chat / ai-insights 曾各有一份逐字重复的 _req）。
+            if (!data.ok) {
+                const msg = data.error || data.message || `HTTP ${res.status}`;
+                if (!silent && typeof showToast === 'function') showToast(msg, 'error');
+                const err = new Error(msg);
+                err.payload = data;
+                err.status = res.status;
+                throw err;
+            }
+            return localizeSystemNames(data, 0);
+        }
         if (!data.success) {
             if (!silent && typeof showToast === 'function') showToast(data.message || tt('toast.requestFailed', '请求失败'), 'error');
             const err = new Error(data.message || `HTTP ${res.status}`);

@@ -9,29 +9,6 @@
 const AITools = {
     _initialized: false,
 
-    /**
-     * AI v2 运维/会话/画像/模拟类端点返回的是 `{ ok: true, ... }`（历史契约），
-     * 与全局 api() 期望的 `{ success, data }` 不同 —— 直接用 api() 会因
-     * data.success 为 undefined 而误判失败抛错。故这里单独走一层轻封装。
-     */
-    async _req(path, method = 'GET', body = null) {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('xin_token');
-        if (token) headers['Authorization'] = 'Bearer ' + token;
-        const bid = localStorage.getItem('xin_book_id');
-        if (bid) headers['X-Book-Id'] = bid;
-
-        const opts = { method, headers };
-        if (body && method !== 'GET') opts.body = JSON.stringify(body);
-
-        const res = await window.fetch(`${window.XIN_API_BASE || '/api'}${path}`, opts);
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
-        // 兼容两种契约：{ ok, ...} 与 { success, data }
-        if (data && data.success === true && data.data !== undefined) return data.data;
-        return data;
-    },
-
     init() {
         if (this._initialized) return;
         const el = document.getElementById('aiToolsRefreshBtn');
@@ -53,7 +30,7 @@ const AITools = {
     },
 
     async _loadStatus() {
-        const data = await this._req('/ai/v2/status');
+        const data = await api('/ai/v2/status', 'GET', null, { silent: true });
         if (!data) return;
         const el = id => document.getElementById(id);
         el('aiToolsEventBus').textContent = data.event_bus
@@ -68,7 +45,7 @@ const AITools = {
     },
 
     async _loadMetrics() {
-        const data = await this._req('/ai/v2/metrics');
+        const data = await api('/ai/v2/metrics', 'GET', null, { silent: true });
         if (!data) return;
         const el = id => document.getElementById(id);
         if (data.health) {
@@ -86,7 +63,7 @@ const AITools = {
     },
 
     async _loadFeatures() {
-        const data = await this._req('/ai/v2/features');
+        const data = await api('/ai/v2/features', 'GET', null, { silent: true });
         if (!data || !data.features) return;
         document.getElementById('aiToolsFeatures').innerHTML = Object.entries(data.features)
             .map(([k, v]) => `<span class="tag-badge">${k}: ${v ? '✅' : '❌'}</span>`)
@@ -98,7 +75,7 @@ const AITools = {
             const btn = document.getElementById('aiToolsRunCleanup');
             btn.disabled = true;
             btn.textContent = tt('aiTools.cleanup.running', '清理中...');
-            const data = await this._req('/ai/v2/cleanup', 'POST');
+            const data = await api('/ai/v2/cleanup', 'POST', null, { silent: true });
             showToast(data?.message || tt('aiTools.cleanup.done', '清理完成'), 'success');
         } catch (err) {
             showToast(tt('aiTools.cleanup.fail', '清理失败: {msg}').replace('{msg}', err.message || ''), 'error');
@@ -111,14 +88,14 @@ const AITools = {
 
     async _emitTestEvent() {
         try {
-            const data = await this._req('/ai/events/emit', 'POST', {
+            // 该端点是 `{ ok, event }` 契约，api() 已在统一出口归一：ok:false 直接抛错，
+            // 走到这里必然成功，无须再判 data.ok
+            await api('/ai/events/emit', 'POST', {
                 event_type: 'transaction.created',
                 payload: { test: true }
-            });
-            if (data.ok) {
-                showToast(tt('aiTools.event.testDone', '测试事件已触发'), 'success');
-                this._loadStatus();
-            }
+            }, { silent: true });
+            showToast(tt('aiTools.event.testDone', '测试事件已触发'), 'success');
+            this._loadStatus();
         } catch (err) {
             showToast(tt('aiTools.event.testFail', '触发事件失败: {msg}').replace('{msg}', err.message || ''), 'error');
         }

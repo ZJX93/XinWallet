@@ -8,21 +8,6 @@ const AIChat = {
     _initialized: false,
     messages: [],
 
-    async _req(path, method = 'GET', body = null) {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('xin_token');
-        if (token) headers['Authorization'] = 'Bearer ' + token;
-        const bid = localStorage.getItem('xin_book_id');
-        if (bid) headers['X-Book-Id'] = bid;
-        const opts = { method, headers };
-        if (body && method !== 'GET') opts.body = JSON.stringify(body);
-        const res = await window.fetch(`${window.XIN_API_BASE || '/api'}${path}`, opts);
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
-        if (data && data.success === true && data.data !== undefined) return data.data;
-        return data;
-    },
-
     init() {
         const sendBtn = document.getElementById('aiChatSend');
         if (!sendBtn || this._initialized) return;
@@ -52,7 +37,7 @@ const AIChat = {
         this._render();
         this._setLoading(true);
         try {
-            const data = await this._req('/ai/chat', 'POST', { messages: this.messages.slice(-12) });
+            const data = await api('/ai/chat', 'POST', { messages: this.messages.slice(-12) }, { silent: true });
             const reply = (data && data.reply) || tt('aiChat.fallback.empty', '（暂时没有回复）');
             this.messages.push({ role: 'assistant', content: reply });
             if (data && Array.isArray(data.transactions) && data.transactions.length) {

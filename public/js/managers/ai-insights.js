@@ -38,25 +38,6 @@ const AIInsights = {
     },
 
     /**
-     * AI v2 类端点返回 `{ ok: true, ... }`，与全局 api() 的 `{ success, data }` 不同。
-     * 这里单独走一层轻封装，避免 data.success 为 undefined 误判失败。
-     */
-    async _req(path, method = 'GET', body = null) {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('xin_token');
-        if (token) headers['Authorization'] = 'Bearer ' + token;
-        const bid = localStorage.getItem('xin_book_id');
-        if (bid) headers['X-Book-Id'] = bid;
-        const opts = { method, headers };
-        if (body && method !== 'GET') opts.body = JSON.stringify(body);
-        const res = await window.fetch(`${window.XIN_API_BASE || '/api'}${path}`, opts);
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
-        if (data && data.success === true && data.data !== undefined) return data.data;
-        return data;
-    },
-
-    /**
      * 激活某个 Tab
      * @param {string} tab 'advice' | 'learning' | 'cashflow' | 'profile' | 'evaluation'
      * @param {boolean} forceRefresh 切换时强制刷新子页数据（保证数据新鲜）
@@ -108,7 +89,7 @@ const AIInsights = {
         const el = document.getElementById('aiCashflowBody');
         if (!el) return;
         try {
-            const data = await this._req('/ai/forecast/cashflow?months=3');
+            const data = await api('/ai/forecast/cashflow?months=3', 'GET', null, { silent: true });
             if (data && data.predicted) {
                 const p = data.predicted;
                 const cell = (label, val) => `<div><span class="ai-tools-card-header">${escapeHtml(label)}</span><div class="ai-cashflow-val">¥${(Number(val) || 0).toFixed(0)}</div></div>`;
@@ -129,7 +110,7 @@ const AIInsights = {
         const el = document.getElementById('aiProfileBody');
         if (!el) return;
         try {
-            const data = await this._req('/ai/profile');
+            const data = await api('/ai/profile', 'GET', null, { silent: true });
             const p = (data && data.profile) ? data.profile : data;
             if (!p || Object.keys(p).length === 0) {
                 el.innerHTML = `<p class="card-desc">${escapeHtml(tt('aiInsights.profile.empty', '暂无画像数据，多用 AI 记账后会逐渐学习'))}</p>`;
@@ -155,7 +136,7 @@ const AIInsights = {
         const el = document.getElementById('aiInsightsAlerts');
         if (!el) return;
         try {
-            const data = await this._req('/ai/advice', 'POST', {});
+            const data = await api('/ai/advice', 'POST', {}, { silent: true });
             const ins = (data && data.insights) || [];
             const alerts = ins.filter(i => i.level === 'warning' || i.level === 'danger' || i.level === 'error');
             if (!alerts.length) { el.style.display = 'none'; return; }
