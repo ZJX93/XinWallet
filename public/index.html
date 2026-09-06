@@ -323,11 +323,11 @@
                         <div class="debt-type-tabs" style="margin-bottom:18px">
                             <button type="button" class="debt-type-tab active" data-form-dir="payable">
                                 <span class="dtt-label" data-i18n="debt.tab.payable">应付账款</span>
-                                <span class="dtt-meta">Payable</span>
+                                <span class="dtt-meta" data-i18n="debt.tab.meta.payable">Payable</span>
                             </button>
                             <button type="button" class="debt-type-tab" data-form-dir="receivable">
                                 <span class="dtt-label" data-i18n="debt.tab.receivable">应收账款</span>
-                                <span class="dtt-meta">Receivable</span>
+                                <span class="dtt-meta" data-i18n="debt.tab.meta.receivable">Receivable</span>
                             </button>
                         </div>
                         <div class="form-row">
@@ -488,9 +488,9 @@
             <!-- ========== AI 配置 ========== -->
             <section class="page" id="page-ai-config">
                 <div class="ai-config-tabs" id="aiConfigTabs">
-                    <button class="ai-config-tab active" data-panel="providers">服务商</button>
-                    <button class="ai-config-tab" data-panel="ocr">OCR</button>
-                    <button class="ai-config-tab" data-panel="behavior">识别行为</button>
+                    <button class="ai-config-tab active" data-panel="providers" data-i18n="aiConfig.tab.providers">服务商</button>
+                    <button class="ai-config-tab" data-panel="ocr" data-i18n="aiConfig.tab.ocr">OCR</button>
+                    <button class="ai-config-tab" data-panel="behavior" data-i18n="aiConfig.tab.behavior">识别行为</button>
                 </div>
                 <style>
                 .ai-config-tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); }
@@ -501,13 +501,13 @@
                 <div class="glass-card">
                     <div class="ai-config-header">
                         <div>
-                            <h3 class="card-title">AI 服务商配置</h3>
-                            <p class="card-desc">配置大模型服务商后即可使用 AI 记账、消费洞察和语音转写。建议搭配两个服务商：<b>一个用于对话</b>（如 MiniMax），<b>一个用于语音转写</b>（如 Groq 免费 Whisper）。API Key 仅保存在服务端。</p>
+                            <h3 class="card-title" data-i18n="aiConfig.providers.title">AI 服务商配置</h3>
+                            <p class="card-desc" data-i18n-html="aiConfig.providers.desc">配置大模型服务商后即可使用 AI 记账、消费洞察和语音转写。建议搭配两个服务商：<b>一个用于对话</b>（如 MiniMax），<b>一个用于语音转写</b>（如 Groq 免费 Whisper）。API Key 仅保存在服务端。</p>
                         </div>
-                        <button class="btn btn-primary" id="aiAddProviderBtn">添加服务商</button>
+                        <button class="btn btn-primary" id="aiAddProviderBtn" data-i18n="aiConfig.providers.add">添加服务商</button>
                     </div>
                     <!-- 新手引导 -->
-                    <div class="ai-guide-hint" style="margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--surface-hover);font-size:var(--text-caption);color:var(--text-secondary);line-height:1.6">
+                    <div class="ai-guide-hint" style="margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--surface-hover);font-size:var(--text-caption);color:var(--text-secondary);line-height:1.6" data-i18n-html="aiConfig.guide.html">
                         <b>快速上手</b><br>
                         ① 点击「添加服务商」→ 选择快捷预设（如 MiniMax）→ 填入 API Key → 保存<br>
                         ② 如需语音记账，再添加一个 Groq（免费）用于语音转写<br>
@@ -523,7 +523,7 @@
                 <div class="modal-overlay" id="aiProviderModal">
                     <div class="modal glass-card">
                         <div class="modal-header">
-                            <h3 id="aiProviderModalTitle">添加服务商</h3>
+                            <h3 id="aiProviderModalTitle" data-i18n="aiProvider.modal.title">添加服务商</h3>
                             <button class="modal-close" id="aiProviderModalClose">✕</button>
                         </div>
                         <form class="trans-form" id="aiProviderForm">
@@ -559,8 +559,8 @@
                                 <div class="form-group">
                                     <label>接口类型</label>
                                     <select id="aiProviderType" class="filter-select">
-                                        <option value="openai">OpenAI 兼容</option>
-                                        <option value="anthropic">Anthropic Messages</option>
+                                        <option value="openai" data-i18n="aiProvider.apiType.opt.openai">OpenAI 兼容</option>
+                                        <option value="anthropic" data-i18n="aiProvider.apiType.opt.anthropic">Anthropic Messages</option>
                                     </select>
                                     <small class="form-hint">绝大多数服务商选 OpenAI 兼容；MiniMax/Anthropic 选 Anthropic</small>
                                 </div>
@@ -580,7 +580,7 @@
                                 <small class="form-hint" id="aiBaseUrlHint">通常以 /v1 结尾，无需尾部斜杠</small>
                             </div>
                             <div class="form-group full-width">
-                                <label>API Key</label>
+                                <label data-i18n="aiProvider.form.apiKey">API Key</label>
                                 <input type="password" id="aiProviderKey" placeholder="sk-..." autocomplete="off">
                                 <small class="form-hint" id="aiKeyHint">编辑时留空表示保留已保存的 Key</small>
                             </div>
@@ -604,11 +604,11 @@
                     <form class="trans-form" id="ocrConfigForm" style="margin-top:12px">
                         <div class="form-row">
                             <div class="form-group">
-                                <label>SecretId</label>
+                                <label data-i18n="aiProvider.form.secretId">SecretId</label>
                                 <input type="text" id="ocrSecretId" placeholder="AKID..." autocomplete="off" required>
                             </div>
                             <div class="form-group">
-                                <label>SecretKey</label>
+                                <label data-i18n="aiProvider.form.secretKey">SecretKey</label>
                                 <input type="password" id="ocrSecretKey" placeholder="SecretKey" autocomplete="off">
                                 <small class="form-hint">留空表示保留已保存的 Key</small>
                             </div>
@@ -631,8 +631,8 @@
                 </div><!-- /aiConfigPanel-ocr -->
                 <div class="ai-config-panel" id="aiConfigPanel-behavior" style="display:none">
                 <div class="glass-card" style="margin-top:16px">
-                    <h3 class="card-title">AI 识别行为</h3>
-                    <p class="card-desc">调整 AI 账单识别策略，保存后立即生效，无需改服务器环境变量。未保存的项自动沿用服务器 <code>AI_*</code> 默认值。</p>
+                    <h3 class="card-title" data-i18n="aiConfig.behavior.title">AI 识别行为</h3>
+                    <p class="card-desc" data-i18n-html="aiConfig.behavior.desc">调整 AI 账单识别策略，保存后立即生效，无需改服务器环境变量。未保存的项自动沿用服务器 <code>AI_*</code> 默认值。</p>
                     <form class="trans-form" id="aiSettingsForm" style="margin-top:12px">
                         <div class="form-row" style="flex-wrap:wrap">
                             <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
@@ -658,7 +658,7 @@
                             <div class="form-group" style="max-width:220px">
                                 <label>Prompt 版本</label>
                                 <select id="aiSettingPromptVersion">
-                                    <option value="v3">v3 · 最新（历史先例）</option>
+                                    <option value="v3" data-i18n="aiProvider.promptVersion.v3Label">v3 · 最新（历史先例）</option>
                                 </select>
                                 <small class="form-hint">当前仅保留最新 v3 版本</small>
                             </div>

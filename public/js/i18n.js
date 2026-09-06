@@ -72,6 +72,12 @@
             const key = n.getAttribute('data-i18n-val');
             if (key) n.value = t(key);
         });
+        // data-i18n-html：内联允许少量标签（b/code/br），用于含格式的说明/步骤文本。
+        // ⛔ 禁止把任意 HTML 放进字典：仅当内容由代码控制时使用，避免 XSS。
+        root.querySelectorAll('[data-i18n-html]').forEach((n) => {
+            const key = n.getAttribute('data-i18n-html');
+            if (key) n.innerHTML = t(key);
+        });
         // data-i18n-attrs：通用「任意属性 → 字典键」映射，格式 "attr:key;attr2:key2"。
         // 用于 data-* 这类既非文本也非上述固定属性的场景，例如 AI 示例 chip 的
         // data-example / data-q（点击后填入输入框或发给模型，必须随语言切换）。
