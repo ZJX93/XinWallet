@@ -3,7 +3,7 @@
  * ----------------------------------------------------------------
  * 三条入口统一收敛到这里：
  *   - 一句话文本：parse() → POST /ai/transactions/parse
- *   - OCR 图片  ：ai-recognition.js ocrRecognize() 拿 prediction_id 后调 _loadExternal()
+ *   - OCR 图片  ：本文件的 ocrRecognize / ocrRetranscribe 上传后调 _loadExternal()
  *   - 语音/对话：同理 _loadExternal()（保留语音转写在外部走 /ai/transcribe，回填后 parse）
  *
  * 确认流程（与文本/OCR/对话共用）：
@@ -16,6 +16,11 @@
  *   2. 用户手工修正过的字段，置信度提升为 1.0、evidence 标记 user_corrected，
  *      使 final_diff 与后续学习信号反映「人工已确认」这一事实。
  *   3. idempotency_key 在进入确认区时生成并固定，网络重试不会重复落账。
+ *
+ * 迁移说明：原 ai-recognition.js 的「OCR 上传 + provider 检查」已被吸收到这里。
+ * 　与文本/语音通道相比，OCR 多了「上传图片 + 压缩 + 走 /ai/ocr|retranscribe 端点」，
+ * 　调用到 _loadExternal() 后即与文本/语音完全同构。账单（CSV/XLSX）走独立
+ * 　ai-bill-import.js，与本文件无关。
  * ----------------------------------------------------------------
  */
 
@@ -49,31 +54,50 @@ const AISmartEntry = {
     busy: false,
     _eventsBound: false,
 
+    // ====== OCR 关注（吸收自 ai-recognition.js） ======
+    selectedFile: null,
+    compressedFile: null,
+    hasProvider: null,   // null = 未检测；true/false = 缓存结果（ai-provider 改配置时清）
+
     init() {
-        if (!document.getElementById('aiSmartParseBtn')) return;  // 页面惰加载，可能尚未插入 DOM
+        // 页面惰加载：智能记账 + OCR 是同一页（ai-recognition.html），
+        // 但 ai-smart-entry 也可能被 ai-chat 等页面触发到，任一元素存在即可绑
+        if (!document.getElementById('aiSmartParseBtn')
+            && !document.getElementById('ocrRecognizeBtn')) return;
         this._bindEvents();
     },
 
     // 惰加载时 init 可能错过，切页 refresh 时补绑
     refresh() {
-        if (document.getElementById('aiSmartParseBtn') && !this._eventsBound) this._bindEvents();
+        if (!this._eventsBound
+            && (document.getElementById('aiSmartParseBtn')
+                || document.getElementById('ocrRecognizeBtn'))) {
+            this._bindEvents();
+        }
     },
 
     _bindEvents() {
         this._eventsBound = true;
-        document.getElementById('aiSmartParseBtn').addEventListener('click', () => this.parse());
-        document.getElementById('aiSmartCommitBtn').addEventListener('click', () => this.commit());
-        document.getElementById('aiSmartDiscardBtn').addEventListener('click', () => this.discard());
+
+        // —— 智能记账 / 语音 ——
+        const parseBtn = document.getElementById('aiSmartParseBtn');
+        if (parseBtn) parseBtn.addEventListener('click', () => this.parse());
+        const commitBtn = document.getElementById('aiSmartCommitBtn');
+        if (commitBtn) commitBtn.addEventListener('click', () => this.commit());
+        const discardBtn = document.getElementById('aiSmartDiscardBtn');
+        if (discardBtn) discardBtn.addEventListener('click', () => this.discard());
 
         // 🎙 语音：单击切到录音态，再单击停止；最长 60 秒（防误触长开）
         const voiceBtn = document.getElementById('aiSmartVoiceBtn');
         if (voiceBtn) voiceBtn.addEventListener('click', () => this._toggleVoice());
 
         const input = document.getElementById('aiSmartText');
-        // Ctrl/Cmd + Enter 快捷解析；单独回车留给多行输入
-        input.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.parse(); }
-        });
+        if (input) {
+            // Ctrl/Cmd + Enter 快捷解析；单独回车留给多行输入
+            input.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.parse(); }
+            });
+        }
 
         document.querySelectorAll('#aiSmartExamples [data-example]').forEach(chip => {
             chip.addEventListener('click', () => {
@@ -81,6 +105,23 @@ const AISmartEntry = {
                 input.focus();
             });
         });
+
+        // —— OCR 上传（同一 ai-recognition 页面里）——
+        const ocrUploadArea = document.getElementById('ocrUploadArea');
+        const ocrFileInput = document.getElementById('ocrImageInput');
+        const ocrRecognizeBtn = document.getElementById('ocrRecognizeBtn');
+        if (ocrUploadArea && ocrFileInput && ocrRecognizeBtn) {
+            ocrUploadArea.addEventListener('click', () => { if (!this.selectedFile) ocrFileInput.click(); });
+            ocrUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); ocrUploadArea.classList.add('drag-over'); });
+            ocrUploadArea.addEventListener('dragleave', () => ocrUploadArea.classList.remove('drag-over'));
+            ocrUploadArea.addEventListener('drop', (e) => { e.preventDefault(); ocrUploadArea.classList.remove('drag-over'); this.handleFile(e.dataTransfer.files[0]); });
+            ocrFileInput.addEventListener('change', (e) => { if (e.target.files[0]) this.handleFile(e.target.files[0]); });
+            ocrRecognizeBtn.addEventListener('click', () => this.ocrRecognize());
+            const ocrClearBtn = document.getElementById('ocrClearBtn');
+            if (ocrClearBtn) ocrClearBtn.addEventListener('click', () => this.ocrClear());
+            const retransBtn = document.getElementById('ocrRetranscribeBtn');
+            if (retransBtn) retransBtn.addEventListener('click', () => this.ocrRetranscribe());
+        }
     },
 
     /* ========== 步骤 0：语音转写（点击开始 / 再点击停止） ==========
@@ -617,7 +658,186 @@ const AISmartEntry = {
     },
 
     _show(id) { const el = document.getElementById(id); if (el) el.style.display = 'block'; },
-    _hide(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+    _hide(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; },
+
+    // ============================================================
+    // OCR 图片通道（吸收自原 ai-recognition.js）
+    // —— 上传 → 压缩 → 走 /ai/ocr 或 /ai/ocr/retranscribe → _loadExternal() 入确认区
+    // ============================================================
+
+    async checkProvider() {
+        if (this.hasProvider !== null) return this.hasProvider;
+        try {
+            const res = await api('/ai/providers');
+            this.hasProvider = res && Array.isArray(res.providers) && res.providers.length > 0;
+        } catch (err) {
+            this.hasProvider = false;
+        }
+        return this.hasProvider;
+    },
+
+    renderNoProvider(containerId) {
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.innerHTML = `<div class="empty-hint"><p>${escapeHtml(tt('aiRec.noProvider', '未配置 AI 服务商'))}</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>${escapeHtml(tt('aiRec.gotoConfig', '前往 AI 配置'))}</button></div>`;
+            // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
+            container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
+        }
+    },
+
+    handleFile(file) {
+        if (!file || !file.type.startsWith('image/')) { showToast(tt('aiRec.selectImage', '请选择图片文件'), 'warning'); return; }
+        if (file.size > 10 * 1024 * 1024) { showToast(tt('aiRec.imageTooLarge', '图片不能超过 10MB'), 'warning'); return; }
+        this.selectedFile = file;
+        const url = URL.createObjectURL(file);
+        document.getElementById('ocrPreview').src = url;
+        document.getElementById('ocrPreview').style.display = 'block';
+        document.getElementById('ocrUploadPlaceholder').style.display = 'none';
+        document.getElementById('ocrRecognizeBtn').disabled = false;
+
+        // 后台压缩：大图片先压缩再上传（Tunnel 上传限速，压缩后从 2MB→100KB 提效 20 倍）
+        this.compressForUpload(file);
+    },
+
+    // Canvas 压缩图片（限制宽度 1024px，质量 0.7，预计压缩比 10-20 倍）
+    async compressForUpload(file) {
+        try {
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = URL.createObjectURL(file);
+            });
+            const maxW = 1024, maxH = 1024;
+            let w = img.width, h = img.height;
+            if (w > maxW) { h = h * maxW / w; w = maxW; }
+            if (h > maxH) { w = w * maxH / h; h = maxH; }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.7));
+            this.compressedFile = new File([blob], 'ocr_compressed.jpg', { type: 'image/jpeg' });
+            console.log('OCR compress:', (file.size / 1024).toFixed(0) + 'KB → ' + (blob.size / 1024).toFixed(0) + 'KB');
+        } catch (e) {
+            // 压缩失败则使用原图
+            this.compressedFile = file;
+        }
+    },
+
+    ocrClear() {
+        const preview = document.getElementById('ocrPreview');
+        if (preview.src && preview.src.startsWith('blob:')) {
+            URL.revokeObjectURL(preview.src);
+        }
+        this.selectedFile = null;
+        this.compressedFile = null;
+        preview.style.display = 'none';
+        preview.src = '';
+        document.getElementById('ocrUploadPlaceholder').style.display = 'block';
+        document.getElementById('ocrRecognizeBtn').disabled = true;
+        document.getElementById('ocrImageInput').value = '';
+        // 图没了，「换腾讯 OCR 重试」也无从谈起；转录文字一并收起
+        const retransBtn = document.getElementById('ocrRetranscribeBtn');
+        if (retransBtn) retransBtn.style.display = 'none';
+        const tp = document.getElementById('ocrTextPreview');
+        if (tp) { tp.style.display = 'none'; tp.textContent = ''; }
+    },
+
+    /* ====== 图片记账（POST /ai/ocr 与 /ai/ocr/retranscribe）======
+     * 两个端点的请求形态（multipart 单图）与响应契约（v0.2 预测快照）完全一致，
+     * 差别仅在 URL、按钮态与文案，故收敛到本方法，由 ocrRecognize / ocrRetranscribe 传参。
+     *
+     * 结果一律交给 AISmartEntry._loadExternal() 进 v0.2 确认区 —— 图片通道不再自建
+     * 编辑表格，与文本/语音通道共用同一套确认、修正、原子 commit 与学习信号链路。
+     */
+    async _ocrRequest({ path, btnId, noTxnKey, noTxnText, failKey, failText, okToast }) {
+        if (!(await this.checkProvider())) {
+            showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
+            return;
+        }
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = true;
+        document.getElementById('ocrLoading').style.display = 'block';
+
+        try {
+            const formData = new FormData();
+            formData.append('image', this.compressedFile || this.selectedFile);
+            // 自动带上「上次使用的账户」作兜底：
+            //   OCR 文本里如果没有「支付宝/微信/银行」等渠道关键词（如账单详情页），
+            //   后端 resolveAccount 会退到 fallback_default 路径并写入该账户，
+            //   识别依据里同时显示「上次使用：XXX」。
+            try {
+                const lastAccountId = localStorage.getItem('xinwallet.last_account_id');
+                const lastAccountName = localStorage.getItem('xinwallet.last_account_name');
+                if (lastAccountId) formData.append('account_id', String(lastAccountId));
+                if (lastAccountName) formData.append('account_name', String(lastAccountName));
+            } catch (_) { /* localStorage 不可用时静默跳过 */ }
+
+            // 走裸 fetch 而非 api()：这是 multipart 上传，api() 固定发 JSON
+            const token = localStorage.getItem('xin_token');
+            const res = await fetch(`${API}${path}`, {
+                method: 'POST',
+                headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+                body: formData
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || tt(failKey, failText));
+            const payload = data.data || {};
+
+            // 转录出的原文始终展示，识别不出交易时用户可据此判断是图糊了还是解析漏了
+            if (payload.text) {
+                const tp = document.getElementById('ocrTextPreview');
+                tp.textContent = payload.text;
+                tp.style.display = 'block';
+            }
+            if (payload.reason) showToast(payload.reason, 'warning');
+
+            // 识别过一次后才给出「换腾讯 OCR 重试」入口（识别不出交易时同样可能想换引擎重来）
+            const retransBtn = document.getElementById('ocrRetranscribeBtn');
+            if (retransBtn) retransBtn.style.display = 'inline-block';
+
+            if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
+                await this._loadExternal(payload, { emptyHint: tt(noTxnKey, noTxnText) });
+                // 确认区在页面另一处，滚过去让用户一眼看到结果
+                const confirmEl = document.getElementById('aiSmartConfirm');
+                if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (okToast) showToast(okToast, 'success');
+            } else {
+                showToast(tt(noTxnKey, noTxnText), 'warning');
+            }
+        } catch (err) {
+            showToast(err.message || tt(failKey, failText), 'error');
+        } finally {
+            document.getElementById('ocrLoading').style.display = 'none';
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    async ocrRecognize() {
+        if (!this.selectedFile) return;
+        document.getElementById('ocrTextPreview').style.display = 'none';
+        await this._ocrRequest({
+            path: '/ai/ocr',
+            btnId: 'ocrRecognizeBtn',
+            noTxnKey: 'aiRec.noTxn', noTxnText: '未能识别到交易项',
+            failKey: 'aiRec.recognizeFail', failText: '识别失败',
+        });
+    },
+
+    // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图
+    async ocrRetranscribe() {
+        if (!this.selectedFile) { showToast(tt('aiRec.uploadFirst', '请先上传图片'), 'warning'); return; }
+        await this._ocrRequest({
+            path: '/ai/ocr/retranscribe',
+            btnId: 'ocrRetranscribeBtn',
+            noTxnKey: 'aiRec.rerecognizeNoTxn', noTxnText: '重识别仍未识别到交易项',
+            failKey: 'aiRec.rerecognizeFail', failText: '重识别失败',
+            okToast: tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'),
+        });
+    }
 };
 
 export default AISmartEntry;

@@ -4,7 +4,7 @@
  * 拆分来源：public/js/app.js
  * 原始位置：app.js 第 4728 ~ 4979 行（const AIProviderManager = { ... };）
  * 拆分说明：从单体 app.js 按对象真实边界提取，完整保留原代码；
- *          依赖项（api / showToast / cache / AIRecognition / escapeHtml 等）
+ *          依赖项（api / showToast / cache / AISmartEntry / escapeHtml 等）
  *          仍由 app.js 提供，本模块在 app.js 之后加载即可直接使用。
  */
 
@@ -220,7 +220,7 @@ const AIProviderManager = {
         this.providers = res.providers || [];
         this.render();
         // 重置 AI 服务商检测缓存，让分析页面等组件能重新检测
-        AIRecognition.hasProvider = null;
+        AISmartEntry.hasProvider = null;
     },
 
     render() {

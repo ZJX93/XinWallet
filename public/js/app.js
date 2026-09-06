@@ -566,8 +566,8 @@ async function refreshPage(page) {
     if (page === 'data-center' && M.DataManager) await M.DataManager.refresh();
     if (page === 'tags' && M.TagManager) await M.TagManager.refresh();
     if (page === 'ai-recognition') {
-        if (M.AIRecognition) await M.AIRecognition.refresh();
         if (M.AISmartEntry) M.AISmartEntry.refresh();
+        if (M.AIBillImport) await M.AIBillImport.refresh();
         if (M.AIChat) M.AIChat.refresh();
     }
     if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
@@ -792,8 +792,8 @@ async function boot() {
     safeInit('TagManager', () => TagManager.init());
     safeInit('DataManager', () => DataManager.init());
     safeInit('SavingsGoalManager', () => SavingsGoalManager.init());
-    safeInit('AIRecognition', () => AIRecognition.init());
     safeInit('AISmartEntry', () => AISmartEntry.init());
+    safeInit('AIBillImport', () => AIBillImport.init());
     safeInit('AIAdvice', () => AIAdvice.init());
     safeInit('AIChat', () => AIChat.init());
     safeInit('AIRules', () => AIRules.init());

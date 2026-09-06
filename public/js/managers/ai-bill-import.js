@@ -1,80 +1,48 @@
 /**
- * AI 识别管理器（OCR + 账单解析 + 智能分类）
+ * AI 账单导入（CSV / XLS / XLSX · 支付宝 / 微信 / 通用格式）
  * ----------------------------------------------------------------
- * 来源文件：js/app.js
- * 拆分范围：原 app.js 第 2276 行 ~ 第 3003 行
- * 拆分说明：从单体脚本 app.js 中按对象真实边界提取 AIRecognition 对象，
- *          转为 ES Module 以便按需加载与按依赖注入。
- *          保留原代码完全一致，仅在尾部追加 export default。
- * 注意：该文件依赖若干全局工具（api、fetch、XLSX、URL、Image、Canvas、
- *       showToast、escapeHtml、cache、getCat、resolveCategoryId 等），
- *       这些依赖由调用方在使用前注入/确保可用。
+ * 来源文件：js/app.js → public/js/managers/ai-recognition.js
+ * 拆分范围：原 ai-recognition.js 第 152 行 ~ 第 688 行（账单上传、解析、渲染、批量导入）+
+ *          第 690 行 ~ 第 842 行（分类解析基础设施，账单专用）。
+ * 拆分动机：AI 识别模块原本把「图片 OCR」和「账单文件导入」放在同一个文件，
+ *          但两条通道的关注点已经分得很开：
+ *            - 图片：multipart 上传 → v0.2 预测快照 → 交给 AISmartEntry 确认区
+ *            - 账单：前端 CSV/XLSX 解析 → 编辑表格 → 批量直写 /transactions
+ *          把图片关注并入 ai-smart-entry.js（v0.2 通道的天然归宿）、
+ *          把账单独立成 ai-bill-import.js 后，两个文件各自的边界更清晰，
+ *          也更便于将来按需懒加载（账单用户未必用）。
+ *
+ * 注意：
+ *   - 分类解析基础设施（_SEED_NAMES / _findCatIdByName / _seedIdToRealId / resolveCategoryId）
+ *     是账单特有的：OCR 已统一走 v0.2 后端 category resolver，账单前端解析还需兜底。
+ *   - 本文件依赖若干全局工具（api、showToast、escapeHtml、cache、getCat、fmtDate、
+ *     fmtDateTime、XLSX 等），由调用方在使用前确保可用。
  * ----------------------------------------------------------------
  */
 
-const AIRecognition = {
-    parsedItems: [],
-    selectedFile: null,
-    compressedFile: null,
+const AIBillImport = {
     billFile: null,
-    hasProvider: null,
-
-    async checkProvider() {
-        if (this.hasProvider !== null) return this.hasProvider;
-        try {
-            const res = await api('/ai/providers');
-            this.hasProvider = res && Array.isArray(res.providers) && res.providers.length > 0;
-        } catch (err) {
-            this.hasProvider = false;
-        }
-        return this.hasProvider;
-    },
-
-    renderNoProvider(containerId) {
-        const container = document.getElementById(containerId);
-        if (container) {
-            container.innerHTML = `<div class="empty-hint"><p>${escapeHtml(tt('aiRec.noProvider', '未配置 AI 服务商'))}</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>${escapeHtml(tt('aiRec.gotoConfig', '前往 AI 配置'))}</button></div>`;
-            // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
-            container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
-        }
-    },
+    parsedItems: [],
 
     init() {
-        const firstEl = document.getElementById('ocrRecognizeBtn');
-        if (!firstEl) return;  // ai-recognition 页面通过 PageLoader 惰加载
+        const firstEl = document.getElementById('billParseBtn');
+        if (!firstEl) return;   // ai-recognition 页面通过 PageLoader 惰加载
         this._bindEvents();
     },
 
     // 懒加载时 init 可能错过，refresh 时补上事件绑定
     refresh() {
-        const firstEl = document.getElementById('ocrRecognizeBtn');
-        if (firstEl && !this._eventsBound) {
-            this._bindEvents();
-        }
+        const firstEl = document.getElementById('billParseBtn');
+        if (firstEl && !this._eventsBound) this._bindEvents();
     },
 
     _bindEvents() {
         this._eventsBound = true;
 
-        // OCR 上传
-        const uploadArea = document.getElementById('ocrUploadArea');
-        const fileInput = document.getElementById('ocrImageInput');
-        const recognizeBtn = document.getElementById('ocrRecognizeBtn');
-
-        uploadArea.addEventListener('click', () => { if (!this.selectedFile) fileInput.click(); });
-        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
-        uploadArea.addEventListener('drop', (e) => { e.preventDefault(); uploadArea.classList.remove('drag-over'); this.handleFile(e.dataTransfer.files[0]); });
-        fileInput.addEventListener('change', (e) => { if (e.target.files[0]) this.handleFile(e.target.files[0]); });
-        recognizeBtn.addEventListener('click', () => this.ocrRecognize());
-        document.getElementById('ocrClearBtn').addEventListener('click', () => this.ocrClear());
-        const retransBtn = document.getElementById('ocrRetranscribeBtn');
-        if (retransBtn) retransBtn.addEventListener('click', () => this.ocrRetranscribe());
-
-        // 账单导入
         const billArea = document.getElementById('billUploadArea');
         const billInput = document.getElementById('billFileInput');
         const billParseBtn = document.getElementById('billParseBtn');
+
         billArea.addEventListener('click', () => { if (!this.billFile) billInput.click(); });
         billArea.addEventListener('dragover', (e) => { e.preventDefault(); billArea.classList.add('drag-over'); });
         billArea.addEventListener('dragleave', () => billArea.classList.remove('drag-over'));
@@ -88,68 +56,6 @@ const AIRecognition = {
         if (importAllBtn) importAllBtn.addEventListener('click', () => this.importAll());
     },
 
-    handleFile(file) {
-        if (!file || !file.type.startsWith('image/')) { showToast(tt('aiRec.selectImage', '请选择图片文件'), 'warning'); return; }
-        if (file.size > 10 * 1024 * 1024) { showToast(tt('aiRec.imageTooLarge', '图片不能超过 10MB'), 'warning'); return; }
-        this.selectedFile = file;
-        const url = URL.createObjectURL(file);
-        document.getElementById('ocrPreview').src = url;
-        document.getElementById('ocrPreview').style.display = 'block';
-        document.getElementById('ocrUploadPlaceholder').style.display = 'none';
-        document.getElementById('ocrRecognizeBtn').disabled = false;
-
-        // 后台压缩：大图片先压缩再上传（Tunnel 上传限速，压缩后从 2MB→100KB 提效 20 倍）
-        this.compressForUpload(file);
-    },
-
-    // Canvas 压缩图片（限制宽度 1024px，质量 0.7，预计压缩比 10-20 倍）
-    async compressForUpload(file) {
-        try {
-            const img = await new Promise((resolve, reject) => {
-                const i = new Image();
-                i.onload = () => resolve(i);
-                i.onerror = reject;
-                i.src = URL.createObjectURL(file);
-            });
-            const maxW = 1024, maxH = 1024;
-            let w = img.width, h = img.height;
-            if (w > maxW) { h = h * maxW / w; w = maxW; }
-            if (h > maxH) { w = w * maxH / h; h = maxH; }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
-
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.7));
-            this.compressedFile = new File([blob], 'ocr_compressed.jpg', { type: 'image/jpeg' });
-            console.log('OCR compress:', (file.size / 1024).toFixed(0) + 'KB → ' + (blob.size / 1024).toFixed(0) + 'KB');
-        } catch (e) {
-            // 压缩失败则使用原图
-            this.compressedFile = file;
-        }
-    },
-
-    ocrClear() {
-        const preview = document.getElementById('ocrPreview');
-        if (preview.src && preview.src.startsWith('blob:')) {
-            URL.revokeObjectURL(preview.src);
-        }
-        this.selectedFile = null;
-        this.compressedFile = null;
-        preview.style.display = 'none';
-        preview.src = '';
-        document.getElementById('ocrUploadPlaceholder').style.display = 'block';
-        document.getElementById('ocrRecognizeBtn').disabled = true;
-        document.getElementById('ocrImageInput').value = '';
-        // 图没了，「换腾讯 OCR 重试」也无从谈起；转录文字一并收起
-        const retransBtn = document.getElementById('ocrRetranscribeBtn');
-        if (retransBtn) retransBtn.style.display = 'none';
-        const tp = document.getElementById('ocrTextPreview');
-        if (tp) { tp.style.display = 'none'; tp.textContent = ''; }
-    },
-
-    // ====== 账单导入 ======
     handleBillFile(file) {
         if (!file) return;
         const validExts = ['.csv', '.xls', '.xlsx'];
@@ -468,99 +374,6 @@ const AIRecognition = {
         return items;
     },
 
-    /* ====== 图片记账（POST /ai/ocr 与 /ai/ocr/retranscribe）======
-     * 两个端点的请求形态（multipart 单图）与响应契约（v0.2 预测快照）完全一致，
-     * 差别仅在 URL、按钮态与文案，故收敛到本方法，由 ocrRecognize / ocrRetranscribe 传参。
-     *
-     * 结果一律交给 AISmartEntry._loadExternal() 进 v0.2 确认区 —— 图片通道不再自建
-     * 编辑表格，与文本/语音通道共用同一套确认、修正、原子 commit 与学习信号链路。
-     */
-    async _ocrRequest({ path, btnId, noTxnKey, noTxnText, failKey, failText, okToast }) {
-        if (!(await this.checkProvider())) {
-            showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
-            return;
-        }
-        const btn = document.getElementById(btnId);
-        if (btn) btn.disabled = true;
-        document.getElementById('ocrLoading').style.display = 'block';
-
-        try {
-            const formData = new FormData();
-            formData.append('image', this.compressedFile || this.selectedFile);
-            // 自动带上「上次使用的账户」作兜底：
-            //   OCR 文本里如果没有「支付宝/微信/银行」等渠道关键词（如账单详情页），
-            //   后端 resolveAccount 会退到 fallback_default 路径并写入该账户，
-            //   识别依据里同时显示「上次使用：XXX」。
-            try {
-                const lastAccountId = localStorage.getItem('xinwallet.last_account_id');
-                const lastAccountName = localStorage.getItem('xinwallet.last_account_name');
-                if (lastAccountId) formData.append('account_id', String(lastAccountId));
-                if (lastAccountName) formData.append('account_name', String(lastAccountName));
-            } catch (_) { /* localStorage 不可用时静默跳过 */ }
-
-            // 走裸 fetch 而非 api()：这是 multipart 上传，api() 固定发 JSON
-            const token = localStorage.getItem('xin_token');
-            const res = await fetch(`${API}${path}`, {
-                method: 'POST',
-                headers: token ? { 'Authorization': 'Bearer ' + token } : {},
-                body: formData
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.message || tt(failKey, failText));
-            const payload = data.data || {};
-
-            // 转录出的原文始终展示，识别不出交易时用户可据此判断是图糊了还是解析漏了
-            if (payload.text) {
-                const tp = document.getElementById('ocrTextPreview');
-                tp.textContent = payload.text;
-                tp.style.display = 'block';
-            }
-            if (payload.reason) showToast(payload.reason, 'warning');
-
-            // 识别过一次后才给出「换腾讯 OCR 重试」入口（识别不出交易时同样可能想换引擎重来）
-            const retransBtn = document.getElementById('ocrRetranscribeBtn');
-            if (retransBtn) retransBtn.style.display = 'inline-block';
-
-            if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
-                await AISmartEntry._loadExternal(payload, { emptyHint: tt(noTxnKey, noTxnText) });
-                // 确认区在页面另一处，滚过去让用户一眼看到结果
-                const confirmEl = document.getElementById('aiSmartConfirm');
-                if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                if (okToast) showToast(okToast, 'success');
-            } else {
-                showToast(tt(noTxnKey, noTxnText), 'warning');
-            }
-        } catch (err) {
-            showToast(err.message || tt(failKey, failText), 'error');
-        } finally {
-            document.getElementById('ocrLoading').style.display = 'none';
-            if (btn) btn.disabled = false;
-        }
-    },
-
-    async ocrRecognize() {
-        if (!this.selectedFile) return;
-        document.getElementById('ocrTextPreview').style.display = 'none';
-        await this._ocrRequest({
-            path: '/ai/ocr',
-            btnId: 'ocrRecognizeBtn',
-            noTxnKey: 'aiRec.noTxn', noTxnText: '未能识别到交易项',
-            failKey: 'aiRec.recognizeFail', failText: '识别失败',
-        });
-    },
-
-    // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图
-    async ocrRetranscribe() {
-        if (!this.selectedFile) { showToast(tt('aiRec.uploadFirst', '请先上传图片'), 'warning'); return; }
-        await this._ocrRequest({
-            path: '/ai/ocr/retranscribe',
-            btnId: 'ocrRetranscribeBtn',
-            noTxnKey: 'aiRec.rerecognizeNoTxn', noTxnText: '重识别仍未识别到交易项',
-            failKey: 'aiRec.rerecognizeFail', failText: '重识别失败',
-            okToast: tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'),
-        });
-    },
-
     renderBillResults() {
         // ⚠️ 仅账单（CSV/XLSX）用。OCR 已统一走 AISmartEntry._loadExternal() 复用 v0.2 确认区。
         //    账单是用户已确认的导出文件，前端解析精度足够，无须再走 AI 裁决。
@@ -812,7 +625,7 @@ const AIRecognition = {
             { kw: ['学费','幼儿园','学校','培训费'], id: 69 },
             // 收入二级
             { kw: ['工资','底薪','月薪','工资条','薪水'], id: 71 },
-            { kw: ['奖金','年终奖','绩效','提成','分红'], id: 72 },
+            { kw: ['奖金','年终奖','提成','分红'], id: 72 },
             { kw: ['补贴','报销','差旅','餐饮补贴','交通补贴','房补'], id: 73 },
             { kw: ['理财收益','利息','基金','股票','债券','余额宝','理财通'], id: 74 },
             { kw: ['房租收入','收租'], id: 75 },
@@ -842,4 +655,4 @@ const AIRecognition = {
     }
 };
 
-export default AIRecognition;
+export default AIBillImport;
