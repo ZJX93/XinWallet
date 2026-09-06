@@ -503,7 +503,6 @@ const DebtManager = {
             document.getElementById('repayDate').value = fmtDateTimeLocal();
         }
         const titleEl = document.getElementById('repayModalTitle');
-        const titleEl = document.getElementById('repayModalTitle');
         if (titleEl) {
             const k = rep ? 'repay.title.edit' : (isRecv ? 'repay.title.addRecv' : 'repay.title.addPay');
             const zhFallback = rep ? '修改还款记录' : (isRecv ? '登记应收账款回款' : '登记应付账款偿付');
