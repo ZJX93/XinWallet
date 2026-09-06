@@ -456,11 +456,13 @@ export struct ReportsPage {
   /** 趋势卡副标题右侧：累计（结余维度是累计曲线，取末值即期末结余） */
   trendCumLabel(): string {
     const pts = this.trendPoints();
-    const t = this.dailyTrend();
+    // 之前误写 this.dailyTrend() —— 该方法不存在（reports.js 列表只返回 dailyTrend 字段，
+    // 鸿蒙侧统一用 trendBuckets() 读取并按年/自定义区间聚合）。手误 bug，现已修正。
+    const t: RTrend[] = this.trendBuckets();
     // 多币种 P2-3b：series 提取了 bucket 主货币值，整期主货币取首个非零 bucket 的 currency
-    const primaryCurrency: string = (() => {
+    const primaryCurrency: string = ((): string => {
       for (let i = 0; i < t.length; i++) {
-        const item = t[i];
+        const item: RTrend = t[i];
         if ((item.income ?? 0) > 0 || (item.expense ?? 0) > 0) {
           return item.currency || 'CNY';
         }
