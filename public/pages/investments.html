@@ -1,215 +1,216 @@
             <section class="page" id="page-investments">
                 <div class="glass-card">
-                    <h3 class="card-title">理财资产总览</h3>
+                    <h3 class="card-title" data-i18n="inv.overview">理财资产总览</h3>
                     <div class="inv-summary-row" id="invSummary">
-                        <div class="inv-summary-item"><span class="inv-label">投入本金</span><span class="inv-value" id="invTotalCost">¥0</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">当前市值</span><span class="inv-value" id="invTotalValue">¥0</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">浮动盈亏</span><span class="inv-value" id="invTotalProfit">¥0</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">收益率</span><span class="inv-value" id="invTotalRate">0%</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">组合年化</span><span class="inv-value" id="invAnnualized">--</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">持仓集中度</span><span class="inv-value" id="invConcentration">--</span></div>
-                        <div class="inv-summary-item"><span class="inv-label">预期年化</span><span class="inv-value" id="invExpectedRate">--</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.totalCost">投入本金</span><span class="inv-value" id="invTotalCost">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.totalValue">当前市值</span><span class="inv-value" id="invTotalValue">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.floatingPL">浮动盈亏</span><span class="inv-value" id="invTotalProfit">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.rate">收益率</span><span class="inv-value" id="invTotalRate">0%</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.annualized">组合年化</span><span class="inv-value" id="invAnnualized">--</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.concentration">持仓集中度</span><span class="inv-value" id="invConcentration">--</span></div>
+                        <div class="inv-summary-item"><span class="inv-label" data-i18n="inv.expectedRate">预期年化</span><span class="inv-value" id="invExpectedRate">--</span></div>
                     </div>
                 </div>
                 <div class="inv-charts-row">
-                    <div class="glass-card chart-card"><h3 class="card-title">资产配置</h3><canvas id="invAllocationPie" height="220"></canvas></div>
-                    <div class="glass-card chart-card"><h3 class="card-title">市值趋势</h3><canvas id="invTrendChart" height="220"></canvas></div>
-                    <div class="glass-card chart-card"><h3 class="card-title">类型对比</h3><canvas id="invTypeBarChart" height="220"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title" data-i18n="inv.allocation">资产配置</h3><canvas id="invAllocationPie" height="220"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title" data-i18n="inv.valueTrend">市值趋势</h3><canvas id="invTrendChart" height="220"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title" data-i18n="inv.typeCompare">类型对比</h3><canvas id="invTypeBarChart" height="220"></canvas></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">持仓明细 <button class="btn btn-primary" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">一键刷新</button>
-                        <label class="inv-toggle" title="显示历史已清仓（已隐藏）的持仓"><input type="checkbox" id="invIncludeSold"> 显示已清仓</label>
+                    <h3 class="card-title"><span data-i18n="inv.holdings">持仓明细</span> <button class="btn btn-primary" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px" data-i18n="inv.addHolding">新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px" data-i18n="inv.refreshAll">一键刷新</button>
+                        <label class="inv-toggle" title="显示历史已清仓（已隐藏）的持仓" data-i18n-title="inv.showSoldTip"><input type="checkbox" id="invIncludeSold"> <span data-i18n="inv.showSold">显示已清仓</span></label>
                     </h3>
                     <div id="investList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">储蓄目标 <button class="btn btn-primary" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">新建目标</button></h3>
-                    <p class="card-desc">为大额支出或心愿设立储蓄罐，从关联账户定投，进度一目了然</p>
+                    <h3 class="card-title"><span data-i18n="goal.section">储蓄目标</span> <button class="btn btn-primary" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px" data-i18n="goal.add">新建目标</button></h3>
+                    <p class="card-desc" data-i18n="goal.sectionDesc">为大额支出或心愿设立储蓄罐，从关联账户定投，进度一目了然</p>
                     <div id="savingsGoalList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
                 <div class="modal-overlay" id="investModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="investModalTitle">新增理财持仓</h3><button class="modal-close" id="investModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="investModalTitle" data-i18n="inv.modal.addTitle">新增理财持仓</h3><button class="modal-close" id="investModalClose">✕</button></div>
                     <form class="trans-form" id="investForm">
                         <div class="form-row">
-                            <div class="form-group"><label>产品类型</label><select id="investType" required></select></div>
-                            <div class="form-group"><label>产品名称</label><input type="text" id="investName" required placeholder="如：沪深300ETF"></div>
+                            <div class="form-group"><label data-i18n="inv.form.type">产品类型</label><select id="investType" required></select></div>
+                            <div class="form-group"><label data-i18n="inv.form.name">产品名称</label><input type="text" id="investName" required placeholder="如：沪深300ETF" data-i18n-ph="inv.form.namePh"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group" style="flex:1"><label>产品代码</label><div class="input-with-btn"><input type="text" id="investCode" placeholder="510300 / sh600519"><button type="button" class="btn btn-ghost btn-sm" id="investQuoteBtn">查行情</button></div><div class="quote-result" id="quoteResult"></div></div>
-                            <div class="form-group"><label>关联账户</label><select id="investAccount"></select></div>
+                            <div class="form-group" style="flex:1"><label data-i18n="inv.form.code">产品代码</label><div class="input-with-btn"><input type="text" id="investCode" placeholder="510300 / sh600519"><button type="button" class="btn btn-ghost btn-sm" id="investQuoteBtn" data-i18n="inv.form.quote">查行情</button></div><div class="quote-result" id="quoteResult"></div></div>
+                            <div class="form-group"><label data-i18n="inv.form.account">关联账户</label><select id="investAccount"></select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>买入单价 (¥)</label><input type="number" id="investBuyPrice" step="0.0001" required></div>
-                            <div class="form-group"><label>当前单价 (¥)</label><input type="number" id="investCurrentPrice" step="0.0001" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.buyPrice">买入单价</label><input type="number" id="investBuyPrice" step="0.0001" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.curPrice">当前单价</label><input type="number" id="investCurrentPrice" step="0.0001" required></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>持有数量</label><input type="number" id="investQuantity" step="0.0001" required></div>
-                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="investFee" step="0.01" min="0"></div>
+                            <div class="form-group"><label data-i18n="inv.form.qty">持有数量</label><input type="number" id="investQuantity" step="0.0001" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.fee">手续费</label><input type="number" id="investFee" step="0.01" min="0"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>总投入成本 (¥)</label><input type="number" id="investTotalCost" step="0.01" required></div>
-                            <div class="form-group"><label>当前市值 (¥)</label><input type="number" id="investCurrentValue" step="0.01" readonly></div>
+                            <div class="form-group"><label data-i18n="inv.form.totalCost">总投入成本</label><input type="number" id="investTotalCost" step="0.01" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.curValue">当前市值</label><input type="number" id="investCurrentValue" step="0.01" readonly></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>买入日期</label><input type="datetime-local" id="investBuyDate" step="1" required></div>
-                            <div class="form-group"><label>预期年化收益率 (%)</label><input type="number" id="investExpectedRate" step="0.01"></div>
+                            <div class="form-group"><label data-i18n="inv.form.buyDate">买入日期</label><input type="datetime-local" id="investBuyDate" step="1" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.expectedRate">预期年化收益率 (%)</label><input type="number" id="investExpectedRate" step="0.01"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>风险等级（按产品独立设置）</label><select id="investRisk">
-                                <option value="">跟随类型默认</option>
-                                <option value="low">🟢 低风险</option>
-                                <option value="medium">🟡 中风险</option>
-                                <option value="high">🟠 高风险</option>
-                                <option value="very_high">🔴 极高风险</option>
+                            <div class="form-group"><label data-i18n="inv.form.risk">风险等级（按产品独立设置）</label><select id="investRisk">
+                                <option value="" data-i18n="inv.risk.inherit">跟随类型默认</option>
+                                <option value="low" data-i18n="inv.risk.low">🟢 低风险</option>
+                                <option value="medium" data-i18n="inv.risk.medium">🟡 中风险</option>
+                                <option value="high" data-i18n="inv.risk.high">🟠 高风险</option>
+                                <option value="very_high" data-i18n="inv.risk.veryHigh">🔴 极高风险</option>
                             </select></div>
-                            <div class="form-group"><label>&nbsp;</label><span class="form-hint" style="font-size:12px;color:var(--text-muted,#888)">同类型下每个产品可单独定风险，不选则继承类型默认值</span></div>
+                            <div class="form-group"><label>&nbsp;</label><span class="form-hint" style="font-size:12px;color:var(--text-muted,#888)" data-i18n="inv.form.riskHint">同类型下每个产品可单独定风险，不选则继承类型默认值</span></div>
                         </div>
-                        <div class="form-group full-width"><label>备注</label><input type="text" id="investNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存持仓</button></div>
+                        <div class="form-group full-width"><label data-i18n="trans.form.note">备注</label><input type="text" id="investNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="inv.form.submit">保存持仓</button></div>
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="reduceModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="reduceModalTitle">加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="reduceModalTitle" data-i18n="inv.reduce.title">加仓/减仓</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
                     <form class="trans-form" id="reduceForm"><input type="hidden" id="reduceInvestId">
                         <div class="reduce-meta" id="reduceMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
                             <div class="form-group" style="flex:1">
-                                <label>操作类型</label>
+                                <label data-i18n="inv.reduce.action">操作类型</label>
                                 <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="buy"><input type="radio" name="reduceAction" value="buy" style="accent-color:var(--accent-500)"> <span>加仓</span></label>
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="sell"><input type="radio" name="reduceAction" value="sell" checked style="accent-color:var(--accent-500)"> <span>减仓</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="buy"><input type="radio" name="reduceAction" value="buy" style="accent-color:var(--accent-500)"> <span data-i18n="inv.reduce.buy">加仓</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="sell"><input type="radio" name="reduceAction" value="sell" checked style="accent-color:var(--accent-500)"> <span data-i18n="inv.reduce.sell">减仓</span></label>
                                 </div>
                             </div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label id="reducePriceLabel">成交单价 (¥)</label><input type="number" id="reduceSellPrice" step="0.0001" required></div>
-                            <div class="form-group"><label id="reduceQtyLabel">数量</label><input type="number" id="reduceQuantity" step="0.0001" required></div>
+                            <div class="form-group"><label id="reducePriceLabel" data-i18n="inv.reduce.price">成交单价</label><input type="number" id="reduceSellPrice" step="0.0001" required></div>
+                            <div class="form-group"><label id="reduceQtyLabel" data-i18n="inv.reduce.qty">数量</label><input type="number" id="reduceQuantity" step="0.0001" required></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="reduceFee" step="0.01" min="0" value="0"></div>
-                            <div class="form-group"><label>成交日期</label><input type="datetime-local" id="reduceDate" step="1" required></div>
+                            <div class="form-group"><label data-i18n="inv.form.fee">手续费</label><input type="number" id="reduceFee" step="0.01" min="0" value="0"></div>
+                            <div class="form-group"><label data-i18n="inv.reduce.date">成交日期</label><input type="datetime-local" id="reduceDate" step="1" required></div>
                         </div>
-                        <div class="form-group full-width"><label>备注</label><input type="text" id="reduceNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="reduceSubmitBtn">确认卖出</button></div>
+                        <div class="form-group full-width"><label data-i18n="trans.form.note">备注</label><input type="text" id="reduceNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" id="reduceSubmitBtn" data-i18n="inv.reduce.confirmSell">确认卖出</button></div>
                     </form>
                 </div></div>
 
                 <!-- 记一笔利息弹窗 -->
                 <div class="modal-overlay" id="interestModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="interestModalTitle">记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="interestModalTitle" data-i18n="inv.interest.title">记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
                     <form class="trans-form" id="interestForm"><input type="hidden" id="interestInvestId">
                         <div class="reduce-meta" id="interestMeta"></div>
                         <div class="form-row" style="margin-bottom:12px">
                             <div class="form-group" style="flex:1">
-                                <label>计息方式</label>
+                                <label data-i18n="inv.interest.mode">计息方式</label>
                                 <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span>红利再投</span></label>
-                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>现金入账</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span data-i18n="inv.interest.reinvest">红利再投</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span data-i18n="inv.interest.cash">现金入账</span></label>
                                 </div>
                             </div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>利息金额 (¥)</label><input type="number" id="interestAmount" step="0.01" min="0" required></div>
-                            <div class="form-group" id="interestNavGroup"><label>当前净值 (¥)</label><input type="number" id="interestNav" step="0.0001" min="0" placeholder="单位净值"></div>
+                            <div class="form-group"><label data-i18n="inv.interest.amount">利息金额</label><input type="number" id="interestAmount" step="0.01" min="0" required></div>
+                            <div class="form-group" id="interestNavGroup"><label data-i18n="inv.interest.nav">当前净值</label><input type="number" id="interestNav" step="0.0001" min="0" placeholder="单位净值" data-i18n-ph="inv.interest.navPh"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
-                            <div class="form-group"><label>备注</label><input type="text" id="interestNote" placeholder="备注..."></div>
+                            <div class="form-group"><label data-i18n="inv.interest.date">计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
+                            <div class="form-group"><label data-i18n="trans.form.note">备注</label><input type="text" id="interestNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn">确认记录</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn" data-i18n="inv.interest.confirm">确认记录</button></div>
                     </form>
                 </div></div>
 
                 <div class="modal-overlay" id="goalModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="goalModalTitle">新建储蓄目标</h3><button class="modal-close" id="goalModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="goalModalTitle" data-i18n="goal.modal.addTitle">新建储蓄目标</h3><button class="modal-close" id="goalModalClose">✕</button></div>
                     <form class="trans-form" id="goalForm"><input type="hidden" id="goalEditId">
                         <div class="form-row">
-                            <div class="form-group"><label>目标名称</label><input type="text" id="goalName" required placeholder="如：旅行基金"></div>
-                            <div class="form-group"><label>图标</label><input type="text" id="goalIcon" value="🎯" placeholder="emoji"></div>
+                            <div class="form-group"><label data-i18n="goal.form.name">目标名称</label><input type="text" id="goalName" required placeholder="如：旅行基金" data-i18n-ph="goal.form.namePh"></div>
+                            <div class="form-group"><label data-i18n="goal.form.icon">图标</label><input type="text" id="goalIcon" value="🎯" placeholder="emoji"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>目标金额 (¥)</label><input type="number" id="goalTarget" step="0.01" min="0.01" required></div>
-                            <div class="form-group"><label>储蓄账户 *</label><select id="goalAccount"></select></div>
+                            <div class="form-group"><label data-i18n="goal.form.target">目标金额</label><input type="number" id="goalTarget" step="0.01" min="0.01" required></div>
+                            <div class="form-group"><label data-i18n="goal.form.account">储蓄账户 *</label><select id="goalAccount"></select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group full-width"><label>来源账户 *</label><select id="goalSource"></select></div>
+                            <div class="form-group full-width"><label data-i18n="goal.form.source">来源账户 *</label><select id="goalSource"></select></div>
                         </div>
-                        <div class="form-group full-width"><label>备注</label><input type="text" id="goalNote" placeholder="备注..."></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="goalCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存目标</button></div>
+                        <div class="form-group full-width"><label data-i18n="trans.form.note">备注</label><input type="text" id="goalNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="goalCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="goal.form.submit">保存目标</button></div>
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="goalAmountModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="goalAmountTitle">存入金额</h3><button class="modal-close" id="goalAmountClose">✕</button></div>
+                    <div class="modal-header"><h3 id="goalAmountTitle" data-i18n="goal.deposit.title">存入金额</h3><button class="modal-close" id="goalAmountClose">✕</button></div>
                     <form class="trans-form" id="goalAmountForm">
                         <div class="goal-amount-meta" id="goalAmountMeta"></div>
                         <div class="form-group full-width">
-                            <label id="goalAmountLabel">存入金额 (¥)</label>
+                            <label id="goalAmountLabel" data-i18n="goal.deposit.amount">存入金额</label>
                             <input type="number" id="goalAmountInput" step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
                             <div class="form-error" id="goalAmountError"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>关联账户 *</label><select id="goalAmountAccount" required></select></div>
+                            <div class="form-group"><label data-i18n="goal.deposit.account">关联账户 *</label><select id="goalAmountAccount" required></select></div>
                         </div>
                         <div class="quick-amounts" id="goalQuickAmounts"></div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-ghost" id="goalAmountCancel">取消</button>
-                            <button type="submit" class="btn btn-ghost" id="goalAmountConfirm">确认</button>
+                            <button type="button" class="btn btn-ghost" id="goalAmountCancel" data-i18n="common.cancel">取消</button>
+                            <button type="submit" class="btn btn-ghost" id="goalAmountConfirm" data-i18n="common.confirm">确认</button>
                         </div>
                     </form>
                 </div></div>
                 <!-- 储蓄流水弹窗 -->
                 <div class="modal-overlay" id="savingsHistoryModal"><div class="modal glass-card" style="max-width:560px;max-height:80vh;overflow-y:auto">
-                    <div class="modal-header"><h3>存取流水 · <span class="sh-goal-name"></span></h3><button class="modal-close" id="savingsHistoryClose">✕</button></div>
+                    <div class="modal-header"><h3><span data-i18n="savings.history.title">存取流水</span> · <span class="sh-goal-name"></span></h3><button class="modal-close" id="savingsHistoryClose">✕</button></div>
                     <div class="bs-detail-stats" style="margin-bottom:12px">
-                        <div><span class="stat-label">存入</span><span class="sh-deposit income">¥0</span></div>
-                        <div><span class="stat-label">取出</span><span class="sh-withdraw expense">¥0</span></div>
-                        <div><span class="stat-label">净储蓄</span><span class="sh-net">¥0</span></div>
+                        <div><span class="stat-label" data-i18n="savings.deposit">存入</span><span class="sh-deposit income">¥0</span></div>
+                        <div><span class="stat-label" data-i18n="savings.withdraw">取出</span><span class="sh-withdraw expense">¥0</span></div>
+                        <div><span class="stat-label" data-i18n="savings.net">净储蓄</span><span class="sh-net">¥0</span></div>
                     </div>
                     <div class="sh-body"></div>
                 </div></div>
                 <!-- 理财：单卡详情弹窗 -->
                 <div class="modal-overlay" id="invDetailModal"><div class="modal glass-card modal-detail">
-                    <div class="modal-header"><h3 id="invDetailTitle">持仓详情</h3><button class="modal-close" id="invDetailClose" aria-label="关闭">✕</button></div>
+                    <div class="modal-header"><h3 id="invDetailTitle" data-i18n="inv.detail.title">持仓详情</h3><button class="modal-close" id="invDetailClose" aria-label="关闭" data-i18n-aria="common.close">✕</button></div>
                     <div class="modal-body" id="invDetailBody"></div>
                     <div class="form-actions" id="invDetailActions" style="margin-top:var(--space-4)">
-                        <button class="btn btn-ghost" data-detail-action="refresh">刷新</button>
-                        <button class="btn btn-ghost" data-detail-action="txns">记录</button>
-                        <button class="btn btn-ghost" data-detail-action="edit">编辑</button>
-                        <button class="btn btn-ghost" data-detail-action="reduce">加/减仓</button>
-                        <button class="btn btn-ghost" data-detail-action="interest">计息</button>
-                        <button class="btn btn-ghost" data-detail-action="delete" style="color:var(--expense)">删除</button>
+                        <button class="btn btn-ghost" data-detail-action="refresh" data-i18n="common.refresh">刷新</button>
+                        <button class="btn btn-ghost" data-detail-action="txns" data-i18n="inv.action.txns">记录</button>
+                        <button class="btn btn-ghost" data-detail-action="edit" data-i18n="common.edit">编辑</button>
+                        <button class="btn btn-ghost" data-detail-action="reduce" data-i18n="inv.action.reduce">加/减仓</button>
+                        <button class="btn btn-ghost" data-detail-action="interest" data-i18n="acc.action.interest">计息</button>
+                        <button class="btn btn-ghost" data-detail-action="delete" style="color:var(--expense)" data-i18n="common.delete">删除</button>
                     </div>
                 </div></div>
                 <!-- 理财：交易记录弹窗 -->
                 <div class="modal-overlay" id="invTxnsModal"><div class="modal glass-card modal-detail">
-                    <div class="modal-header"><h3 id="invTxnsTitle">交易记录</h3><button class="modal-close" id="invTxnsClose" aria-label="关闭">✕</button></div>
+                    <div class="modal-header"><h3 id="invTxnsTitle" data-i18n="inv.txns.title">交易记录</h3><button class="modal-close" id="invTxnsClose" aria-label="关闭" data-i18n-aria="common.close">✕</button></div>
                     <div class="modal-body" id="invTxnsBody"></div>
                 </div></div>
                 <!-- 理财：编辑交易记录弹窗 -->
                 <div class="modal-overlay" id="invEditTxnModal"><div class="modal glass-card modal-quick">
-                    <div class="modal-header"><h3 id="invEditTxnTitle">编辑交易</h3><button class="modal-close" id="invEditTxnClose">✕</button></div>
+                    <div class="modal-header"><h3 id="invEditTxnTitle" data-i18n="inv.editTxn.title">编辑交易</h3><button class="modal-close" id="invEditTxnClose">✕</button></div>
                     <form class="trans-form" id="invEditTxnForm"><input type="hidden" id="invEditTxnId"><input type="hidden" id="invEditInvId">
                         <div class="reduce-meta" id="invEditTxnType"></div>
                         <div class="form-row">
-                            <div class="form-group"><label>金额 (¥)</label><input type="number" id="invEditAmount" step="0.01" min="0" required></div>
-                            <div class="form-group" id="invEditPriceGroup"><label>单价 (¥)</label><input type="number" id="invEditPrice" step="0.0001" min="0" placeholder="单位净值/单价"></div>
+                            <div class="form-group"><label data-i18n="trans.form.amount">金额</label><input type="number" id="invEditAmount" step="0.01" min="0" required></div>
+                            <div class="form-group" id="invEditPriceGroup"><label data-i18n="inv.editTxn.price">单价</label><input type="number" id="invEditPrice" step="0.0001" min="0" placeholder="单位净值/单价" data-i18n-ph="inv.editTxn.pricePh"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group" id="invEditQtyGroup"><label>数量</label><input type="number" id="invEditQty" step="0.0001" min="0" placeholder="数量"></div>
-                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="invEditFee" step="0.01" min="0" value="0"></div>
+                            <div class="form-group" id="invEditQtyGroup"><label data-i18n="inv.reduce.qty">数量</label><input type="number" id="invEditQty" step="0.0001" min="0" placeholder="数量" data-i18n-ph="inv.reduce.qty"></div>
+                            <div class="form-group"><label data-i18n="inv.form.fee">手续费</label><input type="number" id="invEditFee" step="0.01" min="0" value="0"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>日期</label><input type="datetime-local" id="invEditDate" step="1" required></div>
-                            <div class="form-group"><label>备注</label><input type="text" id="invEditNote" placeholder="备注..."></div>
+                            <div class="form-group"><label data-i18n="inv.editTxn.date">日期</label><input type="datetime-local" id="invEditDate" step="1" required></div>
+                            <div class="form-group"><label data-i18n="trans.form.note">备注</label><input type="text" id="invEditNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="invEditCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="invEditSubmitBtn">保存修改</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="invEditCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" id="invEditSubmitBtn" data-i18n="profile.save">保存修改</button></div>
                     </form>
                 </div></div>
                 <!-- 理财：全屏网格铺开 -->
                 <div class="modal-overlay" id="invGridOverlay"><div class="inv-grid-panel">
                     <div class="modal-header inv-grid-header">
-                        <h3><span id="invGridTitle">全部持仓</span> · 共 <span id="invGridCount">0</span> 个</h3>
-                        <button class="modal-close" id="invGridClose" aria-label="关闭">✕</button>
+                        <!-- 「共 N 个」中英语序不同：整句由 investment.js 用 inv.grid.heading 插值渲染 -->
+                        <h3 id="invGridHeading"><span id="invGridTitle">全部持仓</span> · 共 <span id="invGridCount">0</span> 个</h3>
+                        <button class="modal-close" id="invGridClose" aria-label="关闭" data-i18n-aria="common.close">✕</button>
                     </div>
                     <div class="inv-grid" id="invGridBody"></div>
                 </div></div>

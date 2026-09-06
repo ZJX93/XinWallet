@@ -19,7 +19,7 @@ const BudgetManager = {
     },
     openModal() {
         document.getElementById('budgetModal').classList.add('show');
-        document.getElementById('budgetModalTitle').textContent = '添加预算';
+        document.getElementById('budgetModalTitle').textContent = tt('budget.modal.addTitle', '添加预算');
         document.getElementById('budgetEditId').value = '';
         document.getElementById('budgetName').value = '';
         document.getElementById('budgetAmount').value = '';
@@ -28,7 +28,7 @@ const BudgetManager = {
     },
     openEditModal(b) {
         document.getElementById('budgetModal').classList.add('show');
-        document.getElementById('budgetModalTitle').textContent = '编辑预算';
+        document.getElementById('budgetModalTitle').textContent = tt('budget.modal.editTitle', '编辑预算');
         document.getElementById('budgetEditId').value = b.id;
         document.getElementById('budgetName').value = b.name;
         document.getElementById('budgetAmount').value = b.amount;
@@ -42,14 +42,14 @@ const BudgetManager = {
         const amount = parseFloat(document.getElementById('budgetAmount').value);
         const periodType = document.getElementById('budgetPeriodTypeSelect').value;
         const baseDate = document.getElementById('budgetBaseMonthSelect').value + '-01';
-        if (!name) { showToast('请输入预算名称', 'error'); return; }
-        if (!amount || amount <= 0) { showToast('请输入有效金额', 'error'); return; }
+        if (!name) { showToast(tt('budget.toast.needName', '请输入预算名称'), 'error'); return; }
+        if (!amount || amount <= 0) { showToast(tt('budget.toast.needAmount', '请输入有效金额'), 'error'); return; }
         if (editId) {
             await api(`/budgets/${editId}`, 'PUT', { name, amount, period_type: periodType, base_date: baseDate });
-            showToast('预算已更新', 'success');
+            showToast(tt('budget.toast.updated', '预算已更新'), 'success');
         } else {
             await api('/budgets', 'POST', { name, amount, period_type: periodType, base_date: baseDate });
-            showToast('预算已设置', 'success');
+            showToast(tt('budget.toast.created', '预算已设置'), 'success');
         }
         this.closeModal();
         await this.refresh();
@@ -57,7 +57,7 @@ const BudgetManager = {
     async delete(id) {
         try {
             await api(`/budgets/${id}`, 'DELETE');
-            showToast('预算已删除', 'warning');
+            showToast(tt('budget.toast.deleted', '预算已删除'), 'warning');
             await this.refresh();
         } catch (err) {
             // api() 已显示错误 toast
@@ -97,7 +97,12 @@ const BudgetManager = {
         return { start, end };
     },
     periodLabel(type) {
-        const map = { month: '月度', quarter: '季度', half: '半年', year: '年度' };
+        const map = {
+            month: tt('budget.period.month', '月度'),
+            quarter: tt('budget.period.quarter', '季度'),
+            half: tt('budget.period.half', '半年'),
+            year: tt('budget.period.year', '年度')
+        };
         return map[type] || type;
     },
     async refresh() {
@@ -124,15 +129,15 @@ const BudgetManager = {
         bar.style.width = Math.min(rate, 100) + '%';
         bar.style.background = rate > 100 ? 'var(--accent-expense)' : rate > 80 ? 'var(--accent-warning)' : 'var(--accent-primary)';
 
-        if (!budgets.length) { showEmpty(container, '该周期还没有设置预算，点击「添加预算」开始规划'); return; }
+        if (!budgets.length) { showEmpty(container, tt('budget.empty', '该周期还没有设置预算，点击「添加预算」开始规划')); return; }
         container.innerHTML = budgets.map(b => {
             const r = Math.round(b.actual / b.amount * 100);
             const cls = r > 100 ? 'over' : r > 80 ? 'warning' : 'safe';
             const statusTag = r > 100
-                ? '<span class="goal-status overdue">已超支</span>'
+                ? `<span class="goal-status overdue">${escapeHtml(tt('budget.status.over', '已超支'))}</span>`
                 : r > 80
-                  ? '<span class="goal-status warn">即将超支</span>'
-                  : '<span class="goal-status type">正常</span>';
+                  ? `<span class="goal-status warn">${escapeHtml(tt('budget.status.warn', '即将超支'))}</span>`
+                  : `<span class="goal-status type">${escapeHtml(tt('budget.status.normal', '正常'))}</span>`;
             const periodLabel = this.periodLabel(b.period_type);
             const icon = { month: '📅', quarter: '📆', half: '🗓️', year: '📊' }[b.period_type] || '📋';
             return `
@@ -142,12 +147,12 @@ const BudgetManager = {
                     <div class="goal-title">${escapeHtml(b.name)} <span class="goal-sub">· ${periodLabel} · ${b.start_date} ~ ${b.end_date}</span></div>
                     ${statusTag}
                 </div>
-                <div class="goal-amounts"><span class="goal-pct">已使用 ${fmt(b.actual)}</span><span>预算 ${fmt(b.amount)}</span></div>
+                <div class="goal-amounts"><span class="goal-pct">${escapeHtml(tt('budget.card.used', '已使用 {amt}').replace('{amt}', fmt(b.actual)))}</span><span>${escapeHtml(tt('budget.card.budget', '预算 {amt}').replace('{amt}', fmt(b.amount)))}</span></div>
                 <div class="goal-progress"><div class="goal-progress-fill ${cls === 'over' ? 'danger' : ''}" style="width:${Math.min(r, 100)}%"></div></div>
-                <div class="goal-amounts"><span class="goal-pct">${r}% 使用率</span><span>${r > 100 ? '超支 ' + fmt(b.actual - b.amount) : '剩余 ' + fmt(b.amount - b.actual)}</span></div>
+                <div class="goal-amounts"><span class="goal-pct">${escapeHtml(tt('budget.card.usageRate', '{r}% 使用率').replace('{r}', String(r)))}</span><span>${r > 100 ? escapeHtml(tt('budget.card.over', '超支 {amt}').replace('{amt}', fmt(b.actual - b.amount))) : escapeHtml(tt('budget.card.remain', '剩余 {amt}').replace('{amt}', fmt(b.amount - b.actual)))}</span></div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="edit-budget" data-id="${b.id}">编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-budget" data-id="${b.id}">删除</button>
+                    <button class="btn btn-ghost" data-action="edit-budget" data-id="${b.id}">${escapeHtml(tt('budget.btn.edit', '编辑'))}</button>
+                    <button class="btn btn-ghost" data-action="delete-budget" data-id="${b.id}">${escapeHtml(tt('budget.btn.delete', '删除'))}</button>
                 </div>
             </div>
             `;

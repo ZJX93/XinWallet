@@ -27,6 +27,10 @@
     }
 
     function loadDict(lang) {
+        // 已静态注入（如 <script src="locales/zh-CN.js"></script>）则跳过网络加载，避免重复请求
+        if (global.I18N_DICT && global.I18N_DICT[lang]) {
+            return Promise.resolve(global.I18N_DICT[lang]);
+        }
         return new Promise((resolve, reject) => {
             const el = document.createElement('script');
             el.src = `locales/${lang}.js?t=${Date.now()}`;
@@ -53,6 +57,34 @@
         root.querySelectorAll('[data-i18n-ph]').forEach((n) => {
             const key = n.getAttribute('data-i18n-ph');
             if (key) n.setAttribute('placeholder', t(key));
+        });
+        // data-i18n-aria / data-i18n-title：让 ARIA 与 tooltip 也跟随切换（视觉无中文"盲区"）
+        root.querySelectorAll('[data-i18n-aria]').forEach((n) => {
+            const key = n.getAttribute('data-i18n-aria');
+            if (key) n.setAttribute('aria-label', t(key));
+        });
+        root.querySelectorAll('[data-i18n-title]').forEach((n) => {
+            const key = n.getAttribute('data-i18n-title');
+            if (key) n.setAttribute('title', t(key));
+        });
+        // data-i18n-val：input/select 的 value（极少用，例「所有月份」option）
+        root.querySelectorAll('[data-i18n-val]').forEach((n) => {
+            const key = n.getAttribute('data-i18n-val');
+            if (key) n.value = t(key);
+        });
+        // data-i18n-attrs：通用「任意属性 → 字典键」映射，格式 "attr:key;attr2:key2"。
+        // 用于 data-* 这类既非文本也非上述固定属性的场景，例如 AI 示例 chip 的
+        // data-example / data-q（点击后填入输入框或发给模型，必须随语言切换）。
+        root.querySelectorAll('[data-i18n-attrs]').forEach((n) => {
+            const spec = n.getAttribute('data-i18n-attrs');
+            if (!spec) return;
+            spec.split(';').forEach((pair) => {
+                const idx = pair.indexOf(':');
+                if (idx <= 0) return;
+                const attr = pair.slice(0, idx).trim();
+                const key = pair.slice(idx + 1).trim();
+                if (attr && key) n.setAttribute(attr, t(key));
+            });
         });
     }
 

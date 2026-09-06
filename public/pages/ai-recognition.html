@@ -1,19 +1,20 @@
             <section class="page" id="page-ai-recognition">
                 <!-- ===== AI v0.2 智能记账：一句话 → 预测快照 → 确认 → 原子落账 ===== -->
                 <div class="glass-card ai-smart-card">
-                    <h3 class="card-title">一句话记账</h3>
-                    <p class="card-desc">自然语言描述 → 本地规则快速匹配 → 模型语义理解 → 记账习惯兜底；确认后才入账，时间精确到秒</p>
+                    <h3 class="card-title" data-i18n="aiRec.smart.title">一句话记账</h3>
+                    <p class="card-desc" data-i18n="aiRec.smart.desc">自然语言描述 → 本地规则快速匹配 → 模型语义理解 → 记账习惯兜底；确认后才入账，时间精确到秒</p>
                     <textarea id="aiSmartText" class="ai-smart-input" rows="2"
+                              data-i18n-ph="aiRec.smart.placeholder"
                               placeholder="例如：今天星巴克咖啡 35.5，午饭 28&#10;支持多笔，一行或用逗号分隔（Ctrl + Enter 解析）"></textarea>
                     <div class="ai-smart-examples" id="aiSmartExamples">
-                        <span class="ai-smart-chip" data-example="星巴克咖啡35.5">星巴克咖啡35.5</span>
-                        <span class="ai-smart-chip" data-example="昨天打车28，午饭三十二块">昨天打车28，午饭三十二块</span>
-                        <span class="ai-smart-chip" data-example="工资到账15000元">工资到账15000元</span>
+                        <span class="ai-smart-chip" data-example="星巴克咖啡35.5" data-i18n="aiRec.smart.ex1" data-i18n-attrs="data-example:aiRec.smart.ex1">星巴克咖啡35.5</span>
+                        <span class="ai-smart-chip" data-example="昨天打车28，午饭三十二块" data-i18n="aiRec.smart.ex2" data-i18n-attrs="data-example:aiRec.smart.ex2">昨天打车28，午饭三十二块</span>
+                        <span class="ai-smart-chip" data-example="工资到账15000元" data-i18n="aiRec.smart.ex3" data-i18n-attrs="data-example:aiRec.smart.ex3">工资到账15000元</span>
                     </div>
                     <div class="ai-smart-actions">
-                        <button class="btn btn-primary btn-ai" id="aiSmartParseBtn">解析</button>
-                        <button class="btn btn-ghost btn-ai" id="aiSmartVoiceBtn" title="语音转写（Whisper）">按住说话</button>
-                        <span class="ai-smart-tip">解析结果需确认后才落账</span>
+                        <button class="btn btn-primary btn-ai" id="aiSmartParseBtn" data-i18n="aiRec.smart.parse">解析</button>
+                        <button class="btn btn-ghost btn-ai" id="aiSmartVoiceBtn" title="语音转写（Whisper）" data-i18n-title="aiRec.smart.voiceTip" data-i18n="aiRec.smart.voice">按住说话</button>
+                        <span class="ai-smart-tip" data-i18n="aiRec.smart.tip">解析结果需确认后才落账</span>
                     </div>
 
                     <!-- 解析中 -->
@@ -22,7 +23,7 @@
                             <div class="skeleton-line shimmer" style="width:70%"></div>
                             <div class="skeleton-line shimmer" style="width:52%"></div>
                         </div>
-                        <p class="ai-smart-loading-text">正在解析并评估置信度...</p>
+                        <p class="ai-smart-loading-text" data-i18n="aiRec.smart.loading">正在解析并评估置信度...</p>
                     </div>
 
                     <!-- 确认区 -->
@@ -30,8 +31,8 @@
                         <div id="aiSmartVerdict" class="ai-smart-verdict"></div>
                         <div id="aiSmartList" class="ai-smart-list"></div>
                         <div class="ai-smart-confirm-actions">
-                            <button class="btn btn-primary" id="aiSmartCommitBtn">确认并记账</button>
-                            <button class="btn btn-ghost" id="aiSmartDiscardBtn">弃置</button>
+                            <button class="btn btn-primary" id="aiSmartCommitBtn" data-i18n="aiRec.smart.commit">确认并记账</button>
+                            <button class="btn btn-ghost" id="aiSmartDiscardBtn" data-i18n="aiRec.smart.discard">弃置</button>
                         </div>
                     </div>
                 </div>
@@ -39,73 +40,73 @@
                 <!-- OCR 上传 + 账单导入（双栏） -->
                 <div class="ai-scan-top">
                     <div class="glass-card">
-                        <h3 class="card-title">上传账单截图</h3>
-                        <p class="card-desc">OCR 提取文字后由 AI 解析为交易记录，日期按原文时刻精确到秒</p>
+                        <h3 class="card-title" data-i18n="aiRec.ocr.title">上传账单截图</h3>
+                        <p class="card-desc" data-i18n="aiRec.ocr.desc">OCR 提取文字后由 AI 解析为交易记录，日期按原文时刻精确到秒</p>
                         <div class="ocr-upload-area" id="ocrUploadArea">
                             <input type="file" id="ocrImageInput" accept="image/*" style="display:none">
                             <div class="ocr-upload-placeholder" id="ocrUploadPlaceholder">
-                                <p>点击或拖拽上传账单截图</p>
-                                <p class="ocr-upload-hint">支持 JPG / PNG / WebP，不超过 5MB</p>
+                                <p data-i18n="aiRec.ocr.dropHint">点击或拖拽上传账单截图</p>
+                                <p class="ocr-upload-hint" data-i18n="aiRec.ocr.formatHint">支持 JPG / PNG / WebP，不超过 5MB</p>
                             </div>
-                            <img id="ocrPreview" class="ocr-preview" style="display:none" alt="预览">
+                            <img id="ocrPreview" class="ocr-preview" style="display:none" alt="预览" data-i18n-attrs="alt:aiRec.ocr.previewAlt">
                             <div class="ocr-upload-actions">
-                                <button class="btn btn-primary btn-ai" id="ocrRecognizeBtn" disabled>识别并解析</button>
-                                <button class="btn btn-ghost" id="ocrClearBtn">重新选择</button>
+                                <button class="btn btn-primary btn-ai" id="ocrRecognizeBtn" disabled data-i18n="aiRec.ocr.recognize">识别并解析</button>
+                                <button class="btn btn-ghost" id="ocrClearBtn" data-i18n="aiRec.ocr.reselect">重新选择</button>
                             </div>
                         </div>
                     </div>
                     <div class="glass-card">
-                        <h3 class="card-title">账单导入（支付宝/微信）</h3>
-                        <p class="card-desc">直接导入导出的账单文件，自动识别并匹配记账分类</p>
+                        <h3 class="card-title" data-i18n="aiRec.bill.title">账单导入（支付宝/微信）</h3>
+                        <p class="card-desc" data-i18n="aiRec.bill.desc">直接导入导出的账单文件，自动识别并匹配记账分类</p>
                         <div class="bill-upload-area" id="billUploadArea">
                             <input type="file" id="billFileInput" accept=".csv,.xls,.xlsx" style="display:none">
                             <div class="ocr-upload-placeholder" id="billUploadPlaceholder">
-                                <p>点击或拖拽上传账单文件</p>
-                                <p class="ocr-upload-hint">支持支付宝/微信导出的 CSV、XLS、XLSX</p>
+                                <p data-i18n="aiRec.bill.dropHint">点击或拖拽上传账单文件</p>
+                                <p class="ocr-upload-hint" data-i18n="aiRec.bill.formatHint">支持支付宝/微信导出的 CSV、XLS、XLSX</p>
                             </div>
                             <div class="bill-file-info" id="billFileInfo" style="display:none">
                                 <div class="bill-file-name" id="billFileName"></div>
                                 <div class="bill-file-meta" id="billFileMeta"></div>
                             </div>
                             <div class="ocr-upload-actions">
-                                <button class="btn btn-primary btn-ai" id="billParseBtn" disabled>解析账单</button>
-                                <button class="btn btn-ghost" id="billClearBtn">重新选择</button>
+                                <button class="btn btn-primary btn-ai" id="billParseBtn" disabled data-i18n="aiRec.bill.parse">解析账单</button>
+                                <button class="btn btn-ghost" id="billClearBtn" data-i18n="aiRec.ocr.reselect">重新选择</button>
                             </div>
                         </div>
                         <div class="bill-format-tip">
-                            <span>支付宝：我的→账单→开具交易流水证明（Excel）；微信：服务→钱包→账单→下载账单（Excel）</span>
+                            <span data-i18n="aiRec.bill.formatTip">支付宝：我的→账单→开具交易流水证明（Excel）；微信：服务→钱包→账单→下载账单（Excel）</span>
                         </div>
                     </div>
                 </div>
                 <!-- 识别结果 -->
                 <div class="ai-results" id="aiResults" style="display:none">
-                    <h4 class="ai-results-title">识别结果</h4>
+                    <h4 class="ai-results-title" data-i18n="aiRec.results.title">识别结果</h4>
                     <div class="ocr-text-preview" id="ocrTextPreview" style="display:none"></div>
                     <div id="aiResultsList"></div>
                     <div class="ai-results-actions">
-                    <button class="btn btn-primary" id="aiImportAllBtn">全部导入为交易</button>
-                    <button class="btn btn-ghost btn-ai" id="ocrRetranscribeBtn" style="display:none" title="上次识别有误，强制用腾讯 OCR 重新识别">识别有误？换腾讯 OCR 重试</button>
+                    <button class="btn btn-primary" id="aiImportAllBtn" data-i18n="aiRec.results.importAll">全部导入为交易</button>
+                    <button class="btn btn-ghost btn-ai" id="ocrRetranscribeBtn" style="display:none" title="上次识别有误，强制用腾讯 OCR 重新识别" data-i18n-title="aiRec.results.retranscribeTip" data-i18n="aiRec.results.retranscribe">识别有误？换腾讯 OCR 重试</button>
                 </div>
                 </div>
                 <!-- OCR 加载 -->
                 <div id="ocrLoading" style="display:none;text-align:center;padding:24px">
                     <div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div><div class="skeleton-line shimmer" style="width:84%"></div></div>
-                    <p style="margin-top:8px;color:var(--text-tertiary)">正在识别并解析...</p>
+                    <p style="margin-top:8px;color:var(--text-tertiary)" data-i18n="aiRec.ocr.loading">正在识别并解析...</p>
                 </div>
 
                 <!-- AI 助手对话 -->
                 <div class="glass-card ai-chat-card" style="margin-top:16px">
-                    <h3 class="card-title">AI 助手</h3>
-                    <p class="card-desc">问账、改账、答疑（只读咨询 + 改删已存在交易，不直接记账）</p>
+                    <h3 class="card-title" data-i18n="aiRec.chat.title">AI 助手</h3>
+                    <p class="card-desc" data-i18n="aiRec.chat.desc">问账、改账、答疑（只读咨询 + 改删已存在交易，不直接记账）</p>
                     <div class="ai-chat-messages" id="aiChatMessages"></div>
                     <div class="ai-chat-input-row">
-                        <textarea id="aiChatInput" class="ai-chat-input" rows="1" placeholder="例如：上月餐饮花了多少？把昨天午餐改成外卖"></textarea>
-                        <button class="btn btn-primary btn-ai" id="aiChatSend">发送</button>
+                        <textarea id="aiChatInput" class="ai-chat-input" rows="1" placeholder="例如：上月餐饮花了多少？把昨天午餐改成外卖" data-i18n-ph="aiRec.chat.placeholder"></textarea>
+                        <button class="btn btn-primary btn-ai" id="aiChatSend" data-i18n="aiRec.chat.send">发送</button>
                     </div>
                     <div class="ai-chat-quick">
-                        <span class="ai-chat-chip" data-q="上月餐饮花了多少？">上月餐饮</span>
-                        <span class="ai-chat-chip" data-q="这个月预算超支了吗？">预算超支？</span>
-                        <span class="ai-chat-chip" data-q="把昨天午餐改成外卖">改一笔</span>
+                        <span class="ai-chat-chip" data-q="上月餐饮花了多少？" data-i18n="aiRec.chat.chip.lastMonthFood" data-i18n-attrs="data-q:aiRec.chat.q.lastMonthFood">上月餐饮</span>
+                        <span class="ai-chat-chip" data-q="这个月预算超支了吗？" data-i18n="aiRec.chat.chip.budgetOver" data-i18n-attrs="data-q:aiRec.chat.q.budgetOver">预算超支？</span>
+                        <span class="ai-chat-chip" data-q="把昨天午餐改成外卖" data-i18n="aiRec.chat.chip.editOne" data-i18n-attrs="data-q:aiRec.chat.q.editOne">改一笔</span>
                     </div>
                     <style>
                     .ai-chat-messages { min-height:120px; max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:8px 0; }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="referrer" content="no-referrer-when-downgrade">
-    <title>登录 · 鑫钱包</title>
+    <title data-i18n="login.title">登录 · 鑫钱包</title>
     <link rel="icon" type="image/png" href="images/logo.png">
     <!-- 按钮字体：免费开源「朱雀仿宋」(Zhuque Fangsong, OFL-1.1) 自托管子集，零外网依赖 -->
     <link rel="stylesheet" href="./css/fonts/zhuque.css">
@@ -15,55 +15,59 @@
     <!-- API 基址推导 = 复用 js/config.js（路径豁免跳转） -->
     <script src="js/config.js"></script>
     <script src="js/auth-keys.js"></script>
+    <!-- i18n 字典脚本（zh-CN + en-US 在 locales 下，data-i18n 框架见 js/i18n.js） -->
+    <script src="locales/zh-CN.js?v=2"></script>
+    <script src="locales/en-US.js?v=2"></script>
+    <script src="js/i18n.js?v=2"></script>
 </head>
 <body>
     <div class="login-page">
         <div class="login-card">
             <div class="login-brand">
                 <span class="logo-icon"></span>
-                <span class="logo-text">鑫钱包</span>
+                <span class="logo-text" data-i18n="app.name">鑫钱包</span>
             </div>
-            <p class="login-sub">Smart Finance · 个人财务管理</p>
+            <p class="login-sub" data-i18n="login.sub">Smart Finance · 个人财务管理</p>
 
             <div class="auth-tabs">
-                <button class="auth-tab active" data-tab="login">登录</button>
-                <button class="auth-tab" data-tab="register">注册</button>
+                <button class="auth-tab active" data-tab="login" data-i18n="login.tab.login">登录</button>
+                <button class="auth-tab" data-tab="register" data-i18n="login.tab.register">注册</button>
             </div>
 
             <form class="auth-form" id="authForm">
                 <div class="form-group" id="authNickGroup" style="display:none">
-                    <label>昵称</label>
-                    <input type="text" id="authNick" placeholder="昵称（可选）" autocomplete="nickname">
+                    <label data-i18n="login.nick.label">昵称</label>
+                    <input type="text" id="authNick" placeholder="昵称（可选）" data-i18n-ph="login.nick.ph" autocomplete="nickname">
                 </div>
                 <div class="form-group">
-                    <label>用户名</label>
-                    <input type="text" id="authUser" required placeholder="请输入用户名" autocomplete="username">
+                    <label data-i18n="login.username.label">用户名</label>
+                    <input type="text" id="authUser" required placeholder="请输入用户名" data-i18n-ph="login.username.ph" autocomplete="username">
                 </div>
                 <div class="form-group">
-                    <label>密码</label>
-                    <input type="password" id="authPass" required placeholder="请输入密码" autocomplete="current-password">
+                    <label data-i18n="login.password.label">密码</label>
+                    <input type="password" id="authPass" required placeholder="请输入密码" data-i18n-ph="login.password.ph" autocomplete="current-password">
                 </div>
                 <!-- 「记住密码」：勾选后密码经 WebCrypto AES-GCM 加密存 localStorage，
                      密钥用 extractable:false 存 IndexedDB（JS 拿不到密钥原文）。
                      ⛔ 别改成直接 localStorage.setItem(密码) —— 那是明文，XSS 一读就走。 -->
                 <label class="remember-row" for="authRemember">
                     <input type="checkbox" id="authRemember">
-                    <span>记住密码</span>
+                    <span data-i18n="login.remember">记住密码</span>
                 </label>
                 <div class="auth-hint" id="authHint" role="status" aria-live="polite"></div>
-                <button type="submit" class="btn btn-primary btn-block" id="authSubmit">登 录</button>
+                <button type="submit" class="btn btn-primary btn-block" id="authSubmit" data-i18n="login.submit.login">登 录</button>
             </form>
 
             <div class="demo-hint">
-                <p>首次使用？可直接登录演示账号</p>
-                <button type="button" class="btn btn-ghost btn-block" id="demoLoginBtn">使用演示账号登录</button>
+                <p data-i18n="login.demo.hint">首次使用？可直接登录演示账号</p>
+                <button type="button" class="btn btn-ghost btn-block" id="demoLoginBtn" data-i18n="login.demo.submit">使用演示账号登录</button>
             </div>
         </div>
     </div>
 
     <!-- ⛔ 改 login.css / login.js 必须 bump 这里的 ?v= —— 原本这两个资源没带版本号，
          改完浏览器会一直吃缓存，表现为「代码改了没生效」。 -->
-    <script src="js/utils.js"></script>
-    <script src="js/login.js?v=4"></script>
+    <script src="js/utils.js?v=29"></script>
+    <script src="js/login.js?v=5"></script>
 </body>
 </html>

@@ -60,7 +60,7 @@ const QuickAdd = {
         // （空 select + required 会让表单永远 invalid，记一笔直接卡住）
         const hasCats = sel.options.length > 0;
         sel.required = hasCats;
-        if (!hasCats) sel.innerHTML = '<option value="">（暂无类别，将由系统自动归类）</option>';
+        if (!hasCats) sel.innerHTML = `<option value="">${escapeHtml(tt('quick.noCatPlaceholder', '（暂无类别，将由系统自动归类）'))}</option>`;
     },
     updateAccSelect() {
         document.getElementById('quickAccount').innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
@@ -75,7 +75,7 @@ const QuickAdd = {
             const budgets = await api('/budgets');
             if (budgets && budgets.length) {
                 document.getElementById('quickBudget').innerHTML =
-                    '<option value="">不关联</option>' +
+                    `<option value="">${escapeHtml(tt('trans.form.noBudget', '不关联'))}</option>` +
                     budgets.map(b => `<option value="${b.id}">${escapeHtml(b.name)} (${fmt(b.amount)})</option>`).join('');
             }
         } catch (_) { /* 预算加载失败不影响记账 */ }
@@ -106,12 +106,12 @@ const QuickAdd = {
             const amount = parseFloat(document.getElementById('quickTransferAmount').value);
             const note = document.getElementById('quickNote').value;
             const date = document.getElementById('quickDate').value;
-            if (!amount || amount <= 0) { showToast('请输入有效金额', 'error'); return; }
-            if (fromId === toId) { showToast('转出和转入不能是同一账户', 'error'); return; }
+            if (!amount || amount <= 0) { showToast(tt('quick.toast.invalidAmount', '请输入有效金额'), 'error'); return; }
+            if (fromId === toId) { showToast(tt('quick.toast.sameAccount', '转出和转入不能是同一账户'), 'error'); return; }
             // 为空时服务端兜底「一般转账」，不阻塞提交
             const catId = parseInt(document.getElementById('quickCategory').value) || null;
             await api('/transfers', 'POST', { from_account_id: fromId, to_account_id: toId, amount, note, date: date || undefined, category_id: catId });
-            showToast('转账记录成功！', 'success');
+            showToast(tt('quick.toast.transferOk', '转账记录成功！'), 'success');
         } else {
             // ---- 收支模式 ----
             const body = {
@@ -122,9 +122,9 @@ const QuickAdd = {
                 note: document.getElementById('quickNote').value,
                 budget_id: document.getElementById('quickBudget').value ? parseInt(document.getElementById('quickBudget').value) : null,
             };
-            if (!body.amount || body.amount <= 0) { showToast('请输入有效金额', 'error'); return; }
+            if (!body.amount || body.amount <= 0) { showToast(tt('quick.toast.invalidAmount', '请输入有效金额'), 'error'); return; }
             await api('/transactions', 'POST', body);
-            showToast('记账成功！', 'success');
+            showToast(tt('quick.toast.saveOk', '记账成功！'), 'success');
         }
 
         this.close();

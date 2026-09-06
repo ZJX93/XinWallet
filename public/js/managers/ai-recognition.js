@@ -33,7 +33,7 @@ const AIRecognition = {
     renderNoProvider(containerId) {
         const container = document.getElementById(containerId);
         if (container) {
-            container.innerHTML = `<div class="empty-hint"><p>未配置 AI 服务商</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
+            container.innerHTML = `<div class="empty-hint"><p>${escapeHtml(tt('aiRec.noProvider', '未配置 AI 服务商'))}</p><button class="btn btn-ghost btn-ai" style="margin-top:12px" data-goto-ai-config>${escapeHtml(tt('aiRec.gotoConfig', '前往 AI 配置'))}</button></div>`;
             // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
             container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
         }
@@ -86,8 +86,8 @@ const AIRecognition = {
     },
 
     handleFile(file) {
-        if (!file || !file.type.startsWith('image/')) { showToast('请选择图片文件', 'warning'); return; }
-        if (file.size > 10 * 1024 * 1024) { showToast('图片不能超过 10MB', 'warning'); return; }
+        if (!file || !file.type.startsWith('image/')) { showToast(tt('aiRec.selectImage', '请选择图片文件'), 'warning'); return; }
+        if (file.size > 10 * 1024 * 1024) { showToast(tt('aiRec.imageTooLarge', '图片不能超过 10MB'), 'warning'); return; }
         this.selectedFile = file;
         const url = URL.createObjectURL(file);
         document.getElementById('ocrPreview').src = url;
@@ -147,7 +147,7 @@ const AIRecognition = {
         const validExts = ['.csv', '.xls', '.xlsx'];
         const name = file.name.toLowerCase();
         if (!validExts.some(ext => name.endsWith(ext))) {
-            showToast('仅支持 CSV / XLS / XLSX 格式', 'warning'); return;
+            showToast(tt('aiRec.onlyCsvXls', '仅支持 CSV / XLS / XLSX 格式'), 'warning'); return;
         }
         this.billFile = file;
         document.getElementById('billFileInfo').style.display = 'block';
@@ -169,7 +169,7 @@ const AIRecognition = {
         if (!this.billFile) return;
         const btn = document.getElementById('billParseBtn');
         btn.disabled = true;
-        btn.textContent = '解析中...';
+        btn.textContent = tt('aiRec.parsing', '解析中...');
         document.getElementById('aiResults').style.display = 'none';
         document.getElementById('ocrTextPreview').style.display = 'none';
 
@@ -183,7 +183,7 @@ const AIRecognition = {
                         const s = document.createElement('script');
                         s.src = 'js/vendor/xlsx.full.min.js';
                         s.onload = resolve;
-                        s.onerror = () => reject(new Error('xlsx.full.min.js 加载失败'));
+                        s.onerror = () => reject(new Error(tt('aiRec.xlsxLoadFail', 'xlsx.full.min.js 加载失败')));
                         document.head.appendChild(s);
                     });
                 }
@@ -232,20 +232,20 @@ const AIRecognition = {
                 }
             }
 
-            if (!rows || rows.length < 2) throw new Error('账单文件为空或格式不正确');
+            if (!rows || rows.length < 2) throw new Error(tt('aiRec.billEmpty', '账单文件为空或格式不正确'));
 
             const { headerRow, format } = this.detectBillFormat(rows);
             const items = this.parseBillRows(rows, headerRow, format, isCsv);
-            if (items.length === 0) throw new Error('未能从账单中识别到交易记录，请确认文件格式');
+            if (items.length === 0) throw new Error(tt('aiRec.billNoTxn', '未能从账单中识别到交易记录，请确认文件格式'));
 
             this.parsedItems = items;
             this.renderOcrResults();
-            showToast(`解析 ${items.length} 条记录（${format}）`, 'success');
+            showToast(tt('aiRec.parseOk', '解析 {n} 条记录（{format}）').replace('{n}', String(items.length)).replace('{format}', format), 'success');
         } catch (err) {
-            showToast(err.message || '解析失败', 'error');
+            showToast(err.message || tt('aiRec.parseFail', '解析失败'), 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = '解析账单';
+            btn.textContent = tt('aiRec.parseBtn', '解析账单');
         }
     },
 
@@ -464,7 +464,7 @@ const AIRecognition = {
     async ocrRecognize() {
         if (!this.selectedFile) return;
         if (!(await this.checkProvider())) {
-            showToast('未配置 AI 服务商，请前往 AI 配置', 'warning');
+            showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
             return;
         }
         const formData = new FormData();
@@ -492,7 +492,7 @@ const AIRecognition = {
                 body: formData
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.message || 'OCR 识别失败');
+            if (!data.success) throw new Error(data.message || tt('aiRec.ocrFail', 'OCR 识别失败'));
             this.parsedItems = (data.data && data.data.items) || [];
             document.getElementById('ocrLoading').style.display = 'none';
 
@@ -510,13 +510,13 @@ const AIRecognition = {
             }
 
             if (this.parsedItems.length === 0) {
-                showToast('未能识别到交易项', 'warning');
+                showToast(tt('aiRec.noTxn', '未能识别到交易项'), 'warning');
                 return;
             }
             this.renderOcrResults();
         } catch (err) {
             document.getElementById('ocrLoading').style.display = 'none';
-            showToast(err.message || '识别失败', 'error');
+            showToast(err.message || tt('aiRec.recognizeFail', '识别失败'), 'error');
         } finally {
             document.getElementById('ocrRecognizeBtn').disabled = false;
         }
@@ -526,9 +526,9 @@ const AIRecognition = {
     // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图。
     // 响应结构与 /ocr 一致，故复用同一套结果处理逻辑。
     async ocrRetranscribe() {
-        if (!this.selectedFile) { showToast('请先上传图片', 'warning'); return; }
+        if (!this.selectedFile) { showToast(tt('aiRec.uploadFirst', '请先上传图片'), 'warning'); return; }
         if (!(await this.checkProvider())) {
-            showToast('未配置 AI 服务商，请前往 AI 配置', 'warning');
+            showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
             return;
         }
         const btn = document.getElementById('ocrRetranscribeBtn');
@@ -544,7 +544,7 @@ const AIRecognition = {
                 body: formData
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.message || '重识别失败');
+            if (!data.success) throw new Error(data.message || tt('aiRec.rerecognizeFail', '重识别失败'));
             this.parsedItems = (data.data && data.data.items) || [];
             if (data.data && data.data.text) {
                 const tp = document.getElementById('ocrTextPreview');
@@ -553,13 +553,13 @@ const AIRecognition = {
             }
             if (data.data && data.data.reason) showToast(data.data.reason, 'warning');
             if (this.parsedItems.length === 0) {
-                showToast('重识别仍未识别到交易项', 'warning');
+                showToast(tt('aiRec.rerecognizeNoTxn', '重识别仍未识别到交易项'), 'warning');
                 return;
             }
             this.renderOcrResults();
-            showToast('腾讯 OCR 重新识别完成', 'success');
+            showToast(tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'), 'success');
         } catch (err) {
-            showToast(err.message || '重识别失败', 'error');
+            showToast(err.message || tt('aiRec.rerecognizeFail', '重识别失败'), 'error');
         } finally {
             document.getElementById('ocrLoading').style.display = 'none';
             if (btn) btn.disabled = false;
@@ -594,8 +594,8 @@ const AIRecognition = {
                 </div>
                 <div class="ai-edit-col ai-edit-type">
                     <select class="ai-edit-type-sel" data-field="type" data-idx="${i}">
-                        <option value="expense" ${!isIncome ? 'selected' : ''}>支出</option>
-                        <option value="income" ${isIncome ? 'selected' : ''}>收入</option>
+                        <option value="expense" ${!isIncome ? 'selected' : ''}>${escapeHtml(tt('aiRec.type.expense', '支出'))}</option>
+                        <option value="income" ${isIncome ? 'selected' : ''}>${escapeHtml(tt('aiRec.type.income', '收入'))}</option>
                     </select>
                 </div>
                 <div class="ai-edit-col ai-edit-cat">
@@ -610,7 +610,7 @@ const AIRecognition = {
                     <input class="ai-edit-date-inp" type="datetime-local" step="1" value="${dateVal}" data-field="date" data-idx="${i}">
                 </div>
                 <div class="ai-edit-col ai-edit-note">
-                    <input class="ai-edit-note-inp" type="text" value="${escapeHtml(item.note || item.name || '')}" placeholder="备注" data-field="note" data-idx="${i}">
+                    <input class="ai-edit-note-inp" type="text" value="${escapeHtml(item.note || item.name || '')}" placeholder="${tt('aiRec.notePlaceholder', '备注')}" data-field="note" data-idx="${i}">
                 </div>
                 <div class="ai-edit-col ai-edit-del">
                     <button class="ai-edit-del-btn" data-idx="${i}" title="删除此行">✕</button>
@@ -678,7 +678,7 @@ const AIRecognition = {
     async importAll() {
         if (this.parsedItems.length === 0) return;
         const accountId = cache.accounts[0]?.id;
-        if (!accountId) { showToast('请先创建账户', 'error'); return; }
+        if (!accountId) { showToast(tt('aiRec.needAccount', '请先创建账户'), 'error'); return; }
 
         const tasks = this.parsedItems
             .filter(item => parseFloat(item.amount) > 0)
@@ -698,7 +698,7 @@ const AIRecognition = {
 
         const results = await Promise.allSettled(tasks);
         const imported = results.filter(r => r.status === 'fulfilled' && r.value).length;
-        showToast(`成功导入 ${imported}/${this.parsedItems.length} 条`, imported > 0 ? 'success' : 'error');
+        showToast(tt('aiRec.importOk', '成功导入 {n}/{m} 条').replace('{n}', String(imported)).replace('{m}', String(this.parsedItems.length)), imported > 0 ? 'success' : 'error');
         document.getElementById('aiResults').style.display = 'none';
         document.getElementById('ocrTextPreview').style.display = 'none';
         this.parsedItems = [];

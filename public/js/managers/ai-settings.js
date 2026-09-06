@@ -65,10 +65,10 @@ const AISettings = {
         const payload = this.collect();
         const res = await api('/ai/settings', 'PUT', { settings: payload });
         if (!res) return;
-        showToast('AI 识别设置已保存', 'success');
+        showToast(tt('aiSettings.toast.saved', 'AI 识别设置已保存'), 'success');
         this.current = res.settings;
         this.fill();
-        this.setMsg('设置已保存，新的识别请求将立即生效。', 'success');
+        this.setMsg(tt('aiSettings.msg.saved', '设置已保存，新的识别请求将立即生效。'), 'success');
     },
 
     setMsg(text, type = '') {

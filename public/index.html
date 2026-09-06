@@ -28,35 +28,35 @@
          HEADER
          ============================================================ -->
     <header class="app-header">
-        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="菜单">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="菜单" data-i18n-aria="header.menu">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
-        <a class="logo" href="/" aria-label="鑫钱包首页">
+        <a class="logo" href="/" aria-label="鑫钱包首页" data-i18n-aria="header.home">
             <span class="logo-icon"></span>
-            <span class="logo-text">鑫钱包</span>
-            <span class="logo-sub">Personal Finance</span>
+            <span class="logo-text" data-i18n="app.name">鑫钱包</span>
+            <span class="logo-sub" data-i18n="app.subtitle">Personal Finance</span>
         </a>
         <div class="app-header-actions">
             <div class="book-switcher" id="bookSwitcher"></div>
             <div class="theme-switcher">
-                <button class="theme-btn" data-theme="light" title="亮色">☀️</button>
-                <button class="theme-btn active" data-theme="dark" title="暗色">🌙</button>
-                <button class="theme-btn" data-theme="system" title="跟随系统">💻</button>
+                <button class="theme-btn" data-theme="light" title="亮色" data-i18n-title="theme.light">☀️</button>
+                <button class="theme-btn active" data-theme="dark" title="暗色" data-i18n-title="theme.dark">🌙</button>
+                <button class="theme-btn" data-theme="system" title="跟随系统" data-i18n-title="theme.system">💻</button>
             </div>
             <div class="currency-switcher" id="currencySwitcher" style="position:relative;display:inline-flex">
-                <button class="btn btn-ghost btn-icon" id="currencyBtn" aria-label="本位币" title="Base Currency" style="font-size:14px">¥</button>
+                <button class="btn btn-ghost btn-icon" id="currencyBtn" aria-label="本位币" title="Base Currency" data-i18n-aria="header.baseCurrency" data-i18n-title="currency.menuTitle" style="font-size:14px">¥</button>
                 <div class="currency-menu" id="currencyMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.25)"></div>
             </div>
             <div class="lang-switcher" id="langSwitcher" style="position:relative;display:inline-flex">
-                <button class="btn btn-ghost btn-icon" id="langBtn" aria-label="语言" title="Language" style="font-size:14px">🌐</button>
+                <button class="btn btn-ghost btn-icon" id="langBtn" aria-label="语言" title="Language" data-i18n-aria="header.language" data-i18n-title="lang.switch" style="font-size:14px">🌐</button>
                 <div class="lang-menu" id="langMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:120px;box-shadow:0 8px 24px rgba(0,0,0,.25)">
-                    <button class="lang-opt" data-lang="zh-CN" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">中文</button>
-                    <button class="lang-opt" data-lang="en-US" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px">English</button>
+                    <button class="lang-opt" data-lang="zh-CN" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px" data-i18n="lang.zh">中文</button>
+                    <button class="lang-opt" data-lang="en-US" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px" data-i18n="lang.en">English</button>
                 </div>
             </div>
-            <button class="btn btn-ghost btn-icon" id="aiStatusBtn" title="AI 系统状态" aria-label="AI 系统状态">⚙️</button>
+            <button class="btn btn-ghost btn-icon" id="aiStatusBtn" title="AI 系统状态" aria-label="AI 系统状态" data-i18n-title="header.aiStatus" data-i18n-aria="header.aiStatus">⚙️</button>
             <div class="user-menu" id="userMenu">
-                <button class="user-profile-trigger" id="profileTrigger" title="个人资料" type="button">
+                <button class="user-profile-trigger" id="profileTrigger" title="个人资料" data-i18n-title="header.profile" type="button">
                     <span class="user-avatar" id="userAvatar">👤</span>
                     <span class="user-name" id="userName">demo</span>
                 </button>
@@ -118,8 +118,8 @@
         <main class="main-content">
             <header class="top-bar">
                 <div class="top-bar-left">
-                    <h1 class="page-title" id="pageTitle">仪表盘</h1>
-                    <p class="page-subtitle" id="pageSubtitle">财务总览与快速洞察</p>
+                    <h1 class="page-title" id="pageTitle" data-i18n="pageTitle.dashboard">仪表盘</h1>
+                    <p class="page-subtitle" id="pageSubtitle" data-i18n="pageSubtitle.dashboard">财务总览与快速洞察</p>
                 </div>
                 <div class="top-bar-right">
                     <div class="quick-add-btn" id="quickAddBtn" data-i18n="header.quickAdd">快速记账</div>
@@ -132,11 +132,11 @@
             <!-- ========== 账户管理 ========== -->
             <section class="page" id="page-accounts">
                 <div class="glass-card">
-                    <h3 class="card-title">我的账户 <span style="font-size:12px;color:var(--text-tertiary)">总资产 <strong id="accTotalAssets" style="color:var(--interactive-default)">¥0</strong></span></h3>
+                    <h3 class="card-title"><span data-i18n="acc.myAccounts">我的账户</span> <span style="font-size:12px;color:var(--text-tertiary)"><span data-i18n="acc.totalAssets">总资产</span> <strong id="accTotalAssets" style="color:var(--interactive-default)">¥0</strong></span></h3>
                     <div class="acc-toolbar">
-                        <button class="btn btn-primary" id="addAccountBtn">新增账户</button>
-                        <button class="btn btn-ghost" id="reconcileBtn" title="以账本为准，重算并修正账户余额（复式记账防漂移）">重新对账</button>
-                        <label class="acc-toggle"><input type="checkbox" id="showClosedAcc"> <span>显示已销户账户</span></label>
+                        <button class="btn btn-primary" id="addAccountBtn" data-i18n="acc.add">新增账户</button>
+                        <button class="btn btn-ghost" id="reconcileBtn" title="以账本为准，重算并修正账户余额（复式记账防漂移）" data-i18n="acc.reconcile" data-i18n-title="acc.reconcileTip">重新对账</button>
+                        <label class="acc-toggle"><input type="checkbox" id="showClosedAcc"> <span data-i18n="acc.showClosed">显示已销户账户</span></label>
                     </div>
                     <div class="account-list" id="accountList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
@@ -146,54 +146,54 @@
             <section class="page" id="page-transactions">
                 <div class="filter-bar">
                     <div class="filter-bar-top">
-                        <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="transSearch" placeholder="搜索交易..."></div>
-                        <button class="btn btn-primary" id="addTransBtn">新增交易</button>
+                        <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="transSearch" placeholder="搜索交易..." data-i18n-ph="trans.searchPh"></div>
+                        <button class="btn btn-primary" id="addTransBtn" data-i18n="trans.add">新增交易</button>
                     </div>
                 </div>
                 <div class="trans-list" id="transList">
                     <div class="trans-table">
                         <div class="trans-thead">
-                            <div class="trans-th trans-col-time"><select id="transMonthFilter" class="filter-select"><option value="all">所有月份</option></select></div>
-                            <div class="trans-th trans-col-type"><select id="transTypeFilter" class="filter-select"><option value="all">全部类型</option><option value="income">收入</option><option value="expense">支出</option><option value="transfer">转账</option></select></div>
-                            <div class="trans-th trans-col-cat"><select id="transCatFilter" class="filter-select"><option value="all">所有类别</option></select></div>
-                            <div class="trans-th trans-col-amount"><div class="filter-amount-box"><button type="button" id="transAmountBtn" class="filter-select filter-amount-btn-drop" title="金额筛选"><span id="transAmountLabel">金额</span><span class="filter-amount-arrow">▾</span></button><div id="transAmountPanel" class="filter-amount-panel" style="display:none"><div class="filter-amount-panel-ops"><button type="button" class="amt-op-btn active" data-op="all">全部</button><button type="button" class="amt-op-btn" data-op="gt">大于</button><button type="button" class="amt-op-btn" data-op="lt">小于</button><button type="button" class="amt-op-btn" data-op="eq">等于</button><button type="button" class="amt-op-btn" data-op="ne">不等于</button><button type="button" class="amt-op-btn" data-op="bt">介于</button><button type="button" class="amt-op-btn" data-op="nb">不介于</button></div><div class="filter-amount-panel-inputs" id="transAmountInputs" style="display:none"><input type="number" id="transAmountVal" placeholder="金额" step="0.01" min="0"><span id="transAmountSep" class="filter-amount-sep" style="display:none">~</span><input type="number" id="transAmountVal2" placeholder="上限" step="0.01" min="0" style="display:none"><div class="filter-amount-panel-actions" id="transAmountActions" style="display:none"><button type="button" id="transAmountApply" class="amt-apply-btn">应用</button><button type="button" id="transAmountClear" class="amt-clear-btn">清除</button></div></div></div></div></div>
-                            <div class="trans-th trans-col-account"><select id="transAccFilter" class="filter-select"><option value="all">所有账户</option></select></div>
-                            <div class="trans-th trans-col-tags"><select id="transTagFilter" class="filter-select"><option value="all">所有标签</option></select></div>
-                            <div class="trans-th trans-col-desc"><div class="filter-note-box"><input type="text" id="transNoteFilter" placeholder="备注筛选..." class="filter-select"></div></div>
-                            <div class="trans-th trans-col-actions">操作</div>
+                            <div class="trans-th trans-col-time"><select id="transMonthFilter" class="filter-select"><option value="all" data-i18n="trans.filter.allMonths">所有月份</option></select></div>
+                            <div class="trans-th trans-col-type"><select id="transTypeFilter" class="filter-select"><option value="all" data-i18n="trans.filter.allTypes">全部类型</option><option value="income" data-i18n="trans.type.income">收入</option><option value="expense" data-i18n="trans.type.expense">支出</option><option value="transfer" data-i18n="trans.type.transfer">转账</option></select></div>
+                            <div class="trans-th trans-col-cat"><select id="transCatFilter" class="filter-select"><option value="all" data-i18n="trans.filter.allCats">所有类别</option></select></div>
+                            <div class="trans-th trans-col-amount"><div class="filter-amount-box"><button type="button" id="transAmountBtn" class="filter-select filter-amount-btn-drop" title="金额筛选" data-i18n-title="trans.filter.amountTip"><span id="transAmountLabel" data-i18n="trans.filter.amount">金额</span><span class="filter-amount-arrow">▾</span></button><div id="transAmountPanel" class="filter-amount-panel" style="display:none"><div class="filter-amount-panel-ops"><button type="button" class="amt-op-btn active" data-op="all" data-i18n="trans.amt.all">全部</button><button type="button" class="amt-op-btn" data-op="gt" data-i18n="trans.amt.gt">大于</button><button type="button" class="amt-op-btn" data-op="lt" data-i18n="trans.amt.lt">小于</button><button type="button" class="amt-op-btn" data-op="eq" data-i18n="trans.amt.eq">等于</button><button type="button" class="amt-op-btn" data-op="ne" data-i18n="trans.amt.ne">不等于</button><button type="button" class="amt-op-btn" data-op="bt" data-i18n="trans.amt.bt">介于</button><button type="button" class="amt-op-btn" data-op="nb" data-i18n="trans.amt.nb">不介于</button></div><div class="filter-amount-panel-inputs" id="transAmountInputs" style="display:none"><input type="number" id="transAmountVal" placeholder="金额" data-i18n-ph="trans.filter.amount" step="0.01" min="0"><span id="transAmountSep" class="filter-amount-sep" style="display:none">~</span><input type="number" id="transAmountVal2" placeholder="上限" data-i18n-ph="trans.amt.upperPh" step="0.01" min="0" style="display:none"><div class="filter-amount-panel-actions" id="transAmountActions" style="display:none"><button type="button" id="transAmountApply" class="amt-apply-btn" data-i18n="trans.amt.apply">应用</button><button type="button" id="transAmountClear" class="amt-clear-btn" data-i18n="trans.amt.clear">清除</button></div></div></div></div></div>
+                            <div class="trans-th trans-col-account"><select id="transAccFilter" class="filter-select"><option value="all" data-i18n="trans.filter.allAccounts">所有账户</option></select></div>
+                            <div class="trans-th trans-col-tags"><select id="transTagFilter" class="filter-select"><option value="all" data-i18n="trans.filter.allTags">所有标签</option></select></div>
+                            <div class="trans-th trans-col-desc"><div class="filter-note-box"><input type="text" id="transNoteFilter" placeholder="备注筛选..." data-i18n-ph="trans.filter.notePh" class="filter-select"></div></div>
+                            <div class="trans-th trans-col-actions" data-i18n="common.actions">操作</div>
                         </div>
                         <div class="trans-tbody" id="transTbody"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div><div class="skeleton-line shimmer" style="width:65%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div><div class="skeleton-line shimmer" style="width:60%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div><div class="skeleton-line shimmer" style="width:55%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:55%"></div><div class="skeleton-line shimmer" style="width:50%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:45%"></div></div><div class="skeleton-amt shimmer"></div></div></div></div>
                     </div>
-                    <nav class="trans-pager" id="transPager" style="display:none" aria-label="交易记录翻页"></nav>
+                    <nav class="trans-pager" id="transPager" style="display:none" aria-label="交易记录翻页" data-i18n-aria="trans.pagerLabel"></nav>
                 </div>
                 <div class="modal-overlay" id="transModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="transModalTitle">新增交易</h3><button class="modal-close" id="transModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="transModalTitle" data-i18n="trans.add">新增交易</h3><button class="modal-close" id="transModalClose">✕</button></div>
                     <form class="trans-form" id="transForm">
                         <input type="hidden" id="transEditId">
                         <div class="form-row">
-                            <div class="form-group"><label>类型</label><div class="type-switch three" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false">转账</button></div></div>
-                            <div class="form-group"><label>金额 (¥)</label><input type="number" id="transAmount" step="0.01" min="0" required autocomplete="off"></div>
+                            <div class="form-group"><label data-i18n="trans.form.type">类型</label><div class="type-switch three" role="group" aria-label="交易类型" data-i18n-aria="trans.form.typeGroup"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true" data-i18n="trans.type.expense">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false" data-i18n="trans.type.income">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false" data-i18n="trans.type.transfer">转账</button></div></div>
+                            <div class="form-group"><label id="transAmountFieldLabel" data-i18n="trans.form.amount">金额</label><input type="number" id="transAmount" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
                         <div class="form-row" id="transAccountRow">
-                            <div class="form-group"><label id="transAccountLabel">账户</label><select id="transAccount" required></select></div>
-                            <div class="form-group transfer-only" style="display:none"><label>转入账户</label><select id="transToAccount"></select></div>
+                            <div class="form-group"><label id="transAccountLabel" data-i18n="trans.form.account">账户</label><select id="transAccount" required></select></div>
+                            <div class="form-group transfer-only" style="display:none"><label data-i18n="trans.form.toAccount">转入账户</label><select id="transToAccount"></select></div>
                         </div>
                         <div class="form-row transfer-only" id="transSingleAccountHint" style="display:none">
-                            <div class="form-group full-width transfer-hint">⚠️ 当前只有一个账户，无法转账。请先添加至少一个账户。</div>
+                            <div class="form-group full-width transfer-hint" data-i18n="trans.form.singleAccHint">⚠️ 当前只有一个账户，无法转账。请先添加至少一个账户。</div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label id="transCategoryLabel">类别 <span class="req">*</span></label><select id="transCategory" required></select></div>
-                            <div class="form-group non-transfer"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="transBudget"><option value="">不关联</option></select></div>
+                            <div class="form-group"><label id="transCategoryLabel"><span data-i18n="trans.form.category">类别</span> <span class="req">*</span></label><select id="transCategory" required></select></div>
+                            <div class="form-group non-transfer"><label><span data-i18n="trans.form.budget">关联预算</span> <small style="color:var(--text-secondary)" data-i18n="trans.form.optional">（可选）</small></label><select id="transBudget"><option value="" data-i18n="trans.form.noBudget">不关联</option></select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
-                            <div class="form-group full-width"><label>备注</label><input type="text" id="transNote" placeholder="备注..."></div>
+                            <div class="form-group"><label data-i18n="trans.form.datetime">日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
+                            <div class="form-group full-width"><label data-i18n="trans.form.note">备注</label><input type="text" id="transNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
                         </div>
                         <div class="form-group full-width non-transfer">
-                            <label>标签</label>
+                            <label data-i18n="trans.form.tags">标签</label>
                             <div class="tag-picker" id="transTagPicker"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="transCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="transCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="common.save">保存</button></div>
                     </form>
                 </div></div>
             </section>
@@ -201,49 +201,49 @@
             <!-- ========== 预算管理 ========== -->
             <section class="page" id="page-budget">
                 <div class="glass-card">
-                    <h3 class="card-title">预算总览</h3>
+                    <h3 class="card-title" data-i18n="budget.overview">预算总览</h3>
                     <div class="budget-summary-row">
-                        <div class="budget-summary-item"><span class="budget-summary-label">总预算</span><span class="budget-summary-value" id="budgetTotal">¥0</span></div>
-                        <div class="budget-summary-item"><span class="budget-summary-label">已使用</span><span class="budget-summary-value" id="budgetUsed">¥0</span></div>
-                        <div class="budget-summary-item"><span class="budget-summary-label">剩余</span><span class="budget-summary-value" id="budgetRemain">¥0</span></div>
-                        <div class="budget-summary-item"><span class="budget-summary-label">使用率</span><span class="budget-summary-value" id="budgetRate">0%</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label" data-i18n="budget.total">总预算</span><span class="budget-summary-value" id="budgetTotal">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label" data-i18n="budget.used">已使用</span><span class="budget-summary-value" id="budgetUsed">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label" data-i18n="budget.remain">剩余</span><span class="budget-summary-value" id="budgetRemain">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label" data-i18n="budget.rate">使用率</span><span class="budget-summary-value" id="budgetRate">0%</span></div>
                     </div>
                     <div class="budget-total-bar"><div class="budget-total-bar-fill" id="budgetTotalBar"></div></div>
                 </div>
                 <div class="glass-card">
                     <div class="card-title-row">
-                        <h3 class="card-title" style="margin:0">预算管理</h3>
+                        <h3 class="card-title" style="margin:0" data-i18n="budget.manage">预算管理</h3>
                         <div class="card-title-actions">
                             <select id="budgetPeriodType" class="filter-select" style="font-size:12px;padding:4px 8px">
-                                <option value="">全部</option>
-                                <option value="month">月度</option>
-                                <option value="quarter">季度</option>
-                                <option value="half">半年</option>
-                                <option value="year">年度</option>
+                                <option value="" data-i18n="budget.period.all">全部</option>
+                                <option value="month" data-i18n="budget.period.month">月度</option>
+                                <option value="quarter" data-i18n="budget.period.quarter">季度</option>
+                                <option value="half" data-i18n="budget.period.half">半年</option>
+                                <option value="year" data-i18n="budget.period.year">年度</option>
                             </select>
                             <input type="month" id="budgetBaseMonth" class="filter-select" value="" style="font-size:12px;padding:4px 8px;width:140px">
-                            <button class="btn btn-primary" id="addBudgetBtn" style="font-size:13px;padding:6px 14px">添加预算</button>
+                            <button class="btn btn-primary" id="addBudgetBtn" style="font-size:13px;padding:6px 14px" data-i18n="budget.add">添加预算</button>
                         </div>
                     </div>
                     <div class="budget-list" id="budgetList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                 </div>
                 <div class="modal-overlay" id="budgetModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="budgetModalTitle">添加预算</h3><button class="modal-close" id="budgetModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="budgetModalTitle" data-i18n="budget.add">添加预算</h3><button class="modal-close" id="budgetModalClose">✕</button></div>
                     <form class="budget-form" id="budgetForm"><input type="hidden" id="budgetEditId">
                         <div class="form-row">
-                            <div class="form-group"><label>预算名称</label><input type="text" id="budgetName" placeholder="例如：旅游预算、装修预算" required></div>
-                            <div class="form-group"><label>周期类型</label><select id="budgetPeriodTypeSelect" required>
-                                <option value="month">月度</option>
+                            <div class="form-group"><label data-i18n="budget.form.name">预算名称</label><input type="text" id="budgetName" placeholder="例如：旅游预算、装修预算" data-i18n-ph="budget.form.namePh" required></div>
+                            <div class="form-group"><label data-i18n="budget.form.periodType">周期类型</label><select id="budgetPeriodTypeSelect" required>
+                                <option value="month" data-i18n="budget.period.month">月度</option>
                                 <option value="quarter">季度</option>
                                 <option value="half">半年</option>
                                 <option value="year">年度</option>
                             </select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>基准月份</label><input type="month" id="budgetBaseMonthSelect" required></div>
-                            <div class="form-group"><label>预算金额 (¥)</label><input type="number" id="budgetAmount" step="0.01" min="0" required autocomplete="off"></div>
+                            <div class="form-group"><label data-i18n="budget.form.baseMonth">基准月份</label><input type="month" id="budgetBaseMonthSelect" required></div>
+                            <div class="form-group"><label data-i18n="budget.form.amount">预算金额</label><input type="number" id="budgetAmount" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="budgetCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="budgetCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="common.save">保存</button></div>
                     </form>
                 </div></div>
             </section>
@@ -254,32 +254,32 @@
                 <div class="glass-card debt-summary">
                     <div class="debt-kpi">
                         <div class="dkpi-item">
-                            <div class="dkpi-label">期末负债净额</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.netLiability">期末负债净额</div>
                             <div class="dkpi-value" id="debtTotalRemaining">¥0</div>
-                            <div class="dkpi-foot">应付 − 应收</div>
+                            <div class="dkpi-foot" data-i18n="debt.kpi.netLiabilityFoot">应付 − 应收</div>
                         </div>
                         <div class="dkpi-item">
-                            <div class="dkpi-label">本期应偿付</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.duePeriod">本期应偿付</div>
                             <div class="dkpi-value" id="debtTotalMonthly">¥0</div>
-                            <div class="dkpi-foot">应付账款月供合计</div>
+                            <div class="dkpi-foot" data-i18n="debt.kpi.duePeriodFoot">应付账款月供合计</div>
                         </div>
                         <div class="dkpi-item">
-                            <div class="dkpi-label">本月到期</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.dueThisMonth">本月到期</div>
                             <div class="dkpi-value" id="debtDueThisMonth">0</div>
                             <div class="dkpi-foot" id="debtDueThisMonthFoot">0 笔</div>
                         </div>
                         <div class="dkpi-item dkpi-danger">
-                            <div class="dkpi-label">逾期未偿</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.overdue">逾期未偿</div>
                             <div class="dkpi-value" id="debtOverdue">0</div>
                             <div class="dkpi-foot" id="debtOverdueFoot">0 笔</div>
                         </div>
                         <div class="dkpi-item dkpi-pay">
-                            <div class="dkpi-label">应付账款余额</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.payableBalance">应付账款余额</div>
                             <div class="dkpi-value" id="debtPayableRemaining">¥0</div>
                             <div class="dkpi-foot" id="debtPayableFoot">0 笔</div>
                         </div>
                         <div class="dkpi-item dkpi-recv">
-                            <div class="dkpi-label">应收账款余额</div>
+                            <div class="dkpi-label" data-i18n="debt.kpi.receivableBalance">应收账款余额</div>
                             <div class="dkpi-value" id="debtReceivableRemaining">¥0</div>
                             <div class="dkpi-foot" id="debtReceivableFoot">0 笔</div>
                         </div>
@@ -291,23 +291,23 @@
                 <div class="glass-card">
                     <div class="page-toolbar">
                         <div class="toolbar-left">
-                            <h3 class="card-title" style="margin:0">债权债务明细</h3>
+                            <h3 class="card-title" style="margin:0" data-i18n="debt.listTitle">债权债务明细</h3>
                             <!-- 业务类型 Tab：与标题同一行 -->
                             <div class="debt-type-tabs">
                                 <button class="debt-type-tab active" data-debt-dir="all">
-                                    <span class="dtt-label">全部</span>
+                                    <span class="dtt-label" data-i18n="debt.tab.all">全部</span>
                                 </button>
                                 <button class="debt-type-tab" data-debt-dir="payable">
-                                    <span class="dtt-label">应付账款</span>
+                                    <span class="dtt-label" data-i18n="debt.tab.payable">应付账款</span>
                                 </button>
                                 <button class="debt-type-tab" data-debt-dir="receivable">
-                                    <span class="dtt-label">应收账款</span>
+                                    <span class="dtt-label" data-i18n="debt.tab.receivable">应收账款</span>
                                 </button>
                             </div>
                         </div>
                         <div class="page-toolbar-actions">
                             <span class="see-all" id="debtCount"></span>
-                            <button class="btn btn-primary" id="addDebtBtn">新增</button>
+                            <button class="btn btn-primary" id="addDebtBtn" data-i18n="debt.add">新增</button>
                         </div>
                     </div>
                     <!-- 列表（账表式） -->
@@ -318,87 +318,87 @@
 
                 <!-- 新增/编辑 模态框 -->
                 <div class="modal-overlay" id="debtModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="debtModalTitle">新增债务</h3><button class="modal-close" id="debtModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="debtModalTitle" data-i18n="debt.modal.add">新增债务</h3><button class="modal-close" id="debtModalClose">✕</button></div>
                     <form class="debt-form" id="debtForm"><input type="hidden" id="debtEditId"><input type="hidden" id="debtDirection" value="payable">
                         <div class="debt-type-tabs" style="margin-bottom:18px">
                             <button type="button" class="debt-type-tab active" data-form-dir="payable">
-                                <span class="dtt-label">应付账款</span>
+                                <span class="dtt-label" data-i18n="debt.tab.payable">应付账款</span>
                                 <span class="dtt-meta">Payable</span>
                             </button>
                             <button type="button" class="debt-type-tab" data-form-dir="receivable">
-                                <span class="dtt-label">应收账款</span>
+                                <span class="dtt-label" data-i18n="debt.tab.receivable">应收账款</span>
                                 <span class="dtt-meta">Receivable</span>
                             </button>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>项目名称 <span class="req">*</span></label><input type="text" id="debtName" placeholder="如：个人住房贷款 / 应收张三款" required></div>
-                            <div class="form-group"><label>科目类别 <span class="req">*</span></label><select id="debtType" required>
-                                <option value="loan">长期借款（房贷/车贷/网贷）</option>
-                                <option value="credit_card">短期借款（信用卡）</option>
-                                <option value="personal">自然人借贷</option>
-                                <option value="other">其他</option>
+                            <div class="form-group"><label><span data-i18n="debt.form.name">项目名称</span> <span class="req">*</span></label><input type="text" id="debtName" placeholder="如：个人住房贷款 / 应收张三款" data-i18n-ph="debt.form.namePh" required></div>
+                            <div class="form-group"><label><span data-i18n="debt.form.type">科目类别</span> <span class="req">*</span></label><select id="debtType" required>
+                                <option value="loan" data-i18n="debt.type.loan">长期借款（房贷/车贷/网贷）</option>
+                                <option value="credit_card" data-i18n="debt.type.credit_card">短期借款（信用卡）</option>
+                                <option value="personal" data-i18n="debt.type.personal">自然人借贷</option>
+                                <option value="other" data-i18n="debt.type.other">其他</option>
                             </select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>关联账户（可选）</label><select id="debtAccount"><option value="">— 不关联 —</option></select></div>
-                            <div class="form-group"><label>债务币种</label><select id="debtCurrency"></select></div>
+                            <div class="form-group"><label data-i18n="debt.form.account">关联账户（可选）</label><select id="debtAccount"><option value="" data-i18n="debt.form.noAccount">— 不关联 —</option></select></div>
+                            <div class="form-group"><label data-i18n="debt.form.currency">债务币种</label><select id="debtCurrency"></select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label data-counterparty-label>对方单位 / 个人</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三"></div>
-                            <div class="form-group"><label>本金 <span class="req">*</span></label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
+                            <div class="form-group"><label data-counterparty-label>对方单位 / 个人</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三" data-i18n-ph="debt.form.counterpartyPh"></div>
+                            <div class="form-group"><label><span data-i18n="debt.form.principal">本金</span> <span class="req">*</span></label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>年利率 (%)</label><input type="number" id="debtRate" step="0.0001" min="0" autocomplete="off" placeholder="可精确到小数点后4位"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">按银行公示利率填写即可；若账单月供与公式不符，优先直接填写「每期应还」而非微调利率</small></div>
-                            <div class="form-group"><label>贷款期数 (月)</label><input type="number" id="debtTerm" step="1" min="0" autocomplete="off"></div>
+                            <div class="form-group"><label data-i18n="debt.form.rate">年利率 (%)</label><input type="number" id="debtRate" step="0.0001" min="0" autocomplete="off" placeholder="可精确到小数点后4位" data-i18n-ph="debt.form.ratePh"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;" data-i18n="debt.form.rateHint">按银行公示利率填写即可；若账单月供与公式不符，优先直接填写「每期应还」而非微调利率</small></div>
+                            <div class="form-group"><label data-i18n="debt.form.term">贷款期数 (月)</label><input type="number" id="debtTerm" step="1" min="0" autocomplete="off"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>还款方式 <span class="req">*</span></label><select id="debtMethod" required>
-                                <option value="manual" selected>手动记录</option>
-                                <option value="equal_installment">等额本息</option>
-                                <option value="equal_principal">等额本金</option>
-                                <option value="interest_only">按期付息到期还本</option>
-                                <option value="minimum">最低还款额（信用卡）</option>
-                                <option value="lump_sum">一次性还本付息</option>
+                            <div class="form-group"><label><span data-i18n="debt.form.method">还款方式</span> <span class="req">*</span></label><select id="debtMethod" required>
+                                <option value="manual" selected data-i18n="debt.method.manual">手动记录</option>
+                                <option value="equal_installment" data-i18n="debt.method.equal_installment">等额本息</option>
+                                <option value="equal_principal" data-i18n="debt.method.equal_principal">等额本金</option>
+                                <option value="interest_only" data-i18n="debt.method.interest_only">按期付息到期还本</option>
+                                <option value="minimum" data-i18n="debt.method.minimum">最低还款额（信用卡）</option>
+                                <option value="lump_sum" data-i18n="debt.method.lump_sum">一次性还本付息</option>
                             </select></div>
-                            <div class="form-group"><label>每期应还</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">留空按公式生成理论值；填写银行实际月供后，应用以该月供为准生成计划，末期自动抹平尾差</small></div>
+                            <div class="form-group"><label data-i18n="debt.form.monthly">每期应还</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空" data-i18n-ph="debt.form.monthlyPh"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;" data-i18n="debt.form.monthlyHint">留空按公式生成理论值；填写银行实际月供后，应用以该月供为准生成计划，末期自动抹平尾差</small></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>起息日</label><input type="date" id="debtStart"></div>
-                            <div class="form-group"><label>到期日</label><input type="date" id="debtDue"></div>
+                            <div class="form-group"><label data-i18n="debt.form.start">起息日</label><input type="date" id="debtStart"></div>
+                            <div class="form-group"><label data-i18n="debt.form.due">到期日</label><input type="date" id="debtDue"></div>
                         </div>
                         <div class="form-row debt-cc-fields" style="display:none">
-                            <div class="form-group"><label>账单日 (1-28)</label><input type="number" id="debtBillingDay" min="1" max="28"></div>
-                            <div class="form-group"><label>还款日 (1-28)</label><input type="number" id="debtPaymentDay" min="1" max="28"></div>
-                            <div class="form-group"><label>最低还款额</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
+                            <div class="form-group"><label data-i18n="debt.form.billingDay">账单日 (1-28)</label><input type="number" id="debtBillingDay" min="1" max="28"></div>
+                            <div class="form-group"><label data-i18n="debt.form.paymentDay">还款日 (1-28)</label><input type="number" id="debtPaymentDay" min="1" max="28"></div>
+                            <div class="form-group"><label data-i18n="debt.form.minPayment">最低还款额</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
                         </div>
-                        <div class="form-group"><label>备注</label><input type="text" id="debtNote" placeholder="可选"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
+                        <div class="form-group"><label data-i18n="debt.form.note">备注</label><input type="text" id="debtNote" placeholder="可选" data-i18n-ph="debt.form.notePh"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="common.save">保存</button></div>
                     </form>
                 </div></div>
 
                 <!-- 明细弹窗（保持原状） -->
                 <div class="modal-overlay" id="repayHistoryModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3>收/还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
+                    <div class="modal-header"><h3 data-i18n="repay.historyTitle">收/还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
                     <div class="repay-history" id="repayHistoryBody"></div>
                 </div></div>
 
                 <!-- 收/还款 模态框（放在明细弹窗之后，保证 DOM 顺序下 z-index 天然在上层） -->
                 <div class="modal-overlay" id="repayModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="repayModalTitle">登记收/还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="repayModalTitle" data-i18n="repay.modalTitle">登记收/还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
                     <form class="repay-form" id="repayForm"><input type="hidden" id="repayDebtId">
                         <div class="form-row">
-                            <div class="form-group"><label>金额 (¥) <span class="req">*</span></label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
-                            <div class="form-group"><label>日期 <span class="req">*</span></label><input type="datetime-local" id="repayDate" step="1" required></div>
+                            <div class="form-group"><label><span data-i18n="repay.amount">金额</span> <span class="req">*</span></label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
+                            <div class="form-group"><label><span data-i18n="repay.date">日期</span> <span class="req">*</span></label><input type="datetime-local" id="repayDate" step="1" required></div>
                         </div>
-                        <div class="form-group"><label data-repay-account-label>收/付款账户 <span class="req">*</span></label><select id="repayAccount" required></select>
+                        <div class="form-group"><label data-repay-account-label><span data-repay-account-text>收/付款账户</span> <span class="req">*</span></label><select id="repayAccount" required></select>
                             <small class="field-hint" id="repayAccountHint" style="display:none"></small>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>本金 (¥)</label><input type="number" id="repayPrincipal" step="0.01" min="0" placeholder="留空=全部冲减本金"></div>
-                            <div class="form-group"><label>利息 (¥)</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填"></div>
+                            <div class="form-group"><label data-i18n="repay.principal">本金</label><input type="number" id="repayPrincipal" step="0.01" min="0" placeholder="留空=全部冲减本金" data-i18n-ph="repay.principalPh"></div>
+                            <div class="form-group"><label data-i18n="repay.interest">利息</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填" data-i18n-ph="repay.interestPh"></div>
                         </div>
-                        <div class="form-group"><label>备注</label><input type="text" id="repayNote" placeholder="可选"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="repaySubmitBtn">登记</button></div>
+                        <div class="form-group"><label data-i18n="repay.note">备注</label><input type="text" id="repayNote" placeholder="可选" data-i18n-ph="debt.form.notePh"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" id="repaySubmitBtn" data-i18n="repay.submit">登记</button></div>
                     </form>
                 </div></div>
             </section>
@@ -409,75 +409,75 @@
             <!-- ========== 标签管理 ========== -->
             <section class="page" id="page-data-center">
                 <div class="glass-card">
-                    <h3 class="card-title">基础数据维护</h3>
-                    <p class="card-desc">管理系统中的分类、理财类型和标签等基础数据</p>
+                    <h3 class="card-title" data-i18n="dc.title">基础数据维护</h3>
+                    <p class="card-desc" data-i18n="dc.desc">管理系统中的分类、理财类型和标签等基础数据</p>
                     <div class="dc-tabs">
-                        <button class="dc-tab active" data-dctab="categories">分类管理</button>
-                        <button class="dc-tab" data-dctab="invtypes">理财类型</button>
-                        <button class="dc-tab" data-dctab="tags">标签管理</button>
-                        <button class="dc-tab" data-dctab="books">账本管理</button>
+                        <button class="dc-tab active" data-dctab="categories" data-i18n="dc.tab.categories">分类管理</button>
+                        <button class="dc-tab" data-dctab="invtypes" data-i18n="dc.tab.invtypes">理财类型</button>
+                        <button class="dc-tab" data-dctab="tags" data-i18n="dc.tab.tags">标签管理</button>
+                        <button class="dc-tab" data-dctab="books" data-i18n="dc.tab.books">账本管理</button>
                     </div>
 
                     <!-- 分类管理 -->
                     <div class="dc-panel active" id="dcPanel-categories">
                         <div class="dc-toolbar">
-                            <select id="catFilterType"><option value="">全部类型</option><option value="expense">支出</option><option value="income">收入</option><option value="transfer">转账</option></select>
-                            <button class="btn btn-primary" id="addCatBtn">新增分类</button>
+                            <select id="catFilterType"><option value="" data-i18n="dc.cat.allTypes">全部类型</option><option value="expense" data-i18n="trans.type.expense">支出</option><option value="income" data-i18n="trans.type.income">收入</option><option value="transfer" data-i18n="trans.type.transfer">转账</option></select>
+                            <button class="btn btn-primary" id="addCatBtn" data-i18n="dc.cat.add">新增分类</button>
                         </div>
-                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>类型</th><th>颜色</th><th>排序</th><th>操作</th></tr></thead><tbody id="catTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th data-i18n="dc.th.icon">图标</th><th data-i18n="dc.th.name">名称</th><th data-i18n="dc.th.type">类型</th><th data-i18n="dc.th.color">颜色</th><th data-i18n="dc.th.sort">排序</th><th data-i18n="common.actions">操作</th></tr></thead><tbody id="catTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
                     </div>
 
                     <!-- 理财类型 -->
                     <div class="dc-panel" id="dcPanel-invtypes">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addInvTypeBtn">新增理财类型</button></div>
-                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>风险等级</th><th>描述</th><th>排序</th><th>操作</th></tr></thead><tbody id="invTypeTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addInvTypeBtn" data-i18n="dc.invType.add">新增理财类型</button></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th data-i18n="dc.th.icon">图标</th><th data-i18n="dc.th.name">名称</th><th data-i18n="dc.th.risk">风险等级</th><th data-i18n="dc.th.desc">描述</th><th data-i18n="dc.th.sort">排序</th><th data-i18n="common.actions">操作</th></tr></thead><tbody id="invTypeTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
                     </div>
 
                     <!-- 标签管理 -->
                     <div class="dc-panel" id="dcPanel-tags">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addTagBtn">新建标签</button></div>
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addTagBtn" data-i18n="dc.tag.add">新建标签</button></div>
                         <div class="tag-grid" id="tagGrid"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
                     </div>
 
                     <!-- 账本管理 -->
                     <div class="dc-panel" id="dcPanel-books">
-                        <div class="dc-toolbar"><button class="btn btn-primary" id="addBookBtn">新增账本</button></div>
-                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>颜色</th><th>默认</th><th>操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-text">暂无账本</div></div></td></tr></tbody></table></div>
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addBookBtn" data-i18n="dc.book.add">新增账本</button></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th data-i18n="dc.th.icon">图标</th><th data-i18n="dc.th.name">名称</th><th data-i18n="dc.th.color">颜色</th><th data-i18n="dc.th.default">默认</th><th data-i18n="common.actions">操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-text" data-i18n="dc.book.empty">暂无账本</div></div></td></tr></tbody></table></div>
                     </div>
                 </div>
 
                 <!-- 分类/理财类型编辑弹窗 -->
                 <div class="modal-overlay" id="dcEditModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="dcEditTitle">编辑</h3><button class="modal-close" id="dcEditClose">✕</button></div>
+                    <div class="modal-header"><h3 id="dcEditTitle" data-i18n="dc.edit.title">编辑</h3><button class="modal-close" id="dcEditClose">✕</button></div>
                     <form class="trans-form" id="dcEditForm"><input type="hidden" id="dcEditId"><input type="hidden" id="dcEditKind"><input type="hidden" id="dcEditParentId">
                         <div class="form-row">
-                            <div class="form-group"><label>名称</label><input type="text" id="dcEditName" required></div>
-                            <div class="form-group"><label>图标</label><input type="text" id="dcEditIcon" placeholder="emoji"></div>
+                            <div class="form-group"><label data-i18n="dc.th.name">名称</label><input type="text" id="dcEditName" required></div>
+                            <div class="form-group"><label data-i18n="dc.th.icon">图标</label><input type="text" id="dcEditIcon" placeholder="emoji"></div>
                         </div>
                         <div class="form-row" id="dcRowCatExtra">
-                            <div class="form-group"><label>类型</label><select id="dcEditCatType"><option value="expense">支出</option><option value="income">收入</option><option value="transfer">转账</option></select></div>
-                            <div class="form-group"><label>排序</label><input type="number" id="dcEditSort" value="0"></div>
+                            <div class="form-group"><label data-i18n="dc.th.type">类型</label><select id="dcEditCatType"><option value="expense" data-i18n="trans.type.expense">支出</option><option value="income" data-i18n="trans.type.income">收入</option><option value="transfer" data-i18n="trans.type.transfer">转账</option></select></div>
+                            <div class="form-group"><label data-i18n="dc.th.sort">排序</label><input type="number" id="dcEditSort" value="0"></div>
                         </div>
                         <div class="form-row" id="dcRowInvExtra" style="display:none">
-                            <div class="form-group"><label>风险等级</label><select id="dcEditRisk"><option value="low">低风险</option><option value="medium">中风险</option><option value="high">高风险</option><option value="very_high">极高风险</option></select></div>
-                            <div class="form-group"><label>排序</label><input type="number" id="dcEditInvSort" value="0"></div>
+                            <div class="form-group"><label data-i18n="dc.th.risk">风险等级</label><select id="dcEditRisk"><option value="low" data-i18n="dc.risk.low">低风险</option><option value="medium" data-i18n="dc.risk.medium">中风险</option><option value="high" data-i18n="dc.risk.high">高风险</option><option value="very_high" data-i18n="dc.risk.very_high">极高风险</option></select></div>
+                            <div class="form-group"><label data-i18n="dc.th.sort">排序</label><input type="number" id="dcEditInvSort" value="0"></div>
                         </div>
-                        <div class="form-group full-width" id="dcRowDesc" style="display:none"><label>描述</label><input type="text" id="dcEditDesc" placeholder="可选描述"></div>
-                        <div class="form-group full-width" id="dcRowColor"><label>颜色</label><div class="color-swatches" id="dcColorSwatches"></div><input type="hidden" id="dcEditColor" value="#6366f1"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="dcEditCancel">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
+                        <div class="form-group full-width" id="dcRowDesc" style="display:none"><label data-i18n="dc.th.desc">描述</label><input type="text" id="dcEditDesc" placeholder="可选描述" data-i18n-ph="dc.edit.descPh"></div>
+                        <div class="form-group full-width" id="dcRowColor"><label data-i18n="dc.th.color">颜色</label><div class="color-swatches" id="dcColorSwatches"></div><input type="hidden" id="dcEditColor" value="#6366f1"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="dcEditCancel" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="common.save">保存</button></div>
                     </form>
                 </div></div>
 
                 <!-- 标签编辑弹窗（复用原有逻辑） -->
                 <div class="modal-overlay" id="tagModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3 id="tagModalTitle">新建标签</h3><button class="modal-close" id="tagModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="tagModalTitle" data-i18n="tag.modal.add">新建标签</h3><button class="modal-close" id="tagModalClose">✕</button></div>
                     <form class="trans-form" id="tagForm"><input type="hidden" id="tagEditId">
                         <div class="form-row">
-                            <div class="form-group"><label>标签名称</label><input type="text" id="tagName" required placeholder="如：餐饮"></div>
-                            <div class="form-group"><label>图标</label><input type="text" id="tagIcon" value="🏷️" placeholder="emoji"></div>
+                            <div class="form-group"><label data-i18n="tag.form.name">标签名称</label><input type="text" id="tagName" required placeholder="如：餐饮" data-i18n-ph="tag.form.namePh"></div>
+                            <div class="form-group"><label data-i18n="dc.th.icon">图标</label><input type="text" id="tagIcon" value="🏷️" placeholder="emoji"></div>
                         </div>
-                        <div class="form-group full-width"><label>颜色</label><div class="color-swatches" id="tagColorSwatches"></div><input type="hidden" id="tagColor" value="#3b82f6"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="tagCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存标签</button></div>
+                        <div class="form-group full-width"><label data-i18n="dc.th.color">颜色</label><div class="color-swatches" id="tagColorSwatches"></div><input type="hidden" id="tagColor" value="#3b82f6"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="tagCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="tag.form.save">保存标签</button></div>
                     </form>
                 </div></div>
             </section>
@@ -535,11 +535,11 @@
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="deepseek">DeepSeek</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="groq">Groq</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="kimi">Kimi</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="zhipu">智谱 AI</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="zhipu" data-i18n="aiProvider.preset.zhipu.name">智谱 AI</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="openai">OpenAI</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="anthropic">Anthropic</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="ollama">Ollama 本地</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="custom">自定义</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="ollama" data-i18n="aiProvider.preset.ollama.name">Ollama 本地</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="custom" data-i18n="aiProvider.preset.custom.name">自定义</button>
                                 </div>
                                 <div id="aiPresetDesc" class="form-hint" style="margin-top:8px;font-size:var(--text-caption);color:var(--text-secondary)"></div>
                             </div>
@@ -704,109 +704,111 @@
 
     <!-- 快速记账弹窗 -->
     <div class="modal-overlay" id="quickAddModal"><div class="modal glass-card modal-quick">
-        <div class="modal-header"><h3>快速记账</h3><button class="modal-close" id="quickAddClose">✕</button></div>
+        <div class="modal-header"><h3 data-i18n="quick.title">快速记账</h3><button class="modal-close" id="quickAddClose">✕</button></div>
         <form class="trans-form" id="quickAddForm">
-            <div class="form-group"><label>类型</label><div class="type-switch" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false">转账</button></div></div>
+            <div class="form-group"><label data-i18n="trans.form.type">类型</label><div class="type-switch" role="group" aria-label="交易类型" data-i18n-aria="trans.form.typeGroup"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true" data-i18n="trans.type.expense">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false" data-i18n="trans.type.income">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false" data-i18n="trans.type.transfer">转账</button></div></div>
 
             <!-- 收支模式：金额 + 单账户 -->
             <div id="quickNormalFields">
-                <div class="form-group"><label>金额 (¥)</label><input type="number" id="quickAmount" step="0.01" min="0" required autocomplete="off"></div>
-                <div class="form-group"><label>账户</label><select id="quickAccount" required></select></div>
+                <div class="form-group"><label data-i18n="trans.form.amount">金额</label><input type="number" id="quickAmount" step="0.01" min="0" required autocomplete="off"></div>
+                <div class="form-group"><label data-i18n="trans.form.account">账户</label><select id="quickAccount" required></select></div>
             </div>
 
             <!-- 转账模式：转出/转入账户 + 金额 -->
             <div id="quickTransferFields" style="display:none">
                 <div class="form-row">
-                    <div class="form-group"><label>转出账户</label><select id="quickFromAcc" required></select></div>
-                    <div class="form-group"><label>转入账户</label><select id="quickToAcc" required></select></div>
+                    <div class="form-group"><label data-i18n="quick.fromAcc">转出账户</label><select id="quickFromAcc" required></select></div>
+                    <div class="form-group"><label data-i18n="quick.toAcc">转入账户</label><select id="quickToAcc" required></select></div>
                 </div>
-                <div class="form-group"><label>转账金额 (¥)</label><input type="number" id="quickTransferAmount" step="0.01" min="0.01" required autocomplete="off"></div>
+                <div class="form-group"><label data-i18n="quick.transferAmount">转账金额</label><input type="number" id="quickTransferAmount" step="0.01" min="0.01" required autocomplete="off"></div>
             </div>
 
             <!-- 类别：三类交易共用，转账时自动切到转账分类 -->
-            <div class="form-group"><label>类别</label><select id="quickCategory" required></select></div>
+            <div class="form-group"><label data-i18n="trans.form.category">类别</label><select id="quickCategory" required></select></div>
 
             <div class="form-row">
-                <div class="form-group"><label>日期时间</label><input type="datetime-local" id="quickDate" step="1" required></div>
-                <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="quickBudget"><option value="">不关联</option></select></div>
+                <div class="form-group"><label data-i18n="trans.form.datetime">日期时间</label><input type="datetime-local" id="quickDate" step="1" required></div>
+                <div class="form-group"><label><span data-i18n="trans.form.budget">关联预算</span> <small style="color:var(--text-secondary)" data-i18n="trans.form.optional">（可选）</small></label><select id="quickBudget"><option value="" data-i18n="trans.form.noBudget">不关联</option></select></div>
             </div>
-            <div class="form-group"><label>备注</label><input type="text" id="quickNote" placeholder="备注..."></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="quickCancelBtn">取消</button><button type="submit" class="btn btn-ghost">记一笔</button></div>
+            <div class="form-group"><label data-i18n="trans.form.note">备注</label><input type="text" id="quickNote" placeholder="备注..." data-i18n-ph="trans.form.notePh"></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="quickCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="quick.submit">记一笔</button></div>
         </form>
     </div></div>
 
     <!-- 账户编辑弹窗 -->
     <div class="modal-overlay" id="accountModal"><div class="modal glass-card">
-        <div class="modal-header"><h3 id="accModalTitle">新增账户</h3><button class="modal-close" id="accModalClose">✕</button></div>
+        <div class="modal-header"><h3 id="accModalTitle" data-i18n="accForm.add">新增账户</h3><button class="modal-close" id="accModalClose">✕</button></div>
         <form class="trans-form" id="accForm"><input type="hidden" id="accEditId">
-            <div class="form-row"><div class="form-group"><label>账户名称</label><input type="text" id="accName" required placeholder="如：工资卡"></div><div class="form-group"><label>账户类型</label><select id="accType" required><option value="cash">现金 💵</option><option value="bank_card">储蓄卡 🏦</option><option value="credit_card">信用卡 💳</option><option value="electronic_payment">电子支付 📱</option><option value="financial_account">金融账户 🏛️</option><option value="digital">数字货币 🪙</option><option value="other">其他 💰</option></select></div></div>
-            <div class="form-row"><div class="form-group"><label>图标</label><input type="text" id="accIcon" value="💰" placeholder="emoji图标"></div><div class="form-group"><label>初始余额 (¥)</label><input type="number" id="accBalance" step="0.01" value="0" autocomplete="off"></div></div>
+            <div class="form-row"><div class="form-group"><label data-i18n="accForm.name">账户名称</label><input type="text" id="accName" required placeholder="如：工资卡" data-i18n-ph="accForm.namePh"></div><div class="form-group"><label data-i18n="accForm.type">账户类型</label><select id="accType" required><option value="cash" data-i18n="accType.cash">现金 💵</option><option value="bank_card" data-i18n="accType.bank_card">储蓄卡 🏦</option><option value="credit_card" data-i18n="accType.credit_card">信用卡 💳</option><option value="electronic_payment" data-i18n="accType.electronic_payment">电子支付 📱</option><option value="financial_account" data-i18n="accType.financial_account">金融账户 🏛️</option><option value="digital" data-i18n="accType.digital">数字货币 🪙</option><option value="other" data-i18n="accType.other">其他 💰</option></select></div></div>
+            <div class="form-row"><div class="form-group"><label data-i18n="accForm.icon">图标</label><input type="text" id="accIcon" value="💰" placeholder="emoji图标" data-i18n-ph="accForm.iconPh"></div><div class="form-group"><label data-i18n="accForm.initBalance">初始余额</label><input type="number" id="accBalance" step="0.01" value="0" autocomplete="off"></div></div>
             <div class="form-row" id="accCreditLimitRow" style="display:none;">
                 <div class="form-group full-width">
-                    <label id="accCreditLimitLabel">信用额度 (¥) <small style="color:var(--text-secondary)">信用卡必填，电子支付可选</small></label>
+                    <label id="accCreditLimitLabel"><span data-i18n="accForm.creditLimit">信用额度</span><span class="acc-credit-req req" style="display:none"> *</span> <small style="color:var(--text-secondary)" data-i18n="accForm.creditLimitHint">信用卡必填，电子支付可选</small></label>
                     <input type="number" id="accCreditLimit" step="0.01" min="0" value="0" placeholder="0.00" autocomplete="off">
                 </div>
             </div>
             <div class="form-row">
-                <div class="form-group"><label>币种</label><select id="accCurrency" required><option value="CNY">CNY ¥ 人民币</option><option value="USD">USD $ 美元</option><option value="EUR">EUR € 欧元</option><option value="HKD">HKD HK$ 港币</option><option value="JPY">JPY ¥ 日元</option><option value="GBP">GBP £ 英镑</option><option value="AUD">AUD A$ 澳元</option><option value="CAD">CAD C$ 加元</option></select></div>
+                <div class="form-group"><label data-i18n="accForm.currency">币种</label><select id="accCurrency" required><option value="CNY">CNY ¥ 人民币</option><option value="USD">USD $ 美元</option><option value="EUR">EUR € 欧元</option><option value="HKD">HKD HK$ 港币</option><option value="JPY">JPY ¥ 日元</option><option value="GBP">GBP £ 英镑</option><option value="AUD">AUD A$ 澳元</option><option value="CAD">CAD C$ 加元</option></select></div>
                 <div class="form-group"></div>
             </div>
             <div class="form-row">
-                <div class="form-group"><label>年利率 (%) <small style="color:var(--text-secondary)">可选，用于展示与「预计利息」估算</small></label><input type="number" id="accAnnualRate" step="0.0001" min="0" max="100" value="0" placeholder="0.0000" autocomplete="off"></div>
-                <div class="form-group"><label>计息周期</label><select id="accInterestCycle"><option value="monthly">按月</option><option value="yearly">按年</option><option value="daily">按日</option></select></div>
+                <div class="form-group"><label><span data-i18n="accForm.annualRate">年利率 (%)</span> <small style="color:var(--text-secondary)" data-i18n="accForm.annualRateHint">可选，用于展示与「预计利息」估算</small></label><input type="number" id="accAnnualRate" step="0.0001" min="0" max="100" value="0" placeholder="0.0000" autocomplete="off"></div>
+                <div class="form-group"><label data-i18n="accForm.interestCycle">计息周期</label><select id="accInterestCycle"><option value="monthly" data-i18n="accForm.cycle.monthly">按月</option><option value="yearly" data-i18n="accForm.cycle.yearly">按年</option><option value="daily" data-i18n="accForm.cycle.daily">按日</option></select></div>
             </div>
-            <div class="form-row"><div class="form-group full-width"><label>实时余额 (¥) <small style="color:var(--text-secondary)">由初始余额与流水自动计算</small></label><input type="number" id="accRealBalance" step="0.01" value="0" readonly tabindex="-1" style="background:var(--surface-hover); cursor:default;"></div></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="accCancelBtn">取消</button><button type="submit" class="btn btn-ghost">保存</button></div>
+            <div class="form-row"><div class="form-group full-width"><label><span data-i18n="accForm.realBalance">实时余额</span> <small style="color:var(--text-secondary)" data-i18n="accForm.realBalanceHint">由初始余额与流水自动计算</small></label><input type="number" id="accRealBalance" step="0.01" value="0" readonly tabindex="-1" style="background:var(--surface-hover); cursor:default;"></div></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="accCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" data-i18n="common.save">保存</button></div>
         </form>
     </div></div>
     <!-- 记一笔利息弹窗（与安卓端 AccountDetailScreen 的 AddInterestDialog 对齐） -->
     <div class="modal-overlay" id="interestModal"><div class="modal glass-card">
-        <div class="modal-header"><h3 id="interestModalTitle">记利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
+        <div class="modal-header"><h3 id="interestModalTitle" data-i18n="interest.title">记利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
         <form class="trans-form" id="interestForm">
             <div class="form-row">
-                <div class="form-group full-width"><label>利息金额 (¥) <small style="color:var(--text-secondary)">必须大于 0</small></label><input type="number" id="interestAmount" step="0.01" min="0.01" required placeholder="0.00" autocomplete="off"></div>
+                <div class="form-group full-width"><label><span data-i18n="interest.amount">利息金额</span> <small style="color:var(--text-secondary)" data-i18n="interest.amountHint">必须大于 0</small></label><input type="number" id="interestAmount" step="0.01" min="0.01" required placeholder="0.00" autocomplete="off"></div>
             </div>
             <div class="form-row">
-                <div class="form-group full-width"><label>计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
+                <div class="form-group full-width"><label data-i18n="interest.date">计息日期</label><input type="datetime-local" id="interestDate" step="1" required></div>
             </div>
             <div class="form-row">
-                <div class="form-group full-width"><label>备注 <small style="color:var(--text-secondary)">（可选）</small></label><input type="text" id="interestNote" placeholder="如：2026年7月利息" autocomplete="off"></div>
+                <div class="form-group full-width"><label><span data-i18n="interest.note">备注</span> <small style="color:var(--text-secondary)" data-i18n="trans.form.optional">（可选）</small></label><input type="text" id="interestNote" placeholder="如：2026年7月利息" data-i18n-ph="interest.notePh" autocomplete="off"></div>
             </div>
             <div id="interestError" style="display:none;color:var(--status-danger,#dc2626);font-size:13px;margin:8px 0"></div>
-            <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn">确认</button></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn" data-i18n="common.cancel">取消</button><button type="submit" class="btn btn-ghost" id="interestSubmitBtn" data-i18n="common.confirm">确认</button></div>
         </form>
     </div></div>
     <div class="modal-overlay" id="accountDetailModal"><div class="modal glass-card">
-        <div class="modal-header"><h3>账户资金明细</h3><button class="modal-close" id="accountDetailModalClose">✕</button></div>
+        <div class="modal-header"><h3 data-i18n="acc.detailTitle">账户资金明细</h3><button class="modal-close" id="accountDetailModalClose">✕</button></div>
         <div class="repay-history" id="accountDetailBody"></div>
     </div></div>
     <!-- 账户：全屏网格铺开 -->
     <div class="modal-overlay" id="accGridOverlay"><div class="acc-grid-panel">
         <div class="modal-header acc-grid-header">
-            <h3><span id="accGridTitle">全部账户</span> · 共 <span id="accGridCount">0</span> 个</h3>
-            <button class="modal-close" id="accGridClose" aria-label="关闭">✕</button>
+            <!-- 「共 N 个」中英语序不同：整句放在 accGridHeading 里由 account.js 用
+                 acc.grid.heading（{label} / {n} 插值）渲染，避免拼接产生英文病句。 -->
+            <h3 id="accGridHeading"><span id="accGridTitle">全部账户</span> · 共 <span id="accGridCount">0</span> 个</h3>
+            <button class="modal-close" id="accGridClose" aria-label="关闭" data-i18n-aria="common.close">✕</button>
         </div>
         <div class="acc-grid" id="accGridBody"></div>
     </div></div>
 
     <!-- 账户删除确认弹窗 -->
     <div class="modal-overlay" id="accountDeleteModal"><div class="modal glass-card">
-        <div class="modal-header"><h3>删除账户</h3><button class="modal-close" id="accDelModalClose">✕</button></div>
+        <div class="modal-header"><h3 data-i18n="accDel.title">删除账户</h3><button class="modal-close" id="accDelModalClose">✕</button></div>
         <div class="modal-body">
             <p class="acc-del-name" id="accDelName"></p>
             <div class="acc-del-usage" id="accDelUsage"></div>
-            <p class="acc-del-hint">「彻底删除」会永久移除该账户；若已有关联记录则不可删除，可改用「关闭账户」仅隐藏。</p>
+            <p class="acc-del-hint" data-i18n="accDel.hint">「彻底删除」会永久移除该账户；若已有关联记录则不可删除，可改用「关闭账户」仅隐藏。</p>
         </div>
         <div class="form-actions">
-            <button type="button" class="btn btn-ghost" id="accDelCancelBtn">取消</button>
-            <button type="button" class="btn btn-ghost" id="accDelCloseBtn">关闭账户</button>
-            <button type="button" class="btn btn-danger" id="accDelHardBtn">彻底删除</button>
+            <button type="button" class="btn btn-ghost" id="accDelCancelBtn" data-i18n="common.cancel">取消</button>
+            <button type="button" class="btn btn-ghost" id="accDelCloseBtn" data-i18n="accDel.close">关闭账户</button>
+            <button type="button" class="btn btn-danger" id="accDelHardBtn" data-i18n="accDel.hard">彻底删除</button>
         </div>
     </div></div>
 
     <!-- 个人资料弹窗 -->
     <div class="modal-overlay" id="profileModal"><div class="modal glass-card modal-profile">
-        <div class="modal-header"><h3>个人资料</h3><button class="modal-close" id="profileModalClose">✕</button></div>
+        <div class="modal-header"><h3 data-i18n="profile.title">个人资料</h3><button class="modal-close" id="profileModalClose">✕</button></div>
         <form class="profile-form" id="profileForm">
             <div class="profile-avatar-section">
                 <div class="profile-avatar-preview" id="profileAvatarPreview">👤</div>
@@ -815,33 +817,33 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>用户名</label>
+                <label data-i18n="profile.username">用户名</label>
                 <input type="text" id="profileUsername" disabled class="input-disabled">
-                <small class="form-hint">用户名不可修改</small>
+                <small class="form-hint" data-i18n="profile.usernameHint">用户名不可修改</small>
             </div>
             <div class="form-group">
-                <label>昵称</label>
-                <input type="text" id="profileNickname" placeholder="设置一个昵称" maxlength="32">
+                <label data-i18n="profile.nickname">昵称</label>
+                <input type="text" id="profileNickname" placeholder="设置一个昵称" data-i18n-ph="profile.nicknamePh" maxlength="32">
             </div>
             <div class="profile-section-divider">
-                <span>修改密码</span>
+                <span data-i18n="profile.changePwd">修改密码</span>
             </div>
             <div class="form-group">
-                <label>旧密码</label>
-                <input type="password" id="profileOldPassword" placeholder="输入旧密码" autocomplete="current-password">
+                <label data-i18n="profile.oldPwd">旧密码</label>
+                <input type="password" id="profileOldPassword" placeholder="输入旧密码" data-i18n-ph="profile.oldPwdPh" autocomplete="current-password">
             </div>
             <div class="form-group">
-                <label>新密码</label>
-                <input type="password" id="profileNewPassword" placeholder="至少 8 位，包含字母和数字" autocomplete="new-password">
+                <label data-i18n="profile.newPwd">新密码</label>
+                <input type="password" id="profileNewPassword" placeholder="至少 8 位，包含字母和数字" data-i18n-ph="profile.newPwdPh" autocomplete="new-password">
             </div>
             <div class="form-group">
-                <label>确认新密码</label>
-                <input type="password" id="profileNewPassword2" placeholder="再次输入新密码" autocomplete="new-password">
+                <label data-i18n="profile.newPwd2">确认新密码</label>
+                <input type="password" id="profileNewPassword2" placeholder="再次输入新密码" data-i18n-ph="profile.newPwd2Ph" autocomplete="new-password">
             </div>
             <div class="profile-msg" id="profileMsg"></div>
             <div class="form-actions">
-                <button type="button" class="btn btn-ghost" id="profileCancelBtn">取消</button>
-                <button type="submit" class="btn btn-ghost">保存修改</button>
+                <button type="button" class="btn btn-ghost" id="profileCancelBtn" data-i18n="common.cancel">取消</button>
+                <button type="submit" class="btn btn-ghost" data-i18n="profile.save">保存修改</button>
             </div>
         </form>
     </div></div>
@@ -851,15 +853,17 @@
     <!-- Chart.js vendor（~205KB）：置于 body 末尾、app 脚本之前，消除首屏渲染阻塞；
          仍保证在 app.js / managers 之前加载，图表初始化不受影响 -->
     <script src="js/vendor/chart.umd.min.js"></script>
-    <script src="js/i18n.js"></script>
-    <script src="js/utils.js?v=28"></script>
+    <script src="locales/zh-CN.js?v=2"></script>
+    <script src="locales/en-US.js?v=2"></script>
+    <script src="js/i18n.js?v=2"></script>
+    <script src="js/utils.js?v=29"></script>
     <script src="js/preferences.js"></script>
     <script src="js/fx-manager.js"></script>
-    <script src="js/page-loader.js"></script>
+    <script src="js/page-loader.js?v=2"></script>
     <script type="module" src="js/auth.js"></script>
-    <script src="js/app.js?v=3"></script>
+    <script src="js/app.js?v=4"></script>
     <!-- 管理器模块：统一通过 index.js 一行入口加载（内含 window.* 桥接 + boot） -->
-    <script type="module" src="js/managers/index.js?v=32"></script>
+    <script type="module" src="js/managers/index.js?v=33"></script>
     <script type="module" src="js/bootstrap.js"></script>
 </body>
 </html>

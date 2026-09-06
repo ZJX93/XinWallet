@@ -268,9 +268,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = rememberBox.closest('.remember-row');
         if (row) {
             const tip = document.createElement('small');
-            tip.textContent = '（当前为 http，密码以弱加密保存）';
+            tip.dataset.i18n = 'login.error.httpWeak'; // 让语言切换时也跟随刷新
+            tip.textContent = (typeof I18N !== 'undefined') ? I18N.t('login.error.httpWeak') : '（当前为 http，密码以弱加密保存）';
             tip.style.cssText = 'color:var(--text-muted,#888);font-size:11px;margin-left:6px;font-weight:normal;';
             row.appendChild(tip);
+            // 切换语言后刷新这条动态注入的提示
+            if (typeof window !== 'undefined' && window.addEventListener) {
+                window.addEventListener('i18n:changed', () => { tip.textContent = I18N.t('login.error.httpWeak'); });
+            }
         }
     }
 
@@ -279,6 +284,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtn = document.getElementById('authSubmit');
     const demoBtn = document.getElementById('demoLoginBtn');
     let mode = 'login';
+    // 提交按钮文案随 mode 变化 + i18n 切换：键经 I18N.t() 解析，中英自动跟
+    const refreshSubmitBtn = () => {
+        if (!submitBtn) return;
+        submitBtn.textContent = I18N.t(mode === 'login' ? 'login.submit.login' : 'login.submit.register');
+    };
 
     // 根据服务端开关隐藏演示账号入口（未设置 ALLOW_DEMO=true 时隐藏）
     (async () => {
@@ -296,9 +306,18 @@ document.addEventListener('DOMContentLoaded', () => {
         t.classList.add('active');
         mode = t.dataset.tab;
         if (nickGroup) nickGroup.style.display = mode === 'register' ? 'block' : 'none';
-        if (submitBtn) submitBtn.textContent = mode === 'login' ? '登 录' : '注 册';
+        refreshSubmitBtn();
         setHint('');
     }));
+
+    // 初始化 i18n + 监听语言切换：登录页只关心提交按钮文案（其余表单标签走 data-i18n 自动重渲染）
+    if (typeof I18N !== 'undefined' && typeof I18N.init === 'function') {
+        I18N.init().then(() => {
+            refreshSubmitBtn();
+            // 切换时刷新 applyDOM 已经处理过的元素 + 按钮文案
+        }).catch((e) => console.warn('[login] i18n init failed:', e));
+        window.addEventListener('i18n:changed', refreshSubmitBtn);
+    }
 
     const form = document.getElementById('authForm');
     if (form) form.addEventListener('submit', async (e) => {
@@ -306,17 +325,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('authUser').value.trim();
         const password = document.getElementById('authPass').value;
         const nickname = document.getElementById('authNick').value.trim();
-        if (!username || !password) { setHint('请输入用户名和密码', true); return; }
+        if (!username || !password) { setHint(I18N.t('login.error.incomplete'), true); return; }
         if (submitBtn) submitBtn.disabled = true;
 
         try {
             let data;
             if (mode === 'login') {
                 data = await loginApi('/auth/login', 'POST', { username, password });
-                setHint('登录成功，正在进入...');
+                setHint(I18N.t('login.success.login'));
             } else {
                 data = await loginApi('/auth/register', 'POST', { username, password, nickname });
-                setHint('注册成功，正在进入...');
+                setHint(I18N.t('login.success.register'));
             }
             setSession(data.token, data.refreshToken, data.user);
             // 记住密码：⛔ 必须在成功之后才保存，否则会把错密码存下来。
@@ -326,13 +345,13 @@ document.addEventListener('DOMContentLoaded', () => {
             location.href = '/';
         } catch (err) {
             console.error('[login] 失败:', err.message, err);
-            setHint(err.message || '操作失败，请重试', true);
+            setHint(err.message || I18N.t('login.error.network'), true);
             if (submitBtn) submitBtn.disabled = false;
         }
     });
 
     if (demoBtn) demoBtn.addEventListener('click', async () => {
-        setHint('正在登录演示账号...');
+        setHint(I18N.t('login.demo.logging'));
         if (submitBtn) submitBtn.disabled = true;
         try {
             const data = await loginApi('/auth/demo', 'POST');
@@ -341,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             //    存了会在下次真实登录时填入一个不属于该用户的密码。
             location.href = '/';
         } catch (err) {
-            setHint(err.message || '演示账号登录失败', true);
+            setHint(err.message || I18N.t('login.demo.fail'), true);
             if (submitBtn) submitBtn.disabled = false;
         }
     });

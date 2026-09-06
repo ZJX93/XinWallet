@@ -11,7 +11,7 @@ router.get('/profile', async (req, res) => {
     try {
         const userId = req.userId;
         const profile = await aiModule.profileService.getOrCreateProfile(userId);
-        res.json({ ok: true, profile });
+        res.json(success(profile));
     } catch (err) {
         handleServerError(res, err, '获取 Profile');
     }
@@ -31,7 +31,7 @@ router.patch('/profile', async (req, res) => {
         if (preferences !== undefined) updates.preferences = preferences;
 
         await aiModule.profileService.updateProfile(userId, updates);
-        res.json({ ok: true });
+        res.json(success());
     } catch (err) {
         handleServerError(res, err, '更新 Profile');
     }

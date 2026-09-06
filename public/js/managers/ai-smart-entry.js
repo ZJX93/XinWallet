@@ -27,8 +27,13 @@ const DECISIVE_FIELDS = ['amount', 'type', 'category', 'date'];
 const ALWAYS_SHOW_EVIDENCE_FIELDS = ['account', 'currency'];
 
 const FIELD_LABEL = {
-    amount: '金额', type: '类型', category: '分类',
-    date: '日期', currency: '币种', merchant: '商户', account: '账户'
+    amount: tt('aiSmart.fields.amount', '金额'),
+    type: tt('aiSmart.fields.type', '类型'),
+    category: tt('aiSmart.fields.category', '分类'),
+    date: tt('aiSmart.fields.date', '日期'),
+    currency: tt('aiSmart.fields.currency', '币种'),
+    merchant: tt('aiSmart.fields.merchant', '商户'),
+    account: tt('aiSmart.fields.account', '账户')
 };
 
 const AISmartEntry = {
@@ -90,12 +95,12 @@ const AISmartEntry = {
             this._voice.stopped = true;
             clearTimeout(this._voice.maxTimer);
             this._voice.recorder.stop();
-            btn.textContent = '⏳ 转写中...';
+            btn.textContent = tt('aiSmart.voice.transcribing', '⏳ 转写中...');
             btn.disabled = true;
             return;
         }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showToast('当前浏览器不支持麦克风录制', 'error'); return;
+            showToast(tt('aiSmart.voice.notSupported', '当前浏览器不支持麦克风录制'), 'error'); return;
         }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -119,19 +124,19 @@ const AISmartEntry = {
                 await this._sendTranscribe(blob);
             };
             this._voice.recorder.start();
-            btn.textContent = '⏹ 停止';
+            btn.textContent = tt('aiSmart.voice.stop', '⏹ 停止');
             btn.classList.add('is-recording');
             // 60 秒上限自动停
             this._voice.maxTimer = setTimeout(() => {
                 if (this._voice.recorder && this._voice.recorder.state === 'recording') {
-                    showToast('已达最长录音时长，自动停止', 'info');
+                    showToast(tt('aiSmart.voice.timeout', '已达最长录音时长，自动停止'), 'info');
                     this._voice.recorder.stop();
                 }
             }, 60_000);
         } catch (e) {
             // getUserMedia 失败：权限拒绝 / 设备占用 / 不安全上下文（http）
-            const msg = (e && (e.message || e.name)) || '无法访问麦克风';
-            showToast(`录音失败：${msg}（https 站点才可授权）`, 'error');
+            const msg = (e && (e.message || e.name)) || tt('aiSmart.voice.errDefault', '无法访问麦克风');
+            showToast(tt('aiSmart.voice.errTemplate', '录音失败：{msg}（https 站点才可授权）').replace('{msg}', msg), 'error');
         }
     },
 
@@ -146,18 +151,18 @@ const AISmartEntry = {
             const text = (res && (res.text || res.transcript)) || '';
             const input = document.getElementById('aiSmartText');
             if (!text) {
-                showToast('未识别到语音内容，请重试', 'warning');
+                showToast(tt('aiSmart.voice.noResult', '未识别到语音内容，请重试'), 'warning');
             } else {
                 // append 模式：已有内容时换行追加；空时直接填入
                 input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
                 input.focus();
-                showToast('已填入转写文本，可点「解析」', 'success');
+                showToast(tt('aiSmart.voice.filled', '已填入转写文本，可点「解析」'), 'success');
             }
         } catch (err) {
             // 服务端 422 / 502 时仍可保留已录内容，下次再试
-            showToast((err && err.payload && err.payload.message) || '语音转写失败', 'error');
+            showToast((err && err.payload && err.payload.message) || tt('aiSmart.voice.fail', '语音转写失败'), 'error');
         } finally {
-            btn.textContent = '按住说话';
+            btn.textContent = tt('aiSmart.voice.pressToTalk', '按住说话');
             btn.classList.remove('is-recording');
             btn.disabled = false;
             this._voice = { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null };
@@ -169,8 +174,8 @@ const AISmartEntry = {
         if (this.busy) return;
         const input = document.getElementById('aiSmartText');
         const text = (input.value || '').trim();
-        if (!text) { showToast('请先输入要记账的内容', 'warning'); return; }
-        if (text.length > 2000) { showToast('文本过长（最多 2000 字）', 'warning'); return; }
+        if (!text) { showToast(tt('aiSmart.parse.empty', '请先输入要记账的内容'), 'warning'); return; }
+        if (text.length > 2000) { showToast(tt('aiSmart.parse.tooLong', '文本过长（最多 2000 字）'), 'warning'); return; }
 
         this._setBusy(true, 'parse');
         this._hide('aiSmartConfirm');
@@ -214,7 +219,7 @@ const AISmartEntry = {
             this._hide('aiSmartLoading');
             // api() 已弹过 toast，这里只补充 422（无法识别）的引导话术
             if (err.payload && err.payload.message && /未能从文本中识别/.test(err.payload.message)) {
-                showToast('试试写明金额，例如「星巴克咖啡 35.5」', 'info');
+                showToast(tt('aiSmart.parse.hint', '试试写明金额，例如「星巴克咖啡 35.5」'), 'info');
             }
         } finally {
             this._setBusy(false, 'parse');
@@ -230,14 +235,15 @@ const AISmartEntry = {
 
         // 裁决横幅：以后端 verdict 为唯一依据
         const banner = document.getElementById('aiSmartVerdict');
-        const pct = this.overall == null ? '' : `（综合置信度 ${(this.overall * 100).toFixed(0)}%）`;
+        const pctRaw = this.overall == null ? '' : tt('aiSmart.banner.overallPct', '（综合置信度 {pct}%）').replace('{pct}', String((this.overall * 100).toFixed(0)));
+        const pct = pctRaw ? ' ' + escapeHtml(pctRaw) : '';
         banner.className = 'ai-smart-verdict ' + (needsConfirm ? 'is-warn' : 'is-ok');
         banner.innerHTML = needsConfirm
-            ? `<div class="ai-smart-verdict-head">⚠️ 有字段置信度偏低，请核对后提交${escapeHtml(pct)}</div>`
+            ? `<div class="ai-smart-verdict-head">${escapeHtml(tt('aiSmart.banner.warn', '⚠️ 有字段置信度偏低，请核对后提交{pct}')).replace('{pct}', pct)}</div>`
               + (this.reasons.length
                   ? `<ul class="ai-smart-reasons">${this.reasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>`
                   : '')
-            : `<div class="ai-smart-verdict-head">✅ 各字段置信度达标，仍建议核对后提交${escapeHtml(pct)}</div>`;
+            : `<div class="ai-smart-verdict-head">${escapeHtml(tt('aiSmart.banner.ok', '✅ 各字段置信度达标，仍建议核对后提交{pct}')).replace('{pct}', pct)}</div>`;
 
         document.getElementById('aiSmartList').innerHTML =
             this.items.map((item, i) => this._renderRow(item, i)).join('');
@@ -260,59 +266,63 @@ const AISmartEntry = {
         // 转账走「转出 → 转入」双账户，普通收支走单账户
         const accountCell = isTransfer
             ? `<div class="ai-smart-cell" data-w="acc2">
-                   ${this._label('转出 → 转入', perField, null)}
+                   ${this._label(tt('aiSmart.label.fromToAcc', '转出 → 转入'), perField, null)}
                    <div class="ai-smart-transfer-accs">
-                       <select data-field="from_account_id" data-idx="${i}"><option value="">选择转出</option>${accOpts(item.from_account_id)}</select>
+                       <select data-field="from_account_id" data-idx="${i}"><option value="">${escapeHtml(tt('aiSmart.opt.chooseFrom', '选择转出'))}</option>${accOpts(item.from_account_id)}</select>
                        <span class="ai-smart-arrow">→</span>
-                       <select data-field="to_account_id" data-idx="${i}"><option value="">选择转入</option>${accOpts(item.to_account_id)}</select>
+                       <select data-field="to_account_id" data-idx="${i}"><option value="">${escapeHtml(tt('aiSmart.opt.chooseTo', '选择转入'))}</option>${accOpts(item.to_account_id)}</select>
                    </div>
                </div>`
             : `<div class="ai-smart-cell" data-w="acc">
-                   ${this._label('账户', perField, null)}
-                   <select data-field="account_id" data-idx="${i}"><option value="">选择账户</option>${accOpts(item.account_id)}</select>
+                   ${this._label(tt('aiSmart.label.account', '账户'), perField, null)}
+                   <select data-field="account_id" data-idx="${i}"><option value="">${escapeHtml(tt('aiSmart.opt.chooseAccount', '选择账户'))}</option>${accOpts(item.account_id)}</select>
                </div>`;
 
         // 转账无需类目（后端用系统「转账」类目），故隐去分类列
         const categoryCell = isTransfer ? '' : `
             <div class="ai-smart-cell" data-w="cat">
-                ${this._label('分类', perField, 'category')}
+                ${this._label(tt('aiSmart.label.category', '分类'), perField, 'category')}
                 <select data-field="category_id" data-idx="${i}">
-                    <option value="">未识别</option>
+                    <option value="">${escapeHtml(tt('aiSmart.opt.unrecognized', '未识别'))}</option>
                     ${catList.map(c => `<option value="${c.id}" ${c.id === item.category_id ? 'selected' : ''}>${escapeHtml(c.icon || '📌')} ${escapeHtml(c.name)}</option>`).join('')}
                 </select>
             </div>`;
 
         const evidence = this._evidenceText(item);
 
+        const seqText = tt('aiSmart.label.seq', '第 {n} 笔').replace('{n}', String(item.seq));
+        const rawTitle = tt('aiSmart.title.rawSegment', '原文片段');
+        const delTitle = tt('aiSmart.title.removeRow', '移除此笔');
+
         return `<div class="ai-smart-row" data-idx="${i}">
             <div class="ai-smart-row-head">
-                <span class="ai-smart-seq">第 ${item.seq} 笔</span>
+                <span class="ai-smart-seq">${escapeHtml(seqText)}</span>
                 ${item.merchant ? `<span class="ai-smart-merchant">${escapeHtml(item.merchant)}</span>` : ''}
-                ${item.raw_segment ? `<span class="ai-smart-raw" title="原文片段">「${escapeHtml(item.raw_segment)}」</span>` : ''}
-                <button class="ai-smart-del" data-del="${i}" title="移除此笔">✕</button>
+                ${item.raw_segment ? `<span class="ai-smart-raw" title="${escapeHtml(rawTitle)}">「${escapeHtml(item.raw_segment)}」</span>` : ''}
+                <button class="ai-smart-del" data-del="${i}" title="${escapeHtml(delTitle)}">✕</button>
             </div>
             <div class="ai-smart-row-body">
                 <div class="ai-smart-cell" data-w="type">
-                    ${this._label('类型', perField, 'type')}
+                    ${this._label(tt('aiSmart.label.type', '类型'), perField, 'type')}
                     <select data-field="type" data-idx="${i}">
-                        <option value="expense" ${item.type === 'expense' ? 'selected' : ''}>支出</option>
-                        <option value="income" ${item.type === 'income' ? 'selected' : ''}>收入</option>
-                        <option value="transfer" ${isTransfer ? 'selected' : ''}>转账</option>
+                        <option value="expense" ${item.type === 'expense' ? 'selected' : ''}>${escapeHtml(tt('aiSmart.opt.expense', '支出'))}</option>
+                        <option value="income" ${item.type === 'income' ? 'selected' : ''}>${escapeHtml(tt('aiSmart.opt.income', '收入'))}</option>
+                        <option value="transfer" ${isTransfer ? 'selected' : ''}>${escapeHtml(tt('aiSmart.opt.transfer', '转账'))}</option>
                     </select>
                 </div>
                 ${accountCell}
                 ${categoryCell}
                 <div class="ai-smart-cell" data-w="amt">
-                    ${this._label('金额', perField, 'amount')}
+                    ${this._label(tt('aiSmart.label.amount', '金额'), perField, 'amount')}
                     <input type="number" step="0.01" min="0.01" value="${Number(item.amount || 0).toFixed(2)}" data-field="amount" data-idx="${i}">
                 </div>
                 <div class="ai-smart-cell" data-w="date">
-                    ${this._label('日期', perField, 'date')}
+                    ${this._label(tt('aiSmart.label.date', '日期'), perField, 'date')}
                     <input type="date" value="${escapeHtml(item.date || '')}" data-field="date" data-idx="${i}">
                 </div>
                 <div class="ai-smart-cell" data-w="note">
-                    ${this._label('备注', perField, null)}
-                    <input type="text" value="${escapeHtml(item.note || '')}" placeholder="备注" data-field="note" data-idx="${i}">
+                    ${this._label(tt('aiSmart.label.note', '备注'), perField, null)}
+                    <input type="text" value="${escapeHtml(item.note || '')}" placeholder="${escapeHtml(tt('aiSmart.opt.notePlaceholder', '备注'))}" data-field="note" data-idx="${i}">
                 </div>
             </div>
             ${evidence ? `<div class="ai-smart-evidence">${escapeHtml(evidence)}</div>` : ''}
@@ -327,7 +337,9 @@ const AISmartEntry = {
         const f = perField[field];
         const cls = f.ok ? 'is-ok' : 'is-low';
         const score = Math.round((f.score || 0) * 100);
-        const tip = `置信度 ${score}%，阈值 ${Math.round((f.threshold || 0) * 100)}%`;
+        const tip = tt('aiSmart.conf.tooltip', '置信度 {score}%，阈值 {threshold}%')
+            .replace('{score}', String(score))
+            .replace('{threshold}', String(Math.round((f.threshold || 0) * 100)));
         return `<label class="ai-smart-flabel">${escapeHtml(text)}`
             + `<span class="ai-smart-conf ${cls}" title="${escapeHtml(tip)}">${score}%</span></label>`;
     },
@@ -351,7 +363,7 @@ const AISmartEntry = {
             .filter(f => ev[f] && ev[f] !== 'missing' && !DECISIVE_FIELDS.includes(f))
             .map(f => `${FIELD_LABEL[f] || f}=${ev[f]}`);
         const parts = decisiveParts.concat(alwaysParts);
-        let text = parts.length ? `识别依据：${parts.join('  ·  ')}` : '';
+        let text = parts.length ? tt('aiSmart.evidence.label', '识别依据：{parts}').replace('{parts}', parts.join('  ·  ')) : '';
         // 附加账户识别的详细说明（如「未在文本中找到支付渠道，已按上次使用 XXX 兜底」）。
         if (item.account_match_details) {
             text = text ? `${text}\n${item.account_match_details}` : item.account_match_details;
@@ -399,7 +411,7 @@ const AISmartEntry = {
                 this.items.splice(idx, 1);
                 if (!this.items.length) {
                     // 全部移除等价于放弃这次预测
-                    showToast('已移除全部候选，将弃置本次识别', 'info');
+                    showToast(tt('aiSmart.discard.removedAll', '已移除全部候选，将弃置本次识别'), 'info');
                     this.discard('用户移除了全部候选');
                     return;
                 }
@@ -452,23 +464,25 @@ const AISmartEntry = {
         const btn = document.getElementById('aiSmartCommitBtn');
         if (!btn) return;
         const n = this.items.length;
-        btn.textContent = this._isDirty() ? `按修正后提交（${n} 笔）` : `确认并记账（${n} 笔）`;
+        btn.textContent = this._isDirty()
+            ? tt('aiSmart.commit.submitCorrected', '按修正后提交（{n} 笔）').replace('{n}', String(n))
+            : tt('aiSmart.commit.submitConfirm', '确认并记账（{n} 笔）').replace('{n}', String(n));
     },
 
     // ========== 步骤 3：提交 ==========
     async commit() {
         if (this.busy || !this.predictionId) return;
-        if (!this.items.length) { showToast('没有可提交的交易', 'warning'); return; }
+        if (!this.items.length) { showToast(tt('aiSmart.commit.empty', '没有可提交的交易'), 'warning'); return; }
 
         // 前置自检：给出比服务端 422 更具体的定位提示，避免用户来回猜
         for (const it of this.items) {
-            const tag = `第 ${it.seq} 笔`;
-            if (!(Number(it.amount) > 0)) { showToast(`${tag}金额无效`, 'warning'); return; }
+            const tag = tt('aiSmart.tag.seqPrefix', '第 {n} 笔').replace('{n}', String(it.seq));
+            if (!(Number(it.amount) > 0)) { showToast(tt('aiSmart.tag.amountInvalid', '{tag}金额无效').replace('{tag}', tag), 'warning'); return; }
             if (it.type === 'transfer') {
-                if (!it.from_account_id || !it.to_account_id) { showToast(`${tag}请选择转出与转入账户`, 'warning'); return; }
-                if (it.from_account_id === it.to_account_id) { showToast(`${tag}转出与转入账户不能相同`, 'warning'); return; }
+                if (!it.from_account_id || !it.to_account_id) { showToast(tt('aiSmart.tag.needTransferAccs', '{tag}请选择转出与转入账户').replace('{tag}', tag), 'warning'); return; }
+                if (it.from_account_id === it.to_account_id) { showToast(tt('aiSmart.tag.sameTransferAccs', '{tag}转出与转入账户不能相同').replace('{tag}', tag), 'warning'); return; }
             } else if (!it.account_id) {
-                showToast(`${tag}请选择账户`, 'warning'); return;
+                showToast(tt('aiSmart.tag.needAccount', '{tag}请选择账户').replace('{tag}', tag), 'warning'); return;
             }
         }
 
@@ -484,18 +498,20 @@ const AISmartEntry = {
 
             const res = await api(`/ai/predictions/${this.predictionId}/commit`, 'POST', body, { silent: true });
             const n = (res && res.transactions) ? res.transactions.length : this.items.length;
-            showToast(`${(res && res.message) || '提交成功'} · ${n} 笔已记账`, 'success');
+            showToast(tt('aiSmart.commit.okTemplate', '{msg} · {n} 笔已记账')
+                .replace('{msg}', (res && res.message) || tt('aiSmart.commit.defaultOk', '提交成功'))
+                .replace('{n}', String(n)), 'success');
 
             this._reset();
             await initCache();
             if (window.DashboardManager) await DashboardManager.refresh();
         } catch (err) {
             const p = err.payload || {};
-            const msg = p.message || err.message || '提交失败';
+            const msg = p.message || err.message || tt('aiSmart.commit.failDefault', '提交失败');
             // 409：预测已被提交或已弃置（状态机单向不可逆），本地状态已过期，
             // 清空避免用户反复点击。以状态码判定而非错误文案，后端改文案不会失效。
             if (err.status === 409) {
-                showToast(msg + '，已重置识别结果', 'warning');
+                showToast(msg + tt('aiSmart.commit.resetHint', '，已重置识别结果'), 'warning');
                 this._reset();
             } else {
                 showToast(msg, 'error');
@@ -519,10 +535,10 @@ const AISmartEntry = {
         try {
             await api(`/ai/predictions/${this.predictionId}/discard`, 'POST',
                 { reason: reason || 'user_discarded' }, { silent: true });
-            showToast('已弃置本次识别', 'info');
+            showToast(tt('aiSmart.discard.done', '已弃置本次识别'), 'info');
         } catch (err) {
             // 弃置失败不影响用户继续使用，仅提示
-            showToast((err.payload && err.payload.message) || '弃置失败', 'warning');
+            showToast((err.payload && err.payload.message) || tt('aiSmart.discard.fail', '弃置失败'), 'warning');
         } finally {
             this._setBusy(false, 'discard');
             this._reset();

@@ -3,11 +3,11 @@
     <div class="glass-card ai-page-card">
         <div class="ai-page-header">
             <div>
-                <h3 class="card-title">AI 系统状态</h3>
-                <p class="card-desc">系统监控、健康检查与运维工具</p>
+                <h3 class="card-title" data-i18n="aiStatus.title">AI 系统状态</h3>
+                <p class="card-desc" data-i18n="aiStatus.desc">系统监控、健康检查与运维工具</p>
             </div>
             <div class="ai-page-actions">
-                <button class="btn btn-ghost btn-ai" id="aiToolsRefreshBtn" title="重新加载">↻ 刷新</button>
+                <button class="btn btn-ghost btn-ai" id="aiToolsRefreshBtn" title="重新加载" data-i18n-title="aiStatus.reloadTip">↻ <span data-i18n="common.refresh">刷新</span></button>
             </div>
         </div>
 
@@ -15,18 +15,18 @@
 
         <!-- 系统状态 -->
         <div class="ai-tools-section">
-            <h4 class="ai-tools-section-title">系统状态</h4>
+            <h4 class="ai-tools-section-title" data-i18n="aiStatus.section.status">系统状态</h4>
             <div class="ai-tools-grid" id="aiToolsStatus">
                 <div class="ai-tools-card">
-                    <div class="ai-tools-card-header">事件总线</div>
+                    <div class="ai-tools-card-header" data-i18n="aiStatus.card.eventBus">事件总线</div>
                     <div class="ai-tools-card-body" id="aiToolsEventBus"><span class="skeleton-line shimmer" style="width:60%"></span></div>
                 </div>
                 <div class="ai-tools-card">
-                    <div class="ai-tools-card-header">等待反馈</div>
+                    <div class="ai-tools-card-header" data-i18n="aiStatus.card.pendingFeedback">等待反馈</div>
                     <div class="ai-tools-card-body" id="aiToolsPendingFeedback"><span class="skeleton-line shimmer" style="width:40%"></span></div>
                 </div>
                 <div class="ai-tools-card">
-                    <div class="ai-tools-card-header">版本</div>
+                    <div class="ai-tools-card-header" data-i18n="aiStatus.card.version">版本</div>
                     <div class="ai-tools-card-body" id="aiToolsVersion"><span class="skeleton-line shimmer" style="width:30%"></span></div>
                 </div>
             </div>
@@ -34,14 +34,14 @@
 
         <!-- 健康指标 -->
         <div class="ai-tools-section">
-            <h4 class="ai-tools-section-title">健康指标</h4>
+            <h4 class="ai-tools-section-title" data-i18n="aiStatus.section.metrics">健康指标</h4>
             <div class="ai-tools-grid" id="aiToolsMetrics">
                 <div class="ai-tools-card">
-                    <div class="ai-tools-card-header">AI 健康</div>
+                    <div class="ai-tools-card-header" data-i18n="aiStatus.card.health">AI 健康</div>
                     <div class="ai-tools-card-body" id="aiToolsHealth"><span class="skeleton-line shimmer" style="width:70%"></span></div>
                 </div>
                 <div class="ai-tools-card">
-                    <div class="ai-tools-card-header">7 日成本</div>
+                    <div class="ai-tools-card-header" data-i18n="aiStatus.card.cost7d">7 日成本</div>
                     <div class="ai-tools-card-body" id="aiToolsCost"><span class="skeleton-line shimmer" style="width:50%"></span></div>
                 </div>
             </div>
@@ -49,20 +49,20 @@
 
         <!-- 功能开关 -->
         <div class="ai-tools-section">
-            <h4 class="ai-tools-section-title">功能开关</h4>
+            <h4 class="ai-tools-section-title" data-i18n="aiStatus.section.features">功能开关</h4>
             <div class="ai-tools-card" style="grid-column:1/-1">
-                <div class="ai-tools-card-header">用户特性开关</div>
+                <div class="ai-tools-card-header" data-i18n="aiStatus.card.userFeatures">用户特性开关</div>
                 <div class="ai-tools-card-body" id="aiToolsFeatures"><span class="skeleton-line shimmer" style="width:80%"></span></div>
             </div>
         </div>
 
         <!-- 运维操作（开发者工具收纳于此） -->
         <div class="ai-tools-section">
-            <h4 class="ai-tools-section-title">运维操作</h4>
+            <h4 class="ai-tools-section-title" data-i18n="aiStatus.section.ops">运维操作</h4>
             <div class="ai-tools-card" style="grid-column:1/-1">
                 <div class="ai-tools-card-body" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button class="btn btn-ghost btn-sm" id="aiToolsRunCleanup">运行清理</button>
-                    <button class="btn btn-ghost btn-sm" id="aiToolsEmitEvent">触发测试事件</button>
+                    <button class="btn btn-ghost btn-sm" id="aiToolsRunCleanup" data-i18n="aiStatus.runCleanup">运行清理</button>
+                    <button class="btn btn-ghost btn-sm" id="aiToolsEmitEvent" data-i18n="aiStatus.emitEvent">触发测试事件</button>
                 </div>
             </div>
         </div>

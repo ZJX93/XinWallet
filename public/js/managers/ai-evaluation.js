@@ -48,12 +48,12 @@ const AIEvaluation = {
                 this.data = r;
                 this._renderResult(r);
                 await this.loadHistory();
-                showToast('评测完成', 'success');
+                showToast(tt('aiEval.toast.done', '评测完成'), 'success');
             } else {
-                this._showError((r && r.message) || '评测失败');
+                this._showError((r && r.message) || tt('aiEval.toast.fail', '评测失败'));
             }
         } catch (e) {
-            this._showError(e.message || '网络异常');
+            this._showError(e.message || tt('aiEval.err.network', '网络异常'));
         } finally {
             this.busy = false;
             this._setBtn(false);
@@ -68,7 +68,7 @@ const AIEvaluation = {
         } catch (e) {
             // 历史失败不阻断主流程
             const el = document.getElementById('aiEvalHistory');
-            if (el) el.innerHTML = '<p class="empty-desc">历史加载失败</p>';
+            if (el) el.innerHTML = `<p class="empty-desc">${escapeHtml(tt('aiEval.history.fail', '历史加载失败'))}</p>`;
         }
     },
 
@@ -80,17 +80,17 @@ const AIEvaluation = {
     },
 
     _metricGrid(metrics) {
-        if (!metrics || typeof metrics !== 'object') return '<p class="empty-desc">无指标</p>';
+        if (!metrics || typeof metrics !== 'object') return `<p class="empty-desc">${escapeHtml(tt('aiEval.empty.metrics', '无指标'))}</p>`;
         // 服务端 runner.js 直接暴露每个维度的准确率（0~1），不需要前端再做 total/hit 计算
         const pairs = [
-            ['case_pass_rate', '用例通过率'],
-            ['transaction_count_accuracy', '笔数识别'],
-            ['amount_accuracy', '金额'],
-            ['type_accuracy', '类型'],
-            ['category_accuracy', '类目'],
-            ['date_accuracy', '日期'],
-            ['date_precision_rate', '日期秒级完备率'],
-            ['verdict_accuracy', '裁决'],
+            ['case_pass_rate', tt('aiEval.metric.casePass', '用例通过率')],
+            ['transaction_count_accuracy', tt('aiEval.metric.txnCount', '笔数识别')],
+            ['amount_accuracy', tt('aiEval.metric.amount', '金额')],
+            ['type_accuracy', tt('aiEval.metric.type', '类型')],
+            ['category_accuracy', tt('aiEval.metric.category', '类目')],
+            ['date_accuracy', tt('aiEval.metric.date', '日期')],
+            ['date_precision_rate', tt('aiEval.metric.datePrecision', '日期秒级完备率')],
+            ['verdict_accuracy', tt('aiEval.metric.verdict', '裁决')],
         ];
         const cards = pairs.map(([k, label]) => {
             const acc = Number(metrics[k]);
@@ -108,28 +108,37 @@ const AIEvaluation = {
         if (!el) return;
         const summary = d.summary || {};
         const reg = d.regression || {};
+        // {p} 占位包 <b> 加粗展示通过数；{t}/{ds} 走普通文本
+        const pHtml = '<b>' + this._num(summary.passed_cases) + '</b>';
+        const tNum = this._num(summary.total_cases);
+        const ds = escapeHtml(String(summary.dataset_version || '?'));
+        const summaryText = tt('aiEval.summary.passed', '通过 {p} / {t} 例 · 数据集 v{ds}')
+            .replace('{p}', pHtml)
+            .replace('{t}', tNum)
+            .replace('{ds}', ds);
         let html = `<div class="ai-eval-summary">
-            <div class="ai-eval-summary-main">通过 <b>${this._num(summary.passed_cases)}</b> / ${this._num(summary.total_cases)} 例 · 数据集 v${escapeHtml(String(summary.dataset_version || '?'))}</div>
-            ${d.baseline_run_id ? `<div class="ai-eval-baseline">基线跑批 #${d.baseline_run_id}</div>` : ''}
+            <div class="ai-eval-summary-main">${summaryText}</div>
+            ${d.baseline_run_id ? `<div class="ai-eval-baseline">${escapeHtml(tt('aiEval.baseline.label', '基线跑批 #{id}')).replace('{id}', d.baseline_run_id)}</div>` : ''}
         </div>`;
         html += this._metricGrid(d.metrics);
 
         if (reg.has_baseline) {
             const regs = Array.isArray(reg.regressions) ? reg.regressions : [];
             if (regs.length) {
-                html += '<div class="ai-eval-reg"><div class="ai-eval-reg-title">⚠️ 回归项</div>' + regs.map(g =>
+                html += `<div class="ai-eval-reg"><div class="ai-eval-reg-title">${escapeHtml(tt('aiEval.reg.title', '⚠️ 回归项'))}</div>` + regs.map(g =>
                     `<div class="ai-eval-reg-row">${escapeHtml(g.metric)}: ${(Number(g.from) * 100).toFixed(1)}% → ${(Number(g.to) * 100).toFixed(1)}%</div>`
                 ).join('') + '</div>';
             } else {
-                html += '<div class="ai-eval-reg ok">✅ 相较基线无回归</div>';
+                html += `<div class="ai-eval-reg ok">${escapeHtml(tt('aiEval.reg.ok', '✅ 相较基线无回归'))}</div>`;
             }
         } else {
-            html += '<div class="ai-eval-reg neutral">ℹ️ 暂无基线，本次作为首条基线</div>';
+            html += `<div class="ai-eval-reg neutral">${escapeHtml(tt('aiEval.reg.neutral', 'ℹ️ 暂无基线，本次作为首条基线'))}</div>`;
         }
 
         const failed = Array.isArray(d.failed_cases) ? d.failed_cases : [];
         if (failed.length) {
-            html += '<div class="ai-eval-failed"><div class="ai-eval-reg-title">❌ 失败用例 (' + failed.length + ')</div>' +
+            const failedTitle = tt('aiEval.failed.title', '❌ 失败用例 ({n})').replace('{n}', String(failed.length));
+            html += `<div class="ai-eval-failed"><div class="ai-eval-reg-title">${escapeHtml(failedTitle)}</div>` +
                 failed.map(c => `<div class="ai-eval-failed-row"><b>${escapeHtml(String(c.case_id || ''))}</b> ${escapeHtml(c.scenario || '')}<div class="ai-eval-failed-input">${escapeHtml(c.input_text || '')}</div></div>`).join('') +
                 '</div>';
         }
@@ -139,7 +148,7 @@ const AIEvaluation = {
     _renderHistory(runs) {
         const el = document.getElementById('aiEvalHistory');
         if (!el) return;
-        if (!runs.length) { el.innerHTML = '<p class="empty-desc">暂无历史跑批</p>'; return; }
+        if (!runs.length) { el.innerHTML = `<p class="empty-desc">${escapeHtml(tt('aiEval.history.empty', '暂无历史跑批'))}</p>`; return; }
         el.innerHTML = runs.map(r => {
             const created = r.created_at ? formatRelativeTime(r.created_at) : '';
             return `<div class="ai-eval-hist-row">
@@ -151,7 +160,7 @@ const AIEvaluation = {
 
     _setBtn(busy) {
         const b = document.getElementById('aiEvalRunBtn');
-        if (b) { b.disabled = busy; b.textContent = busy ? '⏳ 跑批中...' : '▶ 运行评测'; }
+        if (b) { b.disabled = busy; b.textContent = busy ? tt('aiEval.btn.running', '⏳ 跑批中...') : tt('aiEval.btn.idle', '▶ 运行评测'); }
     },
     _showLoading(on) {
         const ld = document.getElementById('aiEvalLoading');
@@ -161,9 +170,10 @@ const AIEvaluation = {
         const bar = document.getElementById('aiEvalError');
         if (!bar) return;
         if (!msg) { bar.style.display = 'none'; return; }
-        bar.textContent = '⚠️ ' + msg;
+        const prefix = tt('aiEval.err.prefix', '⚠️');
+        bar.textContent = prefix + ' ' + msg;
         bar.style.display = 'block';
-        setTimeout(() => { if (bar.textContent.startsWith('⚠️ ' + msg)) bar.style.display = 'none'; }, 4000);
+        setTimeout(() => { if (bar.textContent.startsWith(prefix + ' ' + msg)) bar.style.display = 'none'; }, 4000);
     },
 };
 

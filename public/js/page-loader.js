@@ -17,6 +17,20 @@ const PageLoader = {
     loading: new Map(),  // 正在加载的页面（去重）
 
     /**
+     * 注入片段 HTML + 补翻译。
+     * ⛔ 所有 innerHTML 注入都必须走这里：懒加载片段不在首屏 DOM 里，
+     *    I18N.init() 时的 applyDOM() 扫不到它们，若直接 innerHTML 则
+     *    英文态下这些页面会残留中文（"英化不彻底"的主因）。
+     */
+    _inject(el, html) {
+        el.innerHTML = html;
+        el.dataset.loaded = 'true';
+        if (typeof window !== 'undefined' && window.I18N && typeof window.I18N.applyDOM === 'function') {
+            window.I18N.applyDOM(el);
+        }
+    },
+
+    /**
      * 检查并加载页面片段（如果需要）
      * @param {string} pageId - 页面元素 id，如 'page-investments'
      * @returns {Promise<boolean>} 是否加载成功
@@ -32,8 +46,7 @@ const PageLoader = {
 
         // 已有缓存 → 注入并标记
         if (this.cache.has(src)) {
-            el.innerHTML = this.cache.get(src);
-            el.dataset.loaded = 'true';
+            this._inject(el, this.cache.get(src));
             return true;
         }
 
@@ -41,8 +54,7 @@ const PageLoader = {
         if (this.loading.has(src)) {
             await this.loading.get(src);
             if (this.cache.has(src) && el.dataset.loaded !== 'true') {
-                el.innerHTML = this.cache.get(src);
-                el.dataset.loaded = 'true';
+                this._inject(el, this.cache.get(src));
             }
             return this.cache.has(src);
         }
@@ -72,8 +84,7 @@ const PageLoader = {
             // 并发防护：若在 await 期间已被其他调用方注入（dataset.loaded 已置位），
             // 不再重复写入 innerHTML，否则会重置已注入节点的 DOM、造成事件监听器丢失 / 嵌套双 section
             if (el.dataset.loaded !== 'true') {
-                el.innerHTML = inner;
-                el.dataset.loaded = 'true';
+                this._inject(el, inner);
             }
             return true;
         }

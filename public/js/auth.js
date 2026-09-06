@@ -189,7 +189,7 @@ export function bindProfileModal() {
             }
         } catch (err) {
             console.error('获取用户资料失败:', err);
-            showProfileMsg('加载用户信息失败', 'error');
+            showProfileMsg(tt('profile.msg.loadFail', '加载用户信息失败'), 'error');
         }
         modal.classList.add('show');
     });
@@ -215,11 +215,11 @@ export function bindProfileModal() {
 
         // 验证
         if (newPassword && newPassword !== newPassword2) {
-            showProfileMsg('两次输入的新密码不一致', 'error');
+            showProfileMsg(tt('profile.msg.pwdMismatch', '两次输入的新密码不一致'), 'error');
             return;
         }
         if (newPassword && !oldPassword) {
-            showProfileMsg('请输入旧密码', 'error');
+            showProfileMsg(tt('profile.msg.oldPwdRequired', '请输入旧密码'), 'error');
             return;
         }
 
@@ -248,7 +248,7 @@ export function bindProfileModal() {
                 }
                 // 更新头部显示
                 renderUserMenu();
-                showProfileMsg(data.message || '保存成功', 'success');
+                showProfileMsg(data.message || tt('profile.msg.saveOk', '保存成功'), 'success');
                 // 清空密码字段
                 document.getElementById('profileOldPassword').value = '';
                 document.getElementById('profileNewPassword').value = '';
@@ -256,11 +256,11 @@ export function bindProfileModal() {
                 // 1.5秒后自动关闭
                 setTimeout(close, 1500);
             } else {
-                showProfileMsg(data.message || '保存失败', 'error');
+                showProfileMsg(data.message || tt('profile.msg.saveFail', '保存失败'), 'error');
             }
         } catch (err) {
             console.error('更新用户资料失败:', err);
-            showProfileMsg('网络错误，请重试', 'error');
+            showProfileMsg(tt('profile.msg.networkError', '网络错误，请重试'), 'error');
         }
     });
 }
@@ -285,7 +285,7 @@ export function renderBookSwitcher() {
         mount.innerHTML = `
             <button class="book-switcher-trigger" id="bookSwitcherTrigger" type="button" aria-haspopup="true" aria-expanded="false">
                 <span class="book-icon">📒</span>
-                <span class="book-name" id="bookSwitcherName">加载中…</span>
+                <span class="book-name" id="bookSwitcherName">${escapeHtml(tt('book.loading', '加载中…'))}</span>
                 <span class="book-caret">▾</span>
             </button>
             <div class="book-switcher-panel" id="bookSwitcherPanel" style="display:none">
@@ -330,11 +330,11 @@ async function loadBooks() {
             <button class="book-switcher-item${b.id === currentBookId ? ' active' : ''}" type="button" data-book-id="${b.id}">
                 <span class="book-dot" style="background:${escapeHtml(b.color || '#6366f1')}">${escapeHtml(b.icon || '📒')}</span>
                 <span class="book-label">${escapeHtml(b.name)}</span>
-                ${b.is_default ? '<span class="book-tag">默认</span>' : ''}
-            </button>`).join('') || '<div class="book-switcher-empty">暂无账本</div>';
+                ${b.is_default ? `<span class="book-tag">${escapeHtml(tt('book.tag.default', '默认'))}</span>` : ''}
+            </button>`).join('') || `<div class="book-switcher-empty">${escapeHtml(tt('book.empty', '暂无账本'))}</div>`;
 
         const cur = books.find(b => b.id === currentBookId);
-        if (nameEl) nameEl.textContent = cur ? cur.name : '默认账本';
+        if (nameEl) nameEl.textContent = cur ? cur.name : tt('book.name.default', '默认账本');
 
         list.querySelectorAll('.book-switcher-item').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -344,7 +344,7 @@ async function loadBooks() {
             });
         });
     } catch (err) {
-        if (nameEl) nameEl.textContent = '账本加载失败';
+        if (nameEl) nameEl.textContent = tt('book.loadFail', '账本加载失败');
         console.error('加载账本失败:', err);
     }
 }
@@ -352,7 +352,7 @@ async function loadBooks() {
 function selectBook(id, name) {
     setBookId(id);
     const nameEl = document.getElementById('bookSwitcherName');
-    if (nameEl) nameEl.textContent = name || '账本';
+    if (nameEl) nameEl.textContent = name || tt('book.fallback', '账本');
     const panel = document.getElementById('bookSwitcherPanel');
     const trigger = document.getElementById('bookSwitcherTrigger');
     if (panel) panel.style.display = 'none';

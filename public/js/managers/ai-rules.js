@@ -90,11 +90,11 @@ const AIRules = {
                 this.thresholds = r.thresholds || {};
                 this._render();
             } else {
-                this.errorMsg = (r && r.message) || '加载规则失败';
+                this.errorMsg = (r && r.message) || tt('aiRules.err.loadFail', '加载规则失败');
                 this._renderError();
             }
         } catch (e) {
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
             this._renderError();
         } finally {
             this.busy = false;
@@ -104,14 +104,14 @@ const AIRules = {
 
     async disable(id, reason = 'user_disabled') {
         if (this.pendingId !== -1) return;
-        if (!confirm('禁用后该规则不会复活，关联样本也不会恢复。\n\n确定要禁用吗？')) return;
+        if (!confirmT('confirm.disableRule', '禁用后该规则不会复活，关联样本也不会恢复。\n\n确定要禁用吗？')) return;
         this.pendingId = id;
         try {
             const r = await api(`/ai/rules/${id}/disable`, 'POST', { reason });
-            if (r && r.success) { this.toast = '已禁用'; }
-            else this.errorMsg = (r && r.message) || '禁用失败';
+            if (r && r.success) { this.toast = tt('aiRules.toast.disabled', '已禁用'); }
+            else this.errorMsg = (r && r.message) || tt('aiRules.err.disableFail', '禁用失败');
         } catch (e) {
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
         } finally {
             this.pendingId = -1;
             await this.load();
@@ -123,10 +123,10 @@ const AIRules = {
         this.pendingId = id;
         try {
             const r = await api(`/ai/rules/${id}/enable`, 'POST', {});
-            if (r && r.success) { this.toast = '已启用，从候选重新攒证据'; }
-            else this.errorMsg = (r && r.message) || '启用失败';
+            if (r && r.success) { this.toast = tt('aiRules.toast.enabled', '已启用，从候选重新攒证据'); }
+            else this.errorMsg = (r && r.message) || tt('aiRules.err.enableFail', '启用失败');
         } catch (e) {
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
         } finally {
             this.pendingId = -1;
             await this.load();
@@ -135,14 +135,14 @@ const AIRules = {
 
     async deleteRule(id) {
         if (this.pendingId !== -1) return;
-        if (!confirm('确定要永久删除这条规则吗？删除后不可恢复。')) return;
+        if (!confirmT('confirm.deleteRule', '确定要永久删除这条规则吗？删除后不可恢复。')) return;
         this.pendingId = id;
         try {
             const r = await api(`/ai/rules/${id}`, 'DELETE', {});
-            if (r && r.success) { this.toast = '规则已删除'; }
-            else this.errorMsg = (r && r.message) || '删除失败';
+            if (r && r.success) { this.toast = tt('aiRules.toast.deleted', '规则已删除'); }
+            else this.errorMsg = (r && r.message) || tt('aiRules.err.deleteFail', '删除失败');
         } catch (e) {
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
         } finally {
             this.pendingId = -1;
             await this.load();
@@ -159,11 +159,11 @@ const AIRules = {
                 this.evidenceItems = r.evidence;
             } else {
                 this.evidenceItems = [];
-                this.errorMsg = (r && r.message) || '加载证据失败';
+                this.errorMsg = (r && r.message) || tt('aiRules.err.evidenceLoadFail', '加载证据失败');
             }
         } catch (e) {
             this.evidenceItems = [];
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
         } finally {
             this._renderEvidenceDrawer();
         }
@@ -185,7 +185,7 @@ const AIRules = {
         const body = document.getElementById('aiRulesEvidenceBody');
         if (!body) return;
         if (!this.evidenceItems.length) {
-            body.innerHTML = '<p class="empty-desc">暂无证据</p>';
+            body.innerHTML = `<p class="empty-desc">${escapeHtml(tt('aiRules.evidence.empty', '暂无证据'))}</p>`;
             return;
         }
         body.innerHTML = this.evidenceItems.map(ev => {
@@ -193,16 +193,16 @@ const AIRules = {
             const action = String(ev.user_action || ev.action || '');
             const actionClass = ['confirmed', 'corrected', 'rejected'].includes(action) ? action : 'other';
             const amount = typeof ev.amount === 'number' ? ev.amount.toFixed(2) : (ev.amount || '0.00');
-            const merchant = escapeHtml(ev.merchant || ev.merchant_key || '无商家');
-            const cat = escapeHtml(ev.category_name || ev.category || '未知类目');
-            const note = ev.note ? `<div class="ai-rules-ev-note">备注：${escapeHtml(ev.note)}</div>` : '';
+            const merchant = escapeHtml(ev.merchant || ev.merchant_key || tt('aiRules.evidence.noMerchant', '无商家'));
+            const cat = escapeHtml(ev.category_name || ev.category || tt('aiRules.evidence.unknownCategory', '未知类目'));
+            const note = ev.note ? `<div class="ai-rules-ev-note">${escapeHtml(tt('aiRules.evidence.notePrefix', '备注：'))}${escapeHtml(ev.note)}</div>` : '';
             return `<div class="ai-rules-ev-row">
                 <div class="ai-rules-ev-head">
                     <span class="ai-rules-ev-date">${escapeHtml(formatRelativeTime(occurred) || occurred)}</span>
                     <span class="ai-rules-ev-action action-${actionClass}">${escapeHtml(this._actionLabel(action))}</span>
                 </div>
                 <div class="ai-rules-ev-body">
-                    ${merchant} → ${cat} · ¥${amount}
+                    ${escapeHtml(tt('aiRules.evidence.flow', '{merchant} → {category} · {amount}').replace('{merchant}', merchant).replace('{category}', cat).replace('{amount}', '¥' + amount))}
                 </div>
                 ${note}
             </div>`;
@@ -210,7 +210,10 @@ const AIRules = {
     },
 
     _actionLabel(a) {
-        return a === 'confirmed' ? '确认' : a === 'corrected' ? '修正' : a === 'rejected' ? '拒绝' : a;
+        return a === 'confirmed' ? tt('aiRules.action.confirmed', '确认')
+            : a === 'corrected' ? tt('aiRules.action.corrected', '修正')
+            : a === 'rejected' ? tt('aiRules.action.rejected', '拒绝')
+            : (a ? a : tt('aiRules.action.other', '其他'));
     },
 
     _openAddDialog() {
@@ -236,9 +239,9 @@ const AIRules = {
         const targetCategoryId = parseInt((document.getElementById('aiRulesAddtargetCategoryId') || {}).value || '', 10) || null;
         const targetType = (document.getElementById('aiRulesAddtargetType') || {}).value || null;
 
-        if (!matchKey.trim()) { this.errorMsg = 'match_key 不能为空'; this._renderError(); return; }
+        if (!matchKey.trim()) { this.errorMsg = tt('aiRules.err.matchKeyEmpty', 'match_key 不能为空'); this._renderError(); return; }
         if (!targetCategoryId && !targetType) {
-            this.errorMsg = '至少需要一个 target（类目/收支方向）';
+            this.errorMsg = tt('aiRules.err.targetRequired', '至少需要一个 target（类目/收支方向）');
             this._renderError();
             return;
         }
@@ -250,15 +253,15 @@ const AIRules = {
         try {
             const r = await api('/ai/rules', 'POST', payload);
             if (r && r.success) {
-                this.toast = '规则已新增';
+                this.toast = tt('aiRules.toast.added', '规则已新增');
                 this._closeAddDialog();
                 await this.load();
             } else {
-                this.errorMsg = (r && r.message) || '新增失败';
+                this.errorMsg = (r && r.message) || tt('aiRules.err.addFail', '新增失败');
                 this._renderError();
             }
         } catch (e) {
-            this.errorMsg = e.message || '网络异常';
+            this.errorMsg = e.message || tt('aiRules.err.network', '网络异常');
             this._renderError();
         }
     },
@@ -279,7 +282,8 @@ const AIRules = {
             const tScore = v.score != null ? v.score : 8;
             const tAcc = v.accuracy != null ? Math.round(v.accuracy * 100) + '%' : '60%';
             const tSample = v.min_sample != null ? v.min_sample : 2;
-            meta.innerHTML = `共 ${this.total} 条规则 · verified 阈值: score≥${tScore} · accuracy≥${tAcc} · sample≥${tSample}`;
+            meta.innerHTML = escapeHtml(tt('aiRules.meta', '共 {total} 条规则 · verified 阈值: score≥{score} · accuracy≥{acc} · sample≥{sample}')
+                .replace('{total}', this.total).replace('{score}', tScore).replace('{acc}', tAcc).replace('{sample}', tSample));
         }
 
         list.innerHTML = '';
@@ -290,8 +294,8 @@ const AIRules = {
 
         if (!filtered.length) {
             list.innerHTML = `<div class="empty-state">
-                <p class="empty-title">${this.activeFilter ? '此状态下没有规则' : '还没有 AI 规则'}</p>
-                <p class="empty-desc">${this.activeFilter ? '切换其他过滤查看' : '记账几次后 AI 会自动学习，或手动新增规则'}</p>
+                <p class="empty-title">${escapeHtml(this.activeFilter ? tt('aiRules.empty.filter', '此状态下没有规则') : tt('aiRules.empty.all', '还没有 AI 规则'))}</p>
+                <p class="empty-desc">${escapeHtml(this.activeFilter ? tt('aiRules.empty.filterHint', '切换其他过滤查看') : tt('aiRules.empty.allHint', '记账几次后 AI 会自动学习，或手动新增规则'))}</p>
             </div>`;
             return;
         }
@@ -317,20 +321,20 @@ const AIRules = {
                 <span class="ai-rules-status status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
             </div>
             <div class="ai-rules-meta">
-                <span>类型 ${escapeHtml(r.rule_type || 'merchant_category')}</span>
-                <span>Score ${Number(r.evidence_score != null ? r.evidence_score : (r.score || 0)).toFixed(1)}</span>
-                <span>Accuracy ${Math.round(Number(r.accuracy_rate != null ? r.accuracy_rate : (r.accuracy || 0)) * 100)}%</span>
-                <span>样本 ${Number(r.sample_count || 0)}</span>
+                <span>${escapeHtml(tt('aiRules.meta.type', '类型'))} ${escapeHtml(r.rule_type || 'merchant_category')}</span>
+                <span>${escapeHtml(tt('aiRules.meta.score', 'Score'))} ${Number(r.evidence_score != null ? r.evidence_score : (r.score || 0)).toFixed(1)}</span>
+                <span>${escapeHtml(tt('aiRules.meta.accuracy', 'Accuracy'))} ${Math.round(Number(r.accuracy_rate != null ? r.accuracy_rate : (r.accuracy || 0)) * 100)}%</span>
+                <span>${escapeHtml(tt('aiRules.meta.sample', '样本'))} ${Number(r.sample_count || 0)}</span>
             </div>
-            ${r.target_category_id ? `<div class="ai-rules-target">目标类目 #${r.target_category_id}</div>` : ''}
-            ${r.target_account_id ? `<div class="ai-rules-target">目标账户 #${r.target_account_id}</div>` : ''}
-            ${r.target_type ? `<div class="ai-rules-target">目标类型 ${escapeHtml(r.target_type)}</div>` : ''}
+            ${r.target_category_id ? `<div class="ai-rules-target">${escapeHtml(tt('aiRules.target.category', '目标类目 #{id}').replace('{id}', r.target_category_id))}</div>` : ''}
+            ${r.target_account_id ? `<div class="ai-rules-target">${escapeHtml(tt('aiRules.target.account', '目标账户 #{id}').replace('{id}', r.target_account_id))}</div>` : ''}
+            ${r.target_type ? `<div class="ai-rules-target">${escapeHtml(tt('aiRules.target.type', '目标类型 {type}').replace('{type}', r.target_type))}</div>` : ''}
             <div class="ai-rules-actions">
-                <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">查看证据</button>
+                <button class="btn btn-ghost btn-ai" data-ai-rule-action="evidence" data-id="${r.id}">${escapeHtml(tt('aiRules.btn.evidence', '查看证据'))}</button>
                 ${isDisabled
-                    ? `<button class="btn btn-ghost btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '启用'}</button>
-                        <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>删除</button>`
-                    : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${isPending ? '处理中...' : '禁用'}</button>`
+                    ? `<button class="btn btn-ghost btn-ai" data-ai-rule-action="enable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${escapeHtml(isPending ? tt('aiRules.btn.processing', '处理中...') : tt('aiRules.btn.enable', '启用'))}</button>
+                        <button class="btn btn-danger-outline btn-ai" data-ai-rule-action="delete" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${escapeHtml(tt('aiRules.btn.delete', '删除'))}</button>`
+                    : `<button class="btn btn-danger btn-ai" data-ai-rule-action="disable" data-id="${r.id}" ${isPending ? 'disabled' : ''}>${escapeHtml(isPending ? tt('aiRules.btn.processing', '处理中...') : tt('aiRules.btn.disable', '禁用'))}</button>`
                 }
             </div>
         `;
@@ -338,10 +342,10 @@ const AIRules = {
     },
 
     _statusLabel(s) {
-        if (s === 'trusted') return '高可信';
-        if (s === 'verified') return '已生效';
-        if (s === 'candidate') return '候选';
-        if (s === 'disabled') return '已禁用';
+        if (s === 'trusted') return tt('aiRules.status.trusted', '高可信');
+        if (s === 'verified') return tt('aiRules.status.verified', '已生效');
+        if (s === 'candidate') return tt('aiRules.status.candidate', '候选');
+        if (s === 'disabled') return tt('aiRules.status.disabled', '已禁用');
         return s;
     },
 

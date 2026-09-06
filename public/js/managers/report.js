@@ -25,9 +25,41 @@ window.countUpReport = function(el, target, duration, formatter) {
     requestAnimationFrame(tick);
 };
 
+// 债务类型标签兜底（走字典 report.debt.type.*，不能用模块级常量直接展示：语言切换后需实时取值）
+const DEBT_TYPE_FALLBACK = { credit_card: '信用卡', loan: '贷款', personal: '个人借款', other: '其他' };
+
 const ReportManager = {
     charts: {},
     currentData: null,
+    /**
+     * 周期标签本地化。
+     * 后端 label 固定为中文（「2026年9月」「2026年 Q3」「2026年」），英文界面直接显示会中英混排。
+     * 中文界面沿用后端 label（含自定义区间等特殊格式）；英文界面按 period 串重新格式化，
+     * 解析不出来（如自定义区间 '2026-01 ~ 2026-03'）时回退后端 label。
+     */
+    periodLabel(period, fallbackLabel) {
+        const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+        if (isZh) return fallbackLabel || period || '';
+        const p = String(period || '');
+        let m = p.match(/^(\d{4})-(\d{2})$/);
+        if (m) {
+            const d = new Date(Number(m[1]), Number(m[2]) - 1, 1);
+            return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        }
+        m = p.match(/^(\d{4})-Q(\d)$/);
+        if (m) return tt('report.periodOpt.quarter', '{y}年 Q{q}').replace('{y}', m[1]).replace('{q}', m[2]);
+        if (/^\d{4}$/.test(p)) return tt('report.periodOpt.year', '{y}年').replace('{y}', p);
+        return fallbackLabel || p;
+    },
+    /**
+     * 后端返回的中文说明文案本地化。
+     * 中文界面直接用后端值（保持与服务端口径一致）；英文界面改用字典键，避免中英混排。
+     */
+    serverNote(key, serverText) {
+        const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+        if (isZh) return serverText || tt(key, '');
+        return tt(key, serverText || '');
+    },
     init() {
         const el = document.getElementById('reportType');
         if (!el) return;  // 报表页面通过 PageLoader 惰加载
@@ -102,12 +134,15 @@ const ReportManager = {
             }
         } else if (type === 'quarterly') {
             const y = now.getFullYear();
-            for (let q = 1; q <= 4; q++) sel.innerHTML += `<option value="${y}-Q${q}">${y}年 Q${q}</option>`;
+            const qLabel = (yy, q) => escapeHtml(tt('report.periodOpt.quarter', '{y}年 Q{q}').replace('{y}', yy).replace('{q}', q));
+            for (let q = 1; q <= 4; q++) sel.innerHTML += `<option value="${y}-Q${q}">${qLabel(y, q)}</option>`;
             // 上一年季度
             const py = y - 1;
-            for (let q = 1; q <= 4; q++) sel.innerHTML += `<option value="${py}-Q${q}">${py}年 Q${q}</option>`;
+            for (let q = 1; q <= 4; q++) sel.innerHTML += `<option value="${py}-Q${q}">${qLabel(py, q)}</option>`;
         } else {
-            for (let y = now.getFullYear(); y >= now.getFullYear() - 3; y--) sel.innerHTML += `<option value="${y}">${y}年</option>`;
+            for (let y = now.getFullYear(); y >= now.getFullYear() - 3; y--) {
+                sel.innerHTML += `<option value="${y}">${escapeHtml(tt('report.periodOpt.year', '{y}年').replace('{y}', y))}</option>`;
+            }
         }
     },
     async generate() {
@@ -116,7 +151,7 @@ const ReportManager = {
         const container = document.getElementById('reportContent');
         showSkeleton(container, 6, 'grid');
         const data = await api(`/reports?type=${type}&period=${period}`);
-        if (!data) { showEmpty(container, '暂无数据'); return; }
+        if (!data) { showEmpty(container, tt('report.noData', '暂无数据')); return; }
         this.currentData = data;
         this.render(data);
     },
@@ -126,8 +161,10 @@ const ReportManager = {
     // 数字滚动动画：所有 .report-kpi-value / .report-assets-value / .report-compare-value 从 0 滚动到当前显示值
     animateNumbers(container) {
         if (!container || !window.countUpReport) return;
+        // 反解已渲染文本里的数字：货币符号随语言/币种变化（¥ / $ / € …），
+        // 故按「只保留数字、正负号、小数点」清洗，而不是枚举符号。
         const parseNum = str => {
-            const s = String(str).replace(/[¥,，%+\s]/g, '');
+            const s = String(str).replace(/[^\d.\-]/g, '');
             return parseFloat(s) || 0;
         };
         container.querySelectorAll('.report-kpi-value, .report-assets-value, .report-compare-value').forEach(el => {
@@ -136,16 +173,15 @@ const ReportManager = {
             const isSigned = /^[+\-]/.test(el.textContent.trim());
             const sign = isSigned ? el.textContent.trim()[0] : '';
             window.countUpReport(el, target, 900, v => {
-                let n = Math.round(v);
-                if (isPct) return sign + n.toFixed(1) + '%';
-                return sign + '¥' + n.toLocaleString('zh-CN');
+                if (isPct) return sign + Math.round(v).toFixed(1) + '%';
+                // 走 fmt() 复用多币种格式化，避免动画结束后与静态渲染的符号不一致
+                return sign + fmt(Math.round(v));
             });
         });
     },
     render(data) {
         const container = document.getElementById('reportContent');
         this.destroyCharts();
-        const bsTitle = data.balanceSheet ? `资产负债表（${data.balanceSheet.period.end} 快照）` : '资产负债表';
 
         // 渲染完成后触发数字滚动动画（延迟 100ms 让 CSS stagger 先执行）
         requestAnimationFrame(() => {
@@ -153,7 +189,7 @@ const ReportManager = {
         });
         container.innerHTML = `
             <div class="report-header">
-                <h2 class="report-title">${data.label} 财务报告</h2>
+                <h2 class="report-title">${escapeHtml(tt('report.title', '{label} 财务报告').replace('{label}', this.periodLabel(data.period, data.label)))}</h2>
                 <span class="report-date">${data.start} ~ ${data.end}</span>
             </div>
             <div class="report-grid report-grid--overview">
@@ -179,24 +215,24 @@ const ReportManager = {
         const s = data.summary;
         return `
             <div class="report-kpi-card income">
-                <div class="report-kpi-label">总收入</div>
+                <div class="report-kpi-label">${escapeHtml(tt('report.kpi.income', '总收入'))}</div>
                 <div class="report-kpi-value">${fmt(s.income)}</div>
-                <div class="report-kpi-sub">${s.transactionCount} 笔交易</div>
+                <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.txnCount', '{n} 笔交易').replace('{n}', s.transactionCount))}</div>
             </div>
             <div class="report-kpi-card expense">
-                <div class="report-kpi-label">总支出</div>
+                <div class="report-kpi-label">${escapeHtml(tt('report.kpi.expense', '总支出'))}</div>
                 <div class="report-kpi-value">${fmt(s.expense)}</div>
-                <div class="report-kpi-sub">日均 ${fmt(s.avgDailyExpense)}</div>
+                <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.avgDaily', '日均 {amt}').replace('{amt}', fmt(s.avgDailyExpense)))}</div>
             </div>
             <div class="report-kpi-card balance">
-                <div class="report-kpi-label">净结余</div>
+                <div class="report-kpi-label">${escapeHtml(tt('report.kpi.balance', '净结余'))}</div>
                 <div class="report-kpi-value">${fmt(s.balance)}</div>
-                <div class="report-kpi-sub">储蓄率 ${s.savingsRate.toFixed(1)}%</div>
+                <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.savingsRateSub', '储蓄率 {pct}%').replace('{pct}', s.savingsRate.toFixed(1)))}</div>
             </div>
             <div class="report-kpi-card rate">
-                <div class="report-kpi-label">储蓄率</div>
+                <div class="report-kpi-label">${escapeHtml(tt('report.kpi.savingsRate', '储蓄率'))}</div>
                 <div class="report-kpi-value">${s.savingsRate.toFixed(1)}%</div>
-                <div class="report-kpi-sub">${s.balance >= 0 ? '收支健康' : '支出超收入'}</div>
+                <div class="report-kpi-sub">${escapeHtml(s.balance >= 0 ? tt('report.kpi.healthy', '收支健康') : tt('report.kpi.overspend', '支出超收入'))}</div>
             </div>
         `;
     },
@@ -208,20 +244,20 @@ const ReportManager = {
         const balDiff = s.balance - c.balance;
         return `
             <div class="report-compare-card">
-                <div class="report-section-title">环比上期（${c.label}）</div>
+                <div class="report-section-title">${escapeHtml(tt('report.compare.title', '环比上期（{label}）').replace('{label}', this.periodLabel(c.period, c.label)))}</div>
                 <div class="report-compare-grid">
                     <div class="report-compare-row">
-                        <span class="report-compare-label">收入</span>
+                        <span class="report-compare-label">${escapeHtml(tt('report.compare.income', '收入'))}</span>
                         <span class="report-compare-value">${fmt(c.income)}</span>
                         <span class="report-compare-diff ${incDiff >= 0 ? 'up' : 'down'}">${incDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(incDiff))}</span>
                     </div>
                     <div class="report-compare-row">
-                        <span class="report-compare-label">支出</span>
+                        <span class="report-compare-label">${escapeHtml(tt('report.compare.expense', '支出'))}</span>
                         <span class="report-compare-value">${fmt(c.expense)}</span>
                         <span class="report-compare-diff ${expDiff <= 0 ? 'up' : 'down'}">${expDiff <= 0 ? '↓' : '↑'} ${fmt(Math.abs(expDiff))}</span>
                     </div>
                     <div class="report-compare-row">
-                        <span class="report-compare-label">结余</span>
+                        <span class="report-compare-label">${escapeHtml(tt('report.compare.balance', '结余'))}</span>
                         <span class="report-compare-value">${fmt(c.balance)}</span>
                         <span class="report-compare-diff ${balDiff >= 0 ? 'up' : 'down'}">${balDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(balDiff))}</span>
                     </div>
@@ -233,9 +269,9 @@ const ReportManager = {
         const a = data.assets;
         return `
             <div class="report-assets-card">
-                <div class="report-section-title">资产快照</div>
+                <div class="report-section-title">${escapeHtml(tt('report.assets.title', '资产快照'))}</div>
                 <div class="report-assets-value">${fmt(a.totalAssets)}</div>
-                <div class="report-assets-sub">账户 ${fmt(a.accounts)} · 理财 ${fmt(a.investments)}</div>
+                <div class="report-assets-sub">${escapeHtml(tt('report.assets.sub', '账户 {acc} · 理财 {inv}').replace('{acc}', fmt(a.accounts)).replace('{inv}', fmt(a.investments)))}</div>
             </div>
         `;
     },
@@ -245,25 +281,25 @@ const ReportManager = {
         return `
             <div class="report-charts-row">
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title">收支趋势</h3>
+                    <h3 class="card-title">${escapeHtml(tt('report.chart.trend', '收支趋势'))}</h3>
                     <canvas id="reportTrendChart"></canvas>
                 </div>
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title">账户资金流向</h3>
+                    <h3 class="card-title">${escapeHtml(tt('report.chart.accountFlow', '账户资金流向'))}</h3>
                     <canvas id="reportAccountChart"></canvas>
                 </div>
             </div>
             <!-- 第二行：3 列布局 —— 收入饼 / 支出饼 / 关键财务比率（4 项竖向） -->
             <div class="report-charts-row report-charts-row--3col">
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title"><span id="reportIncPieTitle">收入来源占比</span> <span id="reportIncPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
+                    <h3 class="card-title"><span id="reportIncPieTitle">${escapeHtml(tt('report.chart.incomePie', '收入来源占比'))}</span> <span id="reportIncPieBack" class="see-all" style="display:none;cursor:pointer">${escapeHtml(tt('report.chart.back', '← 返回'))}</span></h3>
                     <canvas id="reportIncPieChart"></canvas>
-                    <div id="reportIncPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
+                    <div id="reportIncPieHint" class="pie-hint">${escapeHtml(tt('report.chart.pieHint', '👆 单击看金额 · 双击进二级'))}</div>
                 </div>
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title"><span id="reportExpPieTitle">支出类别占比</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
+                    <h3 class="card-title"><span id="reportExpPieTitle">${escapeHtml(tt('report.chart.expensePie', '支出类别占比'))}</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">${escapeHtml(tt('report.chart.back', '← 返回'))}</span></h3>
                     <canvas id="reportExpPieChart"></canvas>
-                    <div id="reportExpPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
+                    <div id="reportExpPieHint" class="pie-hint">${escapeHtml(tt('report.chart.pieHint', '👆 单击看金额 · 双击进二级'))}</div>
                 </div>
                 ${this.renderRatios(data)}
             </div>
@@ -295,10 +331,10 @@ const ReportManager = {
                 <div class="report-top-item">
                     <div class="report-top-rank ${i < 3 ? 'top' : ''}">${i + 1}</div>
                     <div class="report-top-info">
-                        <div class="report-top-name">${escapeHtml(t.category_icon || '📌')} ${escapeHtml(t.category_name || '未分类')} · ${escapeHtml(t.note || '无备注')}</div>
+                        <div class="report-top-name">${escapeHtml(t.category_icon || '📌')} ${escapeHtml(t.category_name || tt('report.top.uncategorized', '未分类'))} · ${escapeHtml(t.note || tt('report.top.noNote', '无备注'))}</div>
                         <div class="report-top-bar-wrap">
                             <div class="report-top-bar"><div class="report-top-bar-fill" style="width:${Math.min(100, pctOfMax).toFixed(1)}%"></div></div>
-                            <span class="report-top-pct">占总额 ${pctOfTotal.toFixed(1)}%</span>
+                            <span class="report-top-pct">${escapeHtml(tt('report.top.pctOfTotal', '占总额 {pct}%').replace('{pct}', pctOfTotal.toFixed(1)))}</span>
                         </div>
                         <div class="report-top-meta">${String(t.date).slice(0, 10)}</div>
                     </div>
@@ -308,7 +344,7 @@ const ReportManager = {
         }).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">支出 TOP 5</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.top.title', '支出 TOP 5'))}</h3>
                 <div class="glass-card report-top-list">${items}</div>
             </div>
         `;
@@ -324,18 +360,18 @@ const ReportManager = {
             if (budget <= 0) statusCls = 'na';
             else if (actual > budget) statusCls = 'over';
             else if (b.usage >= 80) statusCls = 'warn';
-            const statusText = budget <= 0 ? '未设预算'
-                : actual === 0 ? '未开始'
-                : over ? `超支 ${fmt(Math.abs(remaining))}`
-                : remaining === 0 ? '刚好用完'
-                : `剩余 ${fmt(remaining)}`;
+            const statusText = budget <= 0 ? tt('report.budget.noBudget', '未设预算')
+                : actual === 0 ? tt('report.budget.notStarted', '未开始')
+                : over ? tt('report.budget.over', '超支 {amt}').replace('{amt}', fmt(Math.abs(remaining)))
+                : remaining === 0 ? tt('report.budget.exact', '刚好用完')
+                : tt('report.budget.remaining', '剩余 {amt}').replace('{amt}', fmt(remaining));
             return `
                 <div class="report-budget-item ${statusCls}">
                     <div class="report-budget-header">
                         <span class="report-budget-name">${escapeHtml(b.icon || "📊")} ${escapeHtml(b.name)}</span>
-                        <span class="report-budget-status ${statusCls}">${statusText}</span>
+                        <span class="report-budget-status ${statusCls}">${escapeHtml(statusText)}</span>
                     </div>
-                    <div class="report-budget-amount-line">已用 ${fmt(actual)} / 预算 ${fmt(budget)}</div>
+                    <div class="report-budget-amount-line">${escapeHtml(tt('report.budget.usedOf', '已用 {actual} / 预算 {budget}').replace('{actual}', fmt(actual)).replace('{budget}', fmt(budget)))}</div>
                     <div class="report-progress-wrap">
                         <div class="report-progress"><div class="report-progress-bar ${statusCls}" style="width:${budget > 0 ? Math.min(100, (actual / budget * 100)) : 0}%"></div></div>
                         <span class="report-progress-text ${statusCls}">${b.usage.toFixed(1)}%</span>
@@ -345,7 +381,7 @@ const ReportManager = {
         }).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">预算执行情况</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.budget.title', '预算执行情况'))}</h3>
                 <div class="glass-card report-budget-list">${items}</div>
             </div>
         `;
@@ -356,58 +392,66 @@ const ReportManager = {
         if (d.count === 0) {
             return `
                 <div class="report-section">
-                    <h3 class="report-section-title">债务情况</h3>
-                    <div class="glass-card report-budget-list"><div class="empty-hint"><p>本周期无活跃债务</p></div></div>
+                    <h3 class="report-section-title">${escapeHtml(tt('report.debt.title', '债务情况'))}</h3>
+                    <div class="glass-card report-budget-list"><div class="empty-hint"><p>${escapeHtml(tt('report.debt.none', '本周期无活跃债务'))}</p></div></div>
                 </div>
             `;
         }
-        const overdueTag = d.overdue > 0 ? `<span style="color:#ef4444;font-weight:bold;">⚠️ 逾期 ${d.overdue} 笔</span>` : '';
+        const overdueTag = d.overdue > 0 ? `<span style="color:#ef4444;font-weight:bold;">${escapeHtml(tt('report.debt.overdueN', '⚠️ 逾期 {n} 笔').replace('{n}', d.overdue))}</span>` : '';
         const headerKpi = `
             <div class="report-compare-grid debt-kpi-grid">
                 <div class="report-compare-row">
-                    <span class="report-compare-label">总负债</span>
+                    <span class="report-compare-label">${escapeHtml(tt('report.debt.totalRemaining', '总负债'))}</span>
                     <span class="report-compare-value">${fmt(d.totalRemaining)}</span>
                 </div>
                 <div class="report-compare-row">
-                    <span class="report-compare-label">本期已还款</span>
+                    <span class="report-compare-label">${escapeHtml(tt('report.debt.paidInPeriod', '本期已还款'))}</span>
                     <span class="report-compare-value">${fmt(d.paidInPeriod || 0)}</span>
                 </div>
                 <div class="report-compare-row">
-                    <span class="report-compare-label">本期还款笔数</span>
-                    <span class="report-compare-value">${d.repaymentCount || 0} 笔</span>
+                    <span class="report-compare-label">${escapeHtml(tt('report.debt.repaymentCount', '本期还款笔数'))}</span>
+                    <span class="report-compare-value">${escapeHtml(tt('report.debt.countN', '{n} 笔').replace('{n}', d.repaymentCount || 0))}</span>
                 </div>
                 <div class="report-compare-row">
-                    <span class="report-compare-label">总债务笔数</span>
-                    <span class="report-compare-value">${d.count} 笔 · ${overdueTag}</span>
+                    <span class="report-compare-label">${escapeHtml(tt('report.debt.totalCount', '总债务笔数'))}</span>
+                    <span class="report-compare-value">${escapeHtml(tt('report.debt.countN', '{n} 笔').replace('{n}', d.count))} · ${overdueTag}</span>
                 </div>
             </div>
         `;
+        const debtTypeLabel = (type) => tt('debt.type.' + type, DEBT_TYPE_FALLBACK[type] || DEBT_TYPE_FALLBACK.other);
         const debtItems = (d.list || []).map(item => `
             <div class="report-budget-item">
                 <div class="report-budget-header">
-                    <span class="report-budget-name">${item.type === 'credit_card' ? '💳' : item.type === 'loan' ? '🏦' : '📝'} ${escapeHtml(item.name)} <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px">${item.type === 'credit_card' ? '信用卡' : item.type === 'loan' ? '贷款' : item.type === 'personal' ? '个人借款' : '其他'}</span></span>
+                    <span class="report-budget-name">${item.type === 'credit_card' ? '💳' : item.type === 'loan' ? '🏦' : '📝'} ${escapeHtml(item.name)} <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px">${escapeHtml(debtTypeLabel(item.type))}</span></span>
                     <span class="report-budget-amount">${fmt(item.remaining)} / ${fmt(item.principal)}</span>
                 </div>
                 <div class="report-progress-wrap">
                     <div class="report-progress"><div class="report-progress-bar" style="width:${item.principal > 0 ? Math.min(100, (item.principal - item.remaining) / item.principal * 100) : 0}%"></div></div>
-                    <span class="report-progress-text">${item.principal > 0 ? ((item.principal - item.remaining) / item.principal * 100).toFixed(1) : 0}% 已还</span>
+                    <span class="report-progress-text">${escapeHtml(tt('report.debt.repaidPct', '{pct}% 已还').replace('{pct}', item.principal > 0 ? ((item.principal - item.remaining) / item.principal * 100).toFixed(1) : 0))}</span>
                 </div>
                 <div class="report-budget-header" style="margin-top:4px;">
-                    <span style="font-size:11px;color:var(--text-tertiary);">本期还款 ${item.periodRepayments} 笔 · ${fmt(item.periodPaid)}</span>
-                    <span style="font-size:11px;color:var(--text-tertiary);">月供 ${fmt(item.monthly_payment)}</span>
+                    <span style="font-size:11px;color:var(--text-tertiary);">${escapeHtml(tt('report.debt.periodRepay', '本期还款 {n} 笔 · {amt}').replace('{n}', item.periodRepayments).replace('{amt}', fmt(item.periodPaid)))}</span>
+                    <span style="font-size:11px;color:var(--text-tertiary);">${escapeHtml(tt('report.debt.monthly', '月供 {amt}').replace('{amt}', fmt(item.monthly_payment)))}</span>
                 </div>
             </div>
         `).join('');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">债务情况${overdueTag}</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.debt.title', '债务情况'))}${overdueTag}</h3>
                 <div class="glass-card" style="margin-bottom:12px;">${headerKpi}</div>
                 ${debtItems ? `<div class="glass-card report-budget-list">${debtItems}</div>` : ''}
                 ${(d.repayments || []).length > 0 ? `
                     <div class="glass-card" style="margin-top:12px;">
-                        <h4 class="report-table-title">本期还款流水</h4>
+                        <h4 class="report-table-title">${escapeHtml(tt('report.debt.repayFlowTitle', '本期还款流水'))}</h4>
                         <table class="report-table">
-                            <thead><tr><th>日期</th><th>债务</th><th>金额</th><th>本金</th><th>利息</th><th>备注</th></tr></thead>
+                            <thead><tr>
+                                <th>${escapeHtml(tt('report.col.date', '日期'))}</th>
+                                <th>${escapeHtml(tt('report.col.debt', '债务'))}</th>
+                                <th>${escapeHtml(tt('report.col.amount', '金额'))}</th>
+                                <th>${escapeHtml(tt('report.col.principal', '本金'))}</th>
+                                <th>${escapeHtml(tt('report.col.interest', '利息'))}</th>
+                                <th>${escapeHtml(tt('report.col.note', '备注'))}</th>
+                            </tr></thead>
                             <tbody>
                                 ${d.repayments.map(r => `<tr>
                                     <td>${r.paid_at}</td>
@@ -429,29 +473,34 @@ const ReportManager = {
         if (!r) return '';
         const flag = (val, threshold, warn, ok, lowerIsBetter = true) => {
             const bad = lowerIsBetter ? val > threshold : val < threshold;
-            return `<span class="ratio-flag ${bad ? 'bad' : 'good'}">${bad ? warn : ok}</span>`;
+            return `<span class="ratio-flag ${bad ? 'bad' : 'good'}">${escapeHtml(bad ? warn : ok)}</span>`;
         };
+        const fLow = tt('report.ratio.flag.low', '偏低');
+        const fHealthy = tt('report.ratio.flag.healthy', '健康');
+        const fAlert = tt('report.ratio.flag.alert', '警戒');
+        const fTooHigh = tt('report.ratio.flag.tooHigh', '过高');
+        const fCtrl = tt('report.ratio.flag.underControl', '可控');
         return `
             <div class="report-section">
-                <h3 class="report-section-title">关键财务比率</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.ratio.title', '关键财务比率'))}</h3>
                 <div class="glass-card ratio-grid ratio-grid--stack">
                     <div class="ratio-item">
-                        <div class="ratio-label">储蓄率 ${flag(r.savingsRate, 30, '偏低', '健康')}</div>
+                        <div class="ratio-label">${escapeHtml(tt('report.ratio.savingsRate', '储蓄率'))} ${flag(r.savingsRate, 30, fLow, fHealthy)}</div>
                         <div class="ratio-value">${r.savingsRate.toFixed(1)}%</div>
                         <div class="ratio-bar"><div class="ratio-bar-fill" style="width:${Math.min(100, r.savingsRate)}%"></div></div>
                     </div>
                     <div class="ratio-item">
-                        <div class="ratio-label">负债率 ${flag(r.debtRatio, 50, '警戒', '健康')}</div>
+                        <div class="ratio-label">${escapeHtml(tt('report.ratio.debtRatio', '负债率'))} ${flag(r.debtRatio, 50, fAlert, fHealthy)}</div>
                         <div class="ratio-value">${r.debtRatio.toFixed(1)}%</div>
                         <div class="ratio-bar"><div class="ratio-bar-fill warn" style="width:${Math.min(100, r.debtRatio)}%"></div></div>
                     </div>
                     <div class="ratio-item">
-                        <div class="ratio-label">还款收入比 ${flag(r.debtPaymentRatio, 40, '过高', '可控')}</div>
+                        <div class="ratio-label">${escapeHtml(tt('report.ratio.debtPaymentRatio', '还款收入比'))} ${flag(r.debtPaymentRatio, 40, fTooHigh, fCtrl)}</div>
                         <div class="ratio-value">${r.debtPaymentRatio.toFixed(1)}%</div>
                         <div class="ratio-bar"><div class="ratio-bar-fill warn" style="width:${Math.min(100, r.debtPaymentRatio)}%"></div></div>
                     </div>
                     <div class="ratio-item">
-                        <div class="ratio-label">资产负债率 ${flag(r.assetLiabilityRatio, 50, '警戒', '健康')}</div>
+                        <div class="ratio-label">${escapeHtml(tt('report.ratio.assetLiabilityRatio', '资产负债率'))} ${flag(r.assetLiabilityRatio, 50, fAlert, fHealthy)}</div>
                         <div class="ratio-value">${r.assetLiabilityRatio.toFixed(1)}%</div>
                         <div class="ratio-bar"><div class="ratio-bar-fill warn" style="width:${Math.min(100, r.assetLiabilityRatio)}%"></div></div>
                     </div>
@@ -466,14 +515,14 @@ const ReportManager = {
         const changeArrow = bs.change >= 0 ? '↑' : '↓';
         return `
             <div class="report-section">
-                <h3 class="report-section-title">资产负债表（${bs.period.end} 快照）</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.bs.title', '资产负债表（{date} 快照）').replace('{date}', bs.period.end))}</h3>
                 <div class="balance-sheet">
                     <!-- 资产 -->
                     <div class="bs-side">
-                        <div class="bs-side-header bs-asset-header">资产</div>
+                        <div class="bs-side-header bs-asset-header">${escapeHtml(tt('report.bs.assets', '资产'))}</div>
                         <div class="bs-section">
-                            <div class="bs-section-title">流动资产 <span class="bs-total">${fmt(bs.assets.current.total)}</span></div>
-                            ${bs.assets.current.items.length === 0 ? '<div class="bs-empty">无账户</div>' :
+                            <div class="bs-section-title">${escapeHtml(tt('report.bs.currentAssets', '流动资产'))} <span class="bs-total">${fmt(bs.assets.current.total)}</span></div>
+                            ${bs.assets.current.items.length === 0 ? `<div class="bs-empty">${escapeHtml(tt('report.bs.noAccount', '无账户'))}</div>` :
                               bs.assets.current.items.map(a => `
                                 <div class="bs-row">
                                     <span>${escapeHtml(a.name)}</span>
@@ -482,8 +531,8 @@ const ReportManager = {
                               `).join('')}
                         </div>
                         <div class="bs-section">
-                            <div class="bs-section-title">投资资产 <span class="bs-total">${fmt(bs.assets.investment.total)}</span></div>
-                            ${bs.assets.investment.items.length === 0 ? '<div class="bs-empty">无投资</div>' :
+                            <div class="bs-section-title">${escapeHtml(tt('report.bs.investAssets', '投资资产'))} <span class="bs-total">${fmt(bs.assets.investment.total)}</span></div>
+                            ${bs.assets.investment.items.length === 0 ? `<div class="bs-empty">${escapeHtml(tt('report.bs.noInvest', '无投资'))}</div>` :
                               bs.assets.investment.items.map(i => `
                                 <div class="bs-row">
                                     <span>${escapeHtml(i.name)}</span>
@@ -492,20 +541,20 @@ const ReportManager = {
                               `).join('')}
                         </div>
                         <div class="bs-row bs-total-row">
-                            <span><strong>资产合计</strong></span>
+                            <span><strong>${escapeHtml(tt('report.bs.assetTotal', '资产合计'))}</strong></span>
                             <span><strong>${fmt(bs.assets.total)}</strong></span>
                         </div>
                         <div class="bs-row bs-meta">
-                            <span>期初</span>
+                            <span>${escapeHtml(tt('report.bs.opening', '期初'))}</span>
                             <span>${fmt(bs.assets.opening)}</span>
                         </div>
                     </div>
                     <!-- 负债+净资产 -->
                     <div class="bs-side">
-                        <div class="bs-side-header bs-liab-header">负债 + 净资产</div>
+                        <div class="bs-side-header bs-liab-header">${escapeHtml(tt('report.bs.liabPlusNet', '负债 + 净资产'))}</div>
                         <div class="bs-section">
-                            <div class="bs-section-title">短期负债 <span class="bs-total">${fmt(bs.liabilities.shortTerm.total)}</span></div>
-                            ${bs.liabilities.shortTerm.items.length === 0 ? '<div class="bs-empty">无短期负债</div>' :
+                            <div class="bs-section-title">${escapeHtml(tt('report.bs.shortTermLiab', '短期负债'))} <span class="bs-total">${fmt(bs.liabilities.shortTerm.total)}</span></div>
+                            ${bs.liabilities.shortTerm.items.length === 0 ? `<div class="bs-empty">${escapeHtml(tt('report.bs.noShortTerm', '无短期负债'))}</div>` :
                               bs.liabilities.shortTerm.items.map(d => `
                                 <div class="bs-row clickable" data-debt-id="${d.id}">
                                     <span>${escapeHtml(d.name)}</span>
@@ -514,33 +563,33 @@ const ReportManager = {
                               `).join('')}
                         </div>
                         <div class="bs-section">
-                            <div class="bs-section-title">信用卡 <span class="bs-total">${fmt(bs.liabilities.creditCard.total)}</span></div>
-                            <div class="bs-meta-line">${escapeHtml(bs.liabilities.creditCard.note || '')}</div>
+                            <div class="bs-section-title">${escapeHtml(tt('report.bs.creditCard', '信用卡'))} <span class="bs-total">${fmt(bs.liabilities.creditCard.total)}</span></div>
+                            <div class="bs-meta-line">${escapeHtml(this.serverNote('report.bs.creditCardNote', bs.liabilities.creditCard.note))}</div>
                         </div>
                         <div class="bs-section">
-                            <div class="bs-section-title">长期负债 <span class="bs-total">${fmt(bs.liabilities.longTerm.total)}</span></div>
-                            ${bs.liabilities.longTerm.items.length === 0 ? '<div class="bs-empty">无长期负债</div>' :
+                            <div class="bs-section-title">${escapeHtml(tt('report.bs.longTermLiab', '长期负债'))} <span class="bs-total">${fmt(bs.liabilities.longTerm.total)}</span></div>
+                            ${bs.liabilities.longTerm.items.length === 0 ? `<div class="bs-empty">${escapeHtml(tt('report.bs.noLongTerm', '无长期负债'))}</div>` :
                               bs.liabilities.longTerm.items.map(d => `
                                 <div class="bs-row clickable" data-debt-id="${d.id}">
-                                    <span>${escapeHtml(d.name)} <span class="bs-meta-inline">${d.term_months || 0}月</span></span>
+                                    <span>${escapeHtml(d.name)} <span class="bs-meta-inline">${escapeHtml(tt('report.bs.termMonths', '{n}月').replace('{n}', d.term_months || 0))}</span></span>
                                     <span>${fmt(d.remaining)}</span>
                                 </div>
                               `).join('')}
                         </div>
                         <div class="bs-row bs-total-row">
-                            <span><strong>负债合计</strong></span>
+                            <span><strong>${escapeHtml(tt('report.bs.liabTotal', '负债合计'))}</strong></span>
                             <span><strong>${fmt(bs.liabilities.total)}</strong></span>
                         </div>
                         <div class="bs-row bs-net-worth-row">
-                            <span><strong>净资产 = 资产 - 负债</strong></span>
+                            <span><strong>${escapeHtml(tt('report.bs.netWorthFormula', '净资产 = 资产 - 负债'))}</strong></span>
                             <span><strong>${fmt(bs.netWorth)}</strong></span>
                         </div>
                         <div class="bs-row bs-meta">
-                            <span>期初净资产</span>
+                            <span>${escapeHtml(tt('report.bs.openingNetWorth', '期初净资产'))}</span>
                             <span>${fmt(bs.openingNetWorth)}</span>
                         </div>
                         <div class="bs-row bs-meta">
-                            <span>本期变化</span>
+                            <span>${escapeHtml(tt('report.bs.change', '本期变化'))}</span>
                             <span class="${changeColor}">${changeArrow} ${fmt(Math.abs(bs.change))}</span>
                         </div>
                     </div>
@@ -554,7 +603,7 @@ const ReportManager = {
         if (!cf) return '';
         const flowRow = (label, inflow, outflow, net, color) => `
             <div class="cf-row">
-                <div class="cf-label">${label}</div>
+                <div class="cf-label">${escapeHtml(label)}</div>
                 <div class="cf-flows">
                     <span class="cf-inflow">+${fmt(inflow)}</span>
                     <span class="cf-outflow">-${fmt(outflow)}</span>
@@ -565,23 +614,23 @@ const ReportManager = {
         const totalColor = cf.netChange >= 0 ? 'income' : 'expense';
         return `
             <div class="report-section">
-                <h3 class="report-section-title">现金流量表</h3>
+                <h3 class="report-section-title">${escapeHtml(tt('report.cf.title', '现金流量表'))}</h3>
                 <div class="glass-card">
                     <div class="cf-header">
                         <span></span>
-                        <span class="cf-header-inflow">流入</span>
-                        <span class="cf-header-outflow">流出</span>
-                        <span class="cf-header-net">净额</span>
+                        <span class="cf-header-inflow">${escapeHtml(tt('report.cf.inflow', '流入'))}</span>
+                        <span class="cf-header-outflow">${escapeHtml(tt('report.cf.outflow', '流出'))}</span>
+                        <span class="cf-header-net">${escapeHtml(tt('report.cf.net', '净额'))}</span>
                     </div>
-                    ${flowRow('经营活动（日常收支）', cf.operating.inflow, cf.operating.outflow, cf.operating.net, cf.operating.net >= 0 ? 'income' : 'expense')}
-                    ${flowRow('投资活动', cf.investing.inflow, cf.investing.outflow, cf.investing.net, cf.investing.net >= 0 ? 'income' : 'expense')}
-                    ${flowRow('筹资活动（借还款）', cf.financing.inflow, cf.financing.outflow, cf.financing.net, cf.financing.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow(tt('report.cf.operating', '经营活动（日常收支）'), cf.operating.inflow, cf.operating.outflow, cf.operating.net, cf.operating.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow(tt('report.cf.investing', '投资活动'), cf.investing.inflow, cf.investing.outflow, cf.investing.net, cf.investing.net >= 0 ? 'income' : 'expense')}
+                    ${flowRow(tt('report.cf.financing', '筹资活动（借还款）'), cf.financing.inflow, cf.financing.outflow, cf.financing.net, cf.financing.net >= 0 ? 'income' : 'expense')}
                     <div class="cf-row cf-total">
-                        <div class="cf-label"><strong>本期现金净变化</strong></div>
+                        <div class="cf-label"><strong>${escapeHtml(tt('report.cf.netChange', '本期现金净变化'))}</strong></div>
                         <div class="cf-flows"></div>
                         <div class="cf-net ${totalColor}"><strong>${cf.netChange >= 0 ? '+' : ''}${fmt(cf.netChange)}</strong></div>
                     </div>
-                    <div class="cf-note">${escapeHtml(cf.note || '')}</div>
+                    <div class="cf-note">${escapeHtml(this.serverNote('report.cf.note', cf.note))}</div>
                 </div>
             </div>
         `;
@@ -623,16 +672,22 @@ const ReportManager = {
         target.innerHTML = `
             <div class="bs-detail-card" data-detail-debt="${debtId}">
                 <div class="bs-detail-header">
-                    <h4>${escapeHtml(d.name)} 还款明细 <span class="bs-meta-inline">${reps.length} 笔记录</span></h4>
-                    <button class="btn-close js-bs-close" aria-label="关闭">✕</button>
+                    <h4>${escapeHtml(tt('report.bs.repayDetailTitle', '{name} 还款明细').replace('{name}', d.name))} <span class="bs-meta-inline">${escapeHtml(tt('report.bs.repayCountN', '{n} 笔记录').replace('{n}', reps.length))}</span></h4>
+                    <button class="btn-close js-bs-close" aria-label="${escapeHtml(tt('common.close', '关闭'))}">✕</button>
                 </div>
                 <div class="bs-detail-stats">
-                    <div><span class="stat-label">本金</span><span>${fmt(d.principal)}</span></div>
-                    <div><span class="stat-label">剩余</span><span>${fmt(d.remaining)}</span></div>
-                    <div><span class="stat-label">月供</span><span>${fmt(d.monthly_payment)}</span></div>
-                    <div><span class="stat-label">已还总额</span><span>${fmt(totalPaid)}</span></div>
+                    <div><span class="stat-label">${escapeHtml(tt('report.bs.stat.principal', '本金'))}</span><span>${fmt(d.principal)}</span></div>
+                    <div><span class="stat-label">${escapeHtml(tt('report.bs.stat.remaining', '剩余'))}</span><span>${fmt(d.remaining)}</span></div>
+                    <div><span class="stat-label">${escapeHtml(tt('report.bs.stat.monthly', '月供'))}</span><span>${fmt(d.monthly_payment)}</span></div>
+                    <div><span class="stat-label">${escapeHtml(tt('report.bs.stat.totalPaid', '已还总额'))}</span><span>${fmt(totalPaid)}</span></div>
                 </div>
-                ${rows ? `<table class="report-table"><thead><tr><th>日期</th><th>金额</th><th>本金</th><th>利息</th><th>备注</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="bs-empty">暂无还款记录</div>'}
+                ${rows ? `<table class="report-table"><thead><tr>
+                    <th>${escapeHtml(tt('report.col.date', '日期'))}</th>
+                    <th>${escapeHtml(tt('report.col.amount', '金额'))}</th>
+                    <th>${escapeHtml(tt('report.col.principal', '本金'))}</th>
+                    <th>${escapeHtml(tt('report.col.interest', '利息'))}</th>
+                    <th>${escapeHtml(tt('report.col.note', '备注'))}</th>
+                  </tr></thead><tbody>${rows}</tbody></table>` : `<div class="bs-empty">${escapeHtml(tt('report.bs.noRepayment', '暂无还款记录'))}</div>`}
             </div>
         `;
     },
@@ -655,10 +710,15 @@ const ReportManager = {
         target.innerHTML = `
             <div class="bs-detail-card" data-detail-account="${accountId}">
                 <div class="bs-detail-header">
-                    <h4>${escapeHtml(acc.name)} 最近流水</h4>
-                    <button class="btn-close js-bs-close" aria-label="关闭">✕</button>
+                    <h4>${escapeHtml(tt('report.bs.recentTxnTitle', '{name} 最近流水').replace('{name}', acc.name))}</h4>
+                    <button class="btn-close js-bs-close" aria-label="${escapeHtml(tt('common.close', '关闭'))}">✕</button>
                 </div>
-                ${rows ? `<table class="report-table"><thead><tr><th>日期</th><th>类别</th><th>金额</th><th>备注</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="bs-empty">暂无流水</div>'}
+                ${rows ? `<table class="report-table"><thead><tr>
+                    <th>${escapeHtml(tt('report.col.date', '日期'))}</th>
+                    <th>${escapeHtml(tt('report.col.category', '类别'))}</th>
+                    <th>${escapeHtml(tt('report.col.amount', '金额'))}</th>
+                    <th>${escapeHtml(tt('report.col.note', '备注'))}</th>
+                  </tr></thead><tbody>${rows}</tbody></table>` : `<div class="bs-empty">${escapeHtml(tt('report.bs.noTxn', '暂无流水'))}</div>`}
             </div>
         `;
     },
@@ -682,8 +742,8 @@ const ReportManager = {
                 data: {
                     labels,
                     datasets: [
-                        { label: '收入', data: data.dailyTrend.map(d => d.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
-                        { label: '支出', data: data.dailyTrend.map(d => d.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 }
+                        { label: tt('chart.income', '收入'), data: data.dailyTrend.map(d => d.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                        { label: tt('chart.expense', '支出'), data: data.dailyTrend.map(d => d.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 }
                     ]
                 },
                 options: {
@@ -748,7 +808,7 @@ const ReportManager = {
                 data: {
                     labels: data.accountFlows.map(a => a.name),
                     datasets: [{
-                        label: '净流入',
+                        label: tt('report.chart.netInflow', '净流入'),
                         data: data.accountFlows.map(a => a.net),
                         backgroundColor: data.accountFlows.map(a => a.net >= 0 ? posGrad : negGrad),
                         borderColor: data.accountFlows.map(a => a.net >= 0 ? c.inc : c.exp),
@@ -787,7 +847,9 @@ const ReportManager = {
             : full.filter(e => e.parent_id === stack[stack.length - 1]);
         state.slices = slices;
 
-        const baseTitle = key === 'exp' ? '支出类别占比' : '收入来源占比';
+        const baseTitle = key === 'exp'
+            ? tt('report.chart.expensePie', '支出类别占比')
+            : tt('report.chart.incomePie', '收入来源占比');
         const isExp = canvasId === 'reportExpPieChart';
         const titleEl = document.getElementById(isExp ? 'reportExpPieTitle' : 'reportIncPieTitle');
         const backEl = document.getElementById(isExp ? 'reportExpPieBack' : 'reportIncPieBack');
@@ -813,7 +875,9 @@ const ReportManager = {
         }
         // 中心读数：未选中显示合计，单击某块后显示「分类名 · 占比」+ 该块金额。
         // 原实现没有中心读数（只靠 hover tooltip），单击看金额就没有落点了。
-        const centerLabel = key === 'exp' ? '总支出' : '总收入';
+        const centerLabel = key === 'exp'
+            ? tt('report.pie.totalExpense', '总支出')
+            : tt('report.pie.totalIncome', '总收入');
         const centerTextPlugin = ChartManager._pieCenterPlugin(canvasId + 'Center', c, () => {
             const i = state.selIdx;
             if (i != null && i >= 0 && i < slices.length) {
@@ -822,10 +886,10 @@ const ReportManager = {
                 const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
                 return {
                     title: `${e.name} · ${pct}%`,
-                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                    amount: fmt(Math.round(v))
                 };
             }
-            return { title: centerLabel, amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+            return { title: centerLabel, amount: fmt(Math.round(total)) };
         });
         this.charts[canvasId] = new Chart(ctx, {
             type: 'doughnut',
@@ -875,44 +939,48 @@ const ReportManager = {
     },
 
     async exportCSV() {
-        if (!this.currentData) { showToast('请先生成报表', 'warning'); return; }
+        if (!this.currentData) { showToast(tt('report.toast.generateFirst', '请先生成报表'), 'warning'); return; }
         const d = this.currentData;
         const period = d.period;
         const s = d.summary;
-        let csv = '\uFEFF鑫钱包财务报告,\n';
-        csv += `报表周期,${d.label},\n`;
-        csv += `总收入,${s.income.toFixed(2)},\n`;
-        csv += `总支出,${s.expense.toFixed(2)},\n`;
-        csv += `净结余,${s.balance.toFixed(2)},\n`;
-        csv += `储蓄率,${s.savingsRate.toFixed(2)}%,\n\n`;
-        csv += '支出类别,金额,占比\n';
+        let csv = '\uFEFF' + tt('report.csv.title', '鑫钱包财务报告') + ',\n';
+        csv += `${tt('report.csv.period', '报表周期')},${this.periodLabel(d.period, d.label)},\n`;
+        csv += `${tt('report.csv.income', '总收入')},${s.income.toFixed(2)},\n`;
+        csv += `${tt('report.csv.expense', '总支出')},${s.expense.toFixed(2)},\n`;
+        csv += `${tt('report.csv.balance', '净结余')},${s.balance.toFixed(2)},\n`;
+        csv += `${tt('report.csv.savingsRate', '储蓄率')},${s.savingsRate.toFixed(2)}%,\n\n`;
+        const amountCol = tt('report.csv.amount', '金额');
+        const shareCol = tt('report.csv.share', '占比');
+        csv += `${tt('report.csv.expenseCategory', '支出类别')},${amountCol},${shareCol}\n`;
         this.rollupCategories(d.expenseByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.expense > 0 ? (e.rolledTotal / d.summary.expense * 100).toFixed(2) : 0}%\n`; });
-        csv += '\n收入类别,金额,占比\n';
+        csv += `\n${tt('report.csv.incomeCategory', '收入类别')},${amountCol},${shareCol}\n`;
         this.rollupCategories(d.incomeByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.income > 0 ? (e.rolledTotal / d.summary.income * 100).toFixed(2) : 0}%\n`; });
-        csv += '\n日期,收入,支出\n';
+        csv += `\n${tt('report.csv.date', '日期')},${tt('report.csv.colIncome', '收入')},${tt('report.csv.colExpense', '支出')}\n`;
         d.dailyTrend.forEach(t => { csv += `${fmtDateTime(t.date)},${t.income.toFixed(2)},${t.expense.toFixed(2)}\n`; });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `鑫钱包_财务报告_${period}.csv`; a.click();
+        const a = document.createElement('a'); a.href = url;
+        a.download = tt('report.csv.filename', '鑫钱包_财务报告_{period}.csv').replace('{period}', period);
+        a.click();
         URL.revokeObjectURL(url);
-        showToast('CSV 已导出', 'success');
+        showToast(tt('report.toast.csvExported', 'CSV 已导出'), 'success');
     },
     async exportFull() {
-        showToast('正在导出完整账本备份...', 'info');
+        showToast(tt('report.toast.exporting', '正在导出完整账本备份...'), 'info');
         try {
             const res = await fetch(`${API}/backup/export`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('xin_token') }
             });
-            if (!res.ok) throw new Error('导出失败');
+            if (!res.ok) throw new Error(tt('report.toast.exportFailed', '导出失败'));
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url;
             a.download = `xinwallet_backup_${new Date().toISOString().slice(0, 10)}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
-            showToast('完整账本已导出（xlsx 备份，含账户/交易/预算/理财/储蓄目标/债务）', 'success');
+            showToast(tt('report.toast.exportDone', '完整账本已导出（xlsx 备份，含账户/交易/预算/理财/储蓄目标/债务）'), 'success');
         } catch (err) {
-            showToast('导出失败: ' + err.message, 'error');
+            showToast(tt('report.toast.exportFailed', '导出失败') + ': ' + err.message, 'error');
         }
     },
 
@@ -925,7 +993,9 @@ const ReportManager = {
         const merge = !!(mergeChk && mergeChk.checked);
         const ok = await confirmClearImport(merge ? 'merge' : 'replace');
         if (!ok) { document.getElementById('importFullInput').value = ''; return; }
-        showToast('正在' + (merge ? '合并' : '清空并') + '导入账本，请稍候...', 'info');
+        showToast(merge
+            ? tt('report.toast.importingMerge', '正在合并导入账本，请稍候...')
+            : tt('report.toast.importingReplace', '正在清空并导入账本，请稍候...'), 'info');
         try {
             const fd = new FormData();
             fd.append('file', file, file.name);
@@ -937,23 +1007,28 @@ const ReportManager = {
                 body: fd
             });
             const result = await res.json();
-            if (!result.success) throw new Error(result.message || '导入失败');
+            if (!result.success) throw new Error(result.message || tt('report.toast.importFailed', '导入失败'));
             const imp = result.data.imported;
-            const parts = [];
-            if (imp.accounts) parts.push(`账户${imp.accounts}`);
-            if (imp.categories) parts.push(`分类${imp.categories}`);
-            if (imp.transactions) parts.push(`交易${imp.transactions}`);
-            if (imp.transfers) parts.push(`转账${imp.transfers}`);
-            if (imp.budgets) parts.push(`预算${imp.budgets}`);
-            if (imp.savings_goals) parts.push(`储蓄${imp.savings_goals}`);
-            if (imp.investments) parts.push(`理财${imp.investments}`);
-            if (imp.debts) parts.push(`债务${imp.debts}`);
-            if (imp.tags) parts.push(`标签${imp.tags}`);
-            showToast(`导入完成：${parts.join(' ')}`, 'success');
+            // 导入统计项：中英「账户5」/「5 accounts」语序不同，逐项走整句插值键
+            const IMPORT_PARTS = [
+                ['accounts', 'report.import.accounts', '账户{n}'],
+                ['categories', 'report.import.categories', '分类{n}'],
+                ['transactions', 'report.import.transactions', '交易{n}'],
+                ['transfers', 'report.import.transfers', '转账{n}'],
+                ['budgets', 'report.import.budgets', '预算{n}'],
+                ['savings_goals', 'report.import.savingsGoals', '储蓄{n}'],
+                ['investments', 'report.import.investments', '理财{n}'],
+                ['debts', 'report.import.debts', '债务{n}'],
+                ['tags', 'report.import.tags', '标签{n}']
+            ];
+            const parts = IMPORT_PARTS
+                .filter(([field]) => imp[field])
+                .map(([field, key, fallback]) => tt(key, fallback).replace('{n}', imp[field]));
+            showToast(tt('report.toast.importDone', '导入完成：{parts}').replace('{parts}', parts.join(' ')), 'success');
             await initCache();
             await DashboardManager.refresh();
         } catch (err) {
-            showToast('导入失败: ' + err.message, 'error');
+            showToast(tt('report.toast.importFailed', '导入失败') + ': ' + err.message, 'error');
         }
         document.getElementById('importFullInput').value = '';
     },
@@ -978,35 +1053,38 @@ function confirmClearImport(mode) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay show';
         overlay.style.zIndex = '2000';
+        const closeAria = escapeHtml(tt('common.close', '关闭'));
+        const cancelText = escapeHtml(tt('common.cancel', '取消'));
+        // 正文含 <strong>，字典值即为可信 HTML 片段，故不做转义
         overlay.innerHTML = merge ? `
             <div class="modal glass-card" style="max-width:440px">
                 <div class="modal-header">
-                    <h3>合并导入</h3>
-                    <button class="modal-close" aria-label="关闭">✕</button>
+                    <h3>${escapeHtml(tt('report.confirmImport.mergeTitle', '合并导入'))}</h3>
+                    <button class="modal-close" aria-label="${closeAria}">✕</button>
                 </div>
                 <div class="modal-body" style="padding:12px 16px 4px;line-height:1.6">
-                    <p>合并导入会<strong>保留当前账本现有数据</strong>，仅把备份中缺失的账户 / 分类 / 交易等补进来（按名称或去重跳过已存在的）。</p>
-                    <p style="color:var(--text-secondary);font-size:var(--text-caption)">不会删除或覆盖现有数据，适合在多处导出的备份间累加。同名已存在的主数据、相同交易/转账将被跳过。</p>
+                    <p>${tt('report.confirmImport.mergeBody', '合并导入会<strong>保留当前账本现有数据</strong>，仅把备份中缺失的账户 / 分类 / 交易等补进来（按名称或去重跳过已存在的）。')}</p>
+                    <p style="color:var(--text-secondary);font-size:var(--text-caption)">${escapeHtml(tt('report.confirmImport.mergeHint', '不会删除或覆盖现有数据，适合在多处导出的备份间累加。同名已存在的主数据、相同交易/转账将被跳过。'))}</p>
                 </div>
                 <div style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
-                    <button class="btn btn-ghost" data-act="cancel">取消</button>
-                    <button class="btn btn-primary" data-act="ok">合并导入</button>
+                    <button class="btn btn-ghost" data-act="cancel">${cancelText}</button>
+                    <button class="btn btn-primary" data-act="ok">${escapeHtml(tt('report.confirmImport.mergeOk', '合并导入'))}</button>
                 </div>
             </div>` : `
             <div class="modal glass-card" style="max-width:440px">
                 <div class="modal-header">
-                    <h3>⚠️ 导入将清空当前账本</h3>
-                    <button class="modal-close" aria-label="关闭">✕</button>
+                    <h3>${escapeHtml(tt('report.confirmImport.replaceTitle', '⚠️ 导入将清空当前账本'))}</h3>
+                    <button class="modal-close" aria-label="${closeAria}">✕</button>
                 </div>
                 <div class="modal-body" style="padding:12px 16px 4px;line-height:1.6">
-                    <p>导入新账单前，会<strong>先清空当前账本的全部数据</strong>，再恢复备份内容，确保得到干净账本。</p>
+                    <p>${tt('report.confirmImport.replaceBody', '导入新账单前，会<strong>先清空当前账本的全部数据</strong>，再恢复备份内容，确保得到干净账本。')}</p>
                     <p style="color:var(--text-secondary);font-size:var(--text-caption)">
-                        将清空：账户 / 分类 / 标签 / 预算 / 交易 / 转账 / 理财 / 储蓄目标 / 债务（系统预设分类保留）。此操作不可撤销。
+                        ${escapeHtml(tt('report.confirmImport.replaceHint', '将清空：账户 / 分类 / 标签 / 预算 / 交易 / 转账 / 理财 / 储蓄目标 / 债务（系统预设分类保留）。此操作不可撤销。'))}
                     </p>
                 </div>
                 <div style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
-                    <button class="btn btn-ghost" data-act="cancel">取消</button>
-                    <button class="btn btn-danger" data-act="ok">清空并导入</button>
+                    <button class="btn btn-ghost" data-act="cancel">${cancelText}</button>
+                    <button class="btn btn-danger" data-act="ok">${escapeHtml(tt('report.confirmImport.replaceOk', '清空并导入'))}</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);

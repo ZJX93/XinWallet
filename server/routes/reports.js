@@ -355,7 +355,7 @@ async function buildReport(userId, bookId, type, period) {
                FROM raw GROUP BY cat_id, currency
              )
              SELECT c.id, c.name, c.icon, c.parent_id,
-                    COALESCE(JSON_OBJECTAGG(agg.currency, agg.total), JSON_OBJECT()) AS total_breakdown_json
+                    COALESCE(${db.jsonAgg('agg.currency', 'agg.total')}, ${db.jsonObj()}) AS total_breakdown_json
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
@@ -385,7 +385,7 @@ async function buildReport(userId, bookId, type, period) {
                FROM raw GROUP BY cat_id, currency
              )
              SELECT c.id, c.name, c.icon, c.parent_id,
-                    COALESCE(JSON_OBJECTAGG(agg.currency, agg.total), JSON_OBJECT()) AS total_breakdown_json
+                    COALESCE(${db.jsonAgg('agg.currency', 'agg.total')}, ${db.jsonObj()}) AS total_breakdown_json
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
@@ -418,7 +418,7 @@ async function buildReport(userId, bookId, type, period) {
             ? db.query(
                 `SELECT b.id, b.name, b.amount as budget_amount, b.period_type,
                         c.id as cat_id, c.icon,
-                        (SELECT COALESCE(JSON_OBJECTAGG(a.currency, sums.cnt), JSON_OBJECT('CNY', 0))
+                        (SELECT COALESCE(${db.jsonAgg('a.currency', 'sums.cnt')}, ${db.jsonObj("'CNY'", '0')})
                            FROM (SELECT t.account_id, SUM(t.amount) AS cnt FROM transactions t
                                  LEFT JOIN categories c2 ON t.category_id = c2.id
                                  WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'

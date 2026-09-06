@@ -5,11 +5,11 @@
 -->
 <section class="page" id="page-ai-insights" data-lazy="pages/ai-insights.html">
     <div class="ai-insights-tabs" id="aiInsightsTabs" role="tablist">
-        <button class="ai-insights-tab active" data-tab="advice" role="tab" aria-selected="true">AI 建议</button>
-        <button class="ai-insights-tab" data-tab="learning" role="tab" aria-selected="false">学习统计</button>
-        <button class="ai-insights-tab" data-tab="cashflow" role="tab" aria-selected="false">现金流预测</button>
-        <button class="ai-insights-tab" data-tab="profile" role="tab" aria-selected="false">画像</button>
-        <button class="ai-insights-tab" data-tab="evaluation" role="tab" aria-selected="false">模型评测</button>
+        <button class="ai-insights-tab active" data-tab="advice" role="tab" aria-selected="true" data-i18n="aiInsights.tab.advice">AI 建议</button>
+        <button class="ai-insights-tab" data-tab="learning" role="tab" aria-selected="false" data-i18n="aiInsights.tab.learning">学习统计</button>
+        <button class="ai-insights-tab" data-tab="cashflow" role="tab" aria-selected="false" data-i18n="aiInsights.tab.cashflow">现金流预测</button>
+        <button class="ai-insights-tab" data-tab="profile" role="tab" aria-selected="false" data-i18n="aiInsights.tab.profile">画像</button>
+        <button class="ai-insights-tab" data-tab="evaluation" role="tab" aria-selected="false" data-i18n="aiInsights.tab.evaluation">模型评测</button>
     </div>
     <div id="aiInsightsAlerts" class="ai-insights-alerts" style="display:none"></div>
 
@@ -18,15 +18,15 @@
     <div id="page-ai-learning" data-lazy="pages/ai-learning.html" style="display:none"></div>
     <div id="page-ai-cashflow" style="display:none">
         <div class="glass-card">
-            <h3 class="card-title">现金流预测</h3>
-            <p class="card-desc">基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）</p>
+            <h3 class="card-title" data-i18n="aiInsights.cashflow.title">现金流预测</h3>
+            <p class="card-desc" data-i18n="aiInsights.cashflow.desc">基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）</p>
             <div id="aiCashflowBody"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div></div></div>
         </div>
     </div>
     <div id="page-ai-profile" style="display:none">
         <div class="glass-card">
-            <h3 class="card-title">AI 画像</h3>
-            <p class="card-desc">AI 从你的记账习惯中学习到的偏好与画像</p>
+            <h3 class="card-title" data-i18n="aiInsights.profile.title">AI 画像</h3>
+            <p class="card-desc" data-i18n="aiInsights.profile.desc">AI 从你的记账习惯中学习到的偏好与画像</p>
             <div id="aiProfileBody"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div></div></div>
         </div>
     </div>

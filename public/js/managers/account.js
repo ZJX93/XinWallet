@@ -48,11 +48,15 @@ const AccountManager = {
     },
     // 复式记账对账：以账本为唯一真相，重算并修正账户余额
     async reconcile() {
-        showToast('正在以账本重算余额…', 'info');
+        showToast(tt('acc.toast.reconciling', '正在以账本重算余额…'), 'info');
         const r = await api('/accounts/reconcile', 'POST');
         if (r) {
-            if (r.reconciled > 0) showToast(`已对账：修正 ${r.reconciled} 个账户，差额合计 ${fmt(r.totalAdjusted)}`, 'success');
-            else showToast('账户余额与账本一致，无需修正', 'success');
+            if (r.reconciled > 0) {
+                showToast(tt('acc.toast.reconciled', '已对账：修正 {n} 个账户，差额合计 {amt}')
+                    .replace('{n}', r.reconciled).replace('{amt}', fmt(r.totalAdjusted)), 'success');
+            } else {
+                showToast(tt('acc.toast.reconcileNoop', '账户余额与账本一致，无需修正'), 'success');
+            }
             await initCache();
             await this.refresh();
         }
@@ -65,12 +69,10 @@ const AccountManager = {
         if (!data) return;
         cache.accounts = data.accounts;
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
-        const typeLabels = { cash: '现金', bank_card: '储蓄卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
-        this.typeLabels = typeLabels;
 
         const showClosed = !!(document.getElementById('showClosedAcc') && document.getElementById('showClosedAcc').checked);
         const activeAccounts = (data.accounts || []).filter(a => !a.closed);
-        if (activeAccounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产'); return; }
+        if (activeAccounts.length === 0) { showEmpty(container, tt('acc.empty', '还没有账户，点击「新增账户」开始记录你的资产')); return; }
 
         // 按类型分组（按语义顺序排），每组一张大封面卡 + 下方牌堆叠放子卡。
         // 视觉：5 个组（现金/储蓄卡/信用卡/电子支付/金融账户）横排，封面卡突出展示组信息，
@@ -94,7 +96,7 @@ const AccountManager = {
          * 省略重复类型段，否则显示类型 + 年利率，便于一眼分辨账户性质。
          */
         const buildRow = (a, idx, n) => {
-            const tlabel = typeLabels[a.type] || a.type || '';
+            const tlabel = this._typeLabel(a.type);
             const nameHasType = tlabel && a.name && a.name.includes(tlabel);
             const limit = Number(a.credit_limit) || 0;
             // 授信账户（信用卡 / 带额度的电子支付）：余额为负即占用授信，
@@ -104,7 +106,8 @@ const AccountManager = {
             const owes = bal <= 0 ? Math.max(0, -bal) : Math.max(0, limit - bal);
             const avail = limit > 0 ? Math.max(0, limit - owes) : 0;
             const limitText = limit > 0
-                ? `可用 <strong>${fmt(avail, a.currency || 'CNY')}</strong> / 额度 ${fmt(limit, a.currency || 'CNY')}`
+                ? tt('acc.card.limitText', '可用 <strong>{avail}</strong> / 额度 {limit}')
+                    .replace('{avail}', fmt(avail, a.currency || 'CNY')).replace('{limit}', fmt(limit, a.currency || 'CNY'))
                 : '';
             return `
             <div class="goal-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
@@ -119,20 +122,20 @@ const AccountManager = {
                     </div>
                 </div>
                 <div class="acc-card-mid">
-                    <div class="inv-cover-profit-label">当前余额</div>
+                    <div class="inv-cover-profit-label">${escapeHtml(tt('acc.card.currentBalance', '当前余额'))}</div>
                     <div class="acc-card-amount">${fmt(a.balance, a.currency || 'CNY')}</div>
                 </div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
-                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}">计息</button>
-                    <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">删除</button>
+                    <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">${escapeHtml(tt('acc.action.detail', '明细'))}</button>
+                    <button class="btn btn-ghost" data-action="interest-acc" data-id="${a.id}">${escapeHtml(tt('acc.action.interest', '计息'))}</button>
+                    <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">${escapeHtml(tt('common.edit', '编辑'))}</button>
+                    <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">${escapeHtml(tt('common.delete', '删除'))}</button>
                 </div>
             </div>`;
         };
 
         const groupsHtml = groupList.map(([type, accounts]) => {
-            const label = typeLabels[type] || type;
+            const label = this._typeLabel(type);
             const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
             const icon = accounts[0].icon || '🏦';
             const n = accounts.length;
@@ -145,17 +148,17 @@ const AccountManager = {
                         <div class="goal-head">
                             <div class="goal-icon">${escapeHtml(icon)}</div>
                             <div class="goal-title">${escapeHtml(label)}</div>
-                            <span class="inv-cover-count">${n} 个账户</span>
+                            <span class="inv-cover-count">${escapeHtml(tt('acc.card.nAccounts', '{n} 个账户').replace('{n}', n))}</span>
                         </div>
-                        <div class="goal-amounts inv-cover-meta"><span>账户数 <strong>${n}</strong></span><span>类型 <strong>${escapeHtml(label)}</strong></span></div>
+                        <div class="goal-amounts inv-cover-meta"><span>${escapeHtml(tt('acc.card.countLabel', '账户数'))} <strong>${n}</strong></span><span>${escapeHtml(tt('acc.card.typeLabel', '类型'))} <strong>${escapeHtml(label)}</strong></span></div>
                     </div>
                     <div class="acc-card-mid">
-                        <div class="inv-cover-profit-label">账户总资产</div>
+                        <div class="inv-cover-profit-label">${escapeHtml(tt('acc.card.groupTotal', '账户总资产'))}</div>
                         <div class="inv-cover-profit-amount">${fmt(total)}</div>
                     </div>
                     <div class="inv-cover-bottom">
-                        <div class="inv-cover-stats"><span>正余额 <strong class="goal-pct profit-positive">${posCount}</strong> 个</span>${negCount > 0 ? `<span>负余额 <strong class="goal-pct profit-negative">${negCount}</strong> 个</span>` : ''}</div>
-                        <div class="inv-cover-foot"><span class="inv-cover-viewall">查看全部 →</span></div>
+                        <div class="inv-cover-stats"><span>${tt('acc.card.posBalanceN', '正余额 <strong class="goal-pct profit-positive">{n}</strong> 个').replace('{n}', posCount)}</span>${negCount > 0 ? `<span>${tt('acc.card.negBalanceN', '负余额 <strong class="goal-pct profit-negative">{n}</strong> 个').replace('{n}', negCount)}</span>` : ''}</div>
+                        <div class="inv-cover-foot"><span class="inv-cover-viewall">${escapeHtml(tt('acc.card.viewAll', '查看全部 →'))}</span></div>
                     </div>
                 </div>`;
             const cards = accounts.map((a, idx) => buildRow(a, idx + 1, n + 1)).join('');
@@ -174,12 +177,12 @@ const AccountManager = {
                     <div class="acc-card-top">
                         <div class="goal-head">
                             <div class="goal-icon">🗄️</div>
-                            <div class="goal-title">已销户</div>
-                            <span class="inv-cover-count">${cn} 个账户</span>
+                            <div class="goal-title">${escapeHtml(tt('acc.closed', '已销户'))}</div>
+                            <span class="inv-cover-count">${escapeHtml(tt('acc.card.nAccounts', '{n} 个账户').replace('{n}', cn))}</span>
                         </div>
                     </div>
                     <div class="acc-card-mid">
-                        <div class="inv-cover-profit-label">历史余额合计</div>
+                        <div class="inv-cover-profit-label">${escapeHtml(tt('acc.card.closedTotal', '历史余额合计'))}</div>
                         <div class="inv-cover-profit-amount">${fmt(closedAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0))}</div>
                     </div>
                     <div class="inv-cover-bottom"><div class="inv-cover-stats"></div></div>
@@ -190,17 +193,17 @@ const AccountManager = {
                         <div class="goal-head">
                             <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
                             <div class="goal-title" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
-                            <span class="goal-status type">已销户</span>
+                            <span class="goal-status type">${escapeHtml(tt('acc.closed', '已销户'))}</span>
                         </div>
                     </div>
                     <div class="acc-card-mid">
-                        <div class="inv-cover-profit-label">历史余额</div>
+                        <div class="inv-cover-profit-label">${escapeHtml(tt('acc.card.closedBalance', '历史余额'))}</div>
                         <div class="acc-card-amount is-closed">${fmt(a.balance, a.currency || 'CNY')}</div>
                     </div>
                     <div class="goal-actions">
-                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">明细</button>
-                        <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">编辑</button>
-                        <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">删除</button>
+                        <button class="btn btn-ghost" data-action="acc-detail" data-id="${a.id}">${escapeHtml(tt('acc.action.detail', '明细'))}</button>
+                        <button class="btn btn-ghost" data-action="edit-acc" data-id="${a.id}">${escapeHtml(tt('common.edit', '编辑'))}</button>
+                        <button class="btn btn-ghost" data-action="delete-acc" data-id="${a.id}">${escapeHtml(tt('common.delete', '删除'))}</button>
                     </div>
                 </div>`).join('');
             return `<div class="acc-stack"><div class="acc-stack-cards" style="--n:${cn + 1}">${cover}${cards}</div></div>`;
@@ -247,11 +250,15 @@ const AccountManager = {
         if (type === 'credit_card' || type === 'electronic_payment') {
             row.style.display = '';
             input.min = '0';
+            // i18n 后 label 的第一个子节点已从裸文本变为 <span data-i18n="accForm.creditLimit">，
+            // ⛔ 不能再改 childNodes[0].textContent —— 那会写坏 span 结构、且下次 applyDOM 会覆盖。
+            // 信用卡必填的 " *" 标记单独放在一个 span 里，只切它的可见性。
+            const req = label.querySelector('.acc-credit-req');
             if (type === 'credit_card') {
-                label.childNodes[0].textContent = '信用额度 (¥) * ';
+                if (req) req.style.display = '';
                 input.required = true;
             } else {
-                label.childNodes[0].textContent = '信用额度 (¥) ';
+                if (req) req.style.display = 'none';
                 input.required = false;
             }
         } else {
@@ -275,7 +282,7 @@ const AccountManager = {
             document.getElementById('accAnnualRate').value = a.annual_rate ?? 0;
             document.getElementById('accInterestCycle').value = a.interest_cycle || 'monthly';
             document.getElementById('accCurrency').value = a.currency || 'CNY';
-            document.getElementById('accModalTitle').textContent = '编辑账户';
+            document.getElementById('accModalTitle').textContent = tt('accForm.edit', '编辑账户');
         } else {
             document.getElementById('accEditId').value = '';
             document.getElementById('accName').value = '';
@@ -287,7 +294,7 @@ const AccountManager = {
             document.getElementById('accAnnualRate').value = 0;
             document.getElementById('accInterestCycle').value = 'monthly';
             document.getElementById('accCurrency').value = 'CNY';
-            document.getElementById('accModalTitle').textContent = '新增账户';
+            document.getElementById('accModalTitle').textContent = tt('accForm.add', '新增账户');
         }
         this.toggleCreditLimit();
     },
@@ -298,7 +305,7 @@ const AccountManager = {
         const limitVal = document.getElementById('accCreditLimit').value;
         const limit = limitVal === '' ? 0 : parseFloat(limitVal);
         if (type === 'credit_card' && (isNaN(limit) || limit <= 0)) {
-            showToast('信用卡必须设置大于 0 的信用额度', 'warning');
+            showToast(tt('acc.toast.creditLimitRequired', '信用卡必须设置大于 0 的信用额度'), 'warning');
             return;
         }
         const body = {
@@ -314,10 +321,10 @@ const AccountManager = {
         };
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
-            showToast('账户已更新', 'success');
+            showToast(tt('acc.toast.updated', '账户已更新'), 'success');
         } else {
             await api('/accounts', 'POST', body);
-            showToast('账户已创建', 'success');
+            showToast(tt('acc.toast.created', '账户已创建'), 'success');
         }
         this.closeModal();
         await initCache();
@@ -328,28 +335,33 @@ const AccountManager = {
         const acc = getAcc(id);
         if (!acc) return;
         this._delId = id;
-        document.getElementById('accDelName').textContent = `${acc.icon || ''} ${acc.name}（余额 ${fmt(acc.balance, acc.currency || 'CNY')}）`;
+        // 「（余额 X）」括号中英不同：整句走 accDel.name 插值，避免拼接出英文病句
+        document.getElementById('accDelName').textContent = tt('accDel.name', '{icon} {name}（余额 {balance}）')
+            .replace('{icon}', acc.icon || '').replace('{name}', acc.name)
+            .replace('{balance}', fmt(acc.balance, acc.currency || 'CNY'));
         const usageEl = document.getElementById('accDelUsage');
         const hardBtn = document.getElementById('accDelHardBtn');
-        usageEl.textContent = '正在检查关联数据…';
+        usageEl.textContent = tt('accDel.checking', '正在检查关联数据…');
         hardBtn.disabled = true;
         document.getElementById('accountDeleteModal').classList.add('show');
         const res = await api(`/accounts/${id}/usage`);
         if (!res) { this.closeDeleteModal(); return; }
         const u = res.usage || {};
+        // 关联数据项：key 用于取字典标签，中文「交易 3 笔」/ 英文 "transactions 3"
         const parts = [
-            ['交易', u.transactions], ['转账', u.transfers], ['还款', u.repayments],
-            ['储蓄目标', u.goals], ['储蓄流水', u.savings_txns], ['债务', u.debts], ['理财持仓', u.investments]
+            ['transactions', u.transactions], ['transfers', u.transfers], ['repayments', u.repayments],
+            ['goals', u.goals], ['savings_txns', u.savings_txns], ['debts', u.debts], ['investments', u.investments]
         ].filter(([, n]) => parseInt(n) > 0);
         if (parts.length === 0) {
-            usageEl.innerHTML = '<span class="acc-del-ok">无关联数据，可彻底删除。</span>';
+            usageEl.innerHTML = `<span class="acc-del-ok">${escapeHtml(tt('accDel.noUsage', '无关联数据，可彻底删除。'))}</span>`;
             hardBtn.disabled = false;
             hardBtn.title = '';
         } else {
-            const detail = parts.map(([label, n]) => `${label} ${n} 笔`).join('、');
-            usageEl.innerHTML = `<span class="acc-del-warn">存在关联数据（${detail}），不可彻底删除。</span>`;
+            const detail = parts.map(([key, n]) => tt('accDel.usage.item', '{label} {n} 笔')
+                .replace('{label}', tt('accDel.usage.' + key, key)).replace('{n}', n)).join(tt('accDel.usage.sep', '、'));
+            usageEl.innerHTML = `<span class="acc-del-warn">${escapeHtml(tt('accDel.hasUsage', '存在关联数据（{detail}），不可彻底删除。').replace('{detail}', detail))}</span>`;
             hardBtn.disabled = true;
-            hardBtn.title = '该账户有关联数据，请先清理或使用「关闭账户」';
+            hardBtn.title = tt('accDel.hardDisabledTip', '该账户有关联数据，请先清理或使用「关闭账户」');
         }
     },
     closeDeleteModal() {
@@ -360,7 +372,7 @@ const AccountManager = {
         const id = this._delId;
         if (!id) return;
         await api(`/accounts/${id}`, 'DELETE'); // 失败会抛错，api() 已显示错误 toast（含 409 关联数据提示）
-        showToast('账户已彻底删除', 'success');
+        showToast(tt('acc.toast.hardDeleted', '账户已彻底删除'), 'success');
         // 旧 AI 洞察/建议缓存可能仍引用该账户余额，立即失效
         try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
         this.closeDeleteModal();
@@ -371,7 +383,7 @@ const AccountManager = {
         const id = this._delId;
         if (!id) return;
         await api(`/accounts/${id}/close`, 'POST'); // 失败会抛错
-        showToast('账户已关闭（历史保留）', 'warning');
+        showToast(tt('acc.toast.closed', '账户已关闭（历史保留）'), 'warning');
         try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
         this.closeDeleteModal();
         await initCache();
@@ -383,46 +395,46 @@ const AccountManager = {
         const acc0 = getAcc(id);
         const isClosed = !!(acc0 && acc0.closed);
         modal.classList.add('show');
-        body.innerHTML = '<div class="empty-state">⏳ 加载中…</div>';
+        body.innerHTML = `<div class="empty-state">${escapeHtml(tt('acc.detail.loading', '⏳ 加载中…'))}</div>`;
         const res = await api(`/accounts/${id}/transactions`);
-        if (!res) { body.innerHTML = '<div class="empty-state">加载失败，请检查网络</div>'; return; }
+        if (!res) { body.innerHTML = `<div class="empty-state">${escapeHtml(tt('acc.detail.networkFail', '加载失败，请检查网络'))}</div>`; return; }
         const acc = res.account || {};
         const list = res.transactions || [];
-        const subBits = [`共 ${list.length} 笔资金变动`];
-        if (acc.last_interest_date) subBits.push(`上次计息 <strong>${escapeHtml(acc.last_interest_date)}</strong>`);
-        if (Number(acc.annual_rate) > 0) subBits.push(`年利率 <strong>${(Number(acc.annual_rate) || 0).toFixed(4)}%</strong>`);
+        const subBits = [tt('acc.detail.totalChanges', '共 {n} 笔资金变动').replace('{n}', list.length)];
+        if (acc.last_interest_date) subBits.push(tt('acc.detail.lastInterest', '上次计息 {date}').replace('{date}', `<strong>${escapeHtml(acc.last_interest_date)}</strong>`));
+        if (Number(acc.annual_rate) > 0) subBits.push(tt('acc.detail.annualRate', '年利率 {pct}%').replace('{pct}', (Number(acc.annual_rate) || 0).toFixed(4)));
         // 操作按钮组（始终可见）：记利息、编辑、销户/删除 ——
         // 不再依赖列表页的"⋯"按钮（用户反馈过「功能重复」/「点不动」）。
         // 已销户账户隐藏所有破坏性操作，只留关闭。
         const actions = isClosed ? `
-            <button class="btn btn-ghost btn-sm" data-detail-action="close" data-id="${id}">关闭</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="close" data-id="${id}">${escapeHtml(tt('acc.detail.closeBtn', '关闭'))}</button>
         ` : `
-            <button class="btn btn-ghost btn-sm" data-detail-action="interest" data-id="${id}">记利息</button>
-            <button class="btn btn-ghost btn-sm" data-detail-action="edit" data-id="${id}">编辑</button>
-            <button class="btn btn-ghost btn-sm" data-detail-action="close-acct" data-id="${id}">销户</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="interest" data-id="${id}">${escapeHtml(tt('acc.detail.interestBtn', '记利息'))}</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="edit" data-id="${id}">${escapeHtml(tt('acc.detail.editBtn', '编辑'))}</button>
+            <button class="btn btn-ghost btn-sm" data-detail-action="close-acct" data-id="${id}">${escapeHtml(tt('acc.detail.closeAcctBtn', '销户'))}</button>
         `;
         const head = `<div class="rh-head">
-            <div class="rh-debt">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name || '账户')} · 资金明细</div>
+            <div class="rh-debt">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name || tt('common.other', '其他'))}${escapeHtml(tt('acc.detail.titleSuffix', ' · 资金明细'))}</div>
             <div class="rh-sub">${subBits.join(' · ')}</div>
             <div class="rh-actions">${actions}</div>
         </div>`;
         if (!list.length) {
-            body.innerHTML = head + '<div class="empty-state">该账户暂无资金变动记录</div>';
+            body.innerHTML = head + `<div class="empty-state">${escapeHtml(tt('acc.detail.empty', '该账户暂无资金变动记录'))}</div>`;
         } else {
             const typeMeta = {
-                expense: { dir: '−', cls: 'negative', label: '支出' },
-                income: { dir: '+', cls: 'positive', label: '收入' },
-                transfer_out: { dir: '−', cls: 'negative', label: '转出' },
-                transfer_in: { dir: '+', cls: 'positive', label: '转入' },
-                repayment: { dir: '−', cls: 'negative', label: '还款' }
+                expense: { dir: '−', cls: 'negative', label: tt('acc.detail.txnType.expense', '支出') },
+                income: { dir: '+', cls: 'positive', label: tt('acc.detail.txnType.income', '收入') },
+                transfer_out: { dir: '−', cls: 'negative', label: tt('acc.detail.txnType.transfer_out', '转出') },
+                transfer_in: { dir: '+', cls: 'positive', label: tt('acc.detail.txnType.transfer_in', '转入') },
+                repayment: { dir: '−', cls: 'negative', label: tt('acc.detail.txnType.repayment', '还款') }
             };
             const rows = list.map(t => {
                 const m = typeMeta[t.type] || { dir: '', cls: '', label: t.type };
                 // 账户明细仅「账户利息（link_type=account_interest）」提供行内修改/删除；理财/债务去各自页面管理。
                 const sub = t.kind === 'repayment'
-                    ? (t.debt ? `还 ${escapeHtml(t.debt.name || '债务')}` : '还款')
+                    ? (t.debt ? tt('acc.detail.repayWith', '还 {name}').replace('{name}', escapeHtml(t.debt.name || '')) : tt('acc.detail.repayFallback', '还款'))
                     : (t.category ? `${escapeHtml(t.category.icon || '')} ${escapeHtml(t.category.name || '')}` : '')
-                        + (t.counterparty ? ` ${t.counterparty.dir} ${escapeHtml(t.counterparty.name || '')}` : '');
+                        + (t.counterparty ? ` ${escapeHtml(tt('acc.detail.counterFrom', '{dir} {name}').replace('{dir}', t.counterparty.dir || '').replace('{name}', t.counterparty.name || ''))}` : '');
                 // 仅「利息」在账户明细提供修改/删除：账户记利息（link_type=account_interest）
                 // 或投资页记的利息（investment_txn_id 非空且备注含"利息"）；理财买入/卖出/分红、
                 // 债务还款去各自页面管理，不在此提供。
@@ -440,7 +452,7 @@ const AccountManager = {
                     <div class="rh-row1">
                         <span class="rh-amount ${m.cls}">${m.dir}${fmt(t.amount, acc.currency || 'CNY')}</span>
                         <span class="rh-date">${t.date || ''}</span>
-                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}">修改</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}">删除</button></span>` : ''}
+                        ${showActions ? `<span class="rh-actions"><button class="rh-edit-btn" data-detail-action="edit-txn" data-id="${t.id}" data-txn="${txnAttr}">${escapeHtml(tt('acc.detail.editTitle', '修改'))}</button><button class="rh-del-btn" data-detail-action="delete-txn" data-id="${t.id}">${escapeHtml(tt('acc.detail.deleteBtn', '删除'))}</button></span>` : ''}
                     </div>
                     <div class="rh-row2">
                         <span class="rh-tag">${m.label}${sub ? ' · ' + sub : ''}</span>
@@ -481,7 +493,7 @@ const AccountManager = {
                         }
                         if (!txn) {
                             console.warn('[account.edit-txn] 未找到流水 data-id=' + btn.dataset.id);
-                            showToast('无法编辑该流水，请关闭后重新打开', 'error');
+                            showToast(tt('acc.detail.toast.editFail', '无法编辑该流水，请关闭后重新打开'), 'error');
                             break;
                         }
                         // 账户明细中仅利息流水有修改入口，直接用账户利息弹窗编辑
@@ -505,14 +517,14 @@ const AccountManager = {
         const pad = (n) => String(n).padStart(2, '0');
         const now = new Date();
         const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-        document.getElementById('interestModalTitle').textContent = txn ? `编辑利息 · ${a.icon || ''} ${a.name}` : `记利息 · ${a.icon || ''} ${a.name}`;
+        document.getElementById('interestModalTitle').textContent = (txn ? tt('acc.interest.title.edit', '编辑利息 · {icon} {name}') : tt('acc.interest.title.add', '记利息 · {icon} {name}')).replace('{icon}', a.icon || '').replace('{name}', a.name);
         document.getElementById('interestAmount').value = txn ? txn.amount : '';
         // 编辑既有利息时回填到秒（transactions.date 可能为 YYYY-MM-DD HH:MM:SS，转 datetime-local 的 T 分隔）
         document.getElementById('interestDate').value = txn ? String(txn.date || '').replace(' ', 'T').slice(0, 19) : today;
         document.getElementById('interestNote').value = txn ? (txn.note ? String(txn.note).replace(/^利息-[^-]*-?/, '') : '') : '';
         document.getElementById('interestError').style.display = 'none';
         document.getElementById('interestSubmitBtn').disabled = false;
-        document.getElementById('interestSubmitBtn').textContent = '确认';
+        document.getElementById('interestSubmitBtn').textContent = tt('acc.interest.btn.confirm', '确认');
         document.getElementById('interestModal').classList.add('show');
         setTimeout(() => document.getElementById('interestAmount').focus(), 50);
     },
@@ -523,7 +535,7 @@ const AccountManager = {
     // 删除账户详情里某笔利息流水（与记利息同源：删交易 + 余额回退）。
     // 走通用 DELETE /transactions/:id，余额由账本重算，删除后刷新详情。
     async deleteAccTxn(txnId, accId) {
-        if (!window.confirm('确定删除这笔利息流水？账户余额将回退。')) return;
+        if (!confirmT('confirm.deleteInterestTxn', '确定删除这笔利息流水？账户余额将回退。')) return;
         // 注意：api() 返回的是响应体的 data.data 字段，而 DELETE /transactions/:id
         // 后端返回 success(null, ...)，data.data 为 null —— 不能用 `if (r)` 判断成功，
         // 否则刷新逻辑永远被跳过（流水已删却仍留在界面、余额不回退）。
@@ -531,7 +543,7 @@ const AccountManager = {
         // 因此用 try/catch 包裹、不依赖 r 的真值。
         try {
             await api(`/transactions/${txnId}`, 'DELETE');
-            showToast('已删除利息流水', 'success');
+            showToast(tt('acc.toast.interestDeleted', '已删除利息流水'), 'success');
             await this.openDetail(accId);
             // 余额由账本重算，需刷新账户缓存 + 外层账户列表 + Dashboard KPI，
             // 否则账户卡片/Dashboard 仍显示旧余额，需手动切页才更新。
@@ -550,32 +562,33 @@ const AccountManager = {
         const note = (document.getElementById('interestNote').value || '').trim();
         const errEl = document.getElementById('interestError');
         const btn = document.getElementById('interestSubmitBtn');
-        if (isNaN(amt) || amt <= 0) { errEl.textContent = '请输入大于 0 的利息金额'; errEl.style.display = ''; return; }
-        if (!date) { errEl.textContent = '请选择计息日期'; errEl.style.display = ''; return; }
+        if (isNaN(amt) || amt <= 0) { errEl.textContent = tt('acc.interest.err.amount', '请输入大于 0 的利息金额'); errEl.style.display = ''; return; }
+        if (!date) { errEl.textContent = tt('acc.interest.err.date', '请选择计息日期'); errEl.style.display = ''; return; }
         errEl.style.display = 'none';
-        btn.disabled = true; btn.textContent = '提交中…';
+        btn.disabled = true; btn.textContent = tt('acc.interest.btn.submitting', '提交中…');
         try {
             if (this._editingInterestTxnId) {
                 // PUT /transactions/:id 后端返回 success(null, …)，api() 返回 data.data 即 null，
                 // 用 `if (res)` 判断会让刷新全被跳过。api() 失败必 throw，成功（含 null）即代表已更新。
                 const acc = getAcc(id);
-                const finalNote = note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`;
+                const notePrefix = tt('acc.interest.notePrefix', '利息-{name}').replace('{name}', acc.name);
+                const finalNote = note ? `${notePrefix}-${note}` : notePrefix;
                 await api(`/transactions/${this._editingInterestTxnId}`, 'PUT', {
                     account_id: id, category_id: this._editingInterestCatId, type: 'income',
                     amount: amt, date, note: finalNote, link_type: 'account_interest', link_id: id
                 });
-                showToast('利息已更新', 'success');
+                showToast(tt('acc.toast.interestUpdated', '利息已更新'), 'success');
                 this.closeInterestModal();
                 await this.syncAfterInterestChange(id);
                 return;
             }
             await api(`/accounts/${id}/interest`, 'POST', { amount: amt, date, note: note || undefined });
-            showToast('利息已记录', 'success');
+            showToast(tt('acc.toast.interestAdded', '利息已记录'), 'success');
             this.closeInterestModal();
             await this.syncAfterInterestChange(id);
         } catch (e) {
-            btn.disabled = false; btn.textContent = '确认';
-            errEl.textContent = (e && e.message) || '提交失败，请重试';
+            btn.disabled = false; btn.textContent = tt('acc.interest.btn.confirm', '确认');
+            errEl.textContent = (e && e.message) || tt('acc.toast.interestSubmitFail', '提交失败，请重试');
             errEl.style.display = '';
         }
     },
@@ -597,26 +610,37 @@ const AccountManager = {
     },
 
     /* ---- 账户：全屏网格铺开 ---- */
+    // 账户类型纯文本标签（不带 emoji）：网格卡片 / 标题用。
+    // ⛔ 别复用 accType.* —— 那批 key 的文案自带 emoji（供 <option> 用），这里会重复出图标。
+    _typeLabel(type) {
+        return tt('accType.plain.' + type, type);
+    },
     buildAccGridCard(a) {
-        const typeLabels = { cash: '现金', bank_card: '储蓄卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
         return `
-        <div class="acc-grid-card" data-acc-id="${a.id}" tabindex="0" role="button" aria-label="${escapeHtml(a.name)} 资金明细">
+        <div class="acc-grid-card" data-acc-id="${a.id}" tabindex="0" role="button" aria-label="${escapeHtml(tt('acc.grid.cardAria', '{name} 资金明细').replace('{name}', a.name))}">
             <div class="goal-head">
                 <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
                 <div class="goal-title">${escapeHtml(a.name)}</div>
             </div>
-            <div class="goal-amounts"><span>${typeLabels[a.type] || a.type}</span><span><strong>${fmt(a.balance, a.currency || 'CNY')}</strong></span></div>
+            <div class="goal-amounts"><span>${escapeHtml(this._typeLabel(a.type))}</span><span><strong>${fmt(a.balance, a.currency || 'CNY')}</strong></span></div>
         </div>`;
     },
     openAccGrid(type) {
         const all = (cache.accounts || []).filter(a => !a.closed);
         const items = type ? all.filter(a => a.type === type) : all;
-        if (!items.length) { showToast(type ? '该类型暂无账户' : '暂无账户', 'warning'); return; }
+        if (!items.length) {
+            showToast(type ? tt('acc.grid.toast.emptyType', '该类型暂无账户') : tt('acc.grid.toast.empty', '暂无账户'), 'warning');
+            return;
+        }
         const grid = document.getElementById('accGridBody');
         grid.innerHTML = items.map(a => this.buildAccGridCard(a)).join('');
-        const label = type ? (this.typeLabels[type] || type) : '全部账户';
-        document.getElementById('accGridTitle').textContent = label;
-        document.getElementById('accGridCount').textContent = items.length;
+        const label = type ? this._typeLabel(type) : tt('acc.grid.all', '全部账户');
+        // 「X · 共 N 个」整句走字典插值：英文语序是 "X · N total"，拼接会出病句
+        const headingEl = document.getElementById('accGridHeading');
+        if (headingEl) {
+            headingEl.textContent = tt('acc.grid.heading', '{label} · 共 {n} 个')
+                .replace('{label}', label).replace('{n}', items.length);
+        }
         grid.querySelectorAll('[data-acc-id]').forEach(card => {
             const handler = () => { const id = parseInt(card.dataset.accId); if (!isNaN(id)) this.openDetail(id); };
             card.addEventListener('click', handler);

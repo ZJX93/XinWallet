@@ -612,10 +612,13 @@ router.get('/investments/:id/transactions', async (req, res) => {
         }
         const list = rows.reverse().map(t => {
             let label = INV_TXN_TYPE_LABEL[t.type] || t.type;
-            if (t.type === 'buy' && t.id === firstBuyId) label = '建仓';
+            // type_key 供前端做 i18n（inv.txnType.*）：首笔买入语义上是「建仓」，与后续加仓区分
+            let typeKey = t.type;
+            if (t.type === 'buy' && t.id === firstBuyId) { label = '建仓'; typeKey = 'first_buy'; }
             return {
                 id: t.id,
                 type: t.type,
+                type_key: typeKey,
                 type_label: label,
                 amount: parseFloat(t.amount),
                 price: parseFloat(t.price),

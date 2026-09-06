@@ -53,17 +53,18 @@ const AIChat = {
         this._setLoading(true);
         try {
             const data = await this._req('/ai/chat', 'POST', { messages: this.messages.slice(-12) });
-            const reply = (data && data.reply) || '（暂时没有回复）';
+            const reply = (data && data.reply) || tt('aiChat.fallback.empty', '（暂时没有回复）');
             this.messages.push({ role: 'assistant', content: reply });
             if (data && Array.isArray(data.transactions) && data.transactions.length) {
                 const summary = data.transactions.map(t => {
-                    const verb = t.action === 'deleted' ? '删除' : '更新';
-                    return `${verb}：${t.categoryName || ''}${t.accountName || ''} ${t.amount != null ? '¥' + Number(t.amount).toFixed(2) : ''}`;
+                    const verb = t.action === 'deleted' ? tt('aiChat.action.deleted', '删除') : tt('aiChat.action.updated', '更新');
+                    const amt = t.amount != null ? tt('aiChat.summary.amt', '¥{n}').replace('{n}', Number(t.amount).toFixed(2)) : '';
+                    return `${verb}：${t.categoryName || ''}${t.accountName || ''} ${amt}`;
                 }).join('；');
                 this.messages.push({ role: 'system', content: summary });
             }
         } catch (e) {
-            this.messages.push({ role: 'assistant', content: '出错了：' + (e.message || e) });
+            this.messages.push({ role: 'assistant', content: tt('aiChat.fallback.error', '出错了：{msg}').replace('{msg}', e.message || e) });
         } finally {
             this._setLoading(false);
             this._render();

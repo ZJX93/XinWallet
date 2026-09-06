@@ -111,17 +111,17 @@ const AIInsights = {
             const data = await this._req('/ai/forecast/cashflow?months=3');
             if (data && data.predicted) {
                 const p = data.predicted;
-                const cell = (label, val) => `<div><span class="ai-tools-card-header">${label}</span><div class="ai-cashflow-val">¥${(Number(val) || 0).toFixed(0)}</div></div>`;
+                const cell = (label, val) => `<div><span class="ai-tools-card-header">${escapeHtml(label)}</span><div class="ai-cashflow-val">¥${(Number(val) || 0).toFixed(0)}</div></div>`;
                 el.innerHTML = `<div class="ai-cashflow-grid">` +
-                    cell('未来 3 月流入', p.inflow) +
-                    cell('未来 3 月流出', p.outflow) +
-                    (p.balance ? cell('期末余额', p.balance) : '') +
+                    cell(tt('aiInsights.cashflow.inflow', '未来 3 月流入'), p.inflow) +
+                    cell(tt('aiInsights.cashflow.outflow', '未来 3 月流出'), p.outflow) +
+                    (p.balance ? cell(tt('aiInsights.cashflow.balance', '期末余额'), p.balance) : '') +
                     `</div>`;
             } else {
-                el.innerHTML = '<p class="card-desc">现金流数据不足，先记录一段时间账单吧</p>';
+                el.innerHTML = `<p class="card-desc">${escapeHtml(tt('aiInsights.cashflow.empty', '现金流数据不足，先记录一段时间账单吧'))}</p>`;
             }
         } catch (e) {
-            el.innerHTML = '<p class="card-desc">加载失败：' + escapeHtml(e.message) + '</p>';
+            el.innerHTML = `<p class="card-desc">${escapeHtml(tt('aiInsights.cashflow.err', '加载失败：{msg}')).replace('{msg}', e.message)}</p>`;
         }
     },
 
@@ -132,7 +132,7 @@ const AIInsights = {
             const data = await this._req('/ai/profile');
             const p = (data && data.profile) ? data.profile : data;
             if (!p || Object.keys(p).length === 0) {
-                el.innerHTML = '<p class="card-desc">暂无画像数据，多用 AI 记账后会逐渐学习</p>';
+                el.innerHTML = `<p class="card-desc">${escapeHtml(tt('aiInsights.profile.empty', '暂无画像数据，多用 AI 记账后会逐渐学习'))}</p>`;
                 return;
             }
             el.innerHTML = Object.entries(p)
@@ -143,7 +143,7 @@ const AIInsights = {
                 })
                 .join('') || 'N/A';
         } catch (e) {
-            el.innerHTML = '<p class="card-desc">加载失败：' + escapeHtml(e.message) + '</p>';
+            el.innerHTML = `<p class="card-desc">${escapeHtml(tt('aiInsights.profile.err', '加载失败：{msg}')).replace('{msg}', e.message)}</p>`;
         }
     },
 

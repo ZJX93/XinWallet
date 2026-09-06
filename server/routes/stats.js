@@ -184,7 +184,7 @@ router.get('/dashboard', async (req, res) => {
             // 预算执行（多币种 P2-2d：actual 子查询按账户币种 GROUP BY 拆分 JSON 行；JS 端解析为 actual_breakdown）
             db.query(
                 `SELECT b.*,
-                    (SELECT COALESCE(JSON_OBJECTAGG(a.currency, sums.cnt), JSON_OBJECT('CNY', 0))
+                    (SELECT COALESCE(${db.jsonAgg('a.currency', 'sums.cnt')}, ${db.jsonObj("'CNY'", '0')})
                        FROM (SELECT t.account_id, SUM(t.amount) AS cnt FROM transactions t
                              LEFT JOIN categories c ON t.category_id = c.id
                              WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'

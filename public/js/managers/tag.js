@@ -39,17 +39,17 @@ const TagManager = {
             color: document.getElementById('tagColor').value,
             icon: document.getElementById('tagIcon').value || '🏷️'
         };
-        if (!body.name) { showToast('请输入标签名称', 'error'); return; }
+        if (!body.name) { showToast(tt('tag.toast.nameRequired', '请输入标签名称'), 'error'); return; }
         await api('/tags', 'POST', body);
-        showToast('标签已创建', 'success');
+        showToast(tt('tag.toast.created', '标签已创建'), 'success');
         this.closeModal();
         await this.refresh();
     },
     async remove(id) {
-        if (!confirm('确定删除该标签？关联的交易所属标记会一并移除。')) return;
+        if (!confirmT('confirm.deleteTag', '确定删除该标签？关联的交易所属标记会一并移除。')) return;
         try {
             await api(`/tags/${id}`, 'DELETE');
-            showToast('标签已删除', 'warning');
+            showToast(tt('tag.toast.deleted', '标签已删除'), 'warning');
             await this.refresh();
         } catch (err) {
             // api() 已显示错误 toast
@@ -64,7 +64,7 @@ const TagManager = {
         const sel = document.getElementById('transTagFilter');
         if (!sel) return;
         const cur = sel.value;
-        sel.innerHTML = '<option value="all">所有标签</option>' + (cache.tags || []).map(t => `<option value="${t.id}">${escapeHtml(t.icon || '')} ${escapeHtml(t.name)}</option>`).join('');
+        sel.innerHTML = `<option value="all">${escapeHtml(tt('tag.filter.all', '所有标签'))}</option>` + (cache.tags || []).map(t => `<option value="${t.id}">${escapeHtml(t.icon || '')} ${escapeHtml(t.name)}</option>`).join('');
         if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
     },
     async refresh() {
@@ -73,15 +73,15 @@ const TagManager = {
         const tags = await api('/tags');
         cache.tags = tags || [];
         this.populateTagFilter();
-        if (!cache.tags.length) { showEmpty(grid, '还没有标签，点击右上角「新建标签」创建第一个吧'); return; }
+        if (!cache.tags.length) { showEmpty(grid, tt('tag.empty', '还没有标签，点击右上角「新建标签」创建第一个吧')); return; }
         grid.innerHTML = cache.tags.map(t => `
             <div class="tag-card" style="--tag-color:${t.color}" data-id="${t.id}">
                 <div class="tag-card-icon">${escapeHtml(t.icon || "🏷️")}</div>
                 <div class="tag-card-body">
                     <div class="tag-card-name">${escapeHtml(t.name)}</div>
-                    <div class="tag-card-meta">点击按此标签筛选交易</div>
+                    <div class="tag-card-meta">${escapeHtml(tt('tag.card.clickHint', '点击按此标签筛选交易'))}</div>
                 </div>
-                <button class="tag-card-del" data-del="${t.id}">删除</button>
+                <button class="tag-card-del" data-del="${t.id}">${escapeHtml(tt('tag.card.delete', '删除'))}</button>
             </div>
         `).join('');
     }

@@ -20,9 +20,9 @@ const AIProviderManager = {
     PRESETS: {
         minimax: {
             name: 'MiniMax',
-            desc: '国内直连·国内版和国际版域名不同，请按你的账号注册地选择',
+            desc: tt('aiProvider.preset.minimax.desc', '国内直连·国内版和国际版域名不同，请按你的账号注册地选择'),
             caps: ['chat', 'tools'],
-            keyHint: '访问 platform.minimaxi.com → API Keys 创建密钥（国内版）',
+            keyHint: tt('aiProvider.preset.minimax.keyHint', '访问 platform.minimaxi.com → API Keys 创建密钥（国内版）'),
             models: ['MiniMax-M3', 'MiniMax-Text-01'],
             regions: ['cn', 'en'], defaultRegion: 'cn',
             variants: {
@@ -34,9 +34,9 @@ const AIProviderManager = {
         },
         deepseek: {
             name: 'DeepSeek',
-            desc: '国内直连·高性价比，仅 OpenAI 兼容接口',
+            desc: tt('aiProvider.preset.deepseek.desc', '国内直连·高性价比，仅 OpenAI 兼容接口'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '访问 platform.deepseek.com → API Keys 创建密钥',
+            keyHint: tt('aiProvider.preset.deepseek.keyHint', '访问 platform.deepseek.com → API Keys 创建密钥'),
             models: ['deepseek-chat', 'deepseek-reasoner'],
             regions: ['cn'], defaultRegion: 'cn',
             variants: {
@@ -45,9 +45,9 @@ const AIProviderManager = {
         },
         groq: {
             name: 'Groq',
-            desc: '免费·极速，支持对话和语音转写（Whisper），推荐用于语音记账',
+            desc: tt('aiProvider.preset.groq.desc', '免费·极速，支持对话和语音转写（Whisper），推荐用于语音记账'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '访问 console.groq.com → API Keys 免费创建密钥',
+            keyHint: tt('aiProvider.preset.groq.keyHint', '访问 console.groq.com → API Keys 免费创建密钥'),
             models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'whisper-large-v3'],
             regions: ['en'], defaultRegion: 'en',
             variants: {
@@ -56,9 +56,9 @@ const AIProviderManager = {
         },
         kimi: {
             name: 'Kimi',
-            desc: '国内直连·长上下文，仅 OpenAI 兼容接口',
+            desc: tt('aiProvider.preset.kimi.desc', '国内直连·长上下文，仅 OpenAI 兼容接口'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '访问 platform.moonshot.cn → API Keys 创建密钥',
+            keyHint: tt('aiProvider.preset.kimi.keyHint', '访问 platform.moonshot.cn → API Keys 创建密钥'),
             models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
             regions: ['cn'], defaultRegion: 'cn',
             variants: {
@@ -67,9 +67,10 @@ const AIProviderManager = {
         },
         zhipu: {
             name: '智谱 AI',
-            desc: '国内直连·有免费额度，仅 OpenAI 兼容接口',
+            nameKey: 'aiProvider.preset.zhipu.name',
+            desc: tt('aiProvider.preset.zhipu.desc', '国内直连·有免费额度，仅 OpenAI 兼容接口'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '访问 open.bigmodel.cn → API Keys 创建密钥',
+            keyHint: tt('aiProvider.preset.zhipu.keyHint', '访问 open.bigmodel.cn → API Keys 创建密钥'),
             models: ['glm-4-flash', 'glm-4', 'glm-4-air'],
             regions: ['cn'], defaultRegion: 'cn',
             variants: {
@@ -78,9 +79,9 @@ const AIProviderManager = {
         },
         openai: {
             name: 'OpenAI',
-            desc: '官方·全功能支持（对话+语音转写），需国际网络',
+            desc: tt('aiProvider.preset.openai.desc', '官方·全功能支持（对话+语音转写），需国际网络'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '访问 platform.openai.com → API Keys 创建密钥',
+            keyHint: tt('aiProvider.preset.openai.keyHint', '访问 platform.openai.com → API Keys 创建密钥'),
             models: ['gpt-4o-mini', 'gpt-4o', 'whisper-1'],
             regions: ['en'], defaultRegion: 'en',
             variants: {
@@ -89,9 +90,9 @@ const AIProviderManager = {
         },
         anthropic: {
             name: 'Anthropic',
-            desc: 'Claude·支持对话和函数调用，不支持语音转写',
+            desc: tt('aiProvider.preset.anthropic.desc', 'Claude·支持对话和函数调用，不支持语音转写'),
             caps: ['chat', 'tools'],
-            keyHint: '访问 console.anthropic.com → API Keys 创建密钥',
+            keyHint: tt('aiProvider.preset.anthropic.keyHint', '访问 console.anthropic.com → API Keys 创建密钥'),
             models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
             regions: ['en'], defaultRegion: 'en',
             variants: {
@@ -100,9 +101,10 @@ const AIProviderManager = {
         },
         ollama: {
             name: 'Ollama 本地',
-            desc: '本地部署·无需 API Key，不支持语音转写',
+            nameKey: 'aiProvider.preset.ollama.name',
+            desc: tt('aiProvider.preset.ollama.desc', '本地部署·无需 API Key，不支持语音转写'),
             caps: ['chat'],
-            keyHint: '无需 Key（本地运行 Ollama 即可）',
+            keyHint: tt('aiProvider.preset.ollama.keyHint', '无需 Key（本地运行 Ollama 即可）'),
             models: ['llama3.1', 'qwen2.5', 'phi3'],
             regions: ['en'], defaultRegion: 'en',
             variants: {
@@ -112,9 +114,10 @@ const AIProviderManager = {
         // 自定义：不绑定任何预设地址，用户手动填写；隐藏国内/国际切换
         custom: {
             name: '自定义',
-            desc: '手动填写任意兼容 OpenAI / Anthropic 协议的服务商地址与模型',
+            nameKey: 'aiProvider.preset.custom.name',
+            desc: tt('aiProvider.preset.custom.desc', '手动填写任意兼容 OpenAI / Anthropic 协议的服务商地址与模型'),
             caps: ['chat', 'tools', 'voice'],
-            keyHint: '参考服务商官方文档填写接口地址（通常以 /v1 结尾）与模型名',
+            keyHint: tt('aiProvider.preset.custom.keyHint', '参考服务商官方文档填写接口地址（通常以 /v1 结尾）与模型名'),
             models: [], custom: true, regions: [], defaultRegion: null
         }
     },
@@ -237,21 +240,21 @@ const AIProviderManager = {
                 <div class="provider-card-header">
                     <div class="provider-card-title">
                         ${escapeHtml(p.name)}
-                        <span class="provider-card-badge ${p.is_active ? 'active' : ''}">${p.is_active ? '当前启用' : p.api_type}</span>
+                        <span class="provider-card-badge ${p.is_active ? 'active' : ''}">${p.is_active ? escapeHtml(tt('aiProvider.card.active', '当前启用')) : escapeHtml(p.api_type)}</span>
                     </div>
                 </div>
                 <div class="provider-card-meta">
-                    <div>模型：${escapeHtml(p.model)}</div>
-                    <div>地址：${escapeHtml(p.base_url)}</div>
-                    <div>Key：${p.api_key ? '已保存' : '未设置'}</div>
+                    <div>${escapeHtml(tt('aiProvider.card.modelLabel', '模型：'))}${escapeHtml(p.model)}</div>
+                    <div>${escapeHtml(tt('aiProvider.card.urlLabel', '地址：'))}${escapeHtml(p.base_url)}</div>
+                    <div>${escapeHtml(tt('aiProvider.card.keyLabel', 'Key：'))}${p.api_key ? escapeHtml(tt('aiProvider.card.keySaved', '已保存')) : escapeHtml(tt('aiProvider.card.keyUnset', '未设置'))}</div>
                 </div>
                 <div class="provider-card-caps">${capBadges}</div>
                 <div class="provider-health" data-health-for="${p.id}">${this.renderHealth(p.id)}</div>
                 <div class="provider-card-actions">
-                    ${p.is_active ? '<span class="btn btn-ghost btn-sm" disabled>已启用</span>' : `<button class="btn btn-ghost btn-sm ai-provider-activate" data-id="${p.id}">启用</button>`}
-                    <button class="btn btn-ghost btn-sm ai-provider-check" data-id="${p.id}">检测</button>
-                    <button class="btn btn-ghost btn-sm ai-provider-edit" data-id="${p.id}">编辑</button>
-                    <button class="btn btn-ghost btn-sm ai-provider-delete" data-id="${p.id}">删除</button>
+                    ${p.is_active ? `<span class="btn btn-ghost btn-sm" disabled>${escapeHtml(tt('aiProvider.card.enabled', '已启用'))}</span>` : `<button class="btn btn-ghost btn-sm ai-provider-activate" data-id="${p.id}">${escapeHtml(tt('aiProvider.card.activate', '启用'))}</button>`}
+                    <button class="btn btn-ghost btn-sm ai-provider-check" data-id="${p.id}">${escapeHtml(tt('aiProvider.card.check', '检测'))}</button>
+                    <button class="btn btn-ghost btn-sm ai-provider-edit" data-id="${p.id}">${escapeHtml(tt('aiProvider.card.edit', '编辑'))}</button>
+                    <button class="btn btn-ghost btn-sm ai-provider-delete" data-id="${p.id}">${escapeHtml(tt('aiProvider.card.delete', '删除'))}</button>
                 </div>
             </div>
             `;
@@ -264,7 +267,7 @@ const AIProviderManager = {
 
     renderHealth(id) {
         const h = this.health[id];
-        if (!h) return '<span class="provider-health-dot unknown"></span><span class="provider-health-text">状态未知，点「检测」</span>';
+        if (!h) return `<span class="provider-health-dot unknown"></span><span class="provider-health-text">${escapeHtml(tt('aiProvider.health.unknown', '状态未知，点「检测」'))}</span>`;
         const title = h.text ? ` title="${escapeHtml(h.text)}"` : '';
         return `<span class="provider-health-dot ${h.state}"></span><span class="provider-health-text ${h.state}"${title}>${escapeHtml(h.label)}</span>`;
     },
@@ -280,19 +283,19 @@ const AIProviderManager = {
      * 复用后端 /providers/:id/test（只发一句「回复 OK」，轻量且不产生业务副作用）。
      */
     async checkHealth(id) {
-        this.health[id] = { state: 'checking', label: '检测中…' };
+        this.health[id] = { state: 'checking', label: tt('aiProvider.health.checking', '检测中…') };
         this.paintHealth(id);
         const started = Date.now();
         try {
             const res = await api(`/ai/providers/${id}/test`, 'POST', {}, { silent: true });
             const ms = Date.now() - started;
             if (res && res.ok) {
-                this.health[id] = { state: 'healthy', label: `健康 · ${ms}ms`, text: res.reply || '' };
+                this.health[id] = { state: 'healthy', label: tt('aiProvider.health.healthy', '健康 · {ms}ms').replace('{ms}', String(ms)), text: res.reply || '' };
             } else {
-                this.health[id] = { state: 'error', label: '异常', text: (res && res.error) || '未知错误' };
+                this.health[id] = { state: 'error', label: tt('aiProvider.health.error', '异常'), text: (res && res.error) || tt('aiProvider.health.errUnknown', '未知错误') };
             }
         } catch (err) {
-            this.health[id] = { state: 'error', label: '异常', text: err.message || '网络错误' };
+            this.health[id] = { state: 'error', label: tt('aiProvider.health.error', '异常'), text: err.message || tt('aiProvider.health.netErr', '网络错误') };
         }
         this.paintHealth(id);
     },
@@ -304,18 +307,18 @@ const AIProviderManager = {
         const isAnthropic = p.api_type === 'anthropic';
         const isMiniMax = url.includes('minimaxi.com') || url.includes('minimax.chat');
         const isOllama = url.includes('127.0.0.1:11434') || url.includes('localhost:11434');
-        caps.push({ label: '对话', cls: 'cap-chat' });
+        caps.push({ label: tt('aiProvider.cap.chat', '对话'), cls: 'cap-chat' });
         // 函数调用：所有现代大模型都支持；Ollama 取决于具体模型（标注为可用但不绝对）
-        if (!isOllama) caps.push({ label: '函数调用', cls: 'cap-tools' });
+        if (!isOllama) caps.push({ label: tt('aiProvider.cap.tools', '函数调用'), cls: 'cap-tools' });
         // 语音转写：需要 /audio/transcriptions 接口；Anthropic 类型服务商不支持（除非有专门的 OpenAI 兼容）
         // 这里采用宽松判断：只要不是 anthropic 类型且域名不在 anthropic.com / minimaxi.com / minimax.chat，就认为支持
-        if (!isAnthropic && !isMiniMax) caps.push({ label: '语音转写', cls: 'cap-voice' });
+        if (!isAnthropic && !isMiniMax) caps.push({ label: tt('aiProvider.cap.voice', '语音转写'), cls: 'cap-voice' });
         return caps;
     },
 
     openModal(id) {
         this.editingId = id || null;
-        document.getElementById('aiProviderModalTitle').textContent = id ? '编辑服务商' : '添加服务商';
+        document.getElementById('aiProviderModalTitle').textContent = id ? tt('aiProvider.modal.edit', '编辑服务商') : tt('aiProvider.modal.add', '添加服务商');
         document.getElementById('aiProviderMsg').textContent = '';
         document.getElementById('aiProviderMsg').className = 'form-msg';
         if (id) {
@@ -327,7 +330,7 @@ const AIProviderManager = {
             document.getElementById('aiProviderBaseUrl').value = p.base_url;
             document.getElementById('aiProviderModel').value = p.model;
             document.getElementById('aiProviderKey').value = '';
-            document.getElementById('aiProviderKey').placeholder = p.api_key ? '已保存（修改请重新输入）' : 'sk-...';
+            document.getElementById('aiProviderKey').placeholder = p.api_key ? tt('aiProvider.keyPlaceholder.saved', '已保存（修改请重新输入）') : 'sk-...';
             // 编辑时尝试匹配预设
             const presetKey = this.detectPresetByName(p.name);
             this.clearPresetActive();
@@ -350,7 +353,7 @@ const AIProviderManager = {
         } else {
             document.getElementById('aiProviderForm').reset();
             document.getElementById('aiProviderId').value = '';
-            document.getElementById('aiProviderKey').placeholder = 'sk-...';
+            document.getElementById('aiProviderKey').placeholder = 'sk-...'; // 'sk-...' 是占位示例，无需翻译
             // 默认选择 Anthropic 接口类型 + MiniMax 国内版预设
             document.getElementById('aiProviderType').value = 'anthropic';
             this.applyPreset('minimax');
@@ -374,7 +377,7 @@ const AIProviderManager = {
         // 更新模型建议列表
         this.updateModelList(p.models);
         // 更新 Key 提示
-        document.getElementById('aiKeyHint').textContent = p.keyHint || '编辑时留空表示保留已保存的 Key';
+        document.getElementById('aiKeyHint').textContent = p.keyHint || tt('aiProvider.keepKeyHint', '编辑时留空表示保留已保存的 Key');
         // 自定义：隐藏地区切换，清空地址让用户手填自己的服务商名
         if (p.custom) {
             this.currentRegion = null;
@@ -385,7 +388,7 @@ const AIProviderManager = {
             document.getElementById('aiProviderModel').value = '';
             this.showPresetDesc(p, null);
             const hint = document.getElementById('aiBaseUrlHint');
-            hint.textContent = '请填写服务商的完整接口地址（含 /v1 或 /messages 等路径）与模型名';
+            hint.textContent = tt('aiProvider.custom.urlHint', '请填写服务商的完整接口地址（含 /v1 或 /messages 等路径）与模型名');
             hint.style.color = '';
             return;
         }
@@ -408,13 +411,14 @@ const AIProviderManager = {
             }
             document.getElementById('aiProviderBaseUrl').value = resolved.variant.base_url;
             document.getElementById('aiProviderModel').value = resolved.variant.model;
-            const regionLabel = resolved.region === 'cn' ? '国内版' : '国际版';
-            const typeLabel = resolved.apiType === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容';
-            const fallbackNote = resolved.apiType !== apiType ? '（已自动改为支持的接口类型）' : '';
-            hint.textContent = `✅ 已自动填入${regionLabel}地址（${typeLabel}）${fallbackNote}`;
+            const regionLabel = resolved.region === 'cn' ? tt('aiProvider.region.cn', '国内版') : tt('aiProvider.region.en', '国际版');
+            const typeLabel = resolved.apiType === 'anthropic' ? tt('aiProvider.apiType.anthropic', 'Anthropic') : tt('aiProvider.apiType.openai', 'OpenAI 兼容');
+            const fallbackNote = resolved.apiType !== apiType ? tt('aiProvider.fallbackNote', '（已自动改为支持的接口类型）') : '';
+            hint.textContent = tt('aiProvider.urlFilled', '✅ 已自动填入{region}地址（{type}）{note}')
+                .replace('{region}', regionLabel).replace('{type}', typeLabel).replace('{note}', fallbackNote);
             hint.style.color = 'var(--color-success)';
         } else {
-            hint.textContent = `⚠️ ${preset.name} 不支持当前接口类型，请切换接口类型或地区`;
+            hint.textContent = tt('aiProvider.unsupportedType', '⚠️ {name} 不支持当前接口类型，请切换接口类型或地区').replace('{name}', preset.nameKey ? tt(preset.nameKey, preset.name) : preset.name);
             hint.style.color = 'var(--color-warning)';
         }
         this.showPresetDesc(preset, this.currentRegion);
@@ -460,13 +464,13 @@ const AIProviderManager = {
             // 不是已知预设（如自定义），只做格式校验提示
             const isAnthropicUrl = currentBaseUrl.includes('/anthropic/') || currentBaseUrl.includes('anthropic.com');
             if (type === 'anthropic' && !isAnthropicUrl && currentBaseUrl) {
-                hint.textContent = '⚠️ 当前接口地址看起来不是 Anthropic 格式，请确认地址是否正确';
+                hint.textContent = tt('aiProvider.apiType.warnAnthropic', '⚠️ 当前接口地址看起来不是 Anthropic 格式，请确认地址是否正确');
                 hint.style.color = 'var(--color-warning)';
             } else if (type === 'openai' && isAnthropicUrl) {
-                hint.textContent = '⚠️ 当前接口地址包含 anthropic 路径，OpenAI 兼容类型通常不需要 /anthropic/ 前缀';
+                hint.textContent = tt('aiProvider.apiType.warnOpenai', '⚠️ 当前接口地址包含 anthropic 路径，OpenAI 兼容类型通常不需要 /anthropic/ 前缀');
                 hint.style.color = 'var(--color-warning)';
             } else {
-                hint.textContent = '通常以 /v1 结尾，无需尾部斜杠';
+                hint.textContent = tt('aiProvider.apiType.hintDefault', '通常以 /v1 结尾，无需尾部斜杠');
                 hint.style.color = '';
             }
             return;
@@ -495,7 +499,7 @@ const AIProviderManager = {
         const btn = document.getElementById('aiFetchModelsBtn');
         const baseUrl = document.getElementById('aiProviderBaseUrl').value.trim();
         const apiType = document.getElementById('aiProviderType').value;
-        if (!baseUrl) return this.setMsg('请先填写接口地址再拉取模型', 'error');
+        if (!baseUrl) return this.setMsg(tt('aiProvider.fetch.needUrl', '请先填写接口地址再拉取模型'), 'error');
         const isEdit = !!this.editingId;
         let endpoint, method, payload = null;
         if (isEdit) {
@@ -503,25 +507,25 @@ const AIProviderManager = {
             method = 'GET';
         } else {
             const key = document.getElementById('aiProviderKey').value.trim();
-            if (!key) return this.setMsg('新建服务商请先填写 API Key 再拉取模型', 'error');
+            if (!key) return this.setMsg(tt('aiProvider.fetch.needKey', '新建服务商请先填写 API Key 再拉取模型'), 'error');
             endpoint = '/ai/providers/preview-models';
             method = 'POST';
             payload = { base_url: baseUrl, api_key: key, api_type: apiType };
         }
         const oldText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = '拉取中…';
+        btn.textContent = tt('aiProvider.fetch.fetching', '拉取中…');
         try {
             const res = await api(endpoint, method, payload, { silent: true });
-            if (!res) { this.setMsg('拉取失败：无响应', 'error'); return; }
-            if (res.ok === false) { this.setMsg('拉取失败：' + (res.error || res.message || '未知错误'), 'error'); return; }
+            if (!res) { this.setMsg(tt('aiProvider.fetch.noResponse', '拉取失败：无响应'), 'error'); return; }
+            if (res.ok === false) { this.setMsg(tt('aiProvider.fetch.fail', '拉取失败：{msg}').replace('{msg}', (res.error || res.message || tt('aiProvider.fetch.errUnknown', '未知错误'))), 'error'); return; }
             if (res.supported === false) {
-                this.setMsg(res.message || '该服务商不支持自动列出模型，请手动输入', 'info');
+                this.setMsg(res.message || tt('aiProvider.fetch.unsupported', '该服务商不支持自动列出模型，请手动输入'), 'info');
                 return;
             }
             const models = res.models || [];
             if (!models.length) {
-                this.setMsg(res.error ? `拉取失败：${res.error}` : '未获取到可用模型，请确认地址/Key 或手动输入', 'error');
+                this.setMsg(res.error ? tt('aiProvider.fetch.fail', '拉取失败：{msg}').replace('{msg}', res.error) : tt('aiProvider.fetch.empty', '未获取到可用模型，请确认地址/Key 或手动输入'), 'error');
                 return;
             }
             // HTML <datalist> 只会显示与输入框当前文字前缀匹配的 option；
@@ -530,9 +534,9 @@ const AIProviderManager = {
             // 不点保存则不会影响 db（下次打开 modal 会从 db 回填）。
             document.getElementById('aiProviderModel').value = '';
             this.updateModelList(models);
-            this.setMsg(`已拉取 ${models.length} 个模型，请从模型名下拉中选择`, 'success');
+            this.setMsg(tt('aiProvider.fetch.ok', '已拉取 {n} 个模型，请从模型名下拉中选择').replace('{n}', String(models.length)), 'success');
         } catch (err) {
-            this.setMsg(`拉取失败：${err.message || '网络错误'}`, 'error');
+            this.setMsg(tt('aiProvider.fetch.fail', '拉取失败：{msg}').replace('{msg}', err.message || tt('aiProvider.fetch.errNet', '网络错误')), 'error');
         } finally {
             btn.disabled = false;
             btn.textContent = oldText;
@@ -544,12 +548,14 @@ const AIProviderManager = {
         if (!preset) { el.textContent = ''; return; }
         const caps = preset.caps || [];
         const capLabels = {
-            chat: '对话', tools: '函数调用', voice: '语音转写'
+            chat: tt('aiProvider.cap.chat', '对话'),
+            tools: tt('aiProvider.cap.tools', '函数调用'),
+            voice: tt('aiProvider.cap.voice', '语音转写')
         };
         const capText = caps.map(c => capLabels[c] || c).join(' · ');
-        const regionText = region === 'cn' ? '国内版' : region === 'en' ? '国际版' : '';
+        const regionText = region === 'cn' ? tt('aiProvider.region.cn', '国内版') : region === 'en' ? tt('aiProvider.region.en', '国际版') : '';
         const regionHtml = regionText ? ` <span class="preset-region-tag">${regionText}</span>` : '';
-        el.innerHTML = `${regionHtml}${escapeHtml(preset.desc)} <span style="color:var(--text-tertiary)">| 支持：${capText}</span>`;
+        el.innerHTML = `${regionHtml}${escapeHtml(preset.desc)} <span style="color:var(--text-tertiary)">${escapeHtml(tt('aiProvider.card.capsTitle', '| 支持：'))}${escapeHtml(capText)}</span>`;
     },
 
     collect() {
@@ -570,55 +576,55 @@ const AIProviderManager = {
 
     async save() {
         const payload = this.collect();
-        if (!payload.name) return this.setMsg('请输入服务商名称', 'error');
-        if (!payload.base_url) return this.setMsg('请输入接口地址', 'error');
-        if (!payload.model) return this.setMsg('请输入模型名', 'error');
+        if (!payload.name) return this.setMsg(tt('aiProvider.save.needName', '请输入服务商名称'), 'error');
+        if (!payload.base_url) return this.setMsg(tt('aiProvider.save.needUrl', '请输入接口地址'), 'error');
+        if (!payload.model) return this.setMsg(tt('aiProvider.save.needModel', '请输入模型名'), 'error');
         const isEdit = !!this.editingId;
         const res = isEdit
             ? await api(`/ai/providers/${this.editingId}`, 'PUT', payload)
             : await api('/ai/providers', 'POST', payload);
         if (res) {
-            showToast(isEdit ? '服务商已更新' : '服务商已创建', 'success');
+            showToast(isEdit ? tt('aiProvider.save.toastEdit', '服务商已更新') : tt('aiProvider.save.toastAdd', '服务商已创建'), 'success');
             this.closeModal();
             await this.refresh();
         } else {
-            this.setMsg('保存失败，请检查输入或网络', 'error');
+            this.setMsg(tt('aiProvider.save.fail', '保存失败，请检查输入或网络'), 'error');
         }
     },
 
     async activate(id) {
         const res = await api(`/ai/providers/${id}/activate`, 'POST');
         if (res) {
-            showToast('已启用该服务商', 'success');
+            showToast(tt('aiProvider.activate.toast', '已启用该服务商'), 'success');
             await this.refresh();
         } else {
-            showToast('启用失败', 'error');
+            showToast(tt('aiProvider.activate.fail', '启用失败'), 'error');
         }
     },
 
     async delete(id) {
         const p = this.providers.find(x => x.id === id);
         if (!p) return;
-        if (!confirm(`确定删除服务商「${p.name}」吗？`)) return;
+        if (!confirm(tt('aiProvider.delete.confirm', '确定删除服务商「{name}」吗？').replace('{name}', p.name))) return;
         const res = await api(`/ai/providers/${id}`, 'DELETE');
         if (res) {
-            showToast('服务商已删除', 'success');
+            showToast(tt('aiProvider.delete.toast', '服务商已删除'), 'success');
             await this.refresh();
         } else {
-            showToast('删除失败', 'error');
+            showToast(tt('aiProvider.delete.fail', '删除失败'), 'error');
         }
     },
 
     async test() {
         const payload = this.collect();
         if (!payload.base_url || !payload.model) {
-            return this.setMsg('请填写接口地址和模型名后再测试', 'error');
+            return this.setMsg(tt('aiProvider.test.needUrlModel', '请填写接口地址和模型名后再测试'), 'error');
         }
         // 新建时必须填 key；编辑时 key 可留空，后端会保留已保存的 key
         if (!this.editingId && !payload.api_key) {
-            return this.setMsg('新建服务商时必须填写 API Key', 'error');
+            return this.setMsg(tt('aiProvider.test.needKey', '新建服务商时必须填写 API Key'), 'error');
         }
-        this.setMsg('正在测试连接...', 'info');
+        this.setMsg(tt('aiProvider.test.testing', '正在测试连接...'), 'info');
 
         // 先落库拿到 id（后端测试接口按 id 取解密后的 key）。
         // 注意：这里不再顺带把服务商置为启用 —— 测试只应验证连通性，
@@ -631,11 +637,11 @@ const AIProviderManager = {
                 : await api('/ai/providers', 'POST', payload, { silent: true });
             if (!isEdit) {
                 pid = saveRes && saveRes.id;
-                if (!pid) { this.setMsg('保存成功但未取到服务商 ID，无法测试', 'error'); return; }
+                if (!pid) { this.setMsg(tt('aiProvider.test.savedNoId', '保存成功但未取到服务商 ID，无法测试'), 'error'); return; }
                 this.editingId = pid;
             }
         } catch (err) {
-            this.setMsg(`保存失败，无法测试：${err.message || '未知错误'}`, 'error');
+            this.setMsg(tt('aiProvider.test.saveFail', '保存失败，无法测试：{msg}').replace('{msg}', err.message || tt('aiProvider.test.errUnknown', '未知错误')), 'error');
             return;
         }
 
@@ -649,15 +655,15 @@ const AIProviderManager = {
             const res = await api(`/ai/providers/${pid}/test`, 'POST', {}, { silent: true });
             await this.refresh();
             if (res && res.ok) {
-                showToast('连接成功，AI 接口可用', 'success');
-                this.setMsg('连接成功！点击「保存」保留配置。如需切换对话服务商，请在列表中点击「启用」。', 'success');
+                showToast(tt('aiProvider.test.successToast', '连接成功，AI 接口可用'), 'success');
+                this.setMsg(tt('aiProvider.test.successMsg', '连接成功！点击「保存」保留配置。如需切换对话服务商，请在列表中点击「启用」。'), 'success');
             } else {
                 // 后端把上游真实报错放在 error 字段回传，原样展示便于定位
-                this.setMsg(`连接失败：${(res && res.error) || '未知错误'}`, 'error');
+                this.setMsg(tt('aiProvider.test.fail', '连接失败：{msg}').replace('{msg}', (res && res.error) || tt('aiProvider.test.errUnknown', '未知错误')), 'error');
             }
         } catch (err) {
             await this.refresh();
-            this.setMsg(`连接失败：${err.message || '网络错误'}`, 'error');
+            this.setMsg(tt('aiProvider.test.fail', '连接失败：{msg}').replace('{msg}', err.message || tt('aiProvider.test.errNet', '网络错误')), 'error');
         }
     },
 
@@ -682,18 +688,18 @@ const AIProviderManager = {
         this.ocrCurrent = res;
         document.getElementById('ocrSecretId').value = res.secret_id || '';
         document.getElementById('ocrSecretKey').value = '';
-        document.getElementById('ocrSecretKey').placeholder = res.secret_id ? '已保存（修改请重新输入）' : 'SecretKey';
+        document.getElementById('ocrSecretKey').placeholder = res.secret_id ? tt('aiProvider.ocr.keyPlaceholder.saved', '已保存（修改请重新输入）') : 'SecretKey';
         document.getElementById('ocrRegion').value = res.region || 'ap-guangzhou';
         document.getElementById('ocrConfigMsg').textContent = '';
         document.getElementById('ocrConfigMsg').className = 'form-msg';
 
         // 关键：若后端报告 credentialsValid=false（密钥不匹配），明确提示用户
         if (res.secret_id && res.credentialsValid === false) {
-            showToast('⚠️ 已加密的凭证无法解密，请重新填写 SecretId 和 SecretKey', 'warning', 6000);
-            this.ocrSetMsg('⚠️ 已加密的凭证无法解密（' + (res.credentialsError || '密钥不匹配') + '），请重新填写凭证', 'error');
+            showToast(tt('aiProvider.ocr.decryptFailToast', '⚠️ 已加密的凭证无法解密，请重新填写 SecretId 和 SecretKey'), 'warning', 6000);
+            this.ocrSetMsg(tt('aiProvider.ocr.decryptFailMsg', '⚠️ 已加密的凭证无法解密（{err}），请重新填写凭证').replace('{err}', res.credentialsError || tt('aiProvider.ocr.keyMismatch', '密钥不匹配')), 'error');
             // 强制清空占位符，让用户知道必须重新输入
             document.getElementById('ocrSecretId').value = '';
-            document.getElementById('ocrSecretId').placeholder = '请重新输入（已加密数据无法解密）';
+            document.getElementById('ocrSecretId').placeholder = tt('aiProvider.ocr.placeholderReenter', '请重新输入（已加密数据无法解密）');
         }
     },
 
@@ -703,20 +709,20 @@ const AIProviderManager = {
             secret_key: document.getElementById('ocrSecretKey').value.trim(),
             region: document.getElementById('ocrRegion').value.trim()
         };
-        if (!payload.secret_id) return this.ocrSetMsg('SecretId 必填', 'error');
-        if (!payload.secret_key && !this.ocrCurrent.secret_id) return this.ocrSetMsg('SecretKey 必填', 'error');
+        if (!payload.secret_id) return this.ocrSetMsg(tt('aiProvider.ocr.needId', 'SecretId 必填'), 'error');
+        if (!payload.secret_key && !this.ocrCurrent.secret_id) return this.ocrSetMsg(tt('aiProvider.ocr.needKey', 'SecretKey 必填'), 'error');
         const res = await api('/ai/ocr-config', 'POST', payload);
         if (res) {
-            showToast('OCR 配置已保存', 'success');
+            showToast(tt('aiProvider.ocr.savedToast', 'OCR 配置已保存'), 'success');
             await this.refreshOcrConfig();
-            this.ocrSetMsg('OCR 配置保存成功', 'success');
+            this.ocrSetMsg(tt('aiProvider.ocr.savedMsg', 'OCR 配置保存成功'), 'success');
         } else {
-            this.ocrSetMsg('保存失败', 'error');
+            this.ocrSetMsg(tt('aiProvider.ocr.saveFail', '保存失败'), 'error');
         }
     },
 
     async testOcr() {
-        this.ocrSetMsg('请先保存配置，然后使用 AI 识别页的截图上传功能测试', 'info');
+        this.ocrSetMsg(tt('aiProvider.ocr.testHint', '请先保存配置，然后使用 AI 识别页的截图上传功能测试'), 'info');
     },
 
     ocrSetMsg(text, type = '') {

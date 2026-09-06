@@ -1,31 +1,31 @@
 <section class="page" id="page-reports">
     <div class="report-controls">
         <div class="report-control-group">
-            <label>报表类型</label>
+            <label data-i18n="report.type">报表类型</label>
             <select id="reportType" class="filter-select">
-                <option value="monthly">月度报表</option>
-                <option value="quarterly">季度报表</option>
-                <option value="annual">年度报表</option>
+                <option value="monthly" data-i18n="report.type.monthly">月度报表</option>
+                <option value="quarterly" data-i18n="report.type.quarterly">季度报表</option>
+                <option value="annual" data-i18n="report.type.annual">年度报表</option>
             </select>
         </div>
         <div class="report-control-group">
-            <label>报表周期</label>
+            <label data-i18n="report.period">报表周期</label>
             <select id="reportPeriod" class="filter-select"></select>
         </div>
-        <button class="btn btn-primary" id="generateReportBtn">生成报表</button>
+        <button class="btn btn-primary" id="generateReportBtn" data-i18n="report.generate">生成报表</button>
         <div class="report-export-group">
-            <button class="btn btn-ghost" id="printReportBtn">打印 / PDF</button>
-            <button class="btn btn-ghost" id="exportFullBtn">导出完整账本</button>
-            <button class="btn btn-ghost" id="importFullBtn">导入完整账本</button>
-            <label class="import-merge-opt" title="勾选后不清空当前账本，仅把备份里缺失的数据补进来">
-                <input type="checkbox" id="mergeImportChk"> 合并导入（不清空）
+            <button class="btn btn-ghost" id="printReportBtn" data-i18n="report.print">打印 / PDF</button>
+            <button class="btn btn-ghost" id="exportFullBtn" data-i18n="report.exportFull">导出完整账本</button>
+            <button class="btn btn-ghost" id="importFullBtn" data-i18n="report.importFull">导入完整账本</button>
+            <label class="import-merge-opt" title="勾选后不清空当前账本，仅把备份里缺失的数据补进来" data-i18n-title="report.mergeImportTip">
+                <input type="checkbox" id="mergeImportChk"> <span data-i18n="report.mergeImport">合并导入（不清空）</span>
             </label>
             <input type="file" id="importFullInput" accept=".xlsx" style="display:none">
         </div>
     </div>
     <div class="report-content" id="reportContent">
         <div class="empty-hint">
-            <p>选择报表类型与周期，点击「生成报表」查看多维度财务分析</p>
+            <p data-i18n="report.emptyHint">选择报表类型与周期，点击「生成报表」查看多维度财务分析</p>
         </div>
     </div>
 </section>

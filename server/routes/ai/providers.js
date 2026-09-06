@@ -5,7 +5,7 @@
      本文件只负责一组内聚的路由，公共依赖统一从 ./_shared.js 取。
    ============================================ */
 
-const { express, db, encrypt, decrypt, success, fail, handleServerError, maskKey, callProvider } = require('./_shared');
+const { express, db, encrypt, decrypt, success, fail, handleServerError, maskKey, tryDecrypt, callProvider } = require('./_shared');
 const https = require('https');
 const http = require('http');
 const router = express.Router();
@@ -23,11 +23,19 @@ router.get('/providers', async (req, res) => {
     try {
         const rows = await db.query('SELECT id, user_id, name, api_type, base_url, api_key, model, is_active, sort_order, created_at FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [req.userId]);
         res.json(success({
-            providers: rows.map(r => ({
-                id: r.id, name: r.name, api_type: r.api_type, base_url: r.base_url,
-                model: r.model, is_active: !!r.is_active, sort_order: r.sort_order,
-                api_key: maskKey(decrypt(r.api_key))
-            }))
+            providers: rows.map(r => {
+                // ⛔ 用 tryDecrypt 而不是 decrypt：ENCRYPTION_KEY 与历史凭证不匹配时，
+                // 单条凭证解密失败不应让整个 GET 请求 500；改为标记 _decryptFailed，
+                // 让前端 AI 配置页能照常展示，并在该条上提示用户「密钥已变更，请重新保存」。
+                const dr = tryDecrypt(r.api_key);
+                return {
+                    id: r.id, name: r.name, api_type: r.api_type, base_url: r.base_url,
+                    model: r.model, is_active: !!r.is_active, sort_order: r.sort_order,
+                    api_key: dr.ok ? maskKey(dr.value) : '⚠️ 密钥已变更',
+                    _decryptFailed: !dr.ok,
+                    _decryptError: dr.ok ? null : (dr.error || '解密失败'),
+                };
+            })
         }));
     } catch (err) { handleServerError(res, err); }
 });

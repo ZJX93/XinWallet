@@ -4,80 +4,80 @@
                 <div class="dash-kpi-bar" id="dashKpiBar">
                     <div class="kpi-card" data-detail="week" data-action="detail">
                         <div class="kpi-info">
-                            <span class="kpi-label">本周结余</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.weekBalance">本周结余</span>
                             <span class="kpi-value" id="dashWeekBalance">¥0</span>
                             <span class="kpi-sub" id="dashWeekDetail">--</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-detail="month" data-action="detail">
                         <div class="kpi-info">
-                            <span class="kpi-label">本月结余</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.monthBalance">本月结余</span>
                             <span class="kpi-value" id="dashMonthBalance">¥0</span>
-                            <span class="kpi-sub" id="dashMonthChange">收 0 支 0</span>
+                            <span class="kpi-sub" id="dashMonthChange">--</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-detail="year" data-action="detail">
                         <div class="kpi-info">
-                            <span class="kpi-label">本年结余</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.yearBalance">本年结余</span>
                             <span class="kpi-value" id="dashYearBalance">¥0</span>
-                            <span class="kpi-sub" id="dashYearDetail">收 0 支 0</span>
+                            <span class="kpi-sub" id="dashYearDetail">--</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-detail="assets" data-action="detail">
                         <div class="kpi-info">
-                            <span class="kpi-label">总资产</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.totalAssets">总资产</span>
                             <span class="kpi-value" id="dashTotalAssets">¥0</span>
-                            <span class="kpi-sub">含投资</span>
+                            <span class="kpi-sub" data-i18n="dash.kpi.inclInvest">含投资</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-page="investments" data-action="navigate">
                         <div class="kpi-info">
-                            <span class="kpi-label">储蓄率 <span id="dashSavingsRateBadge" class="kpi-badge">--</span></span>
+                            <span class="kpi-label"><span data-i18n="dash.kpi.savingsRate">储蓄率</span> <span id="dashSavingsRateBadge" class="kpi-badge">--</span></span>
                             <span class="kpi-value" id="dashSavingsRate">--</span>
-                            <span class="kpi-sub" id="dashSavingsSummary">累计净结余</span>
+                            <span class="kpi-sub" id="dashSavingsSummary" data-i18n="dash.kpi.netSavings">累计净结余</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-page="investments" data-action="navigate">
                         <div class="kpi-info">
-                            <span class="kpi-label">理财盈亏 <span id="dashInvBadge" class="kpi-badge">--</span></span>
+                            <span class="kpi-label"><span data-i18n="dash.kpi.invProfit">理财盈亏</span> <span id="dashInvBadge" class="kpi-badge">--</span></span>
                             <span class="kpi-value" id="dashInvProfit">¥0</span>
-                            <span class="kpi-sub" id="dashInvRate">总投入 ¥0 · 收益率 --</span>
+                            <span class="kpi-sub" id="dashInvRate">--</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-page="debts" data-action="navigate">
                         <div class="kpi-info">
-                            <span class="kpi-label">总负债</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.totalDebt">总负债</span>
                             <span class="kpi-value" id="dashTotalDebt">¥0</span>
-                            <span class="kpi-sub" id="dashDebtSub">月供 0</span>
+                            <span class="kpi-sub" id="dashDebtSub">--</span>
                         </div>
                     </div>
                     <div class="kpi-card" data-detail="assets" data-action="detail">
                         <div class="kpi-info">
-                            <span class="kpi-label">净资产</span>
+                            <span class="kpi-label" data-i18n="dash.kpi.netWorth">净资产</span>
                             <span class="kpi-value" id="dashNetWorth">¥0</span>
-                            <span class="kpi-sub" id="dashAssetDebt">资产 0 / 负债 0</span>
+                            <span class="kpi-sub" id="dashAssetDebt">--</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- 主网格：核心 3 卡 -->
                 <div class="dash-grid">
-                    <div class="glass-card chart-card"><h3 class="card-title">收支趋势 <span class="card-sub" id="dashTrendMoM"></span></h3><div class="chart-canvas-wrap"><canvas id="dashTrendChart"></canvas></div></div>
+                    <div class="glass-card chart-card"><h3 class="card-title"><span data-i18n="dash.card.trend">收支趋势</span> <span class="card-sub" id="dashTrendMoM"></span></h3><div class="chart-canvas-wrap"><canvas id="dashTrendChart"></canvas></div></div>
                     <div class="glass-card chart-card">
-                        <h3 class="card-title"><span id="dashPieTitle">支出构成</span> <span id="dashPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
+                        <h3 class="card-title"><span id="dashPieTitle" data-i18n="dash.card.expenseComposition">支出构成</span> <span id="dashPieBack" class="see-all" style="display:none;cursor:pointer" data-i18n="dash.card.pieBack">← 返回</span></h3>
                         <div class="chart-canvas-wrap"><canvas id="dashPieChart"></canvas></div>
-                        <div id="dashPieHint" class="pie-hint">👆 单击看金额 · 双击进二级</div>
+                        <div id="dashPieHint" class="pie-hint" data-i18n="dash.card.pieHint">👆 单击看金额 · 双击进二级</div>
                     </div>
                     <div class="glass-card balance-overview-card">
-                        <h3 class="card-title">资产负债概览 <span class="see-all" data-page="reports">报表 →</span></h3>
-                        <div class="balance-overview" id="dashBalanceOverview"><div class="skel-text">加载中…</div></div>
+                        <h3 class="card-title"><span data-i18n="dash.card.balanceOverview">资产负债概览</span> <span class="see-all" data-page="reports" data-i18n="dash.card.toReports">报表 →</span></h3>
+                        <div class="balance-overview" id="dashBalanceOverview"><div class="skel-text" data-i18n="common.loading">加载中…</div></div>
                     </div>
                 </div>
 
                 <!-- 卡片明细弹窗 -->
                 <div class="modal-overlay" id="dashDetailModal">
                     <div class="modal modal-detail">
-                        <div class="modal-header"><h3 id="dashDetailTitle">明细</h3><button class="modal-close" id="dashDetailClose">✕</button></div>
+                        <div class="modal-header"><h3 id="dashDetailTitle" data-i18n="dash.detail.title">明细</h3><button class="modal-close" id="dashDetailClose">✕</button></div>
                         <div class="dash-detail-summary" id="dashDetailSummary"></div>
                         <div class="dash-detail-list" id="dashDetailList"></div>
                     </div>

@@ -2,6 +2,26 @@
    鑫钱包 · 前端通用工具（纯函数，可在 Node 中单元测试）
    ============================================ */
 
+// tt(key, fallback)：带兜底的翻译取值。
+// utils.js 在 Node 单测中也会被 require，且加载顺序上可能早于 i18n.js，
+// 所以这里不能直接依赖全局 I18N —— 缺失时返回 fallback（中文原文），保证零崩溃。
+// ⛔ 别改成直接 I18N.t()：Node 测试环境无 window，会 ReferenceError。
+function tt(key, fallback) {
+    if (typeof window !== 'undefined' && window.I18N && typeof window.I18N.t === 'function') {
+        const v = window.I18N.t(key);
+        // t() 找不到 key 时会原样返回 key 本身，此时退回 fallback 更友好
+        if (v && v !== key) return v;
+    }
+    return fallback !== undefined ? fallback : key;
+}
+
+// 统一确认框：文案走字典，避免各 manager 里散落硬编码中文 confirm()
+// 用法：if (!confirmT('modal.confirmDelete', '确定删除？此操作不可恢复。')) return;
+function confirmT(key, fallback) {
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') return true;
+    return window.confirm(tt(key, fallback));
+}
+
 // HTML 转义：防止用户可控字段（账户名、备注、标签名等）在 innerHTML 中造成存储型 XSS
 function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -30,9 +50,10 @@ function fmt(n, currency = 'CNY') {
     return (v < 0 ? '-' : '') + symbol + _getFmt(locale).format(Math.abs(v));
 }
 
-// 紧凑货币格式：窄列场景下按中文习惯压缩为「万 / 亿」，避免长数字被截断
-// ¥1,110,800.00 → ¥111.08万 ；¥123,456,789.00 → ¥1.23亿 ；¥1,234.56 → ¥1,234.56（原样）
-// 仅 CNY 用万/亿压缩（中文单位），其他货币退化为 fmt 避免语义偏差。
+// 紧凑货币格式：窄列场景下压缩数量级，避免长数字被截断
+// 中文界面按「万 / 亿」：¥1,110,800.00 → ¥111.08万 ；¥123,456,789.00 → ¥1.23亿
+// 英文界面按「K / M / B」：¥1,110,800.00 → ¥1.11M（万/亿对英文读者无意义）
+// 仅 CNY 做压缩，其他货币退化为 fmt 避免语义偏差。
 function fmtCompact(n, currency = 'CNY') {
     const cur = String(currency || 'CNY').toUpperCase();
     if (cur !== 'CNY') return fmt(n, cur);
@@ -40,9 +61,17 @@ function fmtCompact(n, currency = 'CNY') {
     if (!isFinite(v)) return '¥0.00';
     const sign = v < 0 ? '-' : '';
     const abs = Math.abs(v);
-    if (abs >= 1e8) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e8) + '亿';
-    if (abs >= 1e4) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e4) + '万';
-    return sign + '¥' + _getFmt('zh-CN').format(abs);
+    // 语言判定：无 window（Node 单测）时按中文处理，保持既有断言
+    const isZh = !(typeof window !== 'undefined' && window.I18N && window.I18N.isZh && !window.I18N.isZh());
+    if (isZh) {
+        if (abs >= 1e8) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e8) + '亿';
+        if (abs >= 1e4) return sign + '¥' + _getFmt('zh-CN').format(abs / 1e4) + '万';
+        return sign + '¥' + _getFmt('zh-CN').format(abs);
+    }
+    if (abs >= 1e9) return sign + '¥' + _getFmt('en-US').format(abs / 1e9) + 'B';
+    if (abs >= 1e6) return sign + '¥' + _getFmt('en-US').format(abs / 1e6) + 'M';
+    if (abs >= 1e3) return sign + '¥' + _getFmt('en-US').format(abs / 1e3) + 'K';
+    return sign + '¥' + _getFmt('en-US').format(abs);
 }
 
 // 多币种 P2-2d：合计 breakdown 智能格式化
@@ -98,7 +127,7 @@ function csvCell(v) {
 function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const fr = new FileReader();
-        fr.onerror = () => reject(new Error('读取音频失败'));
+        fr.onerror = () => reject(new Error(tt('common.err.audioRead', '读取音频失败')));
         fr.onload = () => {
             const s = String(fr.result || '');
             // data:audio/webm;base64,XXXX → 取逗号之后
@@ -121,14 +150,14 @@ function formatRelativeTime(iso) {
     if (diffMs < 0) {
         // 服务端时间略晚于客户端时钟，倒数 30 分钟内算"即将"
         const ahead = -diffMs;
-        if (ahead < 60_000) return '即将';
-        if (ahead < 3_600_000) return `约 ${Math.round(ahead / 60_000)} 分钟后`;
-        if (ahead < 86_400_000) return `约 ${Math.round(ahead / 3_600_000)} 小时后`;
+        if (ahead < 60_000) return tt('time.soon', '即将');
+        if (ahead < 3_600_000) return tt('time.inMinutes', '约 {n} 分钟后').replace('{n}', Math.round(ahead / 60_000));
+        if (ahead < 86_400_000) return tt('time.inHours', '约 {n} 小时后').replace('{n}', Math.round(ahead / 3_600_000));
     }
-    if (diffMs < 60_000) return '刚刚';
-    if (diffMs < 3_600_000) return `${Math.round(diffMs / 60_000)} 分钟前`;
-    if (diffMs < 86_400_000) return `${Math.round(diffMs / 3_600_000)} 小时前`;
-    if (diffMs < 30 * 86_400_000) return `${Math.round(diffMs / 86_400_000)} 天前`;
+    if (diffMs < 60_000) return tt('time.justNow', '刚刚');
+    if (diffMs < 3_600_000) return tt('time.minutesAgo', '{n} 分钟前').replace('{n}', Math.round(diffMs / 60_000));
+    if (diffMs < 86_400_000) return tt('time.hoursAgo', '{n} 小时前').replace('{n}', Math.round(diffMs / 3_600_000));
+    if (diffMs < 30 * 86_400_000) return tt('time.daysAgo', '{n} 天前').replace('{n}', Math.round(diffMs / 86_400_000));
     try { return new Date(t).toISOString().slice(0, 10); } catch (_) { return String(iso); }
 }
 
@@ -159,14 +188,14 @@ async function api(path, method = 'GET', body = null, opts = {}) {
         if (res.status === 401) {
             // 未授权：通知登录层弹出
             if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-            if (!silent && typeof showToast === 'function') showToast(data.message || '登录已过期', 'error');
-            const err = new Error(data.message || '未授权');
+            if (!silent && typeof showToast === 'function') showToast(data.message || tt('toast.sessionExpired', '登录已过期'), 'error');
+            const err = new Error(data.message || tt('toast.unauthorized', '未授权'));
             err.payload = data;
             err.status = res.status;
             throw err;
         }
         if (!data.success) {
-            if (!silent && typeof showToast === 'function') showToast(data.message || '请求失败', 'error');
+            if (!silent && typeof showToast === 'function') showToast(data.message || tt('toast.requestFailed', '请求失败'), 'error');
             const err = new Error(data.message || `HTTP ${res.status}`);
             err.payload = data;
             // 暴露 HTTP 状态码：调用方据此判定 409（状态冲突）/ 422（校验失败）等分支，
@@ -176,7 +205,7 @@ async function api(path, method = 'GET', body = null, opts = {}) {
         }
         return data.data;
     } catch (err) {
-        if (!silent && typeof showToast === 'function' && !err.payload) showToast(err.message || '网络错误', 'error');
+        if (!silent && typeof showToast === 'function' && !err.payload) showToast(err.message || tt('toast.networkError', '网络错误'), 'error');
         throw err;
     }
 }
@@ -184,6 +213,8 @@ async function api(path, method = 'GET', body = null, opts = {}) {
 // 暴露到全局：浏览器中挂 window.api，Node 测试中挂 module.exports
 if (typeof window !== 'undefined') {
     window.api = api;
+    window.tt = tt;
+    window.confirmT = confirmT;
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
     window.fmtMix = fmtMix;
@@ -201,5 +232,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, supportedCurrencies: _supportedCurrencies };
+    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, supportedCurrencies: _supportedCurrencies };
 }

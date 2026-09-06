@@ -25,7 +25,11 @@
 //                    reduceModal 等）
 // ============================================================
 
-const INV_RISK_LABELS = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
+// 风险等级标签：走字典（不能用模块级常量对象，语言切换后需实时取值）
+const INV_RISK_FALLBACK = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
+function invRiskLabel(rl) {
+    return tt('inv.riskLabel.' + rl, INV_RISK_FALLBACK[rl] || rl);
+}
 const INV_RISK_DOT = { low: '#22c55e', medium: '#eab308', high: '#f97316', very_high: '#ef4444' };
 
 // 收益率/年化格式化：异常值（极小本金导致公式放大）不展示科学计数法
@@ -155,7 +159,7 @@ const InvestmentManager = {
     },
     openModal() {
         document.getElementById('investModal').classList.add('show');
-        document.getElementById('investModalTitle').textContent = '新增理财持仓';
+        document.getElementById('investModalTitle').textContent = tt('inv.modal.addTitle', '新增理财持仓');
         document.getElementById('investName').value = '';
         document.getElementById('investCode').value = '';
         document.getElementById('investBuyPrice').value = '';
@@ -178,10 +182,10 @@ const InvestmentManager = {
         const data = await api('/investments/investments');
         if (!data) return;   // data = { investments: [...], summary: {...}, byType: [...] }
         const inv = data.investments.find(i => i.id === id);
-        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        if (!inv) { showToast(tt('inv.toast.notFound', '持仓不存在'), 'error'); return; }
         this.editId = id;
         document.getElementById('investModal').classList.add('show');
-        document.getElementById('investModalTitle').textContent = '编辑理财持仓';
+        document.getElementById('investModalTitle').textContent = tt('inv.modal.editTitle', '编辑理财持仓');
         document.getElementById('investType').value = inv.investment_type_id;
         // 若该类型已被关闭（下拉里已过滤掉），补一个选项保证旧持仓仍可编辑
         if (document.getElementById('investType').value != inv.investment_type_id) {
@@ -189,7 +193,8 @@ const InvestmentManager = {
             if (it) {
                 const opt = document.createElement('option');
                 opt.value = it.id;
-                opt.textContent = `${it.icon || '💹'} ${it.name}（已关闭）`;
+                opt.textContent = tt('inv.typeClosedOption', '{icon} {name}（已关闭）')
+                    .replace('{icon}', it.icon || '💹').replace('{name}', it.name);
                 document.getElementById('investType').appendChild(opt);
                 document.getElementById('investType').value = it.id;
             }
@@ -212,27 +217,31 @@ const InvestmentManager = {
     // 查行情：输入代码 → 自动填充名称和价格
     async fetchQuote() {
         const code = document.getElementById('investCode').value.trim();
-        if (!code) { showToast('请输入产品代码', 'warning'); return; }
+        if (!code) { showToast(tt('inv.toast.codeRequired', '请输入产品代码'), 'warning'); return; }
         const typeId = parseInt(document.getElementById('investType').value);
         const invType = cache.investmentTypes.find(t => t.id === typeId);
         const category = invType?.category || 'fund';
         const resultEl = document.getElementById('quoteResult');
-        resultEl.innerHTML = '<span class="quote-loading">⏳ 查询中...</span>';
+        resultEl.innerHTML = `<span class="quote-loading">⏳ ${escapeHtml(tt('inv.quote.loading', '查询中...'))}</span>`;
         const data = await api(`/investments/quote?code=${encodeURIComponent(code)}&category=${category}`);
-        if (!data) { resultEl.innerHTML = '<span class="quote-error">❌ 查询失败，请检查代码</span>'; return; }
+        if (!data) { resultEl.innerHTML = `<span class="quote-error">❌ ${escapeHtml(tt('inv.quote.failed', '查询失败，请检查代码'))}</span>`; return; }
         let price, quoteClass, quotePrefix;
         if (data.type === 'fund') {
             price = data.estimatedNav || data.nav;
             const change = parseFloat(data.estimatedChange) || 0;
             quoteClass = change > 0 ? 'quote-up' : (change < 0 ? 'quote-down' : 'quote-ok');
             quotePrefix = change > 0 ? '+' : '';
-            resultEl.innerHTML = `<span class="${quoteClass}">✅ ${escapeHtml(data.name)} | 净值 ${data.nav} | 估算 ${price} (${quotePrefix}${change}%) | ${data.navDate}</span>`;
+            resultEl.innerHTML = `<span class="${quoteClass}">✅ ${escapeHtml(tt('inv.quote.fund', '{name} | 净值 {nav} | 估算 {est} ({pct}%) | {date}')
+                .replace('{name}', data.name).replace('{nav}', data.nav).replace('{est}', price)
+                .replace('{pct}', quotePrefix + change).replace('{date}', data.navDate))}</span>`;
         } else {
             price = data.price;
             const change = parseFloat(data.changePercent) || 0;
             quoteClass = change > 0 ? 'quote-up' : (change < 0 ? 'quote-down' : 'quote-ok');
             quotePrefix = change > 0 ? '+' : '';
-            resultEl.innerHTML = `<span class="${quoteClass}">✅ ${escapeHtml(data.name)} | 现价 ${price} | ${quotePrefix}${change.toFixed(2)}%</span>`;
+            resultEl.innerHTML = `<span class="${quoteClass}">✅ ${escapeHtml(tt('inv.quote.stock', '{name} | 现价 {price} | {pct}%')
+                .replace('{name}', data.name).replace('{price}', price)
+                .replace('{pct}', quotePrefix + change.toFixed(2)))}</span>`;
         }
         if (!document.getElementById('investName').value) {
             document.getElementById('investName').value = data.name || '';
@@ -270,14 +279,14 @@ const InvestmentManager = {
             risk_level: document.getElementById('investRisk').value || null,
             note: document.getElementById('investNote').value
         };
-        if (!body.name) { showToast('请输入产品名称', 'error'); return; }
+        if (!body.name) { showToast(tt('inv.toast.nameRequired', '请输入产品名称'), 'error'); return; }
         const editId = this.editId;
         if (editId) {
             await api(`/investments/investments/${editId}`, 'PUT', body);
-            showToast('持仓已更新', 'success');
+            showToast(tt('inv.toast.updated', '持仓已更新'), 'success');
         } else {
             await api('/investments/investments', 'POST', body);
-            showToast('持仓已添加', 'success');
+            showToast(tt('inv.toast.added', '持仓已添加'), 'success');
         }
         this.closeModal();
         await this.refresh();
@@ -287,7 +296,7 @@ const InvestmentManager = {
     async delete(id) {
         try {
             await api(`/investments/investments/${id}`, 'DELETE');
-            showToast('持仓已删除', 'warning');
+            showToast(tt('inv.toast.deleted', '持仓已删除'), 'warning');
             await this.refresh();
             await this.refreshAccountsAfterInvChange();
         } catch (err) {
@@ -299,10 +308,13 @@ const InvestmentManager = {
         this.reduceId = id;
         const data = cache.investments;
         const inv = data && data.find(i => i.id === id);
-        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        if (!inv) { showToast(tt('inv.toast.notFound', '持仓不存在'), 'error'); return; }
         document.getElementById('reduceInvestId').value = id;
-        document.getElementById('reduceModalTitle').textContent = `加仓/减仓 · ${inv.name}`;
-        document.getElementById('reduceMeta').innerHTML = `当前持有 <b>${inv.quantity}</b>，市值 ${fmt(inv.current_value)}`;
+        // textContent 赋值，不做 HTML 转义
+        document.getElementById('reduceModalTitle').textContent = tt('inv.reduce.titleWith', '加仓/减仓 · {name}').replace('{name}', inv.name);
+        document.getElementById('reduceMeta').innerHTML = tt('inv.reduce.meta', '当前持有 <b>{qty}</b>，市值 {amt}')
+            .replace('{qty}', escapeHtml(String(inv.quantity)))
+            .replace('{amt}', escapeHtml(fmt(inv.current_value)));
         // 默认选中减仓
         const sellRadio = document.querySelector('input[name="reduceAction"][value="sell"]');
         if (sellRadio) sellRadio.checked = true;
@@ -320,13 +332,13 @@ const InvestmentManager = {
         const qtyLabel = document.getElementById('reduceQtyLabel');
         const submitBtn = document.getElementById('reduceSubmitBtn');
         if (action === 'buy') {
-            if (priceLabel) priceLabel.textContent = '买入单价 (¥)';
-            if (qtyLabel) qtyLabel.textContent = '买入数量';
-            if (submitBtn) submitBtn.textContent = '确认加仓';
+            if (priceLabel) priceLabel.textContent = tt('inv.reduce.buyPrice', '买入单价');
+            if (qtyLabel) qtyLabel.textContent = tt('inv.reduce.buyQty', '买入数量');
+            if (submitBtn) submitBtn.textContent = tt('inv.reduce.confirmBuyMore', '确认加仓');
         } else {
-            if (priceLabel) priceLabel.textContent = '卖出单价 (¥)';
-            if (qtyLabel) qtyLabel.textContent = '卖出数量';
-            if (submitBtn) submitBtn.textContent = '确认卖出';
+            if (priceLabel) priceLabel.textContent = tt('inv.reduce.sellPrice', '卖出单价');
+            if (qtyLabel) qtyLabel.textContent = tt('inv.reduce.sellQty', '卖出数量');
+            if (submitBtn) submitBtn.textContent = tt('inv.reduce.confirmSell', '确认卖出');
         }
         // 更新 radio 样式
         document.querySelectorAll('.radio-label').forEach(el => {
@@ -344,10 +356,13 @@ const InvestmentManager = {
     openInterestModal(id) {
         this.interestId = id;
         const inv = (cache.investments || []).find(i => i.id === id);
-        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        if (!inv) { showToast(tt('inv.toast.notFound', '持仓不存在'), 'error'); return; }
         document.getElementById('interestInvestId').value = id;
-        document.getElementById('interestModalTitle').textContent = `记一笔利息 · ${inv.name}`;
-        document.getElementById('interestMeta').innerHTML = `当前持有 <b>${inv.quantity}</b> 份，市值 ${fmt(inv.current_value)}`;
+        // textContent 赋值，不做 HTML 转义
+        document.getElementById('interestModalTitle').textContent = tt('inv.interest.titleWith', '记一笔利息 · {name}').replace('{name}', inv.name);
+        document.getElementById('interestMeta').innerHTML = tt('inv.interest.meta', '当前持有 <b>{qty}</b> 份，市值 {amt}')
+            .replace('{qty}', escapeHtml(String(inv.quantity)))
+            .replace('{amt}', escapeHtml(fmt(inv.current_value)));
         const reinvestRadio = document.querySelector('input[name="interestMode"][value="reinvest"]');
         if (reinvestRadio) reinvestRadio.checked = true;
         this.updateInterestUI('reinvest');
@@ -383,10 +398,11 @@ const InvestmentManager = {
         this._editTxnInvId = invId;
         this._editTxnId = txn.id;
         this._editTxnType = txn.type;
-        const TYPE_LABEL = { buy: '买入', sell: '卖出', dividend: '分红', interest: '利息', reinvest: '红利再投' };
+        const TYPE_FALLBACK = { buy: '买入', sell: '卖出', dividend: '分红', interest: '利息', reinvest: '红利再投' };
         document.getElementById('invEditTxnId').value = txn.id;
         document.getElementById('invEditInvId').value = invId;
-        document.getElementById('invEditTxnType').textContent = `交易类型：${TYPE_LABEL[txn.type] || txn.type}`;
+        document.getElementById('invEditTxnType').textContent = tt('inv.editTxn.typeLine', '交易类型：{label}')
+            .replace('{label}', tt('inv.txnType.' + txn.type, TYPE_FALLBACK[txn.type] || txn.type));
         document.getElementById('invEditAmount').value = txn.amount;
         document.getElementById('invEditPrice').value = txn.price || '';
         document.getElementById('invEditQty').value = txn.quantity || '';
@@ -406,26 +422,26 @@ const InvestmentManager = {
         const type = this._editTxnType;
         if (!invId || !txnId || !type) return;
         const amount = parseFloat(document.getElementById('invEditAmount').value);
-        if (!(amount > 0)) { showToast('请填写大于 0 的金额', 'error'); return; }
+        if (!(amount > 0)) { showToast(tt('inv.editTxn.toast.amountRequired', '请填写大于 0 的金额'), 'error'); return; }
         const price = parseFloat(document.getElementById('invEditPrice').value) || 0;
         const quantity = parseFloat(document.getElementById('invEditQty').value) || 0;
         const fee = parseFloat(document.getElementById('invEditFee').value) || 0;
         const date = document.getElementById('invEditDate').value;
         const note = document.getElementById('invEditNote').value || '';
         const submitBtn = document.getElementById('invEditSubmitBtn');
-        submitBtn.disabled = true; submitBtn.textContent = '保存中…';
+        submitBtn.disabled = true; submitBtn.textContent = tt('common.saving', '保存中…');
         try {
             // PUT 后端返回 success(null, …)，api() 返回 data.data 即 null ——
             // 不能用 `if (res)` 判断成功：那样 Toast 不弹、弹窗不关、刷新不执行，
             // 而后端其实已改完（删旧流水 → 插新流水 → 重算持仓 → UPDATE 账户余额）。
             // api() 失败必 throw，成功（即便返回 null）即代表已保存。
             await api(`/investments/investments/${invId}/transactions/${txnId}`, 'PUT', { type, amount, price, quantity, fee, date, note });
-            showToast('已保存修改', 'success');
+            showToast(tt('inv.editTxn.toast.saved', '已保存修改'), 'success');
             this.closeInvEditTxn();
             // 改流水会重算持仓（数量/成本/市值）并改动账户余额，持仓卡片与账户/Dashboard 都要刷
             await this.syncAfterInvTxnChange(invId);
         } catch (e) {
-            submitBtn.disabled = false; submitBtn.textContent = '保存修改';
+            submitBtn.disabled = false; submitBtn.textContent = tt('profile.save', '保存修改');
         }
     },
     async recordInterest() {
@@ -433,20 +449,25 @@ const InvestmentManager = {
         if (!id) return;
         const mode = document.querySelector('input[name="interestMode"]:checked')?.value || 'reinvest';
         const amount = parseFloat(document.getElementById('interestAmount').value);
-        if (!(amount > 0)) { showToast('请填写大于 0 的利息金额', 'error'); return; }
+        if (!(amount > 0)) { showToast(tt('inv.interest.toast.amountRequired', '请填写大于 0 的利息金额'), 'error'); return; }
         const date = document.getElementById('interestDate').value;
         const note = document.getElementById('interestNote').value;
         let body;
         if (mode === 'reinvest') {
             const nav = parseFloat(document.getElementById('interestNav').value);
-            if (!(nav > 0)) { showToast('红利再投需填写有效的当前净值', 'error'); return; }
+            if (!(nav > 0)) { showToast(tt('inv.interest.toast.navRequired', '红利再投需填写有效的当前净值'), 'error'); return; }
             body = { type: 'reinvest', amount, price: nav, date, note };
         } else {
             body = { type: 'interest', amount, date, note };
         }
         try {
             const result = await api(`/investments/investments/${id}/transactions`, 'POST', body);
-            showToast(result?.message || (mode === 'reinvest' ? '红利再投已记录' : '利息已记录'), 'success');
+            // 后端 message 为中文，仅在英文界面下改用字典文案，避免中英混排
+            const localMsg = mode === 'reinvest'
+                ? tt('inv.interest.toast.reinvestDone', '红利再投已记录')
+                : tt('inv.interest.toast.cashDone', '利息已记录');
+            const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+            showToast((isZh && result?.message) ? result.message : localMsg, 'success');
             this.closeInterestModal();
             await this.refresh();
             // 分红/利息会入账到账户并重算余额，账户卡片与 Dashboard KPI 需同步
@@ -467,10 +488,15 @@ const InvestmentManager = {
             date: document.getElementById('reduceDate').value,
             note: document.getElementById('reduceNote').value
         };
-        if (!body.price || !body.quantity) { showToast('请填写成交单价和数量', 'error'); return; }
+        if (!body.price || !body.quantity) { showToast(tt('inv.reduce.toast.priceQtyRequired', '请填写成交单价和数量'), 'error'); return; }
         try {
             const result = await api(`/investments/investments/${id}/reduce`, 'POST', body);
-            showToast(result?.message || (action === 'buy' ? '加仓成功' : '卖出成功'), 'success');
+            // 后端 message 为中文，仅在英文界面下改用字典文案，避免中英混排
+            const localMsg = action === 'buy'
+                ? tt('inv.reduce.toast.buyDone', '加仓成功')
+                : tt('inv.reduce.toast.sellDone', '卖出成功');
+            const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+            showToast((isZh && result?.message) ? result.message : localMsg, 'success');
             this.closeReduceModal();
             await this.refresh();
             // 加仓扣款 / 卖出回款都会改账户余额并落一笔流水，账户卡片与 Dashboard KPI 需同步
@@ -505,26 +531,29 @@ const InvestmentManager = {
         if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
         try {
             await api(`/investments/${id}/refresh`, 'POST');
-            showToast('行情已更新', 'success');
+            showToast(tt('inv.quote.toast.updated', '行情已更新'), 'success');
             await this.refresh();
         } catch (err) {
             // api() 已显示错误 toast
         }
-        if (btn) { btn.disabled = false; btn.textContent = '刷新'; }
+        if (btn) { btn.disabled = false; btn.textContent = tt('common.refresh', '刷新'); }
     },
     // 一键刷新全部
     async refreshAllQuotes() {
         const btn = document.getElementById('refreshAllBtn');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<span class=\"spin\">⏳</span> 刷新中...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spin">⏳</span> ${escapeHtml(tt('inv.quote.refreshing', '刷新中...'))}`; }
         try {
             const result = await api('/investments/refresh-all', 'POST', null, { silent: true });
-            showToast(result?.message || `已更新 ${result?.updated || 0} 个持仓`, 'success');
+            // 后端 message 为中文，仅在英文界面下改用字典文案，避免中英混排
+            const localMsg = tt('inv.quote.toast.batchUpdated', '已更新 {n} 个持仓').replace('{n}', result?.updated || 0);
+            const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+            showToast((isZh && result?.message) ? result.message : localMsg, 'success');
             await this.refresh();
         } catch (err) {
             // 行情刷新后端暂未实现，静默跳过
             console.warn('[invest] 行情刷新暂不可用:', err.message);
         }
-        if (btn) { btn.disabled = false; btn.innerHTML = '一键刷新'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = escapeHtml(tt('inv.refreshAll', '一键刷新')); }
     },
     // 进入页面自动刷新行情
     async autoRefreshQuotes() {
@@ -558,8 +587,8 @@ const InvestmentManager = {
         if (expEl) expEl.textContent = (s.expectedRateAvg ?? 0).toFixed(2) + '%';
 
         // 持仓列表：按类型分组，同类型叠成一叠牌，点击封面展开/收起
-        if (!data.investments || data.investments.length === 0) { showEmpty(container, '还没有理财持仓，点击「新增持仓」记录你的投资'); return; }
-        // 复用模块级 INV_RISK_LABELS / INV_RISK_DOT
+        if (!data.investments || data.investments.length === 0) { showEmpty(container, tt('inv.empty', '还没有理财持仓，点击「新增持仓」记录你的投资')); return; }
+        // 复用模块级 invRiskLabel() / INV_RISK_DOT
 
         const buildCard = (i, idx, n) => {
             const progress = i.total_cost > 0 ? Math.min(100, (i.current_value / i.total_cost) * 100) : 0;
@@ -572,16 +601,16 @@ const InvestmentManager = {
                 <div class="goal-head">
                     <div class="goal-icon">${escapeHtml(i.type_icon || "📈")}</div>
                     <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
-                    ${i.status === 'sold' ? '<span class="inv-sold-badge">已清仓</span>' : ''}
-                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
+                    ${i.status === 'sold' ? `<span class="inv-sold-badge">${escapeHtml(tt('inv.soldBadge', '已清仓'))}</span>` : ''}
+                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${escapeHtml(invRiskLabel(rl))}</span>
                 </div>
-                <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
+                <div class="goal-amounts"><span>${tt('inv.card.cost', '投入 <strong>{amt}</strong>').replace('{amt}', fmt(i.total_cost))}</span><span>${tt('inv.card.value', '市值 <strong>{amt}</strong>').replace('{amt}', fmt(i.current_value))}</span></div>
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
-                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
+                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>${escapeHtml(tt('inv.card.annual', '年化'))} ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
-                    <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}">详情</button>
-                    <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}">编辑</button>
-                    <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}">删除</button>
+                    <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}">${escapeHtml(tt('common.detail', '详情'))}</button>
+                    <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}">${escapeHtml(tt('common.edit', '编辑'))}</button>
+                    <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}">${escapeHtml(tt('common.delete', '删除'))}</button>
                 </div>
             </div>`;
         };
@@ -589,7 +618,7 @@ const InvestmentManager = {
         // 按类型分组（保持后端返回的顺序）
         const groups = {};
         data.investments.forEach(i => {
-            const key = i.type_name || '其他';
+            const key = i.type_name || tt('common.other', '其他');
             (groups[key] = groups[key] || []).push(i);
         });
         const groupList = Object.entries(groups);
@@ -610,20 +639,20 @@ const InvestmentManager = {
                         <div class="goal-head">
                             <div class="goal-icon">${escapeHtml(icon)}</div>
                             <div class="goal-title">${escapeHtml(typeName)}</div>
-                            <span class="inv-cover-count">${items.length} 个产品</span>
+                            <span class="inv-cover-count">${escapeHtml(tt('inv.cover.nProducts', '{n} 个产品').replace('{n}', items.length))}</span>
                         </div>
-                        <div class="goal-amounts inv-cover-meta"><span>投入 ${fmt(cost)}</span><span>市值 ${fmt(total)}</span></div>
+                        <div class="goal-amounts inv-cover-meta"><span>${escapeHtml(tt('inv.cover.cost', '投入 {amt}').replace('{amt}', fmt(cost)))}</span><span>${escapeHtml(tt('inv.cover.value', '市值 {amt}').replace('{amt}', fmt(total)))}</span></div>
                     </div>
                     <div class="inv-cover-mid">
                         <div class="inv-cover-profit">
-                            <div class="inv-cover-profit-label">浮动盈亏</div>
+                            <div class="inv-cover-profit-label">${escapeHtml(tt('inv.floatingPL', '浮动盈亏'))}</div>
                             <div class="inv-cover-profit-amount ${profitCls}">${fmt(profit)}</div>
                             <div class="inv-cover-profit-rate ${profitCls}">${fmtPct(profitRate)}</div>
                         </div>
                     </div>
                     <div class="inv-cover-bottom">
-                        <div class="inv-cover-stats"><span>盈利 <strong class="goal-pct profit-positive">${profitCount}</strong> 个</span><span>亏损 <strong class="goal-pct profit-negative">${lossCount}</strong> 个</span></div>
-                        <div class="inv-cover-foot"><span class="inv-cover-viewall">查看全部 →</span></div>
+                        <div class="inv-cover-stats"><span>${tt('inv.cover.profitN', '盈利 <strong class="goal-pct profit-positive">{n}</strong> 个').replace('{n}', profitCount)}</span><span>${tt('inv.cover.lossN', '亏损 <strong class="goal-pct profit-negative">{n}</strong> 个').replace('{n}', lossCount)}</span></div>
+                        <div class="inv-cover-foot"><span class="inv-cover-viewall">${escapeHtml(tt('acc.card.viewAll', '查看全部 →'))}</span></div>
                     </div>
                 </div>`;
             const cards = items.map((i, idx) => buildCard(i, idx + 1, items.length + 1)).join('');
@@ -680,26 +709,27 @@ const InvestmentManager = {
     /* ---- 理财：单卡详情弹窗 ---- */
     openInvDetail(id) {
         const inv = (cache.investments || []).find(i => i.id === id);
-        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        if (!inv) { showToast(tt('inv.toast.notFound', '持仓不存在'), 'error'); return; }
         this.detailId = id;
         const rl = inv.risk_level || 'medium';
         const profitCls = inv.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
-        document.getElementById('invDetailTitle').textContent = `${escapeHtml(inv.name)} 详情`;
+        // textContent 赋值，不需要 escapeHtml（之前多余的转义会把 & 等字符显示成实体）
+        document.getElementById('invDetailTitle').textContent = tt('inv.detail.titleWith', '{name} 详情').replace('{name}', inv.name);
         document.getElementById('invDetailBody').innerHTML = `
             <div class="inv-detail-head">
                 <div class="inv-detail-icon">${escapeHtml(inv.type_icon || '📈')}</div>
                 <div>
                     <div class="inv-detail-name">${escapeHtml(inv.name)}${inv.code ? ' <span class="goal-sub">(' + escapeHtml(inv.code) + ')</span>' : ''}</div>
-                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
+                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${escapeHtml(invRiskLabel(rl))}</span>
                 </div>
             </div>
             <div class="inv-detail-grid">
-                <div><span class="stat-label">投入本金</span><span class="inv-detail-val">${fmt(inv.total_cost)}</span></div>
-                <div><span class="stat-label">当前市值</span><span class="inv-detail-val">${fmt(inv.current_value)}</span></div>
-                <div><span class="stat-label">浮动盈亏</span><span class="inv-detail-val ${profitCls}">${fmt(inv.profit)}</span></div>
-                <div><span class="stat-label">收益率</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.profit_rate)}</span></div>
-                <div><span class="stat-label">年化</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.annualizedRate)}</span></div>
-                <div><span class="stat-label">持有数量</span><span class="inv-detail-val">${inv.quantity}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.totalCost', '投入本金'))}</span><span class="inv-detail-val">${fmt(inv.total_cost)}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.totalValue', '当前市值'))}</span><span class="inv-detail-val">${fmt(inv.current_value)}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.floatingPL', '浮动盈亏'))}</span><span class="inv-detail-val ${profitCls}">${fmt(inv.profit)}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.rate', '收益率'))}</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.profit_rate)}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.card.annual', '年化'))}</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.annualizedRate)}</span></div>
+                <div><span class="stat-label">${escapeHtml(tt('inv.form.qty', '持有数量'))}</span><span class="inv-detail-val">${inv.quantity}</span></div>
             </div>
             ${inv.note ? `<div class="inv-detail-note">📝 ${escapeHtml(inv.note)}</div>` : ''}
         `;
@@ -716,25 +746,35 @@ const InvestmentManager = {
         const profitCls = i.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
         const progress = i.total_cost > 0 ? Math.min(100, (i.current_value / i.total_cost) * 100) : 0;
         return `
-        <div class="inv-grid-card" data-inv-id="${i.id}" tabindex="0" role="button" aria-label="${escapeHtml(i.name)} 持仓详情">
+        <div class="inv-grid-card" data-inv-id="${i.id}" tabindex="0" role="button" aria-label="${escapeHtml(tt('inv.grid.cardAria', '{name} 持仓详情').replace('{name}', i.name))}">
             <div class="goal-head">
                 <div class="goal-icon">${escapeHtml(i.type_icon || '📈')}</div>
                 <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
-                <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
+                <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${escapeHtml(invRiskLabel(rl))}</span>
             </div>
-            <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
+            <div class="goal-amounts"><span>${tt('inv.card.cost', '投入 <strong>{amt}</strong>').replace('{amt}', fmt(i.total_cost))}</span><span>${tt('inv.card.value', '市值 <strong>{amt}</strong>').replace('{amt}', fmt(i.current_value))}</span></div>
             <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
-            <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
+            <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>${escapeHtml(tt('inv.card.annual', '年化'))} ${fmtPct(i.annualizedRate)}</span></div>
         </div>`;
     },
     openInvGrid(typeName) {
         const all = cache.investments || [];
         const items = typeName ? all.filter(i => i.type_name === typeName) : all;
-        if (!items.length) { showToast(typeName ? `${escapeHtml(typeName)} 暂无持仓` : '暂无持仓', 'warning'); return; }
+        if (!items.length) {
+            showToast(typeName
+                ? tt('inv.grid.toast.emptyType', '{type} 暂无持仓').replace('{type}', typeName)
+                : tt('inv.grid.toast.empty', '暂无持仓'), 'warning');
+            return;
+        }
         const grid = document.getElementById('invGridBody');
         grid.innerHTML = items.map(i => this.buildGridCard(i)).join('');
-        document.getElementById('invGridTitle').textContent = typeName ? escapeHtml(typeName) : '全部持仓';
-        document.getElementById('invGridCount').textContent = items.length;
+        // 「X · 共 N 个」整句走字典插值（英文语序为 "X · N total"）
+        const headingEl = document.getElementById('invGridHeading');
+        if (headingEl) {
+            headingEl.textContent = tt('inv.grid.heading', '{label} · 共 {n} 个')
+                .replace('{label}', typeName || tt('inv.grid.all', '全部持仓'))
+                .replace('{n}', items.length);
+        }
         grid.querySelectorAll('[data-inv-id]').forEach(card => {
             const handler = () => { const id = parseInt(card.dataset.invId); if (!isNaN(id)) this.openInvDetail(id); };
             card.addEventListener('click', handler);
@@ -750,7 +790,10 @@ const InvestmentManager = {
     /* ---- 理财：交易记录弹窗 ---- */
     async openInvTxns(id) {
         const inv = (cache.investments || []).find(i => i.id === id);
-        const title = inv ? `${escapeHtml(inv.name)} · 交易记录` : '交易记录';
+        // textContent 赋值，不做 HTML 转义
+        const title = inv
+            ? tt('inv.txns.titleWith', '{name} · 交易记录').replace('{name}', inv.name)
+            : tt('inv.txns.title', '交易记录');
         document.getElementById('invTxnsTitle').textContent = title;
         document.getElementById('invTxnsBody').innerHTML = `<div class="sh-body"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-line shimmer"></div><div class="skeleton-line shimmer"></div><div class="skeleton-line shimmer"></div></div></div>`;
         document.getElementById('invTxnsModal').classList.add('show');
@@ -758,7 +801,7 @@ const InvestmentManager = {
         const list = (data && Array.isArray(data)) ? data : (data && data.data ? data.data : []);
         const body = document.getElementById('invTxnsBody');
         if (!list.length) {
-            body.innerHTML = `<div class="bs-empty">暂无交易记录</div>`;
+            body.innerHTML = `<div class="bs-empty">${escapeHtml(tt('inv.txns.empty', '暂无交易记录'))}</div>`;
             return;
         }
         const TYPE_CLS = { buy: 'expense', sell: 'income', dividend: 'income', interest: 'income', reinvest: 'expense' };
@@ -769,18 +812,18 @@ const InvestmentManager = {
             // 系统自动生成的备注文案（与手续费展示二选一，不再显示这些无意义文字）
             const SYS_NOTES = new Set(['初始买入', '加仓', '部分卖出', '清仓卖出', '建仓']);
             const parts = [];
-            if (t.price != null && t.price !== '') parts.push(`单价 ${fmt(t.price)}`);
-            if (t.quantity != null && t.quantity !== '') parts.push(`数量 ${t.quantity}`);
-            parts.push(`手续费 ${fmt(Number(t.fee) || 0)}`);
+            if (t.price != null && t.price !== '') parts.push(escapeHtml(tt('inv.txns.price', '单价 {amt}').replace('{amt}', fmt(t.price))));
+            if (t.quantity != null && t.quantity !== '') parts.push(escapeHtml(tt('inv.txns.qty', '数量 {n}').replace('{n}', t.quantity)));
+            parts.push(escapeHtml(tt('inv.txns.fee', '手续费 {amt}').replace('{amt}', fmt(Number(t.fee) || 0))));
             if (t.note && !SYS_NOTES.has(t.note)) parts.push('📝 ' + escapeHtml(t.note));
             return `
             <div class="inv-txn-row" data-txn-id="${t.id}">
                 <div class="inv-txn-main">
-                    <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(t.type_label || t.type)}</span>
+                    <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(tt('inv.txnType.' + (t.type_key || t.type), t.type_label || t.type))}</span>
                     <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
                     <span class="inv-txn-actions">
-                        <button class="inv-txn-edit">修改</button>
-                        <button class="inv-txn-del">删除</button>
+                        <button class="inv-txn-edit">${escapeHtml(tt('common.modify', '修改'))}</button>
+                        <button class="inv-txn-del">${escapeHtml(tt('common.delete', '删除'))}</button>
                     </span>
                 </div>
                 <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>
@@ -801,10 +844,10 @@ const InvestmentManager = {
             if (!btn) return;
             const row = btn.closest('.inv-txn-row');
             const txnId = row && row.dataset.txnId;
-            if (!txnId || !confirm('确认删除该笔交易记录？')) return;
+            if (!txnId || !confirmT('confirm.deleteInvTxn', '确认删除该笔交易记录？')) return;
             try {
                 await api(`/investments/investments/${id}/transactions/${txnId}`, 'DELETE');
-                showToast('已删除');
+                showToast(tt('common.deleted', '已删除'));
                 // 只重拉流水弹窗不够：后端已 recomputeInvestmentPosition 重算持仓（数量/成本/市值）
                 // 并改了账户余额，持仓卡片/账户余额/Dashboard 都要刷，否则关掉弹窗后看到的是旧值
                 await this.syncAfterInvTxnChange(id);

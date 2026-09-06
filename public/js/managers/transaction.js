@@ -70,40 +70,47 @@ const TransactionManager = {
 
         const updateAmtPanel = (op) => {
             this._currentAmtOp = op;
-            amtOpBtns.forEach(b => b.classList.toggle('active', b.dataset.op === op));
+            if (amtOpBtns) amtOpBtns.forEach(b => b.classList.toggle('active', b.dataset.op === op));
             const showInputs = op !== 'all';
             const isBetween = op === 'bt' || op === 'nb';
-            amtInputs.style.display = showInputs ? '' : 'none';
-            amtActions.style.display = showInputs ? '' : 'none';
-            amtInputs.classList.toggle('between-input', isBetween);
-            this._amtVal.placeholder = isBetween ? '最低' : '金额';
-            this._amtVal2.style.display = isBetween ? '' : 'none';
-            amtSep.style.display = isBetween ? '' : 'none';
+            if (amtInputs) amtInputs.style.display = showInputs ? '' : 'none';
+            if (amtActions) amtActions.style.display = showInputs ? '' : 'none';
+            if (amtInputs) amtInputs.classList.toggle('between-input', isBetween);
+            if (this._amtVal) this._amtVal.placeholder = isBetween ? tt('trans.amt.minPh', '最低') : tt('trans.amt.amountPh', '金额');
+            if (this._amtVal2) this._amtVal2.style.display = isBetween ? '' : 'none';
+            if (amtSep) amtSep.style.display = isBetween ? '' : 'none';
             if (op === 'all') {
-                this._amtVal.value = ''; this._amtVal2.value = '';
-                amtLabel.textContent = '金额';
+                if (this._amtVal) this._amtVal.value = '';
+                if (this._amtVal2) this._amtVal2.value = '';
+                if (amtLabel) amtLabel.textContent = tt('trans.amt.amountPh', '金额');
                 closeAmtPanel();
                 this.refresh({ syncUrl: true });
             }
         };
 
         const closeAmtPanel = () => {
-            amtPanel.style.display = 'none';
-            amtBtn.classList.remove('active');
+            if (amtPanel) amtPanel.style.display = 'none';
+            if (amtBtn) amtBtn.classList.remove('active');
         };
 
         const applyAmountFilter = () => {
             const op = this._currentAmtOp;
             if (op === 'all') { clearAmountFilter(); return; }
             const v1 = this._amtVal?.value?.trim();
-            if (!v1) { showToast('请输入金额', 'warning'); this._amtVal?.focus(); return; }
+            if (!v1) { showToast(tt('trans.amt.amountNeeded', '请输入金额'), 'warning'); this._amtVal?.focus(); return; }
             let label;
             if (op === 'bt' || op === 'nb') {
                 const v2 = this._amtVal2?.value?.trim();
-                if (!v2) { showToast('请输入上限金额', 'warning'); this._amtVal2?.focus(); return; }
-                label = (op === 'bt' ? '介于 ' : '不介于 ') + v1 + '~' + v2;
+                if (!v2) { showToast(tt('trans.amt.upperNeeded', '请输入上限金额'), 'warning'); this._amtVal2?.focus(); return; }
+                const range = tt('trans.amountRange', '{a}~{b}').replace('{a}', v1).replace('{b}', v2);
+                label = (op === 'bt' ? tt('trans.amountOp.bt', '介于 ') : tt('trans.amountOp.nb', '不介于 ')) + range;
             } else {
-                const opLabels = { gt: '大于 ', lt: '小于 ', eq: '等于 ', ne: '不等于 ' };
+                const opLabels = {
+                    gt: tt('trans.amountOp.gt', '大于 '),
+                    lt: tt('trans.amountOp.lt', '小于 '),
+                    eq: tt('trans.amountOp.eq', '等于 '),
+                    ne: tt('trans.amountOp.ne', '不等于 ')
+                };
                 label = (opLabels[op] || '') + v1;
             }
             amtLabel.textContent = label;
@@ -112,13 +119,15 @@ const TransactionManager = {
         };
 
         const clearAmountFilter = () => {
-            this._amtVal.value = ''; this._amtVal2.value = '';
+            if (this._amtVal) this._amtVal.value = '';
+            if (this._amtVal2) this._amtVal2.value = '';
             updateAmtPanel('all');
         };
 
         if (amtBtn) {
             amtBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (!amtPanel) return; // 金额筛选面板 DOM 不存在 → 该按钮仅作占位，无操作
                 const isOpen = amtPanel.style.display !== 'none';
                 if (isOpen) { closeAmtPanel(); }
                 else {
@@ -198,7 +207,7 @@ const TransactionManager = {
             if (this._amtVal) this._amtVal.value = q.get('amount_val') || '';
             if (this._amtVal2) this._amtVal2.value = q.get('amount_val2') || '';
             const label = document.getElementById('transAmountLabel');
-            if (label) label.textContent = '金额筛选';
+            if (label) label.textContent = tt('trans.filter.amountTip', '金额筛选');
         }
     },
     syncFiltersToUrl() {
@@ -245,7 +254,7 @@ const TransactionManager = {
         // 类型按钮样式已在 click 处理中切换
         document.querySelectorAll('#transForm .non-transfer').forEach(el => el.style.display = isTransfer ? 'none' : '');
         document.querySelectorAll('#transForm .transfer-only').forEach(el => el.style.display = isTransfer ? '' : 'none');
-        document.getElementById('transAccountLabel').textContent = isTransfer ? '转出账户' : '账户';
+        document.getElementById('transAccountLabel').textContent = isTransfer ? tt('trans.form.fromAccount', '转出账户') : tt('trans.form.account', '账户');
         document.getElementById('transToAccount').required = isTransfer;
         // 转账也要选类别（一般转账 / 还信用卡 / 取现 …），与支出收入保持一致
         document.getElementById('transCategory').required = true;
@@ -303,7 +312,7 @@ const TransactionManager = {
         // 此时不传 category_id，由服务端兜底归类。
         const hasCats = sel.options.length > 0;
         sel.required = hasCats;
-        if (!hasCats) sel.innerHTML = '<option value="">（暂无类别，将由系统自动归类）</option>';
+        if (!hasCats) sel.innerHTML = `<option value="">${escapeHtml(tt('trans.form.noCategory', '（暂无类别，将由系统自动归类）'))}</option>`;
     },
     updateAccSelect() {
         const sel = document.getElementById('transAccount');
@@ -314,7 +323,7 @@ const TransactionManager = {
         if (!picker) return;
         const sel = new Set(selectedIds);
         const tags = cache.tags || [];
-        if (tags.length === 0) { picker.innerHTML = '<span class="empty-hint">暂无标签，去「标签管理」创建</span>'; return; }
+        if (tags.length === 0) { picker.innerHTML = `<span class="empty-hint">${escapeHtml(tt('trans.form.noTagHint', '暂无标签，去「标签管理」创建'))}</span>`; return; }
         picker.innerHTML = tags.map(tg => `<span class="tag-chip ${sel.has(tg.id) ? 'selected' : ''}" data-id="${tg.id}" style="--tag-color:${escapeHtml(tg.color)}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('');
         picker.querySelectorAll('.tag-chip').forEach(chip => chip.addEventListener('click', () => chip.classList.toggle('selected')));
     },
@@ -323,7 +332,7 @@ const TransactionManager = {
         // 加载预算下拉选项
         this.updateBudgetSelect();
         if (editId) {
-            document.getElementById('transModalTitle').textContent = '编辑交易';
+            document.getElementById('transModalTitle').textContent = tt('trans.edit', '编辑交易');
             // 按 id 精确获取单条交易，避免拉取全量列表（性能）
             let t = null;
             try {
@@ -390,7 +399,7 @@ const TransactionManager = {
                 }
             }
         } else {
-            document.getElementById('transModalTitle').textContent = '新增交易';
+            document.getElementById('transModalTitle').textContent = tt('trans.add', '新增交易');
             this._editingTxId = null;
             this._editingTransferId = null;
             document.getElementById('transEditId').value = '';
@@ -417,7 +426,7 @@ const TransactionManager = {
         const transDate = String(raw).slice(0, 10);
         // 从缓存获取预算列表，按交易日期匹配时间范围
         const budgets = cache.budgets || [];
-        sel.innerHTML = '<option value="">不关联</option>' +
+        sel.innerHTML = `<option value="">${escapeHtml(tt('trans.form.noBudget', '不关联'))}</option>` +
             budgets.filter(b => transDate >= String(b.start_date).slice(0, 10)
                              && transDate <= String(b.end_date).slice(0, 10)).map(b =>
                 `<option value="${b.id}">${escapeHtml(b.name)} (${fmt(b.amount)})</option>`
@@ -475,27 +484,27 @@ const TransactionManager = {
         const amount = parseFloat(document.getElementById('transAmount').value);
         const date = document.getElementById('transDate').value;
         const note = document.getElementById('transNote').value;
-        if (!amount || amount <= 0) { showToast('请输入有效金额', 'error'); return; }
+        if (!amount || amount <= 0) { showToast(tt('trans.toast.amountInvalid', '请输入有效金额'), 'error'); return; }
 
         if (type === 'transfer') {
             const fromId = parseInt(document.getElementById('transAccount').value);
             const toId = parseInt(document.getElementById('transToAccount').value);
-            if (!fromId || !toId) { showToast('请选择转出和转入账户', 'error'); return; }
-            if (fromId === toId) { showToast('转出和转入账户不能相同', 'error'); return; }
+            if (!fromId || !toId) { showToast(tt('trans.toast.transferNeedAcc', '请选择转出和转入账户'), 'error'); return; }
+            if (fromId === toId) { showToast(tt('trans.toast.transferSameAcc', '转出和转入账户不能相同'), 'error'); return; }
             // 为空时服务端兜底「一般转账」，不阻塞提交
             const catVal = parseInt(document.getElementById('transCategory').value) || null;
             const tBody = { from_account_id: fromId, to_account_id: toId, amount, date, note, category_id: catVal };
             if (editId) {
                 const tid = await this.resolveTransferId(editId);
                 if (!tid) {
-                    showToast('无法定位转账记录，请刷新页面后重试', 'error');
+                    showToast(tt('trans.toast.transferLocateFail', '无法定位转账记录，请刷新页面后重试'), 'error');
                     return;
                 }
                 await api(`/transfers/${tid}`, 'PUT', tBody);
-                showToast('转账已更新', 'success');
+                showToast(tt('trans.toast.transferUpdated', '转账已更新'), 'success');
             } else {
                 await api('/transfers', 'POST', tBody);
-                showToast('转账成功', 'success');
+                showToast(tt('trans.toast.transferAdded', '转账成功'), 'success');
             }
         } else {
             const budgetVal = document.getElementById('transBudget').value;
@@ -510,10 +519,10 @@ const TransactionManager = {
             };
             if (editId) {
                 await api(`/transactions/${editId}`, 'PUT', body);
-                showToast('交易已更新', 'success');
+                showToast(tt('trans.toast.txnUpdated', '交易已更新'), 'success');
             } else {
                 await api('/transactions', 'POST', body);
-                showToast('交易已添加', 'success');
+                showToast(tt('trans.toast.txnAdded', '交易已添加'), 'success');
             }
         }
         this.closeModal();
@@ -529,7 +538,7 @@ const TransactionManager = {
     async delete(id) {
         try {
             await api(`/transactions/${id}`, 'DELETE');
-            showToast('交易已删除', 'warning');
+            showToast(tt('trans.toast.txnDeleted', '交易已删除'), 'warning');
             await initCache();
             await this.refresh();
             if (window.DashboardManager) await window.DashboardManager.refresh();
@@ -538,6 +547,7 @@ const TransactionManager = {
         }
     },
     async refresh(options = {}) {
+        try {
         if (!options.syncUrl) this.restoreFiltersFromUrl();
         if (options.syncUrl) this.syncFiltersToUrl();
         const search = document.getElementById('transSearch').value;
@@ -562,7 +572,7 @@ const TransactionManager = {
         if (search) params += `&search=${encodeURIComponent(search)}`;
         const list = await api(`/transactions?${params}`);
         const tbodyEl = document.getElementById('transTbody');
-        if (!list || list.length === 0) { showEmpty(tbodyEl, '暂无交易记录'); return; }
+        if (!list || list.length === 0) { showEmpty(tbodyEl, tt('trans.empty', '暂无交易记录')); return; }
 
         // 合并配对转账
         const merged = mergeTransferPairs(list);
@@ -583,7 +593,7 @@ const TransactionManager = {
             : merged;
 
         if (filtered.length === 0) {
-            const emptyMsg = noteFilter ? '没有匹配备注的交易' : '暂无交易记录';
+            const emptyMsg = noteFilter ? tt('trans.emptyNote', '没有匹配备注的交易') : tt('trans.empty', '暂无交易记录');
             showEmpty(tbodyEl, emptyMsg);
             this.renderPager(0, 1);
             return;
@@ -593,6 +603,19 @@ const TransactionManager = {
         // 翻页只调 renderPage()，不再打接口。
         this._pageRows = filtered;
         this.renderPage();
+        } catch (err) {
+            // 顶部横幅 + console 双写，避免 skeleton 永不消失时用户毫无线索
+            console.error('[TransactionManager.refresh]', err);
+            const tbodyEl = document.getElementById('transTbody');
+            if (tbodyEl) {
+                tbodyEl.innerHTML = `<div style="padding:16px 20px;margin:12px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:8px;font-size:14px;line-height:1.5;">
+                    <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(tt('trans.toast.renderFailedTitle', '⚠️ 交易列表渲染失败'))}</div>
+                    <div style="opacity:.85;">${escapeHtml(err && err.message ? err.message : String(err))}</div>
+                    <div style="opacity:.55;font-size:12px;margin-top:6px;">${escapeHtml(tt('trans.toast.renderFailedHint', '请刷新页面（Ctrl+Shift+R）重试，仍报错请把此截图反馈给开发者'))}</div>
+                </div>`;
+            }
+            showToast(tt('trans.toast.listLoadFailed', '交易列表加载失败：{msg}').replace('{msg}', err && err.message || err), 'error');
+        }
     },
 
     /**
@@ -628,12 +651,12 @@ const TransactionManager = {
         const renderRow = (t) => {
             const isTransfer = t.type === 'transfer_in' || t.type === 'transfer_out';
             const time = fmtTransTime(t.date);
-            const typeLabel = isTransfer ? '转账' : (t.type === 'income' ? '收入' : '支出');
+            const typeLabel = isTransfer ? tt('trans.type.transfer', '转账') : (t.type === 'income' ? tt('trans.type.income', '收入') : tt('trans.type.expense', '支出'));
             const typeClass = isTransfer ? 'transfer' : t.type;
             const catObj = (t.category && (t.category.icon || t.category.name))
                 ? t.category
-                : (typeof getCat === 'function' ? getCat(t.categoryId || t.category_id) : { name: '未分类', icon: '📌' });
-            const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(catObj.icon || "📌")}</span><span>${escapeHtml(catObj.name || '未分类')}</span>`;
+                : (typeof getCat === 'function' ? getCat(t.categoryId || t.category_id) : { name: tt('trans.uncategorized', '未分类'), icon: '📌' });
+            const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(catObj.icon || "📌")}</span><span>${escapeHtml(catObj.name || tt('trans.uncategorized', '未分类'))}</span>`;
             const tagsHtml = (t.tags && t.tags.length)
                 ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
                 : '';
@@ -659,9 +682,9 @@ const TransactionManager = {
                         <div class="trans-td trans-tags">${tagsHtml}</div>
                         <div class="trans-td trans-desc">${escapeHtml(noteText)}</div>
                         <div class="trans-td trans-actions">
-                            <button data-action="edit-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="编辑" aria-label="编辑该交易">✏️</button>
-                            <button data-action="copy-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="复制" aria-label="复制该交易">📄</button>
-                            <button data-action="delete-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="删除" aria-label="删除该交易">🗑️</button>
+                            <button data-action="edit-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="${escapeHtml(tt('trans.action.edit', '编辑'))}" aria-label="${escapeHtml(tt('trans.action.editTitle', '编辑该交易'))}">✏️</button>
+                            <button data-action="copy-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="${escapeHtml(tt('trans.action.copy', '复制'))}" aria-label="${escapeHtml(tt('trans.action.copyTitle', '复制该交易'))}">📄</button>
+                            <button data-action="delete-trans" data-id="${id}"${t.link_type === 'account_interest' ? ' data-link="account_interest"' : (t.investment_txn_id != null ? ' data-link="investment"' : (t.link_type === 'debt_repayment' ? ' data-link="debt_repayment"' : ''))} title="${escapeHtml(tt('trans.action.delete', '删除'))}" aria-label="${escapeHtml(tt('trans.action.deleteTitle', '删除该交易'))}">🗑️</button>
                         </div>
                     </div>`;
             }
@@ -684,9 +707,9 @@ const TransactionManager = {
                     <div class="trans-td trans-tags">${tagsHtml}</div>
                     <div class="trans-td trans-desc">${escapeHtml(t.note || '')}</div>
                     <div class="trans-td trans-actions">
-                        <button data-action="edit-trans" data-id="${t.id}"${linked} title="编辑" aria-label="编辑该交易">✏️</button>
-                        <button data-action="copy-trans" data-id="${t.id}"${linked} title="复制" aria-label="复制该交易">📄</button>
-                        <button data-action="delete-trans" data-id="${t.id}"${linked} title="删除" aria-label="删除该交易">🗑️</button>
+                        <button data-action="edit-trans" data-id="${t.id}"${linked} title="${escapeHtml(tt('trans.action.edit', '编辑'))}" aria-label="${escapeHtml(tt('trans.action.editTitle', '编辑该交易'))}">✏️</button>
+                        <button data-action="copy-trans" data-id="${t.id}"${linked} title="${escapeHtml(tt('trans.action.copy', '复制'))}" aria-label="${escapeHtml(tt('trans.action.copyTitle', '复制该交易'))}">📄</button>
+                        <button data-action="delete-trans" data-id="${t.id}"${linked} title="${escapeHtml(tt('trans.action.delete', '删除'))}" aria-label="${escapeHtml(tt('trans.action.deleteTitle', '删除该交易'))}">🗑️</button>
                     </div>
                 </div>`;
         };
@@ -709,15 +732,15 @@ const TransactionManager = {
         tbodyEl.querySelectorAll('[data-action="edit-trans"]').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (btn.dataset.link === 'debt_repayment') {
-                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中修改', 'info');
+                    showToast(tt('trans.toast.linkedDebtEdit', '该流水由债务还款生成，请在「债务管理 · 明细」中修改'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'investment') {
-                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中修改', 'info');
+                    showToast(tt('trans.toast.linkedInvEdit', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中修改'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'account_interest') {
-                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中修改', 'info');
+                    showToast(tt('trans.toast.linkedInterestEdit', '该流水由账户计息生成，请在「账户管理 · 账户详情」中修改'), 'info');
                     return;
                 }
                 this.openModal(parseInt(btn.dataset.id));
@@ -726,15 +749,15 @@ const TransactionManager = {
         tbodyEl.querySelectorAll('[data-action="delete-trans"]').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (btn.dataset.link === 'debt_repayment') {
-                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中删除', 'info');
+                    showToast(tt('trans.toast.linkedDebtDel', '该流水由债务还款生成，请在「债务管理 · 明细」中删除'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'investment') {
-                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中删除', 'info');
+                    showToast(tt('trans.toast.linkedInvDel', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中删除'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'account_interest') {
-                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中删除', 'info');
+                    showToast(tt('trans.toast.linkedInterestDel', '该流水由账户计息生成，请在「账户管理 · 账户详情」中删除'), 'info');
                     return;
                 }
                 this.delete(parseInt(btn.dataset.id));
@@ -746,15 +769,15 @@ const TransactionManager = {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 if (btn.dataset.link === 'debt_repayment') {
-                    showToast('该流水由债务还款生成，请在「债务管理 · 明细」中处理', 'info');
+                    showToast(tt('trans.toast.linkedDebtCopy', '该流水由债务还款生成，请在「债务管理 · 明细」中处理'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'investment') {
-                    showToast('该流水由理财操作生成，请在「理财管理 · 持仓详情」中处理', 'info');
+                    showToast(tt('trans.toast.linkedInvCopy', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中处理'), 'info');
                     return;
                 }
                 if (btn.dataset.link === 'account_interest') {
-                    showToast('该流水由账户计息生成，请在「账户管理 · 账户详情」中处理', 'info');
+                    showToast(tt('trans.toast.linkedInterestCopy', '该流水由账户计息生成，请在「账户管理 · 账户详情」中处理'), 'info');
                     return;
                 }
                 await this.duplicateAsNew(parseInt(btn.dataset.id));
@@ -773,10 +796,10 @@ const TransactionManager = {
         try {
             t = await api(`/transactions/${numId}`, 'GET', null, { silent: true });
         } catch (e) {
-            showToast('找不到该交易，请刷新页面后重试', 'warning');
+            showToast(tt('toast.txnNotFound', '找不到该交易，请刷新页面后重试'), 'warning');
             return;
         }
-        if (!t) { showToast('找不到该交易，请刷新页面后重试', 'warning'); return; }
+        if (!t) { showToast(tt('toast.txnNotFound', '找不到该交易，请刷新页面后重试'), 'warning'); return; }
 
         // 先以"新增"模式打开弹窗（标题置为「新增交易」、清空 editingId、清空默认值）
         await this.openModal();
@@ -855,17 +878,17 @@ const TransactionManager = {
         const to = Math.min(cur * this._pageSize, totalRows);
 
         pagerEl.innerHTML = `
-            <div class="pager-info">第 ${from}-${to} 条 / 共 ${totalRows} 条</div>
+            <div class="pager-info">${escapeHtml(tt('trans.pager.range', '第 {from}-{to} 条 / 共 {total} 条').replace('{from}', from).replace('{to}', to).replace('{total}', totalRows))}</div>
             <div class="pager-ctrl">
-                <button class="pager-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''} aria-label="上一页">‹</button>
+                <button class="pager-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''} aria-label="${escapeHtml(tt('trans.pager.prev', '上一页'))}">‹</button>
                 ${nums.map(n => n === '...'
                     ? `<span class="pager-gap" aria-hidden="true">···</span>`
                     : `<button class="pager-btn ${n === cur ? 'active' : ''}" data-page="${n}" ${n === cur ? 'aria-current="page"' : ''}>${n}</button>`
                 ).join('')}
-                <button class="pager-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''} aria-label="下一页">›</button>
+                <button class="pager-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''} aria-label="${escapeHtml(tt('trans.pager.next', '下一页'))}">›</button>
             </div>
             <div class="pager-size">
-                <label for="transPageSize">每页</label>
+                <label for="transPageSize">${escapeHtml(tt('trans.pager.perPage', '每页'))}</label>
                 <select id="transPageSize" class="filter-select">
                     ${[20, 50, 100].map(n => `<option value="${n}" ${n === this._pageSize ? 'selected' : ''}>${n}</option>`).join('')}
                 </select>

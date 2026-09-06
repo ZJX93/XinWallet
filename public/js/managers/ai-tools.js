@@ -57,9 +57,13 @@ const AITools = {
         if (!data) return;
         const el = id => document.getElementById(id);
         el('aiToolsEventBus').textContent = data.event_bus
-            ? `订阅者 ${data.event_bus.subscribers || 0} · 已处理 ${data.event_bus.processed || 0}`
+            ? tt('aiTools.status.subscribers', '订阅者 {subs} · 已处理 {proc}')
+                .replace('{subs}', String(data.event_bus.subscribers || 0))
+                .replace('{proc}', String(data.event_bus.processed || 0))
             : 'N/A';
-        el('aiToolsPendingFeedback').textContent = data.pending_feedback != null ? `${data.pending_feedback} 条` : 'N/A';
+        el('aiToolsPendingFeedback').textContent = data.pending_feedback != null
+            ? tt('aiTools.status.pending', '{n} 条').replace('{n}', String(data.pending_feedback))
+            : 'N/A';
         el('aiToolsVersion').textContent = data.version || 'N/A';
     },
 
@@ -93,15 +97,15 @@ const AITools = {
         try {
             const btn = document.getElementById('aiToolsRunCleanup');
             btn.disabled = true;
-            btn.textContent = '清理中...';
+            btn.textContent = tt('aiTools.cleanup.running', '清理中...');
             const data = await this._req('/ai/v2/cleanup', 'POST');
-            showToast(data?.message || '清理完成', 'success');
+            showToast(data?.message || tt('aiTools.cleanup.done', '清理完成'), 'success');
         } catch (err) {
-            showToast('清理失败: ' + err.message, 'error');
+            showToast(tt('aiTools.cleanup.fail', '清理失败: {msg}').replace('{msg}', err.message || ''), 'error');
         } finally {
             const btn = document.getElementById('aiToolsRunCleanup');
             btn.disabled = false;
-            btn.textContent = '运行清理';
+            btn.textContent = tt('aiTools.cleanup.runBtn', '运行清理');
         }
     },
 
@@ -112,11 +116,11 @@ const AITools = {
                 payload: { test: true }
             });
             if (data.ok) {
-                showToast('测试事件已触发', 'success');
+                showToast(tt('aiTools.event.testDone', '测试事件已触发'), 'success');
                 this._loadStatus();
             }
         } catch (err) {
-            showToast('触发事件失败: ' + err.message, 'error');
+            showToast(tt('aiTools.event.testFail', '触发事件失败: {msg}').replace('{msg}', err.message || ''), 'error');
         }
     }
 };

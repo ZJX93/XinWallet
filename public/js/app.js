@@ -31,21 +31,24 @@ function showToast(msg, type = 'info') {
     setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
-// 带符号金额（收入 + / 支出 -），用于列表右侧。依赖 utils.js 中的 _moneyFmt 和 fmt
+// 带符号金额（收入 + / 支出 -），用于列表右侧。直接复用 utils.js 的 fmt（已按币种出符号）
 function fmtSigned(n, type) {
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
-    // 注意：_moneyFmt.format() 已对负数自动加 '-'，所以这里用 Math.abs() 避免双符号
+    // 取出 fmt 拼出的金额数字部分（去前缀符号/币符），避免双重符号：
+    // fmt(正数, CNY) → '¥100.00'，此处只取 '100.00'。
     // 转出腿与支出同为资金流出，统一带 '-'；转入腿与收入带 '+'。
     // （成对的转账行显式传 'transfer_in'，不受此规则影响）
     const sign = (type === 'expense' || type === 'transfer_out') ? '-' : '+';
-    return sign + '¥' + _moneyFmt.format(Math.abs(v));
+    const full = fmt(Math.abs(v));
+    const numPart = full.replace(/^[^\d.-]+/, '');
+    return sign + '¥' + numPart;
 }
 // 无符号 ¥ 前缀的纯数字（用于已含 ¥ 的拼接场景，避免双重符号）
 function fmtNum(n) {
     const v = Number(n);
     if (!isFinite(v)) return '0.00';
-    return _moneyFmt.format(v);
+    return fmt(v).replace(/^[^\d.-]+/, '');
 }
 function fmtDate(d) {
     /**
@@ -115,9 +118,18 @@ function fmtLocalDate(y, m, d) {
 }
 function fmtDateGroupHeader(s) {
     const { y, m, d } = parseDateParts(s);
-    const weekdays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+    const weekdays = [
+        tt('app.date.weekday.sun', '星期日'),
+        tt('app.date.weekday.mon', '星期一'),
+        tt('app.date.weekday.tue', '星期二'),
+        tt('app.date.weekday.wed', '星期三'),
+        tt('app.date.weekday.thu', '星期四'),
+        tt('app.date.weekday.fri', '星期五'),
+        tt('app.date.weekday.sat', '星期六')
+    ];
     const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-    return `${y}年${m}月${d}日 ${weekdays[day]}`;
+    return tt('app.date.groupFormat', '{y}年{m}月{d}日 {weekday}')
+        .replace('{y}', y).replace('{m}', m).replace('{d}', d).replace('{weekday}', weekdays[day]);
 }
 function fmtTransTime(s) {
     const { time } = parseDateParts(s);
@@ -251,8 +263,8 @@ async function initCache() {
     cache.budgets = budgetsData || [];
 }
 
-function getCat(id) { return cache.categories.find(c => c.id === id) || { id, name: '未知', icon: '📌' }; }
-function getAcc(id) { return cache.accounts.find(a => a.id === id) || { id, name: '未知', icon: '💰' }; }
+function getCat(id) { return cache.categories.find(c => c.id === id) || { id, name: tt('common.unknown', '未知'), icon: '📌' }; }
+function getAcc(id) { return cache.accounts.find(a => a.id === id) || { id, name: tt('common.unknown', '未知'), icon: '💰' }; }
 function getExpCats() { return cache.categories.filter(c => c.type === 'expense'); }
 function getIncCats() { return cache.categories.filter(c => c.type === 'income'); }
 function getTransferCats() { return cache.categories.filter(c => c.type === 'transfer'); }
@@ -260,23 +272,26 @@ function getTransferCats() { return cache.categories.filter(c => c.type === 'tra
 // ==========================================
 // 页面标题映射
 // ==========================================
+// 页面标题/副标题 —— i18n 第一阶段：键名直接当 i18n key 用，由 showPage() 经 I18N.t() 解析
+// zh-CN 路径下展示中文需要 zh-CN 字典；当前 zh-CN 字典直接用页面中文作 fallback（key 即字符串），
+// 这样不用维护 zh-CN.js 也保证中文正常。
 const PAGE_META = {
-    dashboard: { title: '仪表盘', subtitle: '财务总览与快速洞察' },
-    accounts: { title: '账户管理', subtitle: '管理您的资金账户' },
-    transactions: { title: '交易管理', subtitle: '记录每一笔收支与内部转账' },
-    budget: { title: '预算管理', subtitle: '设定目标，合理规划' },
-    investments: { title: '理财管理', subtitle: '资产配置与收益追踪' },
-    debts: { title: '债务管理', subtitle: '贷款·信用卡·借贷跟踪' },
-    'ai-recognition': { title: 'AI 识别', subtitle: '智能识别，轻松记账' },
-    'ai-insights': { title: 'AI 洞察', subtitle: 'AI 建议与学习统计' },
-    'ai-rules': { title: 'AI 规则管理', subtitle: '自动化记账规则' },
-    'ai-evaluation': { title: '模型评测', subtitle: '离线跑批验证' },
-    reports: { title: '报表中心', subtitle: '专业报表，深度回顾' },
-    tags: { title: '标签管理', subtitle: '分类标签，灵活筛选' },
-    'data-center': { title: '基础数据', subtitle: '分类、投资类型与标签维护' },
-    'ai-config': { title: 'AI 配置', subtitle: 'AI 服务商与识别行为设置' },
-    'ai-status': { title: 'AI 系统状态', subtitle: '系统监控与运维工具' },
-    about: { title: '关于', subtitle: '关于 鑫钱包' }
+    dashboard:                  { title: 'pageTitle.dashboard',           subtitle: 'pageSubtitle.dashboard' },
+    accounts:                   { title: 'pageTitle.accounts',            subtitle: 'pageSubtitle.accounts' },
+    transactions:               { title: 'pageTitle.transactions',        subtitle: 'pageSubtitle.transactions' },
+    budget:                     { title: 'pageTitle.budget',              subtitle: 'pageSubtitle.budget' },
+    investments:                { title: 'pageTitle.investments',         subtitle: 'pageSubtitle.investments' },
+    debts:                      { title: 'pageTitle.debts',               subtitle: 'pageSubtitle.debts' },
+    'ai-recognition':           { title: 'pageTitle.ai-recognition',      subtitle: 'pageSubtitle.ai-recognition' },
+    'ai-insights':              { title: 'pageTitle.ai-insights',         subtitle: 'pageSubtitle.ai-insights' },
+    'ai-rules':                 { title: 'pageTitle.ai-rules',            subtitle: 'pageSubtitle.ai-rules' },
+    'ai-evaluation':            { title: 'pageTitle.ai-evaluation',       subtitle: 'pageSubtitle.ai-evaluation' },
+    reports:                    { title: 'pageTitle.reports',             subtitle: 'pageSubtitle.reports' },
+    tags:                       { title: 'pageTitle.tags',                subtitle: 'pageSubtitle.tags' },
+    'data-center':              { title: 'pageTitle.data-center',         subtitle: 'pageSubtitle.data-center' },
+    'ai-config':                { title: 'pageTitle.ai-config',           subtitle: 'pageSubtitle.ai-config' },
+    'ai-status':                { title: 'pageTitle.ai-status',           subtitle: 'pageSubtitle.ai-status' },
+    about:                      { title: 'pageTitle.about',               subtitle: 'pageSubtitle.about' }
 };
 
 // ==========================================
@@ -331,8 +346,8 @@ const initBottomNav = () => {
         label.addEventListener('click', (e) => {
             e.stopPropagation();
             const name = label.dataset.group;
-            // 总览只有一个子项，直接跳转仪表盘
-            if (name === '总览') { closeSubmenu(); switchPage('dashboard'); return; }
+            // 总览（Overview）只有一个子项，直接跳转仪表盘
+            if (name === tt('nav.group.overview', '总览')) { closeSubmenu(); switchPage('dashboard'); return; }
             if (openGroup === name) { closeSubmenu(); return; }
             labels.forEach(l => l.classList.remove('active'));
             label.classList.add('active');
@@ -389,8 +404,8 @@ async function showPage(page) {
     currentPage = page;
     navItems.forEach(i => i.classList.toggle('active', i.dataset.page === page));
     const meta = PAGE_META[page] || {};
-    document.getElementById('pageTitle').textContent = meta.title;
-    document.getElementById('pageSubtitle').textContent = meta.subtitle;
+    document.getElementById('pageTitle').textContent = I18N.t(meta.title);
+    document.getElementById('pageSubtitle').textContent = I18N.t(meta.subtitle);
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const pg = document.getElementById(`page-${page}`);
     if (pg) pg.classList.add('active');
@@ -418,60 +433,60 @@ async function showPage(page) {
             checkBtn.dataset.bound = '1';
             checkBtn.addEventListener('click', async () => {
                 checkBtn.disabled = true;
-                statusEl.textContent = '检测中…';
+                statusEl.textContent = tt('app.update.checking', '检测中…');
                 try {
                     const res = await fetch(`${API}/update/check`, { credentials: 'same-origin' });
                     // 旧版本镜像不含该路由 → 404；限流 → 429。必须区分，否则一律「检测失败」无从排查。
                     if (res.status === 404) {
-                        statusEl.textContent = '当前版本不支持在线更新，请手动拉取最新镜像';
+                        statusEl.textContent = tt('app.update.unsupported', '当前版本不支持在线更新，请手动拉取最新镜像');
                         return;
                     }
                     if (res.status === 429) {
-                        statusEl.textContent = '检测过于频繁，请 10 分钟后再试';
+                        statusEl.textContent = tt('app.update.tooFrequent', '检测过于频繁，请 10 分钟后再试');
                         return;
                     }
                     const r = await res.json().catch(() => null);
                     if (r && r.success && r.data) {
                         const d = r.data;
-                        let msg = `当前 ${d.currentVersion}`;
+                        let msg = tt('app.update.current', '当前 {version}').replace('{version}', d.currentVersion || '');
                         if (d.error) {
                             // 取不到最新版本时如实提示，绝不显示「已是最新」
-                            msg += ` · 无法获取最新版本（${d.error}）`;
+                            msg += tt('app.update.noLatest', ' · 无法获取最新版本（{err}）').replace('{err}', d.error);
                             // dev 构建用户不受 GitHub API 限流/超时影响，
                             // 仍可强制更新到 ghcr.io 最新镜像（不需要版本号比对）
                             if (applyBtn && !d.isDevBuild) applyBtn.style.display = 'none';
-                            else if (applyBtn) msg += '；可强制更新到最新镜像';
+                            else if (applyBtn) msg += tt('app.update.forceHint', '；可强制更新到最新镜像');
                         } else {
-                            if (d.latestVersion) msg += ` / 最新 ${d.latestVersion}`;
+                            if (d.latestVersion) msg += tt('app.update.latest', ' / 最新 {version}').replace('{version}', d.latestVersion);
                             if (d.hasUpdate) {
                                 if (applyBtn) applyBtn.style.display = '';
-                                msg += ' · 发现新版本';
+                                msg += tt('app.update.found', ' · 发现新版本');
                             } else if (d.isDevBuild) {
                                 if (applyBtn) applyBtn.style.display = '';
-                                msg += ' · 本地自建版本，可切换到官方镜像';
+                                msg += tt('app.update.devSwitch', ' · 本地自建版本，可切换到官方镜像');
                             } else {
                                 if (applyBtn) applyBtn.style.display = 'none';
-                                msg += ' · 已是最新';
+                                msg += tt('app.update.upToDate', ' · 已是最新');
                             }
                         }
-                        if (d.dockerAvailable === false) msg += '（容器内 docker 不可用，无法自动更新）';
+                        if (d.dockerAvailable === false) msg += tt('app.update.noDocker', '（容器内 docker 不可用，无法自动更新）');
                         statusEl.textContent = msg;
                     } else {
-                        statusEl.textContent = `检测失败（HTTP ${res.status}）`;
+                        statusEl.textContent = tt('app.update.failedHttp', '检测失败（HTTP {status}）').replace('{status}', res.status);
                     }
                 } catch (e) {
-                    statusEl.textContent = '检测失败：' + (e.message || '网络错误');
+                    statusEl.textContent = tt('app.update.failed', '检测失败：{msg}').replace('{msg}', e.message || '网络错误');
                 } finally {
                     checkBtn.disabled = false;
                 }
             });
             if (applyBtn) applyBtn.addEventListener('click', async () => {
                 applyBtn.disabled = true;
-                statusEl.textContent = '正在更新，服务即将重启…';
+                statusEl.textContent = tt('app.update.applying', '正在更新，服务即将重启…');
                 try {
                     const ap = await fetch(`${API}/update/apply`, { method: 'POST', credentials: 'same-origin' });
                     if (!ap.ok) {
-                        statusEl.textContent = `更新请求失败（HTTP ${ap.status}）`;
+                        statusEl.textContent = tt('app.update.requestFailed', '更新请求失败（HTTP {status}）').replace('{status}', ap.status);
                         applyBtn.disabled = false;
                         return;
                     }
@@ -485,9 +500,9 @@ async function showPage(page) {
                         } catch (e) { /* 重启中，连接暂不可达 */ }
                     }
                     if (restored) location.reload();
-                    else statusEl.textContent = '更新可能已完成，请手动刷新页面';
+                    else statusEl.textContent = tt('app.update.maybeDone', '更新可能已完成，请手动刷新页面');
                 } catch (e) {
-                    statusEl.textContent = '更新失败：' + (e.message || '');
+                    statusEl.textContent = tt('app.update.applyFailed', '更新失败：{msg}').replace('{msg}', e.message || '');
                     applyBtn.disabled = false;
                 }
             });
@@ -586,7 +601,7 @@ function initTransMonthFilter() {
     const sel = document.getElementById('transMonthFilter');
     if (!sel) return;
     const now = new Date();
-    const opts = ['<option value="all">所有月份</option>'];
+    const opts = [`<option value="all">${escapeHtml(tt('app.month.allMonths', '所有月份'))}</option>`];
     for (let m = 0; m < 12; m++) {
         const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
         const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -670,14 +685,28 @@ function initCurrencySwitcher() {
     refreshBtn.className = 'lang-opt';
     refreshBtn.dataset.act = 'refresh';
     refreshBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:none;color:var(--text-primary);cursor:pointer;border-radius:6px;font-size:14px';
-    refreshBtn.textContent = '🔄 刷新汇率';
+    refreshBtn.textContent = '🔄 ' + I18N.t('currency.refresh');
     menu.appendChild(refreshBtn);
+
+    // i18n 切换时同步刷新按钮文案（汇率元信息 / 按钮文案）
+    const onI18nChanged = () => {
+        if (!refreshBtn.disabled) {
+            refreshBtn.textContent = '🔄 ' + I18N.t('currency.refresh');
+        }
+        if (metaEl && metaEl.dataset.fxText === 'ready') {
+            metaEl.textContent = I18N.t('currency.lastUpdated') + ': ' + (window.FxManager && FxManager.rates ? window.FxManager.rates.date : '');
+        }
+    };
+    window.addEventListener('i18n:changed', onI18nChanged);
 
     const updateFxMeta = function () {
         const r = window.FxManager && FxManager.rates;
-        metaEl.textContent = r
-            ? ('汇率 ' + r.date + (r.stale ? '（过期）' : ''))
-            : '汇率加载中…';
+        if (r) {
+            metaEl.textContent = I18N.t('currency.lastUpdated') + ': ' + r.date + (r.stale ? ' (' + I18N.t('currency.stale') + ')' : '');
+            metaEl.dataset.fxText = 'ready';
+        } else {
+            metaEl.textContent = I18N.t('currency.loading');
+        }
     };
     updateFxMeta();
     if (window.FxManager && FxManager.subscribe) FxManager.subscribe(updateFxMeta);
@@ -714,15 +743,15 @@ function initCurrencySwitcher() {
         e.stopPropagation();
         if (!window.FxManager) return;
         refreshBtn.disabled = true;
-        refreshBtn.textContent = '⏳ 拉取中…';
+        refreshBtn.textContent = '⏳ ' + I18N.t('common.loading');
         try {
             await FxManager.refresh();
-            if (typeof showToast === 'function') showToast('汇率已更新', 'success');
+            if (typeof showToast === 'function') showToast(I18N.t('currency.toast.updated'), 'success');
         } catch (err) {
-            if (typeof showToast === 'function') showToast('汇率刷新失败：' + (err.message || '未知错误'), 'error');
+            if (typeof showToast === 'function') showToast(I18N.t('currency.toast.failed', { msg: err.message || 'Unknown error' }), 'error');
         } finally {
             refreshBtn.disabled = false;
-            refreshBtn.textContent = '🔄 刷新汇率';
+            refreshBtn.textContent = '🔄 ' + I18N.t('currency.refresh');
             menu.style.display = 'none';
         }
     });
@@ -733,15 +762,16 @@ function initCurrencySwitcher() {
 async function boot() {
     const DEBUG = window.XIN_DEBUG === true || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     const log = (...a) => { if (DEBUG) console.log(...a); };  // 启动横幅仅在本地/调试态打印
-    log('🚀 鑫钱包启动...');
-    try { await I18N.init(); log('  ✅ i18n'); } catch(e) { console.warn('  ⚠️  i18n init 失败(跳过):', e.message); }
-    try { await PreferencesManager.load(); log('  ✅ preferences'); } catch(e) { console.warn('  ⚠️  preferences (跳过):', e.message); }
+    log(tt('app.boot.start', '🚀 鑫钱包启动...'));
+    try { await I18N.init(); log('  ✅ i18n'); } catch(e) { console.warn(tt('app.boot.warnI18n', '  ⚠️  i18n init 失败(跳过):'), e.message); }
+    try { await PreferencesManager.load(); log('  ✅ preferences'); } catch(e) { console.warn(tt('app.boot.warnPref', '  ⚠️  preferences (跳过):'), e.message); }
     const prefLang = PreferencesManager.lang;
-    if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log('  ✅ 语言按偏好同步 -> ' + prefLang); }
+    if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log(tt('app.boot.langSynced', '  ✅ 语言按偏好同步 -> ') + ' ' + prefLang); }
     initLangSwitcher();
-    safeInit('FxManager', () => FxManager.init());   // 多币种 P2-2b：拉取汇率（顶栏刷新按钮依赖）
     initCurrencySwitcher();
-    const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
+    // ⛔ safeInit 必须先定义再调用：const 不会 hoist，提前调用会 TDZ 抛 ReferenceError
+    const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn(tt('app.boot.warnSkip', '  ⚠️  {name} (跳过):').replace('{name}', name), e.message); } };
+    safeInit('FxManager', () => FxManager.init());   // 多币种 P2-2b：拉取汇率（顶栏刷新按钮依赖）
     try { await initCache(); log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
     // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后
     safeInit('TransMonthFilter', () => initTransMonthFilter());
@@ -766,7 +796,7 @@ async function boot() {
     safeInit('AISettings', () => AISettings.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());
-    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn('  ⚠️  Dashboard (跳过):', e.message); }
+    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn(tt('app.boot.warnDashboard', '  ⚠️  Dashboard (跳过):'), e.message); }
 
     // 从 URL path 恢复页面状态（干净路由：/transactions）
     const page = currentRoute();
@@ -778,7 +808,7 @@ async function boot() {
         history.replaceState({ page: 'dashboard' }, '', pageUrl('dashboard'));
         await showPage('dashboard');
     }
-    log('✅ 鑫钱包系统已就绪');
+    log(tt('app.boot.ready', '✅ 鑫钱包系统已就绪'));
 }
 
 // boot() 由 js/managers/index.js 在 DOMContentLoaded 后直接调用；app.js 加载为普通 script，所有变量已在全局

@@ -3,13 +3,13 @@
     <div class="glass-card ai-page-card">
         <div class="ai-page-header">
             <div>
-                <h3 class="card-title">AI 规则</h3>
-                <p class="card-desc">自动化记账：匹配商家自动归类（AI 自动学习 + 人工新增），支持证据流水追溯</p>
+                <h3 class="card-title" data-i18n="aiRules.title">AI 规则</h3>
+                <p class="card-desc" data-i18n="aiRules.desc">自动化记账：匹配商家自动归类（AI 自动学习 + 人工新增），支持证据流水追溯</p>
             </div>
             <div class="ai-page-actions">
-                <button class="btn btn-primary btn-ai" id="aiRulesAddBtn" title="手动新增一条规则">新增</button>
-                <button class="btn btn-ghost btn-ai" id="aiRulesRefreshBtn" title="重新加载">
-                    <span class="ai-icon-refresh">↻</span> 刷新
+                <button class="btn btn-primary btn-ai" id="aiRulesAddBtn" title="手动新增一条规则" data-i18n-title="aiRules.addTip" data-i18n="aiRules.add">新增</button>
+                <button class="btn btn-ghost btn-ai" id="aiRulesRefreshBtn" title="重新加载" data-i18n-title="aiStatus.reloadTip">
+                    <span class="ai-icon-refresh">↻</span> <span data-i18n="common.refresh">刷新</span>
                 </button>
             </div>
         </div>
@@ -18,11 +18,11 @@
 
         <!-- 状态过滤 -->
         <div class="ai-rules-filter-row">
-            <span class="ai-rules-filter-chip active" data-ai-rules-filter="all">全部</span>
-            <span class="ai-rules-filter-chip" data-ai-rules-filter="verified">已生效</span>
-            <span class="ai-rules-filter-chip" data-ai-rules-filter="trusted">高可信</span>
-            <span class="ai-rules-filter-chip" data-ai-rules-filter="candidate">候选</span>
-            <span class="ai-rules-filter-chip" data-ai-rules-filter="disabled">已禁用</span>
+            <span class="ai-rules-filter-chip active" data-ai-rules-filter="all" data-i18n="aiRules.filter.all">全部</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="verified" data-i18n="aiRules.filter.verified">已生效</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="trusted" data-i18n="aiRules.filter.trusted">高可信</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="candidate" data-i18n="aiRules.filter.candidate">候选</span>
+            <span class="ai-rules-filter-chip" data-ai-rules-filter="disabled" data-i18n="aiRules.filter.disabled">已禁用</span>
         </div>
 
         <div id="aiRulesErrorBar" class="ai-rules-error-bar" style="display:none"></div>
@@ -32,7 +32,7 @@
                 <div class="skeleton-line shimmer" style="width:78%"></div>
                 <div class="skeleton-line shimmer" style="width:60%"></div>
             </div>
-            <p class="ai-page-loading-text">加载规则中...</p>
+            <p class="ai-page-loading-text" data-i18n="aiRules.loading">加载规则中...</p>
         </div>
 
         <div id="aiRulesList" class="ai-rules-list"></div>
@@ -42,30 +42,30 @@
     <div id="aiRulesAddDialog" class="ai-rules-dialog" style="display:none">
         <div class="ai-rules-dialog-card">
             <div class="ai-rules-dialog-head">
-                <h4>新增 AI 规则</h4>
-                <button class="btn btn-ghost" id="aiRulesAddCloseBtn">✕</button>
+                <h4 data-i18n="aiRules.dialog.title">新增 AI 规则</h4>
+                <button class="btn btn-ghost" id="aiRulesAddCloseBtn" aria-label="关闭" data-i18n-aria="common.close">✕</button>
             </div>
             <div class="ai-rules-dialog-body">
                 <label class="ai-rules-dialog-field">
-                    <span>match_key（必填，触发关键字）</span>
-                    <input type="text" id="aiRulesAddmatchKey" placeholder="如：滴滴出行" />
+                    <span data-i18n="aiRules.dialog.matchKey">match_key（必填，触发关键字）</span>
+                    <input type="text" id="aiRulesAddmatchKey" placeholder="如：滴滴出行" data-i18n-ph="aiRules.dialog.matchKeyPh" />
                 </label>
                 <label class="ai-rules-dialog-field">
-                    <span>rule_type</span>
+                    <span data-i18n="aiRules.dialog.ruleType">rule_type</span>
                     <select id="aiRulesAddruleType">
-                        <option value="merchant_category">merchant_category（商家→类目）</option>
+                        <option value="merchant_category" data-i18n="aiRules.dialog.ruleType.merchantCategory">merchant_category（商家→类目）</option>
                         <!-- ⛔ merchant_account（商家→账户）已移除：商户不固定支付方式（2026-08-29） -->
-                        <option value="keyword_type">keyword_type（关键字→收/支）</option>
+                        <option value="keyword_type" data-i18n="aiRules.dialog.ruleType.keywordType">keyword_type（关键字→收/支）</option>
                     </select>
                 </label>
                 <label class="ai-rules-dialog-field">
-                    <span>target_category_id（任一即可）</span>
-                    <input type="number" id="aiRulesAddtargetCategoryId" placeholder="如：23 (打车拼车)" />
+                    <span data-i18n="aiRules.dialog.targetCategoryId">target_category_id（任一即可）</span>
+                    <input type="number" id="aiRulesAddtargetCategoryId" placeholder="如：23 (打车拼车)" data-i18n-ph="aiRules.dialog.targetCategoryIdPh" />
                 </label>
                 <label class="ai-rules-dialog-field">
-                    <span>target_type（仅 keyword_type）</span>
+                    <span data-i18n="aiRules.dialog.targetType">target_type（仅 keyword_type）</span>
                     <select id="aiRulesAddtargetType">
-                        <option value="">（无）</option>
+                        <option value="" data-i18n="aiRules.dialog.targetType.none">（无）</option>
                         <option value="expense">expense</option>
                         <option value="income">income</option>
                         <option value="transfer">transfer</option>
@@ -73,8 +73,8 @@
                 </label>
             </div>
             <div class="ai-rules-dialog-foot">
-                <button class="btn btn-ghost" id="aiRulesAddCloseBtn2">取消</button>
-                <button class="btn btn-primary" id="aiRulesAddSubmitBtn">保存</button>
+                <button class="btn btn-ghost" id="aiRulesAddCloseBtn2" data-i18n="common.cancel">取消</button>
+                <button class="btn btn-primary" id="aiRulesAddSubmitBtn" data-i18n="common.save">保存</button>
             </div>
         </div>
     </div>
@@ -83,8 +83,8 @@
     <div id="aiRulesEvidenceDrawer" class="ai-rules-drawer" style="display:none">
         <div class="ai-rules-drawer-card">
             <div class="ai-rules-drawer-head">
-                <h4>证据流水</h4>
-                <button class="btn btn-ghost" id="aiRulesEvidenceCloseBtn">✕</button>
+                <h4 data-i18n="aiRules.evidence.title">证据流水</h4>
+                <button class="btn btn-ghost" id="aiRulesEvidenceCloseBtn" aria-label="关闭" data-i18n-aria="common.close">✕</button>
             </div>
             <div id="aiRulesEvidenceBody" class="ai-rules-drawer-body"></div>
         </div>

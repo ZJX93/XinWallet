@@ -24,6 +24,7 @@ router.use(require('./chat'));            // AI 对话（工具调用循环）
 router.use(require('./transcribe'));      // 语音转写
 router.use(require('./parse'));           // /transactions/parse
 router.use(require('./predictions'));     // 预测快照 查询/提交/丢弃
+router.use(require('./forecast'));       // 现金流预测（forecastCashflow）—— 此前漏挂，前端 404 已修
 router.use(require('./rules'));           // 记账规则 CRUD + 证据链
 router.use(require('./learning'));        // 学习统计 + 离线评测
 router.use(require('./conversations'));   // 会话管理

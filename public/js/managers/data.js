@@ -101,10 +101,14 @@ const DataManager = {
         const data = await api('/categories' + qs);
         const tbody = document.getElementById('catTableBody');
         if (!data || !data.tree || data.tree.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-text">暂无分类数据</div></div></td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-text">${escapeHtml(tt('dc.empty.cat', '暂无分类数据'))}</div></div></td></tr>`;
             return;
         }
-        const typeLabel = { expense: '支出', income: '收入', transfer: '转账' };
+        const typeLabel = {
+            expense: tt('dc.catType.expense', '支出'),
+            income: tt('dc.catType.income', '收入'),
+            transfer: tt('dc.catType.transfer', '转账')
+        };
 
         const renderRow = (c, depth, hidden) => {
             const hasChildren = c.children && c.children.length > 0;
@@ -114,18 +118,18 @@ const DataManager = {
             <tr class="${depth > 0 ? 'dc-sub-row' : 'dc-parent-row'}" style="${hidden ? 'display:none;' : ''}">
                 <td>
                     ${hasChildren
-                        ? `<button class="cat-toggle ${collapsed ? 'collapsed' : ''}" data-action="toggle-cat" data-id="${c.id}" aria-label="${collapsed ? '展开' : '折叠'}" aria-expanded="${!collapsed}">${collapsed ? '▶' : '▼'}</button>`
+                        ? `<button class="cat-toggle ${collapsed ? 'collapsed' : ''}" data-action="toggle-cat" data-id="${c.id}" aria-label="${collapsed ? tt('dc.aria.expand', '展开') : tt('dc.aria.collapse', '折叠')}" aria-expanded="${!collapsed}">${collapsed ? '▶' : '▼'}</button>`
                         : (depth === 0 ? '<span class="cat-toggle-spacer"></span>' : '')}
                     <span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth > 0 ? depth * 20 : 0}px;display:inline-block">${depth > 0 ? '└ ' : ''}${escapeHtml(c.icon || "📌")}</span>
                 </td>
-                <td>${escapeHtml(c.name)}${hasChildren ? ` <span class="dc-child-count">(${c.children.length}个子类)</span>` : ''}</td>
+                <td>${escapeHtml(c.name)}${hasChildren ? ` <span class="dc-child-count">${escapeHtml(tt('dc.cat.childCount', '({n}个子类)').replace('{n}', c.children.length))}</span>` : ''}</td>
                 <td><span class="badge ${c.type === 'income' ? 'badge-income' : c.type === 'transfer' ? 'badge-transfer' : 'badge-expense'}">${typeLabel[c.type] || c.type}</span></td>
                 <td><span class="color-dot" style="background:${c.color}"></span></td>
                 <td>${c.sort_order}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-cat" data-id="${c.id}" title="编辑分类">✏️ 编辑</button>
-                    <button class="btn-ghost-sm btn-text-sm" data-action="add-subcat" data-pid="${c.id}" title="新增子分类">➕ 子类</button>
-                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-cat" data-id="${c.id}" data-name="${escapeHtml(c.name)}" title="删除分类">🗑️ 删除</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-cat" data-id="${c.id}" title="${escapeHtml(tt('dc.btn.editCat', '编辑分类'))}">✏️ ${escapeHtml(tt('dc.btn.editCat', '编辑分类'))}</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="add-subcat" data-pid="${c.id}" title="${escapeHtml(tt('dc.btn.addSubCat', '新增子分类'))}">➕ ${escapeHtml(tt('dc.btn.addSubCat', '新增子分类'))}</button>
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-cat" data-id="${c.id}" data-name="${escapeHtml(c.name)}" title="${escapeHtml(tt('dc.btn.delCat', '删除分类'))}">🗑️ ${escapeHtml(tt('dc.btn.delCat', '删除分类'))}</button>
                 </td>
             </tr>
             ${hasChildren ? c.children.map(ch => renderRow(ch, depth + 1, childHidden)).join('') : ''}
@@ -143,7 +147,7 @@ const DataManager = {
         if (id) {
             this._loadCat(id);
         } else {
-            document.getElementById('dcEditTitle').textContent = parentId ? '新增子分类' : '新增分类';
+            document.getElementById('dcEditTitle').textContent = parentId ? tt('dc.title.addSubCat', '新增子分类') : tt('dc.title.addCat', '新增分类');
             document.getElementById('dcEditId').value = '';
             document.getElementById('dcEditParentId').value = parentId || '';
             document.getElementById('dcEditName').value = '';
@@ -159,7 +163,7 @@ const DataManager = {
         const data = await api('/categories?flat=1');
         const cat = data.find(c => c.id === id);
         if (!cat) return;
-        document.getElementById('dcEditTitle').textContent = cat.parent_id ? '编辑子分类' : '编辑分类';
+        document.getElementById('dcEditTitle').textContent = cat.parent_id ? tt('dc.title.editSubCat', '编辑子分类') : tt('dc.title.editCat', '编辑分类');
         document.getElementById('dcEditId').value = cat.id;
         document.getElementById('dcEditParentId').value = cat.parent_id || '';
         document.getElementById('dcEditName').value = cat.name;
@@ -171,10 +175,10 @@ const DataManager = {
     },
 
     async deleteCat(id, name) {
-        if (!confirm(`确定删除分类「${name}」？有交易记录或子分类的分类无法删除。`)) return;
+        if (!confirm(tt('dc.confirm.deleteCat', '确定删除分类「{name}」？有交易记录或子分类的分类无法删除。').replace('{name}', name))) return;
         try {
             await api('/categories/' + id, 'DELETE');
-            showToast('分类已删除', 'success');
+            showToast(tt('toast.catDeleted', '分类已删除'), 'success');
             this.refreshCats();
         } catch (err) {
             // api() 已显示错误 toast
@@ -192,10 +196,15 @@ const DataManager = {
         const data = await api('/investment-types');
         const tbody = document.getElementById('invTypeTableBody');
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-text">暂无理财类型</div></div></td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-text">${escapeHtml(tt('dc.empty.invType', '暂无理财类型'))}</div></div></td></tr>`;
             return;
         }
-        const riskLabel = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
+        const riskLabel = {
+            low: tt('dc.risk.low', '低风险'),
+            medium: tt('dc.risk.medium', '中风险'),
+            high: tt('dc.risk.high', '高风险'),
+            very_high: tt('dc.risk.very_high', '极高风险')
+        };
         tbody.innerHTML = data.map(t => `
             <tr>
                 <td><span style="font-size:20px">${escapeHtml(t.icon || "💹")}</span></td>
@@ -204,9 +213,9 @@ const DataManager = {
                 <td>${escapeHtml(t.description || '-')}</td>
                 <td>${t.sort_order}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-invtype" data-id="${t.id}" title="编辑类型">✏️ 编辑</button>
-                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="删除类型">🗑️ 删除</button>
-                    <label class="ios-toggle" title="${(t.is_active != false) ? '点击关闭该类型（从新增理财下拉隐藏）' : '点击启用该类型（重新出现在新增理财下拉）'}"><input type="checkbox" data-action="toggle-invtype" data-id="${t.id}"${(t.is_active != false) ? ' checked' : ''}><span class="ios-toggle-track"><span class="ios-toggle-text-on">ON</span><span class="ios-toggle-knob"></span><span class="ios-toggle-text-off">OFF</span></span></label>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-invtype" data-id="${t.id}" title="${escapeHtml(tt('dc.btn.editInvType', '编辑类型'))}">✏️ ${escapeHtml(tt('dc.btn.editInvType', '编辑类型'))}</button>
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-invtype" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="${escapeHtml(tt('dc.btn.delInvType', '删除类型'))}">🗑️ ${escapeHtml(tt('dc.btn.delInvType', '删除类型'))}</button>
+                    <label class="ios-toggle" title="${escapeHtml((t.is_active != false) ? tt('dc.toggleInvType.off', '点击关闭该类型（从新增理财下拉隐藏）') : tt('dc.toggleInvType.on', '点击启用该类型（重新出现在新增理财下拉）'))}"><input type="checkbox" data-action="toggle-invtype" data-id="${t.id}"${(t.is_active != false) ? ' checked' : ''}><span class="ios-toggle-track"><span class="ios-toggle-text-on">ON</span><span class="ios-toggle-knob"></span><span class="ios-toggle-text-off">OFF</span></span></label>
                 </td>
             </tr>
         `).join('');
@@ -221,7 +230,7 @@ const DataManager = {
         if (id) {
             this._loadInvType(id);
         } else {
-            document.getElementById('dcEditTitle').textContent = '新增理财类型';
+            document.getElementById('dcEditTitle').textContent = tt('dc.invType.add', '新增理财类型');
             document.getElementById('dcEditId').value = '';
             document.getElementById('dcEditName').value = '';
             document.getElementById('dcEditIcon').value = '💰';
@@ -236,7 +245,7 @@ const DataManager = {
         const data = await api('/investment-types');
         const t = data.find(x => x.id === id);
         if (!t) return;
-        document.getElementById('dcEditTitle').textContent = '编辑理财类型';
+        document.getElementById('dcEditTitle').textContent = tt('dc.title.editInvType', '编辑理财类型');
         document.getElementById('dcEditId').value = t.id;
         document.getElementById('dcEditName').value = t.name;
         document.getElementById('dcEditIcon').value = t.icon;
@@ -247,10 +256,10 @@ const DataManager = {
     },
 
     async deleteInvType(id, name) {
-        if (!confirm(`确定删除理财类型「${name}」？有持仓记录的类型无法删除。`)) return;
+        if (!confirm(tt('dc.confirm.deleteInvType', '确定删除理财类型「{name}」？有持仓记录的类型无法删除。').replace('{name}', name))) return;
         try {
             await api('/investment-types/' + id, 'DELETE');
-            showToast('理财类型已删除', 'success');
+            showToast(tt('toast.invTypeDeleted', '理财类型已删除'), 'success');
             this.refreshInvTypes();
         } catch (err) {
             // api() 已显示错误 toast
@@ -260,7 +269,7 @@ const DataManager = {
     async toggleInvType(id, makeActive) {
         try {
             await api('/investment-types/' + id, 'PATCH', { active: makeActive });
-            showToast(makeActive ? '已启用该理财类型（重新出现在新增理财下拉）' : '已关闭该理财类型（从新增理财下拉隐藏）', 'success');
+            showToast(makeActive ? tt('toast.invTypeEnabled', '已启用该理财类型（重新出现在新增理财下拉）') : tt('toast.invTypeDisabled', '已关闭该理财类型（从新增理财下拉隐藏）'), 'success');
             // 同步更新全局缓存，使「新增理财」下拉立即反映可见性变化（无需刷新整页）
             if (typeof cache !== 'undefined' && Array.isArray(cache.investmentTypes)) {
                 const c = cache.investmentTypes.find(t => t.id === id);
@@ -282,7 +291,7 @@ const DataManager = {
         const books = (data && data.books) || [];
         this._books = books;
         if (books.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-text">暂无账本</div></div></td></tr>';
+            tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-text">${escapeHtml(tt('dc.book.empty', '暂无账本'))}</div></div></td></tr>`;
             return;
         }
         tbody.innerHTML = books.map(b => `
@@ -290,11 +299,11 @@ const DataManager = {
                 <td><span style="font-size:20px">${escapeHtml(b.icon || '📒')}</span></td>
                 <td>${escapeHtml(b.name)}</td>
                 <td><span class="color-dot" style="background:${escapeHtml(b.color || '#6366f1')}"></span></td>
-                <td>${b.is_default ? '<span class="badge">默认</span>' : ''}</td>
+                <td>${b.is_default ? `<span class="badge">${escapeHtml(tt('dc.badge.default', '默认'))}</span>` : ''}</td>
                 <td class="dc-actions">
-                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-book" data-id="${b.id}" title="编辑账本">✏️ 编辑</button>
-                    ${b.is_default ? '' : `<button class="btn-ghost-sm btn-text-sm" data-action="switch-book" data-id="${b.id}" title="设为默认账本">⭐ 设默认</button>`}
-                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-book" data-id="${b.id}" data-name="${escapeHtml(b.name)}" title="删除账本">🗑️ 删除</button>
+                    <button class="btn-ghost-sm btn-text-sm" data-action="edit-book" data-id="${b.id}" title="${escapeHtml(tt('dc.btn.editBook', '编辑账本'))}">✏️ ${escapeHtml(tt('dc.btn.editBook', '编辑账本'))}</button>
+                    ${b.is_default ? '' : `<button class="btn-ghost-sm btn-text-sm" data-action="switch-book" data-id="${b.id}" title="${escapeHtml(tt('dc.btn.setDefault', '设为默认账本'))}">⭐ ${escapeHtml(tt('dc.btn.setDefault', '设为默认账本'))}</button>`}
+                    <button class="btn-ghost-sm btn-text-sm btn-danger-sm" data-action="del-book" data-id="${b.id}" data-name="${escapeHtml(b.name)}" title="${escapeHtml(tt('dc.btn.delBook', '删除账本'))}">🗑️ ${escapeHtml(tt('dc.btn.delBook', '删除账本'))}</button>
                 </td>
             </tr>
         `).join('');
@@ -309,13 +318,13 @@ const DataManager = {
         if (id) {
             const b = (this._books || []).find(x => x.id === id);
             if (!b) return;
-            document.getElementById('dcEditTitle').textContent = '编辑账本';
+            document.getElementById('dcEditTitle').textContent = tt('dc.title.editBook', '编辑账本');
             document.getElementById('dcEditId').value = b.id;
             document.getElementById('dcEditName').value = b.name;
             document.getElementById('dcEditIcon').value = b.icon || '📒';
             document.getElementById('dcEditColor').value = b.color || '#6366f1';
         } else {
-            document.getElementById('dcEditTitle').textContent = '新增账本';
+            document.getElementById('dcEditTitle').textContent = tt('dc.book.add', '新增账本');
             document.getElementById('dcEditId').value = '';
             document.getElementById('dcEditName').value = '';
             document.getElementById('dcEditIcon').value = '📒';
@@ -327,7 +336,7 @@ const DataManager = {
     async switchBook(id) {
         try {
             await api(`/books/${id}/switch`, 'POST');
-            showToast('已切换默认账本', 'success');
+            showToast(tt('toast.bookSwitched', '已切换默认账本'), 'success');
             await this.refreshBooks();
             if (typeof window.loadBooks === 'function') await window.loadBooks();
         } catch (err) {
@@ -336,10 +345,10 @@ const DataManager = {
     },
 
     async deleteBook(id, name) {
-        if (!confirm(`确定删除账本「${name}」？其下数据将并入默认账本。`)) return;
+        if (!confirm(tt('dc.confirm.deleteBook', '确定删除账本「{name}」？其下数据将并入默认账本。').replace('{name}', name))) return;
         try {
             await api('/books/' + id, 'DELETE');
-            showToast('账本已删除', 'success');
+            showToast(tt('toast.bookDeleted', '账本已删除'), 'success');
             await this.refreshBooks();
             if (typeof window.loadBooks === 'function') await window.loadBooks();
         } catch (err) {
@@ -354,7 +363,7 @@ const DataManager = {
         if (kind === 'category') {
             const nameVal = document.getElementById('dcEditName').value.trim();
             if (!nameVal) {
-                if (typeof showToast === 'function') showToast('请填写分类名称', 'error');
+                if (typeof showToast === 'function') showToast(tt('toast.catNameRequired', '请填写分类名称'), 'error');
                 return;
             }
             const parentVal = document.getElementById('dcEditParentId').value;

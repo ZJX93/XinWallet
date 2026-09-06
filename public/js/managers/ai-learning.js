@@ -46,10 +46,10 @@ const AILearning = {
                 this.data = r;
                 this._render();
             } else {
-                this._showError((r && r.message) || '加载学习统计失败');
+                this._showError((r && r.message) || tt('aiLearn.err.loadFail', '加载学习统计失败'));
             }
         } catch (e) {
-            this._showError(e.message || '网络异常');
+            this._showError(e.message || tt('aiLearn.err.network', '网络异常'));
         } finally {
             this.busy = false;
             this._showLoading(false);
@@ -76,7 +76,7 @@ const AILearning = {
     // 把对象渲染成「键 → 值」网格；值为对象时展开成 "k: v" 列表
     _kvGrid(obj, labelMap) {
         if (!obj || typeof obj !== 'object' || !Object.keys(obj).length) {
-            return '<p class="empty-desc">暂无数据</p>';
+            return `<p class="empty-desc">${escapeHtml(tt('aiLearn.empty.data', '暂无数据'))}</p>`;
         }
         const rows = Object.keys(obj).map(k => {
             const label = (labelMap && labelMap[k]) || k;
@@ -90,7 +90,7 @@ const AILearning = {
                 // 0~1 之间的字段当成比率展示为百分比
                 const nv = Number(v);
                 disp = (isFinite(nv) && nv > 0 && nv < 1 && /rate|ratio/i.test(k))
-                    ? `${escapeHtml(String(v))}（${this._pct(v)}）`
+                    ? `${escapeHtml(String(v))}${escapeHtml(tt('aiLearn.rate.note', '（{pct}）')).replace('{pct}', this._pct(v))}`
                     : escapeHtml(String(v));
             }
             return `<div class="ai-kv"><span class="ai-kv-k">${escapeHtml(label)}</span><span class="ai-kv-v">${disp}</span></div>`;
@@ -107,40 +107,55 @@ const AILearning = {
         // 1. 反馈与记忆
         const ev = d.evidence || {};
         let evHtml = this._kvGrid(ev.feedback_events, {
-            explicit_confirmation: '显式确认', explicit_correction: '显式修正', discard: '弃置',
+            explicit_confirmation: tt('aiLearn.fb.explicitConfirmation', '显式确认'),
+            explicit_correction: tt('aiLearn.fb.explicitCorrection', '显式修正'),
+            discard: tt('aiLearn.fb.discard', '弃置'),
         });
-        evHtml += '<div class="ai-learn-sub">规则状态分布</div>' + this._kvGrid(ev.rules, {
-            verified: '已生效', trusted: '高可信', candidate: '候选', disabled: '已禁用',
+        evHtml += `<div class="ai-learn-sub">${escapeHtml(tt('aiLearn.sub.rules', '规则状态分布'))}</div>` + this._kvGrid(ev.rules, {
+            verified: tt('aiLearn.rule.verified', '已生效'),
+            trusted: tt('aiLearn.rule.trusted', '高可信'),
+            candidate: tt('aiLearn.rule.candidate', '候选'),
+            disabled: tt('aiLearn.rule.disabled', '已禁用'),
         });
-        evHtml += '<div class="ai-learn-sub">记忆条目分布</div>' + this._kvGrid(ev.memory, {});
-        parts.push(this._section('反馈与记忆', '', evHtml));
+        evHtml += `<div class="ai-learn-sub">${escapeHtml(tt('aiLearn.sub.memory', '记忆条目分布'))}</div>` + this._kvGrid(ev.memory, {});
+        parts.push(this._section(tt('aiLearn.section.feedback', '反馈与记忆'), '', evHtml));
 
         // 2. 规则冲突
         const cons = Array.isArray(d.contradictions) ? d.contradictions : [];
         let consHtml = cons.length
             ? cons.map(c => `<div class="ai-cons-row">
                     <span class="ai-cons-key">${escapeHtml(c.match_key || '')}</span>
-                    <span class="ai-cons-meta">${this._num(c.variants)} 个类目 · ${this._num(c.samples)} 样本</span>
-                    <span class="ai-cons-flag">需裁定</span>
+                    <span class="ai-cons-meta">${escapeHtml(tt('aiLearn.cons.count', '{a} 个类目 · {b} 样本')).replace('{a}', this._num(c.variants)).replace('{b}', this._num(c.samples))}</span>
+                    <span class="ai-cons-flag">${escapeHtml(tt('aiLearn.cons.flag', '需裁定'))}</span>
                 </div>`).join('')
-            : '<p class="empty-desc">无规则冲突，学习方向一致</p>';
-        parts.push(this._section('规则冲突（需用户裁定）', '⚠️', consHtml));
+            : `<p class="empty-desc">${escapeHtml(tt('aiLearn.empty.cons', '无规则冲突，学习方向一致'))}</p>`;
+        parts.push(this._section(tt('aiLearn.section.cons', '规则冲突（需用户裁定）'), '⚠️', consHtml));
 
         // 3. 在线指标
-        parts.push(this._section('在线指标', '',
+        parts.push(this._section(tt('aiLearn.section.metrics', '在线指标'), '',
             this._kvGrid(d.metrics, {
-                confirmation_rate: '确认率', correction_rate: '修正率', discard_rate: '弃置率',
-                rule_hit_rate: '规则命中率', llm_call_rate: 'LLM 调用率', fallback_rate: '兜底率',
-                cost_per_prediction_micro: '单笔成本(微元)', total_predictions: '预测总数',
+                confirmation_rate: tt('aiLearn.metric.confirmationRate', '确认率'),
+                correction_rate: tt('aiLearn.metric.correctionRate', '修正率'),
+                discard_rate: tt('aiLearn.metric.discardRate', '弃置率'),
+                rule_hit_rate: tt('aiLearn.metric.ruleHitRate', '规则命中率'),
+                llm_call_rate: tt('aiLearn.metric.llmCallRate', 'LLM 调用率'),
+                fallback_rate: tt('aiLearn.metric.fallbackRate', '兜底率'),
+                cost_per_prediction_micro: tt('aiLearn.metric.costPerPrediction', '单笔成本(微元)'),
+                total_predictions: tt('aiLearn.metric.totalPredictions', '预测总数'),
             })));
 
         // 4. 调用用量
-        parts.push(this._section('调用用量（近 30 天）', '',
+        parts.push(this._section(tt('aiLearn.section.usage', '调用用量（近 30 天）'), '',
             this._kvGrid(d.usage, {
-                total_predictions: '调用总数', local_count: '本地路由', llm_count: 'LLM 路由',
-                fallback_count: '兜底路由', llm_call_rate: 'LLM 调用率', fallback_rate: '兜底率',
-                total_cost_micro_cny: '总成本(微元)', cost_per_prediction_micro: '单笔成本(微元)',
-                avg_latency_ms: '平均时延(ms)',
+                total_predictions: tt('aiLearn.usage.totalPredictions', '调用总数'),
+                local_count: tt('aiLearn.usage.local', '本地路由'),
+                llm_count: tt('aiLearn.usage.llm', 'LLM 路由'),
+                fallback_count: tt('aiLearn.usage.fallback', '兜底路由'),
+                llm_call_rate: tt('aiLearn.metric.llmCallRate', 'LLM 调用率'),
+                fallback_rate: tt('aiLearn.metric.fallbackRate', '兜底率'),
+                total_cost_micro_cny: tt('aiLearn.usage.totalCost', '总成本(微元)'),
+                cost_per_prediction_micro: tt('aiLearn.metric.costPerPrediction', '单笔成本(微元)'),
+                avg_latency_ms: tt('aiLearn.usage.avgLatency', '平均时延(ms)'),
             })));
 
         // 5. 熔断器
@@ -148,12 +163,12 @@ const AILearning = {
         const bState = {}, bFail = {};
         Object.keys(b).forEach(id => {
             const s = b[id] || {};
-            bState[id] = s.open ? '🔴 已打开' : '🟢 正常';
+            bState[id] = s.open ? tt('aiLearn.breaker.open', '🔴 已打开') : tt('aiLearn.breaker.normal', '🟢 正常');
             bFail[id] = this._num(s.failures);
         });
         let bHtml = this._kvGrid(bState, {});
-        bHtml += '<div class="ai-learn-sub">失败计数</div>' + this._kvGrid(bFail, {});
-        parts.push(this._section('模型熔断器', '', bHtml));
+        bHtml += `<div class="ai-learn-sub">${escapeHtml(tt('aiLearn.sub.breakerFail', '失败计数'))}</div>` + this._kvGrid(bFail, {});
+        parts.push(this._section(tt('aiLearn.section.breaker', '模型熔断器'), '', bHtml));
 
         body.innerHTML = parts.join('');
     },
@@ -167,9 +182,10 @@ const AILearning = {
         const bar = document.getElementById('aiLearningError');
         if (!bar) return;
         if (!msg) { bar.style.display = 'none'; return; }
-        bar.textContent = '⚠️ ' + msg;
+        const prefix = tt('aiLearn.err.prefix', '⚠️');
+        bar.textContent = prefix + ' ' + msg;
         bar.style.display = 'block';
-        setTimeout(() => { if (bar.textContent.startsWith('⚠️ ' + msg)) bar.style.display = 'none'; }, 4000);
+        setTimeout(() => { if (bar.textContent.startsWith(prefix + ' ' + msg)) bar.style.display = 'none'; }, 4000);
     },
 };
 

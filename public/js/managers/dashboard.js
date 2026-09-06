@@ -77,7 +77,7 @@ const DashboardManager = {
         const summaryEl = document.getElementById('dashDetailSummary');
         const listEl = document.getElementById('dashDetailList');
 
-        titleEl.textContent = '加载中...';
+        titleEl.textContent = tt('common.loading', '加载中...');
         summaryEl.innerHTML = '';
         listEl.innerHTML = '<div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div><div class="skeleton-line shimmer" style="width:65%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div><div class="skeleton-line shimmer" style="width:60%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div><div class="skeleton-line shimmer" style="width:55%"></div></div><div class="skeleton-amt shimmer"></div></div></div>';
         modal.classList.add('show');
@@ -85,25 +85,29 @@ const DashboardManager = {
         const data = await api(`/stats/dashboard/detail?type=${type}`);
         if (!data) { this.closeDetail(); return; }
 
-        titleEl.textContent = data.title;
+        // 标题：后端 data.title 是中文硬编码，前端按 type 取字典（缺失才回退后端值）
+        titleEl.textContent = tt('dash.detail.title.' + type, data.title || tt('dash.detail.title', '明细'));
+
+        // 多币种 P2-2c：详情弹窗也要按基础货币折算合计
+        const baseCur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
 
         if (type === 'assets') {
-            summaryEl.innerHTML = `<div class="detail-total"><span class="detail-total-label">总资产</span><span class="detail-total-value">${fmt(data.total)}</span></div>`;
+            summaryEl.innerHTML = `<div class="detail-total"><span class="detail-total-label">${escapeHtml(tt('dash.kpi.totalAssets', '总资产'))}</span><span class="detail-total-value">${fmt(data.total)}</span></div>`;
             listEl.innerHTML = data.accounts.map(a => `
                 <div class="detail-row">
                     <div class="detail-row-icon">${escapeHtml(a.icon || "💰")}</div>
-                    <div class="detail-row-info"><span class="detail-row-name">${escapeHtml(a.name)}</span><span class="detail-row-sub">${a.type === 'credit_card' ? '信用卡' : a.type === 'cash' ? '现金' : a.type === 'electronic_payment' ? '电子支付' : a.type === 'financial_account' ? '金融账户' : a.type === 'digital' ? '数字货币' : '银行账户'}${a.inv_value > 0 ? ' · 含理财' + fmt(a.inv_value, a.currency || 'CNY') : ''}</span></div>
+                    <div class="detail-row-info"><span class="detail-row-name">${escapeHtml(a.name)}</span><span class="detail-row-sub">${escapeHtml(tt('accType.plain.' + a.type, tt('accType.plain.bank_card', '银行账户')))}${a.inv_value > 0 ? ' · ' + escapeHtml(tt('dash.detail.inclInvest', '含理财 {amt}').replace('{amt}', fmt(a.inv_value, a.currency || 'CNY'))) : ''}</span></div>
                     <div class="detail-row-right"><span class="detail-row-value">${fmt(a.balance, a.currency || 'CNY')}</span><div class="detail-bar-wrap"><div class="detail-bar" style="width:${Math.max(a.ratio, 2)}%"></div></div></div>
                 </div>
             `).join('');
         } else {
             const isDual = ['month', 'year'].includes(type);
             summaryEl.innerHTML = isDual
-                ? `<div class="detail-total"><span class="detail-total-label">汇总</span><span class="detail-total-value income">收 ${fmtMix(data.totalIncomeBreakdown, baseCur)}</span><span class="detail-total-value expense">支 ${fmtMix(data.totalExpenseBreakdown, baseCur)}</span><span class="detail-total-value">结余 ${fmtMix({[data.currency || 'CNY']: data.balance}, baseCur)}</span></div>`
-                : `<div class="detail-total"><span class="detail-total-label">总支出</span><span class="detail-total-value expense">${fmtMix(data.totalExpenseBreakdown, baseCur)}</span></div>`;
+                ? `<div class="detail-total"><span class="detail-total-label">${escapeHtml(tt('dash.detail.summary', '汇总'))}</span><span class="detail-total-value income">${escapeHtml(tt('dash.detail.inLabel', '收'))} ${fmtMix(data.totalIncomeBreakdown, baseCur)}</span><span class="detail-total-value expense">${escapeHtml(tt('dash.detail.outLabel', '支'))} ${fmtMix(data.totalExpenseBreakdown, baseCur)}</span><span class="detail-total-value">${escapeHtml(tt('dash.detail.balanceLabel', '结余'))} ${fmtMix({[data.currency || 'CNY']: data.balance}, baseCur)}</span></div>`
+                : `<div class="detail-total"><span class="detail-total-label">${escapeHtml(tt('dash.detail.totalExpense', '总支出'))}</span><span class="detail-total-value expense">${fmtMix(data.totalExpenseBreakdown, baseCur)}</span></div>`;
 
             if (!data.transactions || data.transactions.length === 0) {
-                listEl.innerHTML = '<div class="empty-state"><div class="empty-text">暂无交易记录</div></div>';
+                listEl.innerHTML = `<div class="empty-state"><div class="empty-text">${escapeHtml(tt('dash.detail.noTrans', '暂无交易记录'))}</div></div>`;
             } else {
                 // 合并配对的转账记录
                 const transferMap = {};
@@ -139,7 +143,7 @@ const DashboardManager = {
                         <div class="detail-row-icon">${escapeHtml(t.category.icon || "📌")}</div>
                         <div class="detail-row-info">
                             <span class="detail-row-name">${escapeHtml(t.category.name)}</span>
-                            <span class="detail-row-sub">${fromName} → ${toName} · ${escapeHtml(t.note || '无备注')}</span>
+                            <span class="detail-row-sub">${fromName} → ${toName} · ${escapeHtml(t.note || tt('dash.detail.noNote', '无备注'))}</span>
                         </div>
                         <div class="detail-row-right">
                             <span class="detail-row-value transfer">${fmtSigned(t.amount, 'transfer_in')}</span>
@@ -151,7 +155,7 @@ const DashboardManager = {
                         <div class="detail-row-icon">${escapeHtml(t.category.icon || "📌")}</div>
                         <div class="detail-row-info">
                             <span class="detail-row-name">${escapeHtml(t.category.name)}</span>
-                            <span class="detail-row-sub">${escapeHtml(t.note || '无备注')} · ${t.account ? escapeHtml(t.account.icon || "") + " " + escapeHtml(t.account.name || "") : ""}</span>
+                            <span class="detail-row-sub">${escapeHtml(t.note || tt('dash.detail.noNote', '无备注'))} · ${t.account ? escapeHtml(t.account.icon || "") + " " + escapeHtml(t.account.name || "") : ""}</span>
                         </div>
                         <div class="detail-row-right">
                             <span class="detail-row-value ${t.type === 'income' ? 'positive' : t.type === 'expense' ? 'negative' : 'transfer'}">${fmtSigned(t.amount, t.type)}</span>
@@ -198,7 +202,8 @@ const DashboardManager = {
                 dashNetWorth.className = 'kpi-value ' + (netWorth >= 0 ? 'positive' : 'negative');
             }
             const assetDebtEl = document.getElementById('dashAssetDebt');
-            if (assetDebtEl) assetDebtEl.textContent = `资产 ${fmt(totalAssets)} / 负债 ${fmt(totalDebt)}`;
+            if (assetDebtEl) assetDebtEl.textContent = tt('dash.kpi.assetDebtSub', '资产 {assets} / 负债 {debt}')
+                .replace('{assets}', fmt(totalAssets)).replace('{debt}', fmt(totalDebt));
 
             // 储蓄率 = 累计净储蓄 / 总资产（反映资产中有多大比例是存下来的）
             const totalIncome = data.totalIncome || 0;
@@ -218,18 +223,19 @@ const DashboardManager = {
             const summaryEl = document.getElementById('dashSavingsSummary');
             if (summaryEl) {
                 if (netSavings === 0 && totalIncome === 0) {
-                    summaryEl.textContent = '暂无储蓄数据';
+                    summaryEl.textContent = tt('dash.kpi.noSavingsData', '暂无储蓄数据');
                 } else {
-                    summaryEl.textContent = `累计净储蓄 ${fmtMix({ [data.currency || 'CNY']: netSavings }, baseCur)}`;
+                    summaryEl.textContent = tt('dash.kpi.netSavingsSub', '累计净储蓄 {amt}')
+                        .replace('{amt}', fmtMix({ [data.currency || 'CNY']: netSavings }, baseCur));
                 }
             }
             const srBadge = document.getElementById('dashSavingsRateBadge');
             if (srBadge) {
-                if (netSavings === 0) { srBadge.textContent = '无储蓄'; srBadge.className = 'kpi-badge neutral'; }
-                else if (savingsRate >= 30) { srBadge.textContent = '健康'; srBadge.className = 'kpi-badge good'; }
-                else if (savingsRate >= 15) { srBadge.textContent = '一般'; srBadge.className = 'kpi-badge warn'; }
-                else if (savingsRate > 0) { srBadge.textContent = '偏低'; srBadge.className = 'kpi-badge bad'; }
-                else { srBadge.textContent = '需关注'; srBadge.className = 'kpi-badge bad'; }
+                if (netSavings === 0) { srBadge.textContent = tt('dash.badge.noSavings', '无储蓄'); srBadge.className = 'kpi-badge neutral'; }
+                else if (savingsRate >= 30) { srBadge.textContent = tt('dash.badge.healthy', '健康'); srBadge.className = 'kpi-badge good'; }
+                else if (savingsRate >= 15) { srBadge.textContent = tt('dash.badge.fair', '一般'); srBadge.className = 'kpi-badge warn'; }
+                else if (savingsRate > 0) { srBadge.textContent = tt('dash.badge.low', '偏低'); srBadge.className = 'kpi-badge bad'; }
+                else { srBadge.textContent = tt('dash.badge.attention', '需关注'); srBadge.className = 'kpi-badge bad'; }
             }
 
             // 本月结余
@@ -240,7 +246,9 @@ const DashboardManager = {
             }
             const monthChangeEl = document.getElementById('dashMonthChange');
             if (monthChangeEl) {
-                monthChangeEl.textContent = `收 ${fmtMix(data.month.incomeBreakdown, baseCur)} 支 ${fmtMix(data.month.expenseBreakdown, baseCur)}`;
+                monthChangeEl.textContent = tt('dash.kpi.inOutSub', '收 {in} 支 {out}')
+                    .replace('{in}', fmtMix(data.month.incomeBreakdown, baseCur))
+                    .replace('{out}', fmtMix(data.month.expenseBreakdown, baseCur));
             }
 
             // 本周结余
@@ -253,7 +261,9 @@ const DashboardManager = {
                 weekBalEl.className = 'kpi-value ' + (weekBalance >= 0 ? 'positive' : 'negative');
             }
             const weekDet = document.getElementById('dashWeekDetail');
-            if (weekDet) weekDet.textContent = `收 ${fmtMix(data.week.incomeBreakdown, baseCur)} 支 ${fmtMix(data.week.expenseBreakdown, baseCur)}`;
+            if (weekDet) weekDet.textContent = tt('dash.kpi.inOutSub', '收 {in} 支 {out}')
+                .replace('{in}', fmtMix(data.week.incomeBreakdown, baseCur))
+                .replace('{out}', fmtMix(data.week.expenseBreakdown, baseCur));
 
             // 理财盈亏（与储蓄率卡片风格一致：label 带 badge，sub 显示总投入 + 收益率）
             const invProfit = data.investments.totalProfit;
@@ -267,15 +277,17 @@ const DashboardManager = {
             }
             const invBadge = document.getElementById('dashInvBadge');
             if (invBadge) {
-                if (invProfit > 0) { invBadge.textContent = '盈利'; invBadge.className = 'kpi-badge good'; }
-                else if (invProfit < 0) { invBadge.textContent = '亏损'; invBadge.className = 'kpi-badge bad'; }
-                else { invBadge.textContent = '持平'; invBadge.className = 'kpi-badge neutral'; }
+                if (invProfit > 0) { invBadge.textContent = tt('dash.badge.profit', '盈利'); invBadge.className = 'kpi-badge good'; }
+                else if (invProfit < 0) { invBadge.textContent = tt('dash.badge.loss', '亏损'); invBadge.className = 'kpi-badge bad'; }
+                else { invBadge.textContent = tt('dash.badge.flat', '持平'); invBadge.className = 'kpi-badge neutral'; }
             }
             const invRateEl = document.getElementById('dashInvRate');
             if (invRateEl) {
                 invRateEl.textContent = invCost > 0
-                    ? `总投入 ${fmtMix(data.investments.totalCostBreakdown, baseCur)} · 收益率 ${invRate >= 0 ? '+' : ''}${invRate.toFixed(1)}%`
-                    : '暂无持仓';
+                    ? tt('dash.kpi.invRateSub', '总投入 {cost} · 收益率 {rate}')
+                        .replace('{cost}', fmtMix(data.investments.totalCostBreakdown, baseCur))
+                        .replace('{rate}', `${invRate >= 0 ? '+' : ''}${invRate.toFixed(1)}%`)
+                    : tt('dash.kpi.noHolding', '暂无持仓');
             }
 
             // 本年结余
@@ -285,7 +297,9 @@ const DashboardManager = {
                 yearBalEl.className = 'kpi-value ' + (data.year.balance >= 0 ? 'positive' : 'negative');
             }
             const yearDetailEl = document.getElementById('dashYearDetail');
-            if (yearDetailEl) yearDetailEl.textContent = `收 ${fmtMix(data.year.incomeBreakdown, baseCur)} 支 ${fmtMix(data.year.expenseBreakdown, baseCur)}`;
+            if (yearDetailEl) yearDetailEl.textContent = tt('dash.kpi.inOutSub', '收 {in} 支 {out}')
+                .replace('{in}', fmtMix(data.year.incomeBreakdown, baseCur))
+                .replace('{out}', fmtMix(data.year.expenseBreakdown, baseCur));
 
             // 总资产
             const totalAssetsCard = document.getElementById('dashTotalAssets');
@@ -294,7 +308,8 @@ const DashboardManager = {
             const totalDebtCard = document.getElementById('dashTotalDebt');
             if (totalDebtCard) countUp(totalDebtCard, totalDebt, 850, fmt);
             const debtSub = document.getElementById('dashDebtSub');
-            if (debtSub) debtSub.textContent = `月供 ${fmtMix(data.debts?.totalMonthlyBreakdown || { CNY: data.debts?.totalMonthly || 0 }, baseCur)}`;
+            if (debtSub) debtSub.textContent = tt('dash.kpi.monthlyPaySub', '月供 {amt}')
+                .replace('{amt}', fmtMix(data.debts?.totalMonthlyBreakdown || { CNY: data.debts?.totalMonthly || 0 }, baseCur));
         });
 
         // === 资产负债概览 ===
@@ -306,6 +321,8 @@ const DashboardManager = {
     renderBalanceOverview(data) {
         const el = document.getElementById('dashBalanceOverview');
         if (!el) return;
+        // 多币种 P2-2c：baseCurrency != 'CNY' 时用 FxManager 折算
+        const baseCur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
         // 总资产（后端已合并账户余额 + 投资市值）
         const totalAssets = data.totalAssets;
         const totalDebt = data.debts?.totalRemaining || 0;
@@ -331,30 +348,30 @@ const DashboardManager = {
                         <div class="bo-bar-invest" style="width:${totalAssets > 0 ? (investTotal / totalAssets * 100) : 0}%"></div>
                     </div>
                     <div class="bo-bar-legend">
-                        <span title="${fmt(liquidTotal)}"><i class="dot dot-liquid"></i>流动资产 ${fmtCompact(liquidTotal)}</span>
-                        <span title="${fmt(investTotal)}"><i class="dot dot-invest"></i>投资资产 ${fmtCompact(investTotal)}</span>
+                        <span title="${fmt(liquidTotal)}"><i class="dot dot-liquid"></i>${escapeHtml(tt('dash.bo.liquid', '流动资产'))} ${fmtCompact(liquidTotal)}</span>
+                        <span title="${fmt(investTotal)}"><i class="dot dot-invest"></i>${escapeHtml(tt('dash.bo.invest', '投资资产'))} ${fmtCompact(investTotal)}</span>
                     </div>
                 </div>
             </div>
             <div class="bo-stats">
                 <div class="bo-stat bo-stat-asset">
-                    <div class="bo-stat-label">总资产</div>
+                    <div class="bo-stat-label">${escapeHtml(tt('dash.kpi.totalAssets', '总资产'))}</div>
                     <div class="bo-stat-value" title="${fmt(totalAssets)}">${fmtCompact(totalAssets)}</div>
                 </div>
                 <div class="bo-stat bo-stat-liab">
-                    <div class="bo-stat-label">总负债</div>
+                    <div class="bo-stat-label">${escapeHtml(tt('dash.kpi.totalDebt', '总负债'))}</div>
                     <div class="bo-stat-value" title="${fmt(totalDebt)}">${fmtCompact(totalDebt)}</div>
-                    <div class="bo-stat-sub">负债率 ${debtRatio.toFixed(1)}%</div>
+                    <div class="bo-stat-sub">${escapeHtml(tt('dash.bo.debtRatio', '负债率 {pct}').replace('{pct}', debtRatio.toFixed(1) + '%'))}</div>
                 </div>
                 <div class="bo-stat bo-stat-net">
-                    <div class="bo-stat-label">净资产</div>
+                    <div class="bo-stat-label">${escapeHtml(tt('dash.kpi.netWorth', '净资产'))}</div>
                     <div class="bo-stat-value ${netWorth >= 0 ? 'positive' : 'negative'}" title="${fmt(netWorth)}">${fmtCompact(netWorth)}</div>
                 </div>
             </div>
             <div class="bo-debt-info">
-                <span>活跃债务 <strong>${debts.activeCount || 0}</strong> 笔</span>
-                <span>月供 <strong>${fmtMix(debts.totalMonthlyBreakdown || { [debts.currency || 'CNY']: monthlyPayment }, baseCur)}</strong></span>
-                <span class="${overdue ? 'bad' : ''}">本月需还 <strong>${fmtMix(debts.dueAmountBreakdown && Object.keys(debts.dueAmountBreakdown).length ? debts.dueAmountBreakdown : { [debts.currency || 'CNY']: dueAmount }, baseCur)}</strong>${overdue ? ` <span class="bad">⚠️ 逾期 ${debts.overdue} 笔</span>` : ''}</span>
+                <span>${tt('dash.bo.activeDebts', '活跃债务 <strong>{n}</strong> 笔').replace('{n}', debts.activeCount || 0)}</span>
+                <span>${tt('dash.bo.monthlyPay', '月供 <strong>{amt}</strong>').replace('{amt}', fmtMix(debts.totalMonthlyBreakdown || { [debts.currency || 'CNY']: monthlyPayment }, baseCur))}</span>
+                <span class="${overdue ? 'bad' : ''}">${tt('dash.bo.dueThisMonth', '本月需还 <strong>{amt}</strong>').replace('{amt}', fmtMix(debts.dueAmountBreakdown && Object.keys(debts.dueAmountBreakdown).length ? debts.dueAmountBreakdown : { [debts.currency || 'CNY']: dueAmount }, baseCur))}${overdue ? ` <span class="bad">${escapeHtml(tt('dash.bo.overdue', '⚠️ 逾期 {n} 笔').replace('{n}', debts.overdue))}</span>` : ''}</span>
             </div>
         `;
     },

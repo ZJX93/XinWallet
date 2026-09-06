@@ -62,7 +62,7 @@ const AIAdvice = {
             const advice = Array.isArray(r && r.advice) ? r.advice : [];
             const insights = Array.isArray(r && r.insights) ? r.insights : [];
             if (!advice.length && !insights.length) {
-                this.lastError = (r && r.message) || 'AI 未返回有效内容，请稍后重试';
+                this.lastError = (r && r.message) || tt('aiAdvice.err.empty', 'AI 未返回有效内容，请稍后重试');
                 if (/服务商|未配置|未激活/.test(this.lastError)) {
                     this._showProviderMissing();
                 } else {
@@ -78,7 +78,7 @@ const AIAdvice = {
             try { localStorage.setItem(this._LS_KEY_GEN, this.generatedAt); } catch(e) {}
             this._render();
         } catch (e) {
-            this.lastError = e.message || '网络异常';
+            this.lastError = e.message || tt('aiAdvice.err.network', '网络异常');
             this._showError(this.lastError);
         } finally {
             this.busy = false;
@@ -96,15 +96,19 @@ const AIAdvice = {
         if (insightList) {
             insightList.innerHTML = '';
             if (this.insights.length) {
-                const lvLabel = { warning: '需重视', info: '关注', tip: '小建议' };
+                const lvLabel = {
+                    warning: tt('aiAdvice.lv.warning', '需重视'),
+                    info: tt('aiAdvice.lv.info', '关注'),
+                    tip: tt('aiAdvice.lv.tip', '小建议')
+                };
                 const lvClass = { warning: 'lv-warning', info: 'lv-info', tip: 'lv-tip' };
                 insightList.innerHTML = this.insights.map(i => `<div class="insight-item ${lvClass[i.level] || ''}">
-                    <div class="insight-head"><span class="insight-title">${escapeHtml(i.title || '洞察')}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
+                    <div class="insight-head"><span class="insight-title">${escapeHtml(i.title || tt('aiAdvice.fallback.insightTitle', '洞察'))}</span>${i.level ? `<span class="lv-badge ${lvClass[i.level]}">${lvLabel[i.level]}</span>` : ''}</div>
                     <div class="insight-desc">${escapeHtml(i.description || '')}</div>
                     ${i.action ? `<div class="insight-action">${escapeHtml(i.action)}</div>` : ''}
                 </div>`).join('');
             } else {
-                insightList.innerHTML = '<div class="empty-hint"><p>暂无洞察</p></div>';
+                insightList.innerHTML = `<div class="empty-hint"><p>${escapeHtml(tt('aiAdvice.empty.insights', '暂无洞察'))}</p></div>`;
             }
         }
 
@@ -116,14 +120,14 @@ const AIAdvice = {
             }
         } else {
             adviceList.innerHTML = `<div class="empty-state">
-                <p class="empty-title">本月没有可执行的建议</p>
-                <p class="empty-desc">记账样本不足，AI 暂时无法量化建议。多记几笔后再来看看</p>
+                <p class="empty-title">${escapeHtml(tt('aiAdvice.empty.title', '本月没有可执行的建议'))}</p>
+                <p class="empty-desc">${escapeHtml(tt('aiAdvice.empty.desc', '记账样本不足，AI 暂时无法量化建议。多记几笔后再来看看'))}</p>
             </div>`;
         }
 
         if (meta) {
             meta.innerHTML = this.generatedAt
-                ? `生成于 ${formatRelativeTime(this.generatedAt)}`
+                ? escapeHtml(tt('aiAdvice.meta.generated', '生成于 {time}')).replace('{time}', formatRelativeTime(this.generatedAt))
                 : '';
         }
     },
@@ -139,13 +143,15 @@ const AIAdvice = {
             <div class="ai-advice-priority-tag">${escapeHtml(this._priorityLabel(priority))}</div>
             <h3 class="ai-advice-title">${title}</h3>
             <p class="ai-advice-content">${content}</p>
-            ${impact ? `<p class="ai-advice-impact">影响：${impact}</p>` : ''}
+            ${impact ? `<p class="ai-advice-impact">${escapeHtml(tt('aiAdvice.impact.label', '影响：'))}${impact}</p>` : ''}
         `;
         return card;
     },
 
     _priorityLabel(p) {
-        return p === 'high' ? '高优先' : p === 'medium' ? '中优先' : '低优先';
+        if (p === 'high') return tt('aiAdvice.priority.high', '高优先');
+        if (p === 'medium') return tt('aiAdvice.priority.medium', '中优先');
+        return tt('aiAdvice.priority.low', '低优先');
     },
 
     _showLoading(on) {
@@ -160,7 +166,7 @@ const AIAdvice = {
         if (!adviceList) return;
         adviceList.innerHTML = `<div class="empty-state">
             <p class="empty-title">${escapeHtml(msg)}</p>
-            <p class="empty-desc">点击右上角刷新重试，或稍后再试</p>
+            <p class="empty-desc">${escapeHtml(tt('aiAdvice.err.retry', '点击右上角刷新重试，或稍后再试'))}</p>
         </div>`;
     },
 
@@ -170,9 +176,9 @@ const AIAdvice = {
         if (insightList) insightList.innerHTML = '';
         if (!adviceList) return;
         adviceList.innerHTML = `<div class="empty-state">
-            <p class="empty-title">请先配置对话服务商</p>
-            <p class="empty-desc">AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）</p>
-            <button class="btn btn-ghost" id="btnGoAiConfig">前往配置</button>
+            <p class="empty-title">${escapeHtml(tt('aiAdvice.noProvider.title', '请先配置对话服务商'))}</p>
+            <p class="empty-desc">${escapeHtml(tt('aiAdvice.noProvider.desc', 'AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）'))}</p>
+            <button class="btn btn-ghost" id="btnGoAiConfig">${escapeHtml(tt('aiAdvice.noProvider.cta', '前往配置'))}</button>
         </div>`;
         // CSP scriptSrcAttr 'none' 会拦截内联 onclick，必须事后用 addEventListener 绑定
         document.getElementById('btnGoAiConfig')?.addEventListener('click', () => window.showPage('ai-config'));

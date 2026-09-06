@@ -52,6 +52,25 @@ const ChartManager = {
         return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     },
 
+    // Y 轴刻度缩写：中文用「万 / 亿」，英文用 K / M / B（万对英文读者无意义）
+    axisTick(v) {
+        const n = Number(v);
+        if (!isFinite(n)) return v;
+        const abs = Math.abs(n);
+        const sign = n < 0 ? '-' : '';
+        const isZh = !(window.I18N && window.I18N.isZh && !window.I18N.isZh());
+        if (isZh) {
+            // 这个分支本身只在中文界面走，万/亿 直接内联（放进字典反而会出现「英文键存中文值」的死键）
+            if (abs >= 1e8) return sign + (abs / 1e8).toFixed(1) + '亿';
+            if (abs >= 1e4) return sign + (abs / 1e4).toFixed(1) + '万';
+            return v;
+        }
+        if (abs >= 1e9) return sign + (abs / 1e9).toFixed(1) + 'B';
+        if (abs >= 1e6) return sign + (abs / 1e6).toFixed(1) + 'M';
+        if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + 'K';
+        return v;
+    },
+
     colors() {
         const dk = document.documentElement.getAttribute('data-theme') === 'dark';
         // Chart.js 无法解析 oklch() 格式，需要转为 rgb 或 hex
@@ -228,11 +247,11 @@ const ChartManager = {
         this.charts['dashTrend'] = new Chart(ctx1, {
             type: 'line',
             data: {
-                labels: months.map(m => m.month.substring(5) + '月'),
+                labels: months.map(m => tt('chart.monthLabel', '{m}月').replace('{m}', m.month.substring(5))),
                 datasets: [
-                    { label: '收入', data: months.map(m => m.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
-                    { label: '支出', data: months.map(m => m.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
-                    { label: '储蓄率', data: months.map(m => m.savingsRate), borderColor: c.info, backgroundColor: c.info + '20', yAxisID: 'y1', tension: 0.4, pointRadius: 0, pointHoverRadius: 5, borderWidth: 2, borderDash: [5, 4] }
+                    { label: tt('chart.income', '收入'), data: months.map(m => m.income), borderColor: c.inc, backgroundColor: incGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.inc, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                    { label: tt('chart.expense', '支出'), data: months.map(m => m.expense), borderColor: c.exp, backgroundColor: expGrad, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: c.exp, pointHoverBorderColor: '#fff', pointHoverBorderWidth: 3, borderWidth: 2.5 },
+                    { label: tt('chart.savingsRate', '储蓄率'), data: months.map(m => m.savingsRate), borderColor: c.info, backgroundColor: c.info + '20', yAxisID: 'y1', tension: 0.4, pointRadius: 0, pointHoverRadius: 5, borderWidth: 2, borderDash: [5, 4] }
                 ]
             },
             options: {
@@ -259,7 +278,8 @@ const ChartManager = {
         const momEl = document.getElementById('dashTrendMoM');
         if (momEl && latest) {
             const f = v => v == null ? '—' : (v >= 0 ? '▲' : '▼') + Math.abs(v).toFixed(1) + '%';
-            momEl.innerHTML = `环比 收${f(latest.incomeMoM)} 支${f(latest.expenseMoM)}`;
+            momEl.innerHTML = tt('chart.mom', '环比 收{in} 支{out}')
+                .replace('{in}', f(latest.incomeMoM)).replace('{out}', f(latest.expenseMoM));
         }
 
         // 饼图（支出构成）：仅显示一级分类，点击扇区下钻到二级（数据库已做子级向父级汇总）
@@ -296,7 +316,7 @@ const ChartManager = {
             this.destroy('dashPie');
             this._pieStack = [];
             this._pieFull = null;
-            this._showPieEmpty('dashPieChart', '本月暂无支出记录\n记一笔后这里会显示支出构成');
+            this._showPieEmpty('dashPieChart', tt('chart.pieEmpty', '本月暂无支出记录\n记一笔后这里会显示支出构成'));
             const hintEl = document.getElementById('dashPieHint');
             if (hintEl) hintEl.style.display = 'none';
         }
@@ -351,11 +371,12 @@ const ChartManager = {
         const backEl = document.getElementById('dashPieBack');
         const hintEl = document.getElementById('dashPieHint');
         if (titleEl) {
+            const rootTitle = tt('dash.card.expenseComposition', '支出构成');
             if (stack.length === 0) {
-                titleEl.textContent = '支出构成';
+                titleEl.textContent = rootTitle;
             } else {
                 const names = stack.map(id => (cats.find(x => x.id === id) || {}).name || '');
-                titleEl.textContent = '支出构成 › ' + names.join(' › ');
+                titleEl.textContent = rootTitle + ' › ' + names.join(' › ');
             }
         }
         if (backEl) backEl.style.display = stack.length ? '' : 'none';
@@ -379,10 +400,10 @@ const ChartManager = {
                 const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
                 return {
                     title: `${e.name} · ${pct}%`,
-                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                    amount: fmt(v)
                 };
             }
-            return { title: '总支出', amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+            return { title: tt('dash.detail.totalExpense', '总支出'), amount: fmt(total) };
         });
         this.charts['dashPie'] = new Chart(ctx, {
             type: 'doughnut',
@@ -458,10 +479,10 @@ const ChartManager = {
                 const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
                 return {
                     title: `${entries[i][1].type_name} · ${pct}%`,
-                    amount: '¥' + Math.round(v).toLocaleString('zh-CN')
+                    amount: fmt(v)
                 };
             }
-            return { title: '总市值', amount: '¥' + Math.round(total).toLocaleString('zh-CN') };
+            return { title: tt('chart.totalValue', '总市值'), amount: fmt(total) };
         });
 
         this.charts['invAllocation'] = new Chart(ctx, {
@@ -527,7 +548,7 @@ const ChartManager = {
                 hint.style.cssText = 'display:flex;align-items:center;justify-content:center;height:220px;color:var(--text-muted);font-size:14px;';
                 wrap.appendChild(hint);
             }
-            hint.textContent = '暂无足够的历史数据，买入后次日将显示趋势';
+            hint.textContent = tt('chart.trendNotEnough', '暂无足够的历史数据，买入后次日将显示趋势');
             hint.style.display = 'flex';
             return;
         }
@@ -543,7 +564,7 @@ const ChartManager = {
         grad.addColorStop(0, baseColor + '40');
         grad.addColorStop(1, baseColor + '02');
         const datasets = [{
-            label: '总市值',
+            label: tt('chart.totalValue', '总市值'),
             data: allDates.map(d => { const pt = totalTrend.find(p => p.date === d); return pt ? pt.value : null; }),
             borderColor: baseColor,
             backgroundColor: grad,
@@ -572,12 +593,12 @@ const ChartManager = {
                         titleColor: c.text, bodyColor: c.text,
                         borderColor: c.grid, borderWidth: 1,
                         cornerRadius: 10, padding: 12,
-                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ¥${ctx.parsed.y.toLocaleString()}` }
+                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` }
                     }
                 },
                 scales: {
                     x: { ticks: { color: c.textSec, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { color: c.grid, drawBorder: false } },
-                    y: { ticks: { color: c.textSec, font: { size: 9 }, callback: v => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v, padding: 4 }, grid: { color: c.grid, drawBorder: false }, beginAtZero: false }
+                    y: { ticks: { color: c.textSec, font: { size: 9 }, callback: v => ChartManager.axisTick(v), padding: 4 }, grid: { color: c.grid, drawBorder: false }, beginAtZero: false }
                 }
             }
         });
@@ -610,8 +631,8 @@ const ChartManager = {
             data: {
                 labels,
                 datasets: [
-                    { label: '投入本金', data: costData, backgroundColor: costGrad, borderColor: c.cats[0], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[0] },
-                    { label: '当前市值', data: valueData, backgroundColor: valGrad, borderColor: c.cats[2], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[2] }
+                    { label: tt('chart.invested', '投入本金'), data: costData, backgroundColor: costGrad, borderColor: c.cats[0], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[0] },
+                    { label: tt('chart.currentValue', '当前市值'), data: valueData, backgroundColor: valGrad, borderColor: c.cats[2], borderWidth: 1, borderRadius: 8, borderSkipped: false, hoverBackgroundColor: c.cats[2] }
                 ]
             },
             options: {
@@ -627,12 +648,12 @@ const ChartManager = {
                         titleColor: c.text, bodyColor: c.text,
                         borderColor: c.grid, borderWidth: 1,
                         cornerRadius: 10, padding: 12,
-                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ¥${ctx.parsed.y.toLocaleString()}` }
+                        callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` }
                     }
                 },
                 scales: {
                     x: { ticks: { color: c.textSec, font: { size: 9 } }, grid: { display: false }, border: { display: false } },
-                    y: { ticks: { color: c.textSec, font: { size: 9 }, callback: v => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v, padding: 4 }, grid: { color: c.grid, drawBorder: false }, beginAtZero: true }
+                    y: { ticks: { color: c.textSec, font: { size: 9 }, callback: v => ChartManager.axisTick(v), padding: 4 }, grid: { color: c.grid, drawBorder: false }, beginAtZero: true }
                 }
             }
         });

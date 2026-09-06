@@ -784,8 +784,35 @@ function insertIgnoreSql(table, cols) {
   return `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
 }
 
+/**
+ * 双方言 JSON 对象构造函数：MySQL `JSON_OBJECT(...)` ↔ PG `json_build_object(...)`。
+ *
+ * 用法：
+ *   // 原生 SQL:  COALESCE(JSON_OBJECT('CNY', 0), '{}')
+ *   // 改后:      COALESCE(${db.jsonObj("'CNY'", '0')}, '{}')
+ *
+ * ⚠️ 参数原样拼接：调用方需自行把字符串字面量加引号（如 "'CNY'"），
+ *    数字/列名直接传。返回的 SQL 片段不再带占位符，与 query() 的 ? 占位符体系隔离。
+ */
+function jsonObj(...args) {
+  const fn = DB_DIALECT === 'mysql' ? 'JSON_OBJECT' : 'json_build_object';
+  return `${fn}(${args.join(', ')})`;
+}
+
+/**
+ * 双方言 JSON 对象聚合函数：MySQL `JSON_OBJECTAGG(k, v)` ↔ PG `json_object_agg(k, v)`。
+ *
+ * 用法：
+ *   // 原生 SQL:  JSON_OBJECTAGG(a.currency, sums.cnt)
+ *   // 改后:      ${db.jsonAgg('a.currency', 'sums.cnt')}
+ */
+function jsonAgg(...args) {
+  const fn = DB_DIALECT === 'mysql' ? 'JSON_OBJECTAGG' : 'json_object_agg';
+  return `${fn}(${args.join(', ')})`;
+}
+
 module.exports = {
   pool, query, queryOne, transaction, initDatabase,
   healBooks, ensureDefaultBookId, DB_DIALECT, upsertSql,
-  buildInClause, insertIgnoreSql,
+  buildInClause, insertIgnoreSql, jsonObj, jsonAgg,
 };
