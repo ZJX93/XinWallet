@@ -662,6 +662,21 @@ function initLangSwitcher() {
     window.addEventListener('i18n:changed', syncActive);
 }
 
+/**
+ * 预置分类多语言：cache.categories / investmentTypes 是最早加载且被各页复用的数据，
+ * 语言切换时它们的名字还停留在旧语言，这里原地重跑一次本地化，
+ * 使下拉框、交易列表等无需重新请求接口即可跟随切换。
+ */
+function initPresetCategoryLocalization() {
+    window.addEventListener('i18n:changed', () => {
+        try {
+            if (typeof localizeSystemNames === 'function' && window.cache) {
+                localizeSystemNames(window.cache, 0);
+            }
+        } catch (e) { /* 本地化失败不该影响语言切换 */ }
+    });
+}
+
 function initCurrencySwitcher() {
     const btn = document.getElementById('currencyBtn');
     const menu = document.getElementById('currencyMenu');
@@ -768,6 +783,7 @@ async function boot() {
     const prefLang = PreferencesManager.lang;
     if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log(tt('app.boot.langSynced', '  ✅ 语言按偏好同步 -> ') + ' ' + prefLang); }
     initLangSwitcher();
+    initPresetCategoryLocalization();
     initCurrencySwitcher();
     // ⛔ safeInit 必须先定义再调用：const 不会 hoist，提前调用会 TDZ 抛 ReferenceError
     const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn(tt('app.boot.warnSkip', '  ⚠️  {name} (跳过):').replace('{name}', name), e.message); } };

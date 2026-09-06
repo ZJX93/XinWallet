@@ -165,6 +165,108 @@ function formatRelativeTime(iso) {
 // 统一 API 调用（auth.js + app.js 共用）
 // 支持 token 自动注入、401 触发登录层、silent 模式不弹 toast
 // ==========================================
+/* ============================================================
+   预置分类多语言
+   系统预置分类 / 理财类型在库里存的是中文名，但带稳定 code
+   （E0100 餐饮 / I0101 工资薪水 / T0101 银行转账 / V0101 银行存款）。
+   英文态下把服务端返回的中文名换成字典里的 cat.<code>，用户无需逐个改名。
+
+   设计取舍：
+   - 仅非中文态生效：中文态保持服务端原名，尊重用户对系统分类的改名。
+   - code 优先：命中 /^[EITV]\d{4}$/ 且字典有值时才改，用户自建分类无 code，不受影响。
+   - 名称兜底：报表/图表聚合结果常只有 { name:'餐饮' } 而无 code，
+     此时按「中文名 → 英文名」精确匹配替换（映射由 zh-CN / en-US 两份字典实时生成，
+     不额外维护一份硬编码表）。
+   ============================================================ */
+const SYS_CODE_RE = /^[EITV]\d{4}$/;
+// 允许按名称兜底替换的字段：避免把备注、商家名等恰好同名的自由文本也翻掉
+const SYS_NAME_KEYS = new Set(['name', 'category', 'category_name', 'categoryName', 'cat', 'label', 'labels']);
+let _sysMaps = null;
+
+/**
+ * 由 zh-CN / en-US 两份字典实时生成双向映射，不额外维护硬编码表。
+ * 双向的意义：切回中文时能把英文名还原，无需重新请求服务端。
+ */
+function sysNameMaps() {
+    if (_sysMaps) return _sysMaps;
+    const zh2en = new Map();
+    const en2zh = new Map();
+    const dicts = (typeof window !== 'undefined') ? window.I18N_DICT : null;
+    const zh = dicts && dicts['zh-CN'];
+    const en = dicts && dicts['en-US'];
+    if (zh && en) {
+        for (const k of Object.keys(zh)) {
+            if (k.indexOf('cat.') !== 0) continue;
+            const z = zh[k];
+            const e = en[k];
+            if (typeof z === 'string' && typeof e === 'string' && z !== e) {
+                zh2en.set(z, e);
+                en2zh.set(e, z);
+            }
+        }
+    }
+    _sysMaps = { zh2en, en2zh };
+    return _sysMaps;
+}
+
+function localizeSystemNames(node, depth) {
+    if (typeof window === 'undefined' || !window.I18N || !window.I18N_DICT) return node;
+    return localizeNode(node, depth || 0);
+}
+
+/**
+ * 按「中文名 ⇄ 英文名」精确匹配替换，未命中一律原样保留 —— 因此：
+ *   - 用户改过名的系统分类不会被字典覆盖；
+ *   - 用户自建分类恰好同名时也会跟着走，符合直觉。
+ * 非枚举的 __orig 之类字段一概不写，避免污染回传给服务端的 payload。
+ */
+function localizeNode(node, depth) {
+    if (!node || typeof node !== 'object' || depth > 8) return node;
+    const maps = sysNameMaps();
+    const wantEn = (typeof window.I18N.isZh === 'function') ? !window.I18N.isZh() : false;
+    const map = wantEn ? maps.zh2en : maps.en2zh;
+    if (!map.size) return node;
+
+    const swap = (s) => (typeof s === 'string' && map.has(s)) ? map.get(s) : s;
+
+    if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) {
+            const v = node[i];
+            if (typeof v === 'string') node[i] = swap(v);
+            else if (v && typeof v === 'object') localizeNode(v, depth + 1);
+        }
+        return node;
+    }
+
+    for (const k of Object.keys(node)) {
+        const v = node[k];
+        if (v === null || v === undefined) continue;
+
+        if (Array.isArray(v)) {
+            for (let i = 0; i < v.length; i++) {
+                const item = v[i];
+                // 图表 labels 类字符串数组；其余数组只下钻对象
+                if (typeof item === 'string') { if (SYS_NAME_KEYS.has(k)) v[i] = swap(item); }
+                else if (item && typeof item === 'object') localizeNode(item, depth + 1);
+            }
+            continue;
+        }
+
+        if (typeof v !== 'object') {
+            if (typeof v === 'string' && SYS_NAME_KEYS.has(k)) node[k] = swap(v);
+            continue;
+        }
+
+        // 分类 / 理财类型对象：带预置 code 的按 code 归属，否则按字段名兜底
+        if (typeof v.name === 'string') {
+            const isPreset = typeof v.code === 'string' && SYS_CODE_RE.test(v.code);
+            if (isPreset || SYS_NAME_KEYS.has(k)) v.name = swap(v.name);
+        }
+        localizeNode(v, depth + 1);
+    }
+    return node;
+}
+
 async function api(path, method = 'GET', body = null, opts = {}) {
     const { silent = false } = opts;
     const headers = { 'Content-Type': 'application/json' };
@@ -203,7 +305,9 @@ async function api(path, method = 'GET', body = null, opts = {}) {
             err.status = res.status;
             throw err;
         }
-        return data.data;
+        // 统一出口做预置分类多语言：所有业务数据都经 api() 返回，
+        // 无需在几十处渲染点逐个改（新增接口也自动生效）。
+        return localizeSystemNames(data.data, 0);
     } catch (err) {
         if (!silent && typeof showToast === 'function' && !err.payload) showToast(err.message || tt('toast.networkError', '网络错误'), 'error');
         throw err;
@@ -214,6 +318,7 @@ async function api(path, method = 'GET', body = null, opts = {}) {
 if (typeof window !== 'undefined') {
     window.api = api;
     window.tt = tt;
+    window.localizeSystemNames = localizeSystemNames;
     window.confirmT = confirmT;
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
@@ -232,5 +337,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, supportedCurrencies: _supportedCurrencies };
+    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, localizeSystemNames, supportedCurrencies: _supportedCurrencies };
 }
