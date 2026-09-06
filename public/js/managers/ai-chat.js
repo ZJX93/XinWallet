@@ -1,35 +1,78 @@
 /**
- * AI 助手对话框（识别页内嵌）
- * ------------------------------------------------
+ * AI 助手对话框（全站悬浮气泡 FAB）
+ * ----------------------------------------------------------------
+ * 2026-09 重构：原识别页内嵌卡片抽出为右下角悬浮气泡，所有页面可用。
  * 调用 POST /ai/chat，维护前端消息历史，渲染对话气泡。
  * 端点返回 { reply, transactions }（success 包装），AI 仅做只读咨询 + 改删已存在交易。
+ *
+ * DOM（注入在 body 末尾，layout 之外，跨页面常驻）：
+ *   #aiFabBtn        悬浮按钮（右下角圆点）
+ *   #aiFabPanel      浮层对话框容器（默认隐藏）
+ *   #aiFabMessages   消息列表
+ *   #aiFabInput      输入框
+ *   #aiFabSend       发送按钮
+ *   #aiFabClose      关闭按钮
  */
 const AIChat = {
     _initialized: false,
+    _open: false,
     messages: [],
 
     init() {
-        const sendBtn = document.getElementById('aiChatSend');
-        if (!sendBtn || this._initialized) return;
+        const btn = document.getElementById('aiFabBtn');
+        const panel = document.getElementById('aiFabPanel');
+        if (!btn || !panel || this._initialized) return;
         this._initialized = true;
-        sendBtn.addEventListener('click', () => this._send());
-        const input = document.getElementById('aiChatInput');
-        if (input) input.addEventListener('keydown', (e) => {
+
+        // FAB 按钮 → 切换浮层
+        btn.addEventListener('click', () => this.toggle());
+        document.getElementById('aiFabClose')?.addEventListener('click', () => this.close());
+
+        // 输入框 + 发送按钮
+        const send = document.getElementById('aiFabSend');
+        send?.addEventListener('click', () => this._send());
+        const input = document.getElementById('aiFabInput');
+        input?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._send(); }
         });
-        document.querySelectorAll('.ai-chat-chip').forEach(chip => {
+
+        // 快捷 chips
+        document.querySelectorAll('.ai-fab-chip').forEach(chip => {
             chip.addEventListener('click', () => {
                 if (input) { input.value = chip.dataset.q || ''; input.focus(); }
             });
         });
     },
 
-    refresh() {
-        this.init();
+    refresh() { this.init(); },
+
+    toggle() { this._open ? this.close() : this.open(); },
+
+    open() {
+        const panel = document.getElementById('aiFabPanel');
+        const btn = document.getElementById('aiFabBtn');
+        if (!panel) return;
+        panel.removeAttribute('hidden');
+        panel.classList.add('ai-fab-panel-open');
+        btn?.classList.add('ai-fab-btn-active');
+        this._open = true;
+        // 自动聚焦输入框
+        setTimeout(() => document.getElementById('aiFabInput')?.focus(), 60);
+    },
+
+    close() {
+        const panel = document.getElementById('aiFabPanel');
+        const btn = document.getElementById('aiFabBtn');
+        if (!panel) return;
+        panel.classList.remove('ai-fab-panel-open');
+        btn?.classList.remove('ai-fab-btn-active');
+        // 等 CSS transition 走完再 hidden（避免内容瞬间消失）
+        setTimeout(() => panel.setAttribute('hidden', ''), 200);
+        this._open = false;
     },
 
     async _send() {
-        const input = document.getElementById('aiChatInput');
+        const input = document.getElementById('aiFabInput');
         const text = (input && input.value || '').trim();
         if (!text) return;
         if (input) input.value = '';
@@ -57,17 +100,17 @@ const AIChat = {
     },
 
     _render() {
-        const box = document.getElementById('aiChatMessages');
+        const box = document.getElementById('aiFabMessages');
         if (!box) return;
         box.innerHTML = this.messages.map(m => {
-            const cls = 'ai-chat-bubble ai-chat-' + m.role;
+            const cls = 'ai-fab-bubble ai-fab-' + m.role;
             return `<div class="${cls}">${escapeHtml(m.content)}</div>`;
         }).join('');
         box.scrollTop = box.scrollHeight;
     },
 
     _setLoading(on) {
-        const btn = document.getElementById('aiChatSend');
+        const btn = document.getElementById('aiFabSend');
         if (btn) btn.disabled = on;
     }
 };

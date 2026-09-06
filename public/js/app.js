@@ -285,7 +285,6 @@ const PAGE_META = {
     'ai-recognition':           { title: 'pageTitle.ai-recognition',      subtitle: 'pageSubtitle.ai-recognition' },
     'ai-insights':              { title: 'pageTitle.ai-insights',         subtitle: 'pageSubtitle.ai-insights' },
     'ai-rules':                 { title: 'pageTitle.ai-rules',            subtitle: 'pageSubtitle.ai-rules' },
-    'ai-evaluation':            { title: 'pageTitle.ai-evaluation',       subtitle: 'pageSubtitle.ai-evaluation' },
     reports:                    { title: 'pageTitle.reports',             subtitle: 'pageSubtitle.reports' },
     tags:                       { title: 'pageTitle.tags',                subtitle: 'pageSubtitle.tags' },
     'data-center':              { title: 'pageTitle.data-center',         subtitle: 'pageSubtitle.data-center' },
@@ -301,7 +300,6 @@ let currentPage = 'dashboard';
 const navItems = document.querySelectorAll('.nav-item');
 navItems.forEach(item => item.addEventListener('click', () => switchPage(item.dataset.page)));
 document.querySelectorAll('.see-all').forEach(el => el.addEventListener('click', () => switchPage(el.dataset.page)));
-document.getElementById('aiStatusBtn')?.addEventListener('click', () => switchPage('ai-status'));
 // 移动端底部导航：点击分组标签展开子菜单
 let _bottomNavInited = false;
 const initBottomNav = () => {
@@ -572,7 +570,6 @@ async function refreshPage(page) {
     }
     if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
     if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
-    if (page === 'ai-evaluation' && M.AIEvaluation) await M.AIEvaluation.refresh();
     if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); initAIConfigTabs(); }
     if (page === 'ai-status' && M.AITools) await M.AITools.refresh();
     if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
@@ -799,8 +796,8 @@ async function boot() {
     safeInit('AIRules', () => AIRules.init());
     safeInit('AILearning', () => AILearning.init());
     safeInit('AIInsights', () => AIInsights.init());
-    safeInit('AIEvaluation', () => AIEvaluation.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
+    safeInit('AIChat', () => AIChat.init());
     safeInit('AISettings', () => AISettings.init());
     safeInit('ReportManager', () => ReportManager.init());
     safeInit('QuickAdd', () => QuickAdd.init());

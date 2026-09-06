@@ -90,7 +90,11 @@ const forecastService = require('./services/forecast-service');
 const financeTools = require('./tools/finance-tools');
 
 // Feature Flags & Metrics
-const { isEnabled, areEnabled, getAllFlags, getUserFeatures } = require('./features/feature-flags');
+const {
+    isEnabled, areEnabled, getAllFlags, getUserFeatures,
+    getFlagMeta, setOverride, clearOverride, listOverrides, invalidateOverrideCache,
+    FLAG_KEYS, FEATURE_DEFAULTS,
+} = require('./features/feature-flags');
 const metricsCleanup = require('./features/metrics-cleanup');
 
 // 图片通道：转录层（大模型 vision 主路 / 腾讯云 OCR 兜底）
@@ -192,6 +196,13 @@ module.exports = {
     areEnabled,
     getAllFlags,
     getUserFeatures,
+    getFlagMeta,
+    setOverride,
+    clearOverride,
+    listOverrides,
+    invalidateOverrideCache,
+    FLAG_KEYS,
+    FEATURE_DEFAULTS,
     metricsCleanup,
 
     // ---- AI 识别行为设置 ----

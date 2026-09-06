@@ -2360,68 +2360,9 @@
 }
 .ai-section-title:first-child { margin-top: 8px; }
 
-/* AI 洞察页：Tab 切换（AI 建议 / 学习统计） */
-.ai-insights-tabs {
-  display: inline-flex; gap: 4px; padding: 4px;
-  margin: 4px 0 16px 0;
-  background: var(--bg-elevated, rgba(0,0,0,0.04));
-  border-radius: 10px;
-}
-.ai-insights-tab {
-  padding: 8px 16px; border: none; border-radius: 8px;
-  font-size: 13px; font-weight: 500;
-  color: var(--text-secondary, #666);
-  background: transparent; cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.ai-insights-tab:hover { color: var(--text-primary, #222); }
-.ai-insights-tab.active {
-  background: var(--surface-hover);
-  color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,.18);
-}
-
-/* AI Advice：三级 priority 配色 */
+/* AI 洞察/建议分区（单页顺序布局） */
 .ai-insight-section, .ai-advice-section { margin-top: 8px; }
 .ai-advice-list { display: flex; flex-direction: column; gap: 12px; }
-
-/* AI 建议页：消费洞察 + 财务建议 并列两栏（窄屏自动 fallback 单列） */
-.ai-twocol {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  align-items: start;
-  margin-top: 4px;
-}
-.ai-twocol > .ai-insight-section,
-.ai-twocol > .ai-advice-section { margin-top: 0; }
-.ai-twocol .ai-section-title {
-  display: flex; align-items: center; gap: 10px;
-  margin: 4px 0 12px 0;
-  padding-bottom: 10px;
-}
-.ai-twocol .ai-section-bar {
-  display: inline-block;
-  width: 4px; height: 16px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--primary-500, #6366f1), var(--accent-500, #8b5cf6));
-}
-.ai-twocol .ai-section-bar.alt {
-  background: linear-gradient(180deg, var(--success-500, #22c55e), var(--primary-500, #6366f1));
-}
-.ai-twocol .ai-insight-list { display: flex; flex-direction: column; gap: 12px; }
-.ai-twocol .insight-item { margin-bottom: 0; }
-.ai-twocol .insight-item,
-.ai-twocol .ai-advice-card {
-  transition: transform .15s ease, box-shadow .15s ease;
-}
-.ai-twocol .insight-item:hover,
-.ai-twocol .ai-advice-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,0,0,.06);
-}
-@media (max-width: 900px) {
-  .ai-twocol { grid-template-columns: 1fr; gap: 16px; }
-}
 /* 建议卡片与洞察条目共用同一套 padding / 圆角 / 背景（见上方 .insight-item），
    仅保留优先级标签的绝对定位和级别配色差异 */
 .ai-advice-card {
@@ -2580,3 +2521,92 @@
 .ai-eval-hist-row { background: var(--surface-2, #f6f7fb); border: 1px solid var(--border-subtle, #eceef3); border-radius: 8px; padding: 8px 12px; }
 .ai-eval-hist-main { font-size: 13px; font-weight: 600; color: var(--text-primary, #111); }
 .ai-eval-hist-sub { font-size: 11px; color: var(--text-tertiary, #999); }
+
+/* --------------------------------------------------------------------------
+   8. AI FEATURE TOGGLES (运维页「功能开关」toggle 列表)
+   -------------------------------------------------------------------------- */
+.ai-feature-list {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 0;
+}
+.ai-feature-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-overlay, rgba(255,255,255,0.02));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  transition: background .15s;
+}
+.ai-feature-row:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.05));
+}
+.ai-feature-row.is-saving {
+  opacity: .55;
+  pointer-events: none;
+}
+.ai-feature-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ai-feature-label {
+  font-size: 13px; font-weight: var(--fw-semibold, 600);
+  color: var(--text-primary, #e8eaed);
+}
+.ai-feature-desc {
+  font-size: 11px; color: var(--text-tertiary, #8a8e9e);
+  line-height: 1.4;
+}
+.ai-feature-meta {
+  font-size: 10px; color: var(--text-tertiary, #8a8e9e);
+  display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;
+}
+.ai-feature-meta .meta-env { color: var(--text-tertiary, #8a8e9e); }
+.ai-feature-meta .meta-override.has-value { color: var(--accent-color, #a69093); font-weight: 600; }
+.ai-feature-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ai-feature-reset {
+  font-size: 11px; padding: 4px 8px;
+  background: transparent; color: var(--text-tertiary, #8a8e9e);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.1));
+  border-radius: var(--radius-sm, 6px); cursor: pointer;
+}
+.ai-feature-reset:hover { color: var(--text-primary, #e8eaed); border-color: var(--interactive-default, #a69093); }
+.ai-feature-reset:disabled { opacity: .3; cursor: not-allowed; }
+
+/* iOS 风格 toggle 开关 */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px; height: 22px;
+  flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer;
+  inset: 0;
+  background: var(--border-strong, rgba(255,255,255,0.18));
+  border-radius: 22px;
+  transition: background .2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 16px; width: 16px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent-color, #4a90e2);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+.toggle-switch input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--accent-color, #4a90e2);
+  outline-offset: 2px;
+}
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: .5; cursor: not-allowed;
+}

@@ -392,6 +392,27 @@ async function ensureIndex(name, table, columns) {
   }
 }
 
+/**
+ * 确保 ai_runtime_settings 表存在（运维页「功能开关」运行时覆写持久化用）
+ * ------------------------------------------------------------
+ *  - KV 表：(user_id, key) 联合主键，按用户隔离
+ *  - value 列用 JSONB（PG）/ JSON（MySQL），方便后续存非布尔覆写（数字、对象等）
+ *  - 已被 ensureColumn/ensureIndex 体系覆盖不到，因为是新建表；
+ *    单独提供 ensureAiRuntimeSettingsTable，幂等（CREATE TABLE IF NOT EXISTS）
+ */
+async function ensureAiRuntimeSettingsTable() {
+  const valueType = DB_DIALECT === 'mysql' ? 'JSON' : 'JSONB';
+  await query(`
+    CREATE TABLE IF NOT EXISTS ai_runtime_settings (
+      user_id    ${DB_DIALECT === 'mysql' ? 'INT NOT NULL' : 'INTEGER NOT NULL'},
+      key        VARCHAR(64) NOT NULL,
+      value      ${valueType} NOT NULL,
+      updated_at ${DB_DIALECT === 'mysql' ? 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP' : 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP'},
+      PRIMARY KEY (user_id, key)
+    )
+  `);
+}
+
 async function healSchemaColumns() {
   // 投资理财：清仓当天保留 / 隔天归档所需的清仓日期
   await ensureColumn('investments', 'sold_date', 'DATE');
@@ -491,6 +512,10 @@ async function healSchemaColumns() {
   await ensureColumn('ai_predictions', 'route', "VARCHAR(20) NOT NULL DEFAULT 'local'");
   // 反馈事件关联到规则（Evidence Engine 的溯源起点）
   await ensureColumn('ai_feedback_events', 'rule_id', 'INT DEFAULT NULL');
+  // 学习调度标记：evidence-scheduler 用 WHERE processed = FALSE 拣选待学习事件，
+  // 写 schema 时漏了，metrics-cleanup.getHealthMetrics 也引用此列 —— 老库不补会 500。
+  // BOOLEAN 在 PG / MySQL 双方言都通（MySQL 实为 TINYINT(1)），DEFAULT FALSE 让历史事件视为「未处理」。
+  await ensureColumn('ai_feedback_events', 'processed', 'BOOLEAN NOT NULL DEFAULT FALSE');
 
   // AI v0.2 图片通道：记录该服务商到底能不能读图。
   // ⛔ 三态而非布尔：'unknown' 表示还没试过（乐观尝试一次），
@@ -502,6 +527,12 @@ async function healSchemaColumns() {
   // ⚠️ 只补 schema 里真实声明过的索引 —— 这里凭空多建的索引在全新库上不存在，会造成两种库结构不一致。
   // route 是 4 值低基数列，刻意不建索引（选择性太差，PG 也不会走它）。
   await ensureIndex('idx_ai_fb_rule', 'ai_feedback_events', 'rule_id');
+
+  // AI v0.2 Phase 5：运维页「功能开关」运行时覆写（按 user_id 隔离持久化）。
+  // 此前功能开关仅来自 process.env，容器重启会丢；新建 ai_runtime_settings 表
+  // 让用户在「运维」页 toggle 后立刻生效且持久化。CREATE TABLE IF NOT EXISTS
+  // 对已存在的表为 no-op，老库首次启动自动建表。
+  await ensureAiRuntimeSettingsTable();
 }
 
 /**

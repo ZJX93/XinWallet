@@ -1,46 +1,108 @@
 <!--
-  ===== AI 洞察（统一聚合「看账」入口）=====
-  Tab：AI 建议 / 学习统计 / 现金流预测 / 画像 / 模型评测
-  建议·学习·评测 为独立懒加载子页（复用原 Manager）；现金流·画像 内联并由本 Manager 直接拉取。
+  ===== AI 洞察（2026-09 整体重构）=====
+  由「Tab 切换（AI 建议 / 现金流预测）」改为单页连续整合：
+  现金流预测快照 + 主动告警 + 消费洞察 + 财务建议 一屏展示，不再分块切换。
+  消费洞察/财务建议复用 AIAdvice 管理器的渲染逻辑（DOM id 保持不变），
+  现金流预测由 AIInsights 管理器直接拉取 /ai/forecast/cashflow。
 -->
 <section class="page" id="page-ai-insights" data-lazy="pages/ai-insights.html">
-    <div class="ai-insights-tabs" id="aiInsightsTabs" role="tablist">
-        <button class="ai-insights-tab active" data-tab="advice" role="tab" aria-selected="true" data-i18n="aiInsights.tab.advice">AI 建议</button>
-        <button class="ai-insights-tab" data-tab="learning" role="tab" aria-selected="false" data-i18n="aiInsights.tab.learning">学习统计</button>
-        <button class="ai-insights-tab" data-tab="cashflow" role="tab" aria-selected="false" data-i18n="aiInsights.tab.cashflow">现金流预测</button>
-        <button class="ai-insights-tab" data-tab="profile" role="tab" aria-selected="false" data-i18n="aiInsights.tab.profile">画像</button>
-        <button class="ai-insights-tab" data-tab="evaluation" role="tab" aria-selected="false" data-i18n="aiInsights.tab.evaluation">模型评测</button>
-    </div>
-    <div id="aiInsightsAlerts" class="ai-insights-alerts" style="display:none"></div>
+    <div class="glass-card ai-page-card">
+        <div class="ai-page-header">
+            <div>
+                <h3 class="card-title" data-i18n="aiInsights.title">AI 洞察</h3>
+                <p class="card-desc" data-i18n="aiInsights.desc">现金流预测、消费洞察与财务建议一屏总览</p>
+            </div>
+            <div class="ai-page-actions">
+                <button class="btn btn-ghost btn-ai" id="aiInsightsRefreshBtn" title="重新生成" data-i18n-title="aiAdvice.regenTip">
+                    <span class="ai-icon-refresh">↻</span> <span data-i18n="common.refresh">刷新</span>
+                </button>
+            </div>
+        </div>
 
-    <!-- 子页面容器：data-lazy 由 AIInsights manager 触发加载 -->
-    <div id="page-ai-advice" data-lazy="pages/ai-advice.html"></div>
-    <div id="page-ai-learning" data-lazy="pages/ai-learning.html" style="display:none"></div>
-    <div id="page-ai-cashflow" style="display:none">
-        <div class="glass-card">
-            <h3 class="card-title" data-i18n="aiInsights.cashflow.title">现金流预测</h3>
-            <p class="card-desc" data-i18n="aiInsights.cashflow.desc">基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）</p>
-            <div id="aiCashflowBody"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div></div></div>
+        <div id="aiAdviceMeta" class="ai-page-meta"></div>
+
+        <!-- 现金流预测（顶部快照） -->
+        <div class="ai-cashflow">
+            <h4 class="ai-section-title"><span class="ai-section-bar ai-section-bar-cash"></span><span data-i18n="aiInsights.cashflow.title">现金流预测</span></h4>
+            <p class="ai-cashflow-desc" data-i18n="aiInsights.cashflow.desc">基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）</p>
+            <div id="aiCashflowBody" class="ai-cashflow-grid"></div>
+        </div>
+
+        <!-- 主动告警（有 warning/danger 级洞察时才显示） -->
+        <div id="aiInsightsAlerts" class="ai-insights-alerts" style="display:none"></div>
+
+        <!-- 消费洞察（观察型） -->
+        <div class="ai-insight-section">
+            <h4 class="ai-section-title"><span class="ai-section-bar"></span><span data-i18n="aiAdvice.section.insights">消费洞察</span></h4>
+            <div id="aiInsightList" class="ai-insight-list"></div>
+        </div>
+
+        <!-- 财务建议（可执行型） -->
+        <div class="ai-advice-section">
+            <h4 class="ai-section-title"><span class="ai-section-bar alt"></span><span data-i18n="aiAdvice.section.advices">财务建议</span></h4>
+            <div id="aiAdviceList" class="ai-advice-list"></div>
+        </div>
+
+        <!-- AI 建议 loading -->
+        <div id="aiAdviceLoading" class="ai-page-loading" style="display:none">
+            <div class="skeleton-wrap" data-skeleton="text">
+                <div class="skeleton-line shimmer" style="width:78%"></div>
+                <div class="skeleton-line shimmer" style="width:60%"></div>
+            </div>
+            <p class="ai-page-loading-text" data-i18n="aiAdvice.loading">正在分析你的财务数据...</p>
         </div>
     </div>
-    <div id="page-ai-profile" style="display:none">
-        <div class="glass-card">
-            <h3 class="card-title" data-i18n="aiInsights.profile.title">AI 画像</h3>
-            <p class="card-desc" data-i18n="aiInsights.profile.desc">AI 从你的记账习惯中学习到的偏好与画像</p>
-            <div id="aiProfileBody"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div></div></div>
-        </div>
-    </div>
-    <div id="page-ai-evaluation" data-lazy="pages/ai-evaluation.html" style="display:none"></div>
 
     <style>
-    .ai-cashflow-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-top:12px; }
-    .ai-cashflow-val { font-size:22px; font-weight:var(--fw-semibold); color:var(--interactive-default); }
-    .ai-insights-alerts { margin:12px 0 4px; display:flex; flex-direction:column; gap:8px; }
-    .ai-alert { display:flex; gap:10px; padding:10px 12px; border-radius:12px; background:var(--surface-elevated); border:1px solid var(--border-subtle); align-items:flex-start; }
-    .ai-alert-dot { width:8px; height:8px; border-radius:50%; margin-top:6px; flex:none; }
-    .ai-alert-warning { border-color:rgba(245,166,35,.4); } .ai-alert-warning .ai-alert-dot { background:#f5a623; }
-    .ai-alert-danger, .ai-alert-error { border-color:rgba(235,87,87,.4); } .ai-alert-danger .ai-alert-dot, .ai-alert-error .ai-alert-dot { background:#eb5757; }
-    .ai-alert-title { font-weight:var(--fw-semibold); font-size:13px; color:var(--text-primary); }
-    .ai-alert-desc { font-size:12px; color:var(--text-secondary); margin-top:2px; }
+    /* 分区标题带左侧强调色条（单列顺序布局，统一视觉） */
+    .ai-section-title { display: flex; align-items: center; gap: 10px; }
+    .ai-section-bar {
+        display: inline-block; width: 4px; height: 16px; border-radius: 2px;
+        background: linear-gradient(180deg, var(--primary-500, #6366f1), var(--accent-500, #8b5cf6));
+        flex: none;
+    }
+    .ai-section-bar.alt {
+        background: linear-gradient(180deg, var(--success-500, #22c55e), var(--primary-500, #6366f1));
+    }
+    .ai-section-bar-cash {
+        background: linear-gradient(180deg, var(--accent-500, #8b5cf6), var(--success-500, #22c55e));
+    }
+
+    /* 消费洞察列表：单列纵向排列（原 .ai-twocol 布局已废弃） */
+    .ai-insight-list { display: flex; flex-direction: column; gap: 12px; }
+    .ai-insight-list .insight-item { margin-bottom: 0; }
+
+    /* 现金流预测快照 */
+    .ai-cashflow { margin-top: 8px; }
+    .ai-cashflow-desc { margin: 2px 0 14px; font-size: 12px; color: var(--text-secondary, #666); }
+    .ai-cashflow-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: var(--radius-lg, 14px);
+        background: var(--surface-2, rgba(0,0,0,0.025));
+    }
+    .ai-cashflow-item {
+        display: flex; flex-direction: column; gap: 4px;
+        padding: 6px 4px;
+    }
+    .ai-cashflow-label {
+        font-size: 12px; font-weight: 600; color: var(--text-tertiary, #999);
+        text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .ai-cashflow-val {
+        font-size: 22px; font-weight: var(--fw-semibold, 600);
+        color: var(--interactive-default, #6366f1);
+    }
+
+    /* 告警区（有风险时悬浮在现金流与洞察之间） */
+    .ai-insights-alerts { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+    .ai-alert { display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); align-items: flex-start; }
+    .ai-alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; }
+    .ai-alert-warning { border-color: rgba(245,166,35,.4); } .ai-alert-warning .ai-alert-dot { background: #f5a623; }
+    .ai-alert-danger, .ai-alert-error { border-color: rgba(235,87,87,.4); } .ai-alert-danger .ai-alert-dot, .ai-alert-error .ai-alert-dot { background: #eb5757; }
+    .ai-alert-title { font-weight: var(--fw-semibold, 600); font-size: 13px; color: var(--text-primary); }
+    .ai-alert-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
     </style>
 </section>
