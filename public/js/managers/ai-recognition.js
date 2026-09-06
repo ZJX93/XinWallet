@@ -179,7 +179,6 @@ const AIRecognition = {
         btn.disabled = true;
         btn.textContent = tt('aiRec.parsing', '解析中...');
         document.getElementById('aiResults').style.display = 'none';
-        document.getElementById('ocrTextPreview').style.display = 'none';
 
         try {
             const name = this.billFile.name.toLowerCase();
@@ -469,117 +468,97 @@ const AIRecognition = {
         return items;
     },
 
-    async ocrRecognize() {
-        if (!this.selectedFile) return;
+    /* ====== 图片记账（POST /ai/ocr 与 /ai/ocr/retranscribe）======
+     * 两个端点的请求形态（multipart 单图）与响应契约（v0.2 预测快照）完全一致，
+     * 差别仅在 URL、按钮态与文案，故收敛到本方法，由 ocrRecognize / ocrRetranscribe 传参。
+     *
+     * 结果一律交给 AISmartEntry._loadExternal() 进 v0.2 确认区 —— 图片通道不再自建
+     * 编辑表格，与文本/语音通道共用同一套确认、修正、原子 commit 与学习信号链路。
+     */
+    async _ocrRequest({ path, btnId, noTxnKey, noTxnText, failKey, failText, okToast }) {
         if (!(await this.checkProvider())) {
             showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
             return;
         }
-        const formData = new FormData();
-        formData.append('image', this.compressedFile || this.selectedFile);
-        // 自动带上「上次使用的账户」作兜底：
-        //   OCR 文本里如果没有「支付宝/微信/银行」等渠道关键词（如账单详情页），
-        //   后端 resolveAccount 会退到 fallback_default 路径并写入该账户，
-        //   识别依据里同时显示「上次使用：XXX」。
-        try {
-            const lastAccountId = localStorage.getItem('xinwallet.last_account_id');
-            const lastAccountName = localStorage.getItem('xinwallet.last_account_name');
-            if (lastAccountId) formData.append('account_id', String(lastAccountId));
-            if (lastAccountName) formData.append('account_name', String(lastAccountName));
-        } catch (_) { /* localStorage 不可用时静默跳过 */ }
-        document.getElementById('ocrLoading').style.display = 'block';
-        document.getElementById('ocrTextPreview').style.display = 'none';
-        document.getElementById('ocrRecognizeBtn').disabled = true;
-
-        try {
-            const token = localStorage.getItem('xin_token');
-            const res = await fetch(`${API}/ai/ocr`, {
-                method: 'POST',
-                headers: token ? { 'Authorization': 'Bearer ' + token } : {},
-                body: formData
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.message || tt('aiRec.ocrFail', 'OCR 识别失败'));
-            const payload = (data && data.data) || {};
-            document.getElementById('ocrLoading').style.display = 'none';
-
-            // 显示 OCR 原始文本
-            if (payload.text) {
-                const textPreview = document.getElementById('ocrTextPreview');
-                textPreview.textContent = payload.text;
-                textPreview.style.display = 'block';
-            }
-            if (payload.reason) showToast(payload.reason, 'warning');
-
-            // 识别过一次后才给出「换腾讯 OCR 重试」入口（无论有没有识别出交易，都可能想换引擎重来）
-            const retransBtn = document.getElementById('ocrRetranscribeBtn');
-            if (retransBtn) retransBtn.style.display = 'inline-block';
-
-            // OCR 已落不可变预测快照（v0.2 通道），交给 AISmartEntry 复用确认区
-            if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
-                await AISmartEntry._loadExternal(payload, {
-                    emptyHint: tt('aiRec.noTxn', '未能识别到交易项')
-                });
-                // 滚动到确认区，让用户一眼看到结果
-                const confirmEl = document.getElementById('aiSmartConfirm');
-                if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                showToast(tt('aiRec.noTxn', '未能识别到交易项'), 'warning');
-            }
-        } catch (err) {
-            document.getElementById('ocrLoading').style.display = 'none';
-            showToast(err.message || tt('aiRec.recognizeFail', '识别失败'), 'error');
-        } finally {
-            document.getElementById('ocrRecognizeBtn').disabled = false;
-        }
-    },
-
-    // ====== OCR 重转录（POST /ai/ocr/retranscribe）======
-    // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图。
-    // 响应结构与 /ocr 一致，故复用同一套结果处理逻辑。
-    async ocrRetranscribe() {
-        if (!this.selectedFile) { showToast(tt('aiRec.uploadFirst', '请先上传图片'), 'warning'); return; }
-        if (!(await this.checkProvider())) {
-            showToast(tt('aiRec.providerNeeded', '未配置 AI 服务商，请前往 AI 配置'), 'warning');
-            return;
-        }
-        const btn = document.getElementById('ocrRetranscribeBtn');
+        const btn = document.getElementById(btnId);
         if (btn) btn.disabled = true;
         document.getElementById('ocrLoading').style.display = 'block';
+
         try {
             const formData = new FormData();
             formData.append('image', this.compressedFile || this.selectedFile);
+            // 自动带上「上次使用的账户」作兜底：
+            //   OCR 文本里如果没有「支付宝/微信/银行」等渠道关键词（如账单详情页），
+            //   后端 resolveAccount 会退到 fallback_default 路径并写入该账户，
+            //   识别依据里同时显示「上次使用：XXX」。
+            try {
+                const lastAccountId = localStorage.getItem('xinwallet.last_account_id');
+                const lastAccountName = localStorage.getItem('xinwallet.last_account_name');
+                if (lastAccountId) formData.append('account_id', String(lastAccountId));
+                if (lastAccountName) formData.append('account_name', String(lastAccountName));
+            } catch (_) { /* localStorage 不可用时静默跳过 */ }
+
+            // 走裸 fetch 而非 api()：这是 multipart 上传，api() 固定发 JSON
             const token = localStorage.getItem('xin_token');
-            const res = await fetch(`${API}/ai/ocr/retranscribe`, {
+            const res = await fetch(`${API}${path}`, {
                 method: 'POST',
                 headers: token ? { 'Authorization': 'Bearer ' + token } : {},
                 body: formData
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.message || tt('aiRec.rerecognizeFail', '重识别失败'));
-            const payload = (data && data.data) || {};
+            if (!data.success) throw new Error(data.message || tt(failKey, failText));
+            const payload = data.data || {};
+
+            // 转录出的原文始终展示，识别不出交易时用户可据此判断是图糊了还是解析漏了
             if (payload.text) {
                 const tp = document.getElementById('ocrTextPreview');
                 tp.textContent = payload.text;
                 tp.style.display = 'block';
             }
             if (payload.reason) showToast(payload.reason, 'warning');
+
+            // 识别过一次后才给出「换腾讯 OCR 重试」入口（识别不出交易时同样可能想换引擎重来）
+            const retransBtn = document.getElementById('ocrRetranscribeBtn');
+            if (retransBtn) retransBtn.style.display = 'inline-block';
+
             if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
-                await AISmartEntry._loadExternal(payload, {
-                    emptyHint: tt('aiRec.rerecognizeNoTxn', '重识别仍未识别到交易项')
-                });
+                await AISmartEntry._loadExternal(payload, { emptyHint: tt(noTxnKey, noTxnText) });
+                // 确认区在页面另一处，滚过去让用户一眼看到结果
                 const confirmEl = document.getElementById('aiSmartConfirm');
                 if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                showToast(tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'), 'success');
+                if (okToast) showToast(okToast, 'success');
             } else {
-                showToast(tt('aiRec.rerecognizeNoTxn', '重识别仍未识别到交易项'), 'warning');
+                showToast(tt(noTxnKey, noTxnText), 'warning');
             }
         } catch (err) {
-            showToast(err.message || tt('aiRec.rerecognizeFail', '重识别失败'), 'error');
+            showToast(err.message || tt(failKey, failText), 'error');
         } finally {
             document.getElementById('ocrLoading').style.display = 'none';
             if (btn) btn.disabled = false;
         }
+    },
+
+    async ocrRecognize() {
+        if (!this.selectedFile) return;
+        document.getElementById('ocrTextPreview').style.display = 'none';
+        await this._ocrRequest({
+            path: '/ai/ocr',
+            btnId: 'ocrRecognizeBtn',
+            noTxnKey: 'aiRec.noTxn', noTxnText: '未能识别到交易项',
+            failKey: 'aiRec.recognizeFail', failText: '识别失败',
+        });
+    },
+
+    // 用户反馈「识别有误」时调用：强制走腾讯 OCR 引擎重新识别同一张图
+    async ocrRetranscribe() {
+        if (!this.selectedFile) { showToast(tt('aiRec.uploadFirst', '请先上传图片'), 'warning'); return; }
+        await this._ocrRequest({
+            path: '/ai/ocr/retranscribe',
+            btnId: 'ocrRetranscribeBtn',
+            noTxnKey: 'aiRec.rerecognizeNoTxn', noTxnText: '重识别仍未识别到交易项',
+            failKey: 'aiRec.rerecognizeFail', failText: '重识别失败',
+            okToast: tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'),
+        });
     },
 
     renderBillResults() {
