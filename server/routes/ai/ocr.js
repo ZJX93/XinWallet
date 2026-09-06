@@ -8,19 +8,6 @@
 const { express, db, success, fail, handleServerError, toNumber, getActiveProvider, aiModule, upload } = require('./_shared');
 const { applyPreprocessDateOverride } = aiModule;
 const router = express.Router();
-function toLegacyOcrItems(transactions) {
-    return (transactions || []).map(t => ({
-        name: t.merchant || t.category_name || t.raw_segment || '未命名',
-        amount: t.amount,
-        type: t.type,
-        // 老客户端期望 'YYYY-MM-DD HH:mm:ss'，v0.2 只给日期 → 补 00:00:00
-        date: t.date ? `${t.date} 00:00:00` : null,
-        note: t.note || '',
-        // 老客户端按【类目名】匹配本地 id，不是 id
-        category: t.category_name || '其他',
-        merchant: t.merchant || null,
-    }));
-}
 
 /**
  * 图片记账的共用实现：转录 → 解析 → 落预测快照。
@@ -152,7 +139,6 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
     if (!transactions.length) {
         return res.json(success({
             text: tr.text,
-            items: [],
             transcribe_source: tr.source,
             transcribe_attempts: tr.attempts,
             reason: tr.source === 'tencent_ocr'
@@ -180,7 +166,7 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
     });
 
     res.json(success({
-        // ---- v0.2 新字段 ----
+        // ---- v0.2 预测闭环字段 ----
         prediction_id: predictionId,
         transactions,
         verdict: validation.verdict,
@@ -194,9 +180,8 @@ async function handleImageAccounting(req, res, imageBase64, mime, force) {
         transcribe_source: tr.source,
         transcribe_attempts: tr.attempts,
 
-        // ---- 老字段（三端现有客户端仍在读，务必保留）----
+        // ---- 通用字段 ----
         text: tr.text,
-        items: toLegacyOcrItems(transactions),
         reason: '',
     }));
 }

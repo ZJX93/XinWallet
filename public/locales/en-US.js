@@ -1414,6 +1414,7 @@ window.I18N_DICT['en-US'] = {
     'aiSmart.voice.filled': 'Transcript inserted — tap "Parse" to continue',
     'aiSmart.voice.fail': 'Transcription failed',
     'aiSmart.parse.empty': 'Enter what you want to record first',
+    'aiSmart.loadExternal.fail': 'Failed to load recognition result',
     'aiSmart.parse.tooLong': 'Text too long (max 2000 chars)',
     'aiSmart.parse.hint': 'Try including the amount, e.g. "Starbucks coffee 35.5"',
     'aiSmart.banner.overallPct': '(overall confidence {pct}%)',

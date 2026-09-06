@@ -587,14 +587,6 @@ window.addEventListener('book:changed', async () => {
     if (typeof window.refreshCurrentPage === 'function') window.refreshCurrentPage();
 });
 
-function quickAddFromAI(catId, note) {
-    document.getElementById('quickAddModal').classList.add('show');
-    document.querySelectorAll('#quickAddForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === 'expense') { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
-    QuickAdd.updateCatSelect('expense');
-    document.getElementById('quickCategory').value = catId;
-    document.getElementById('quickNote').value = note;
-}
-
 // ==========================================
 // 交易月份筛选选项（依赖 cache.currentMonth，由 boot() 中 initCache() 之后调用）
 function initTransMonthFilter() {

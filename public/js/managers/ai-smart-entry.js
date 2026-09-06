@@ -1,13 +1,14 @@
 /**
  * AI 智能记账 v0.2 · 预测闭环前端（web）
  * ----------------------------------------------------------------
- * 链路：一句话文本 → POST /ai/transactions/parse（产出不可变预测快照）
- *      → 用户在确认区核对/修正 → POST /ai/predictions/:id/commit（事务内原子落账）
- *      或 POST /ai/predictions/:id/discard（弃置，不形成负向学习）。
+ * 三条入口统一收敛到这里：
+ *   - 一句话文本：parse() → POST /ai/transactions/parse
+ *   - OCR 图片  ：ai-recognition.js ocrRecognize() 拿 prediction_id 后调 _loadExternal()
+ *   - 语音/对话：同理 _loadExternal()（保留语音转写在外部走 /ai/transcribe，回填后 parse）
  *
- * 与 legacy 通道的关系：
- *   ai-recognition.js 的 OCR / 账单导入仍走「前端循环 POST /transactions」直写，
- *   本模块是并行新增的独立通道，不改动 legacy 行为。
+ * 确认流程（与文本/OCR/对话共用）：
+ *   → 用户在 #aiSmartConfirm 核对/修正 → POST /ai/predictions/:id/commit（事务内原子落账）
+ *   或 POST /ai/predictions/:id/discard（弃置，不形成负向学习）。
  *
  * 设计约束（对齐后端 server/modules/ai/validation/result-validator.js）：
  *   1. 裁决权在后端。前端【禁止】拿 overall_confidence 跟阈值比较来自行判定，
@@ -223,6 +224,43 @@ const AISmartEntry = {
             }
         } finally {
             this._setBusy(false, 'parse');
+        }
+    },
+
+    /* ========== 步骤 1b：外部通道灌入（OCR / 语音 / 对话） ==========
+     * ocrRecognize() 等非文本通道已有自己的 prediction_id + transactions，
+     * 把响应直接交给本方法，省去再走一遍 parse()。commit / discard 与文本通道共用。 */
+    async _loadExternal(res, opts = {}) {
+        if (this.busy) return;
+        if (!res || !res.prediction_id) {
+            showToast(opts.emptyHint || tt('aiSmart.parse.empty', '请先输入要记账的内容'), 'warning');
+            return;
+        }
+        this._setBusy(true, 'load');
+        this._hide('aiSmartConfirm');
+        try {
+            this.predictionId = res.prediction_id;
+            this.original = JSON.parse(JSON.stringify(res.transactions || []));
+            this.items = JSON.parse(JSON.stringify(res.transactions || []));
+            this.verdict = res.verdict;
+            this.reasons = res.reasons || [];
+            this.overall = res.overall_confidence;
+            this.validation = null;
+            // 幂等键在进入确认区时固定；commit 重试复用同一键，不会重复落账
+            this.idemKey = this._newIdemKey(res.prediction_id);
+            if (res.needs_confirmation) {
+                try {
+                    const full = await api(`/ai/predictions/${this.predictionId}`, 'GET', null, { silent: true });
+                    this.validation = full && full.validation ? full.validation : null;
+                } catch (_) {
+                    this.validation = null;  // 拉不到就退化不高亮，不阻塞主流程
+                }
+            }
+            this._render();
+        } catch (e) {
+            showToast(e.message || tt('aiSmart.loadExternal.fail', '加载识别结果失败'), 'error');
+        } finally {
+            this._setBusy(false, 'load');
         }
     },
 

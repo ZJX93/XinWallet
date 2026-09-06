@@ -449,10 +449,9 @@ data class UpdateInvestmentRequest(
 /** POST /ai/ocr 返回体 */
 data class OcrResponse(
     val text: String = "",
-    val items: List<OcrItem> = emptyList(),
     val reason: String? = null,
     /* ---- v0.2 预测闭环字段（/ai/ocr 识别出交易时返回）----
-     * ⚠️ 「识别不出交易」分支只返回 text/items/reason，不含下列字段。
+     * ⚠️ 「识别不出交易」分支只返回 text/reason，不含下列字段。
      *   Gson 反序列化绕过构造器（不走 Kotlin 默认值），缺失的引用类型字段
      *   实际为 null —— 调用方必须 orEmpty()/判空，不能信这里的默认值。
      *   predictionId 用 primitive Int：缺失时为 0，可作为「无预测」判据。 */
@@ -463,22 +462,6 @@ data class OcrResponse(
     val reasons: List<String>? = null,
     @SerializedName("needs_confirmation") val needsConfirmation: Boolean = true,
     @SerializedName("transcribe_source") val transcribeSource: String? = null
-)
-
-/**
- * OCR 识别出的单条交易候选。
- * `category` 是后端给出的分类「名称」（如「午餐」），客户端需按名称匹配到本地分类 id。
- * `date` 形如 `2026-07-17 17:23:49`，也可能只有日期。
- */
-data class OcrItem(
-    val name: String = "",
-    val amount: Double = 0.0,
-    val type: String = "expense",
-    val date: String? = null,
-    val note: String? = null,
-    val category: String? = null,
-    /** 服务端 LLM 识别出的对象（商家/个人姓名），用于服务端拼接「类目名-merchant」备注 */
-    val merchant: String? = null
 )
 
 /** 对话中的一条消息；user 消息可附带截图（多模态），assistant 消息可携带已建交易 */

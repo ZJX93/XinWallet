@@ -1418,6 +1418,7 @@ window.I18N_DICT['zh-CN'] = {
     'aiSmart.voice.filled': '已填入转写文本，可点「解析」',
     'aiSmart.voice.fail': '语音转写失败',
     'aiSmart.parse.empty': '请先输入要记账的内容',
+    'aiSmart.loadExternal.fail': '加载识别结果失败',
     'aiSmart.parse.tooLong': '文本过长（最多 2000 字）',
     'aiSmart.parse.hint': '试试写明金额，例如「星巴克咖啡 35.5」',
     'aiSmart.banner.overallPct': '（综合置信度 {pct}%）',

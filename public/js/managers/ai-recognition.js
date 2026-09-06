@@ -40,14 +40,14 @@ const AIRecognition = {
     },
 
     init() {
-        const firstEl = document.getElementById('aiImportAllBtn');
+        const firstEl = document.getElementById('ocrRecognizeBtn');
         if (!firstEl) return;  // ai-recognition 页面通过 PageLoader 惰加载
         this._bindEvents();
     },
 
     // 懒加载时 init 可能错过，refresh 时补上事件绑定
     refresh() {
-        const firstEl = document.getElementById('aiImportAllBtn');
+        const firstEl = document.getElementById('ocrRecognizeBtn');
         if (firstEl && !this._eventsBound) {
             this._bindEvents();
         }
@@ -55,7 +55,6 @@ const AIRecognition = {
 
     _bindEvents() {
         this._eventsBound = true;
-        document.getElementById('aiImportAllBtn').addEventListener('click', () => this.importAll());
 
         // OCR 上传
         const uploadArea = document.getElementById('ocrUploadArea');
@@ -83,6 +82,10 @@ const AIRecognition = {
         billInput.addEventListener('change', (e) => { if (e.target.files[0]) this.handleBillFile(e.target.files[0]); });
         billParseBtn.addEventListener('click', () => this.parseBill());
         document.getElementById('billClearBtn').addEventListener('click', () => this.billClear());
+
+        // 账单导入结果的「全部导入」（OCR 结果已走 AISmartEntry 确认区，不经此按钮）
+        const importAllBtn = document.getElementById('aiImportAllBtn');
+        if (importAllBtn) importAllBtn.addEventListener('click', () => this.importAll());
     },
 
     handleFile(file) {
@@ -139,6 +142,11 @@ const AIRecognition = {
         document.getElementById('ocrUploadPlaceholder').style.display = 'block';
         document.getElementById('ocrRecognizeBtn').disabled = true;
         document.getElementById('ocrImageInput').value = '';
+        // 图没了，「换腾讯 OCR 重试」也无从谈起；转录文字一并收起
+        const retransBtn = document.getElementById('ocrRetranscribeBtn');
+        if (retransBtn) retransBtn.style.display = 'none';
+        const tp = document.getElementById('ocrTextPreview');
+        if (tp) { tp.style.display = 'none'; tp.textContent = ''; }
     },
 
     // ====== 账单导入 ======
@@ -239,7 +247,7 @@ const AIRecognition = {
             if (items.length === 0) throw new Error(tt('aiRec.billNoTxn', '未能从账单中识别到交易记录，请确认文件格式'));
 
             this.parsedItems = items;
-            this.renderOcrResults();
+            this.renderBillResults();
             showToast(tt('aiRec.parseOk', '解析 {n} 条记录（{format}）').replace('{n}', String(items.length)).replace('{format}', format), 'success');
         } catch (err) {
             showToast(err.message || tt('aiRec.parseFail', '解析失败'), 'error');
@@ -480,7 +488,6 @@ const AIRecognition = {
             if (lastAccountName) formData.append('account_name', String(lastAccountName));
         } catch (_) { /* localStorage 不可用时静默跳过 */ }
         document.getElementById('ocrLoading').style.display = 'block';
-        document.getElementById('aiResults').style.display = 'none';
         document.getElementById('ocrTextPreview').style.display = 'none';
         document.getElementById('ocrRecognizeBtn').disabled = true;
 
@@ -493,27 +500,32 @@ const AIRecognition = {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message || tt('aiRec.ocrFail', 'OCR 识别失败'));
-            this.parsedItems = (data.data && data.data.items) || [];
+            const payload = (data && data.data) || {};
             document.getElementById('ocrLoading').style.display = 'none';
 
             // 显示 OCR 原始文本
-            if (data.data && data.data.text) {
+            if (payload.text) {
                 const textPreview = document.getElementById('ocrTextPreview');
-                textPreview.textContent = data.data.text;
+                textPreview.textContent = payload.text;
                 textPreview.style.display = 'block';
             }
+            if (payload.reason) showToast(payload.reason, 'warning');
 
-            // 显示原因提示（未识别到交易项时）
-            const reason = data.data && data.data.reason;
-            if (reason) {
-                showToast(reason, 'warning');
-            }
+            // 识别过一次后才给出「换腾讯 OCR 重试」入口（无论有没有识别出交易，都可能想换引擎重来）
+            const retransBtn = document.getElementById('ocrRetranscribeBtn');
+            if (retransBtn) retransBtn.style.display = 'inline-block';
 
-            if (this.parsedItems.length === 0) {
+            // OCR 已落不可变预测快照（v0.2 通道），交给 AISmartEntry 复用确认区
+            if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
+                await AISmartEntry._loadExternal(payload, {
+                    emptyHint: tt('aiRec.noTxn', '未能识别到交易项')
+                });
+                // 滚动到确认区，让用户一眼看到结果
+                const confirmEl = document.getElementById('aiSmartConfirm');
+                if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
                 showToast(tt('aiRec.noTxn', '未能识别到交易项'), 'warning');
-                return;
             }
-            this.renderOcrResults();
         } catch (err) {
             document.getElementById('ocrLoading').style.display = 'none';
             showToast(err.message || tt('aiRec.recognizeFail', '识别失败'), 'error');
@@ -545,19 +557,23 @@ const AIRecognition = {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message || tt('aiRec.rerecognizeFail', '重识别失败'));
-            this.parsedItems = (data.data && data.data.items) || [];
-            if (data.data && data.data.text) {
+            const payload = (data && data.data) || {};
+            if (payload.text) {
                 const tp = document.getElementById('ocrTextPreview');
-                tp.textContent = data.data.text;
+                tp.textContent = payload.text;
                 tp.style.display = 'block';
             }
-            if (data.data && data.data.reason) showToast(data.data.reason, 'warning');
-            if (this.parsedItems.length === 0) {
+            if (payload.reason) showToast(payload.reason, 'warning');
+            if (payload.prediction_id && Array.isArray(payload.transactions) && payload.transactions.length) {
+                await AISmartEntry._loadExternal(payload, {
+                    emptyHint: tt('aiRec.rerecognizeNoTxn', '重识别仍未识别到交易项')
+                });
+                const confirmEl = document.getElementById('aiSmartConfirm');
+                if (confirmEl) confirmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                showToast(tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'), 'success');
+            } else {
                 showToast(tt('aiRec.rerecognizeNoTxn', '重识别仍未识别到交易项'), 'warning');
-                return;
             }
-            this.renderOcrResults();
-            showToast(tt('aiRec.tencentOcrDone', '腾讯 OCR 重新识别完成'), 'success');
         } catch (err) {
             showToast(err.message || tt('aiRec.rerecognizeFail', '重识别失败'), 'error');
         } finally {
@@ -566,11 +582,10 @@ const AIRecognition = {
         }
     },
 
-    renderOcrResults() {
+    renderBillResults() {
+        // ⚠️ 仅账单（CSV/XLSX）用。OCR 已统一走 AISmartEntry._loadExternal() 复用 v0.2 确认区。
+        //    账单是用户已确认的导出文件，前端解析精度足够，无须再走 AI 裁决。
         document.getElementById('aiResults').style.display = 'block';
-        // 仅当上传的是图片时才展示「换腾讯 OCR 重试」（账单导入无图，不适用）
-        const retransBtn = document.getElementById('ocrRetranscribeBtn');
-        if (retransBtn) retransBtn.style.display = this.selectedFile ? 'inline-block' : 'none';
         const cats = cache.categories || [];
         const expenseCats = cats.filter(c => c.type === 'expense');
         const incomeCats = cats.filter(c => c.type === 'income');
@@ -631,7 +646,7 @@ const AIRecognition = {
                 else if (field === 'type') {
                     this.parsedItems[idx].type = val;
                     // 切换类型后刷新整行（分类列表变了）
-                    this.renderOcrResults();
+                    this.renderBillResults();
                 }
                 else if (field === 'category') {
                     const sel = el.options[el.selectedIndex];
@@ -655,26 +670,13 @@ const AIRecognition = {
                 if (this.parsedItems.length === 0) {
                     document.getElementById('aiResults').style.display = 'none';
                 } else {
-                    this.renderOcrResults();
+                    this.renderBillResults();
                 }
             });
         });
     },
 
-    guessCat(name) {
-        // 关键词 → 种子一级分类 ID；经 _seedIdToRealId 转成当前库中的真实 ID 再取对象，
-        // 避免种子 ID 漂移/用户重命名后指向错误类目。
-        // 注：原表里的 id 8 在 schema.sql 中并不存在（无该一级分类），
-        // 「话费/流量/宽带」正确归属是二级分类 42「话费宽带」；
-        // 「衣/鞋/包/化妆」原写 id 9，但 9 是「人情往来」，正确归属是二级分类 36「服饰美容」。
-        const kw = { 1: ['餐','饭','食','吃','外卖','菜','肉','蛋','牛奶','面包','水果','咖啡','奶茶'], 2: ['车','油','打车','滴滴','地铁','公交','停车'], 3: ['购','买','京东','淘宝','天猫','日用品'], 5: ['电影','游戏','娱乐','健身'], 4: ['房','租','水电','物业'], 6: ['药','医','体检'], 7: ['课','书','学','培训'], 42: ['话费','流量','宽带'], 36: ['衣','鞋','包','化妆'] };
-        for (const [id, words] of Object.entries(kw)) {
-            for (const w of words) {
-                if (name.toLowerCase().includes(w)) return getCat(this._seedIdToRealId(parseInt(id)));
-            }
-        }
-        return getCat(this._seedIdToRealId(14));
-    },
+    // 批量把解析后的账单行导入为交易（账单是用户已确认的导出文件，前端解析精度足够，不走 AI 裁决）
     async importAll() {
         if (this.parsedItems.length === 0) return;
         const accountId = cache.accounts[0]?.id;
@@ -700,14 +702,13 @@ const AIRecognition = {
         const imported = results.filter(r => r.status === 'fulfilled' && r.value).length;
         showToast(tt('aiRec.importOk', '成功导入 {n}/{m} 条').replace('{n}', String(imported)).replace('{m}', String(this.parsedItems.length)), imported > 0 ? 'success' : 'error');
         document.getElementById('aiResults').style.display = 'none';
-        document.getElementById('ocrTextPreview').style.display = 'none';
         this.parsedItems = [];
-        this.ocrClear();
+        this.billClear();   // 清的是账单上传态，不动 OCR 那一侧
         await initCache();
         await DashboardManager.refresh();
     },
 
-    // ── 分类名 → 分类 ID 的解析基础设施 ────────────────────────────
+    // ── 分类名 → 分类 ID 的解析基础设施（账单解析用）──────────────
     // 说明：本文件原先把 schema.sql 的种子分类 ID 硬编码在关键词表里。
     // 一旦种子数据调整、用户重命名分类或使用自建分类，硬编码 ID 就会指向错误类目。
     // 现改为「先按名称在运行时 cache.categories 里查真实 ID，查不到才回退到种子 ID」，
@@ -859,16 +860,6 @@ const AIRecognition = {
         }
         // 5) 全部未命中 → 「其他支出」
         return this._seedIdToRealId(14);
-    },
-
-    clear() { document.getElementById('aiResults').style.display = 'none'; document.getElementById('ocrTextPreview').style.display = 'none'; this.parsedItems = []; this.ocrClear(); },
-    suggest() {
-        const input = document.getElementById('aiCatInput').value.trim();
-        if (!input) return;
-        const cat = this.guessCat(input);
-        document.getElementById('aiCatResult').style.display = 'block';
-        document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${escapeHtml(cat.icon || "📌")} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-ghost" id="aiQuickAddBtn">直接记一笔</button></div>`;
-        document.getElementById('aiQuickAddBtn').addEventListener('click', () => window.quickAddFromAI && window.quickAddFromAI(cat.id, input));
     }
 };
 

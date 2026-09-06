@@ -366,17 +366,15 @@ export interface AiSettingsResponse {
 export interface OcrResponse {
   /* v0.2 预测闭环字段（/ai/ocr 识别出交易时返回；识别不出时缺失 → undefined） */
   prediction_id?: number;
-  /** 实际是 AiCandidateTxn 形状（与 /ai/transactions/parse 同构）；
-   *  历史上声明成 TransactionItem[] 但从无调用方按此类型使用（原 AiScan 页走 ESObject，已删），纠正之 */
+  /** 实际是 AiCandidateTxn 形状（与 /ai/transactions/parse 同构） */
   transactions?: AiCandidateTxn[];
   verdict?: string;
   overall_confidence?: number;
   reasons?: string[];
   needs_confirmation?: boolean;
   transcribe_source?: string;
-  /* legacy 字段（老客户端兼容） */
+  /* 通用字段 */
   text?: string;
-  items?: object[];
   reason?: string;
   [key: string]: Object;
 }

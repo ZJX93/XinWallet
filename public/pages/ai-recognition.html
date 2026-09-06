@@ -52,7 +52,9 @@
                             <div class="ocr-upload-actions">
                                 <button class="btn btn-primary btn-ai" id="ocrRecognizeBtn" disabled data-i18n="aiRec.ocr.recognize">识别并解析</button>
                                 <button class="btn btn-ghost" id="ocrClearBtn" data-i18n="aiRec.ocr.reselect">重新选择</button>
+                                <button class="btn btn-ghost btn-ai" id="ocrRetranscribeBtn" style="display:none" title="上次识别有误，强制用腾讯 OCR 重新识别" data-i18n-title="aiRec.results.retranscribeTip" data-i18n="aiRec.results.retranscribe">识别有误？换腾讯 OCR 重试</button>
                             </div>
+                            <div class="ocr-text-preview" id="ocrTextPreview" style="display:none"></div>
                         </div>
                     </div>
                     <div class="glass-card">
@@ -78,14 +80,12 @@
                         </div>
                     </div>
                 </div>
-                <!-- 识别结果 -->
+                <!-- 账单导入结果（OCR 已统一走 AISmartEntry 复用 v0.2 确认区） -->
                 <div class="ai-results" id="aiResults" style="display:none">
                     <h4 class="ai-results-title" data-i18n="aiRec.results.title">识别结果</h4>
-                    <div class="ocr-text-preview" id="ocrTextPreview" style="display:none"></div>
                     <div id="aiResultsList"></div>
                     <div class="ai-results-actions">
                     <button class="btn btn-primary" id="aiImportAllBtn" data-i18n="aiRec.results.importAll">全部导入为交易</button>
-                    <button class="btn btn-ghost btn-ai" id="ocrRetranscribeBtn" style="display:none" title="上次识别有误，强制用腾讯 OCR 重新识别" data-i18n-title="aiRec.results.retranscribeTip" data-i18n="aiRec.results.retranscribe">识别有误？换腾讯 OCR 重试</button>
                 </div>
                 </div>
                 <!-- OCR 加载 -->
