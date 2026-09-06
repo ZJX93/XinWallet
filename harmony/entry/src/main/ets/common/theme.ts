@@ -479,8 +479,13 @@ export function fmtMoneyShort(n: number, currency: string = 'CNY'): string {
  *
  * 与 fmtMoneyMix 配对：sumByCurrency 拿到 breakdown → fmtMoneyMix(breakdown) 智能混显。
  */
+export interface CurrencyAmount {
+  currency?: string;
+  amount: number;
+}
+
 export function sumByCurrency(
-  items: Array<{ currency?: string; amount: number }>
+  items: Array<CurrencyAmount>
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (let i = 0; i < items.length; i++) {

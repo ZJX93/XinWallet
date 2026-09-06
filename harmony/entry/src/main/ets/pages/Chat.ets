@@ -17,7 +17,7 @@ import buffer from '@ohos.buffer';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import dataPreferences from '@ohos.data.preferences';
-import { COLORS, fmtMoney, fmtMoneyMix, sumByCurrency, isSingleCurrency, withAlpha } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyMix, sumByCurrency, isSingleCurrency, withAlpha, CurrencyAmount } from '../common/theme';
 import { AppBackground, DropdownField, DropdownOption } from '../common/components/Components';
 import { startRecord, stopRecord } from '../common/audio';
 import { TransactionItem } from '../common/models';
@@ -1035,7 +1035,8 @@ struct Chat {
    * 保留 totalAmountBreakdown() 作为底层聚合。
    */
   totalAmountBreakdown(): Record<string, number> {
-    return sumByCurrency(this.candidates.map(t => ({ currency: t.currency, amount: t.amount })));
+    return sumByCurrency(this.candidates.map((t: AiCandidateTxn): CurrencyAmount =>
+      ({ currency: t.currency, amount: t.amount })));
   }
 
   /**

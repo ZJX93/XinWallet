@@ -70,6 +70,8 @@ export interface Account {
   type: string;
   icon?: string;
   balance: number;
+  /** 多币种 P2-3b：账户币种。后端 accounts 表有 currency 列，列表/详情接口 SELECT 已带回。 */
+  currency?: string;
   opening_balance?: number;
   credit_limit?: number;
   is_default?: boolean;

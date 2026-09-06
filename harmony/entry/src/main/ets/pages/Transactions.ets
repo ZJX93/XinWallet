@@ -8,7 +8,7 @@ import promptAction from '@ohos.promptAction';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { toast, toastLong } from '../common/ui';
-import { COLORS, fmtMoney, fmtMoneyShort, fmtMoneyMix, fmtDayLabel, sumByCurrency, isSingleCurrency, LAYOUT, RADIUS, TRANSPARENT } from '../common/theme';
+import { COLORS, fmtMoney, fmtMoneyShort, fmtMoneyMix, fmtDayLabel, sumByCurrency, isSingleCurrency, LAYOUT, RADIUS, TRANSPARENT, CurrencyAmount } from '../common/theme';
 import { TransactionItem, TxSummary, Book, Budget, BooksResponse, Account } from '../common/models';
 import {
   TransactionRow, LoadingBox, PullRefreshBox, HeroGradientCard,
@@ -246,11 +246,13 @@ export struct TransactionsPage {
    */
   dayIncomeBreakdown(rows: TransactionItem[]): Record<string, number> {
     return sumByCurrency(rows.filter(r => r.type === 'income')
-      .map(r => ({ currency: r.currency, amount: r.amount })));
+      .map((r: TransactionItem): CurrencyAmount =>
+        ({ currency: r.currency, amount: r.amount })));
   }
   dayExpenseBreakdown(rows: TransactionItem[]): Record<string, number> {
     return sumByCurrency(rows.filter(r => r.type === 'expense')
-      .map(r => ({ currency: r.currency, amount: r.amount })));
+      .map((r: TransactionItem): CurrencyAmount =>
+        ({ currency: r.currency, amount: r.amount })));
   }
   /** 单货币账本下的日收入紧凑值（>=1万才缩），混币种账本退化为 0 由 fmtMoneyMix 单独展示。 */
   dayIncomeShort(rows: TransactionItem[]): string {
@@ -266,6 +268,19 @@ export struct TransactionsPage {
     const keys = Object.keys(b);
     const cur = keys.length > 0 ? keys[0] : 'CNY';
     return fmtMoneyShort(b[cur] ?? 0, cur);
+  }
+  /**
+   * 汇总行日收/日支文案：单币种取紧凑值，混币种由 fmtMoneyMix 展开。
+   * 抽成普通方法而不是在 @Builder 里写 IIFE —— @Builder 体内只允许 UI 组件语法，
+   * 内联箭头函数虽然能过 ArkTS，但可读性差且每次重渲染都要新建闭包。
+   */
+  dayIncomeLabel(rows: TransactionItem[]): string {
+    const s = this.dayIncomeShort(rows);
+    return s !== '' ? s : fmtMoneyMix(this.dayIncomeBreakdown(rows));
+  }
+  dayExpenseLabel(rows: TransactionItem[]): string {
+    const s = this.dayExpenseShort(rows);
+    return s !== '' ? s : fmtMoneyMix(this.dayExpenseBreakdown(rows));
   }
 
   @Builder ToolBar() {
@@ -355,35 +370,64 @@ export struct TransactionsPage {
   /** 汇总卡标签前缀：按年时是「本年支出」而不是「本月支出」（对齐安卓 prefix） */
   periodPrefix(): string { return this.periodMode === 'year' ? '本年' : '本月'; }
 
+  /**
+   * 汇总卡数据服务方法。
+   * 这些计算原先直接写在 @Builder SummaryStrip 体内（const 声明 + IIFE），
+   * 但 ArkTS 禁止在 @Builder 方法体内写 const/let（报「Only UI component syntax」）。
+   * 现提取为普通方法，@Builder 内只保留 UI 组件语法、用 this.xxx() 取派生值。
+   */
+  summaryIncBreak(): Record<string, number> | undefined {
+    return this.summary?.incomeBreakdown;
+  }
+  summaryExpBreak(): Record<string, number> | undefined {
+    return this.summary?.expenseBreakdown;
+  }
+  summarySingleCur(): string {
+    return this.summary?.currency ?? 'CNY';
+  }
+  /** 单币种账本退回单值，否则 null（混币种由 fmtMoneyMix 展开） */
+  summaryIncSingle(): Record<string, number> | null {
+    const b = this.summaryIncBreak();
+    return b && isSingleCurrency(b) ? b : null;
+  }
+  summaryExpSingle(): Record<string, number> | null {
+    const b = this.summaryExpBreak();
+    return b && isSingleCurrency(b) ? b : null;
+  }
+  /** 混币种账本：结余 = 各币种收入 − 支出（按币种相减）；收入/支出 breakdown 缺失时返回 null */
+  summaryBalance(): Record<string, number> | null {
+    const incBreak = this.summaryIncBreak();
+    const expBreak = this.summaryExpBreak();
+    if (!incBreak || !expBreak) return null;
+    const b: Record<string, number> = {};
+    const keys = new Set<string>([...Object.keys(incBreak), ...Object.keys(expBreak)]);
+    keys.forEach((k: string) => { b[k] = (incBreak[k] ?? 0) - (expBreak[k] ?? 0); });
+    return b;
+  }
+  summaryExpenseLabel(): string {
+    const expBreak = this.summaryExpBreak();
+    const expSingle = this.summaryExpSingle();
+    const singleCur = this.summarySingleCur();
+    return expSingle ? fmtMoney(Object.values(expSingle)[0] ?? 0, singleCur) : fmtMoneyMix(expBreak, singleCur);
+  }
+  summaryIncomeLabel(): string {
+    const incBreak = this.summaryIncBreak();
+    const incSingle = this.summaryIncSingle();
+    const singleCur = this.summarySingleCur();
+    return incSingle ? fmtMoney(Object.values(incSingle)[0] ?? 0, singleCur) : fmtMoneyMix(incBreak, singleCur);
+  }
+
   @Builder SummaryStrip() {
-    // 结余大字 + 下方四列小字，复用首页那张暖棕渐变头卡（对齐安卓 SummaryCard）。
-    // 上一轮我把这里从「大棕卡」改成了「4 列等权小卡网格」，是判断错误 ——
-    // 4 个数字等权排开时没有主角，用户扫过去要逐个读标签才知道哪个重要。
-    // 「结余」才是这一页的答案，其余四项是构成它的过程，必须分主次。
-    //
-    // 第 4 列从「笔数」换成「本月预算 / 本月剩余」：笔数已经在流水列表里
-    // 一目了然（划一下就知道多不多），预算才是只有这里能看到的信息。
-    //
-    // 多币种 P2-3c：混币种账本下 income/expense/balance 单值无意义（跨币种累加是错的），
-    // 后端按 currency GROUP BY 后回填 incomeBreakdown/expenseBreakdown。前端优先 breakdown，
-    // 单币种账本下退化为 fmtMoney(value, currency)。
-    const incBreak = this.summary?.incomeBreakdown as Record<string, number> | undefined;
-    const expBreak = this.summary?.expenseBreakdown as Record<string, number> | undefined;
-    const incSingle = incBreak && isSingleCurrency(incBreak) ? incBreak : null;
-    const expSingle = expBreak && isSingleCurrency(expBreak) ? expBreak : null;
-    const singleCur = this.summary?.currency ?? 'CNY';
+    // 结余大字 + 下方四列小字，复用首页 HeroGradientCard（对齐安卓 SummaryCard）。
+    // 「结余」是主角；收入/支出/预算/剩余是构成它的过程。第 4 列为预算（流水笔数列表里已可见）。
+    // 多币种 P2-3c：优先 breakdown（混币种跨币种累加无意义），单币种退化 fmtMoney。
     Column() {
       HeroGradientCard({
         topLeft: '结余',
-        amount: fmtMoneyMix(incBreak && expBreak ? (() => {
-          const b: Record<string, number> = {};
-          const keys = new Set<string>([...Object.keys(incBreak), ...Object.keys(expBreak)]);
-          keys.forEach(k => { b[k] = (incBreak[k] ?? 0) - (expBreak[k] ?? 0); });
-          return b;
-        })() : null, singleCur),
+        amount: fmtMoneyMix(this.summaryBalance(), this.summarySingleCur()),
         bottomCells: [
-          { label: this.periodPrefix() + '支出', value: expSingle ? fmtMoney(Object.values(expSingle)[0] ?? 0, singleCur) : fmtMoneyMix(expBreak, singleCur) },
-          { label: this.periodPrefix() + '收入', value: incSingle ? fmtMoney(Object.values(incSingle)[0] ?? 0, singleCur) : fmtMoneyMix(incBreak, singleCur) },
+          { label: this.periodPrefix() + '支出', value: this.summaryExpenseLabel() },
+          { label: this.periodPrefix() + '收入', value: this.summaryIncomeLabel() },
           { label: this.periodPrefix() + '预算', value: fmtMoney(this.budgetTotal) },
           { label: this.periodPrefix() + '剩余', value: fmtMoney(this.budgetRemain()) }
         ]
@@ -430,16 +474,16 @@ export struct TransactionsPage {
                   // 多币种 P2-3c：日期 header 收/支。单币种账本显示 fmtMoneyShort（>=1万 才缩），
                   // 混币种账本退化为空让位给下方汇总卡展示 —— 同一天的「收 USD 5」和
                   // 「收 CNY 30」并列无意义。
-                  const incShort = this.dayIncomeShort(g.rows);
-                  if (incShort !== '') {
-                    Text('收 ' + incShort)
+                  //
+                  // ArkTS @Builder 内不允许顶层 const。改成条件直接求值，省掉中间变量。
+                  if (this.dayIncomeShort(g.rows) !== '') {
+                    Text('收 ' + this.dayIncomeShort(g.rows))
                       .fontSize(12).fontColor(COLORS.textSecondary)
                       .maxLines(1)
                       .margin({ right: 10 })
                   }
-                  const expShort = this.dayExpenseShort(g.rows);
-                  if (expShort !== '') {
-                    Text('支 ' + expShort)
+                  if (this.dayExpenseShort(g.rows) !== '') {
+                    Text('支 ' + this.dayExpenseShort(g.rows))
                       .fontSize(12).fontColor(COLORS.textSecondary)
                       .maxLines(1)
                   }
@@ -635,13 +679,10 @@ export struct TransactionsPage {
             Blank()
             // 多币种 P2-3c：日历视图选中日的收/支/结余。单币种账本走 dayIncomeShort/dayExpenseShort；
             // 混币种账本直接用 fmtMoneyMix 智能混显（breakdown 取代累加）。
-            const incShort = this.dayIncomeShort(this.selectedRows());
-            const expShort = this.dayExpenseShort(this.selectedRows());
-            const incMix = incShort === '' ? fmtMoneyMix(this.dayIncomeBreakdown(this.selectedRows())) : '';
-            const expMix = expShort === '' ? fmtMoneyMix(this.dayExpenseBreakdown(this.selectedRows())) : '';
-            Text('收 ' + (incShort !== '' ? incShort : incMix))
+            // @Builder 内不写 const / 不写 IIFE，一律走上面的 dayIncomeLabel / dayExpenseLabel。
+            Text('收 ' + this.dayIncomeLabel(this.selectedRows()))
               .fontSize(12).fontColor(COLORS.income).maxLines(1)
-            Text('支 ' + (expShort !== '' ? expShort : expMix))
+            Text('支 ' + this.dayExpenseLabel(this.selectedRows()))
               .fontSize(12).fontColor(COLORS.expense).margin({ left: 10 }).maxLines(1)
             Text('结余 ' + this.dayBalanceLabel())
               .fontSize(12)
