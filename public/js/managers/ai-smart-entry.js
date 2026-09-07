@@ -1,28 +1,29 @@
 /**
- * AI 智能记账 v0.2 · 预测闭环前端（web）
- * ----------------------------------------------------------------
- * 三条入口统一收敛到这里：
- *   - 一句话文本：parse() → POST /ai/transactions/parse
- *   - OCR 图片  ：本文件的 ocrRecognize / ocrRetranscribe 上传后调 _loadExternal()
- *   - 语音/对话：同理 _loadExternal()（保留语音转写在外部走 /ai/transcribe，回填后 parse）
- *
- * 确认流程（与文本/OCR/对话共用）：
- *   → 用户在 #aiSmartConfirm 核对/修正 → POST /ai/predictions/:id/commit（事务内原子落账）
- *   或 POST /ai/predictions/:id/discard（弃置，不形成负向学习）。
- *
- * 设计约束（对齐后端 server/modules/ai/validation/result-validator.js）：
- *   1. 裁决权在后端。前端【禁止】拿 overall_confidence 跟阈值比较来自行判定，
- *      一律以 needs_confirmation / verdict 为准；字段级高亮同样取后端 validation.per_txn。
- *   2. 用户手工修正过的字段，置信度提升为 1.0、evidence 标记 user_corrected，
- *      使 final_diff 与后续学习信号反映「人工已确认」这一事实。
- *   3. idempotency_key 在进入确认区时生成并固定，网络重试不会重复落账。
- *
- * 迁移说明：原 ai-recognition.js 的「OCR 上传 + provider 检查」已被吸收到这里。
- * 　与文本/语音通道相比，OCR 多了「上传图片 + 压缩 + 走 /ai/ocr|retranscribe 端点」，
- * 　调用到 _loadExternal() 后即与文本/语音完全同构。账单（CSV/XLSX）走独立
- * 　ai-bill-import.js，与本文件无关。
- * ----------------------------------------------------------------
- */
+* AI 智能记账 v0.2 · 预测闭环前端（web）
+* ----------------------------------------------------------------
+* 两条入口统一收敛到这里：
+*   - OCR 图片  ：本文件的 ocrRecognize / ocrRetranscribe 上传后调 _loadExternal()
+*   - AI 助手   ：ai-chat.js _sendRecord() 调 /ai/transactions/parse 后同样走 _loadExternal()
+*   （2026-09 整合：文本/语音一句话记账从本页迁出，统一走右下角 AI 助手 FAB；
+*     识别成功后 ai-chat 会 switchPage('ai-recognition') 并灌入下方确认区。）
+*
+* 确认流程（OCR / AI 助手共用）：
+*   → 用户在 #aiSmartConfirm 核对/修正 → POST /ai/predictions/:id/commit（事务内原子落账）
+*   或 POST /ai/predictions/:id/discard（弃置，不形成负向学习）。
+*
+* 设计约束（对齐后端 server/modules/ai/validation/result-validator.js）：
+*   1. 裁决权在后端。前端【禁止】拿 overall_confidence 跟阈值比较来自行判定，
+*      一律以 needs_confirmation / verdict 为准；字段级高亮同样取后端 validation.per_txn。
+*   2. 用户手工修正过的字段，置信度提升为 1.0、evidence 标记 user_corrected，
+*      使 final_diff 与后续学习信号反映「人工已确认」这一事实。
+*   3. idempotency_key 在进入确认区时生成并固定，网络重试不会重复落账。
+*
+* 迁移说明：原 ai-recognition.js 的「OCR 上传 + provider 检查」已被吸收到这里。
+* 　AI 助手（ai-chat.js）承担文本/语音入口，识别后调本文件 _loadExternal() 进同一确认区，
+* 　调用到 _loadExternal() 后即与 OCR 完全同构。账单（CSV/XLSX）走独立
+* 　ai-bill-import.js，与本文件无关。
+* ----------------------------------------------------------------
+*/
 
 // 与后端 result-validator.js 的 DECISIVE_FIELDS 对齐；merchant 记录但不参与裁决
 const DECISIVE_FIELDS = ['amount', 'type', 'category', 'date'];
@@ -60,18 +61,15 @@ const AISmartEntry = {
     hasProvider: null,   // null = 未检测；true/false = 缓存结果（ai-provider 改配置时清）
 
     init() {
-        // 页面惰加载：智能记账 + OCR 是同一页（ai-recognition.html），
-        // 但 ai-smart-entry 也可能被 ai-chat 等页面触发到，任一元素存在即可绑
-        if (!document.getElementById('aiSmartParseBtn')
-            && !document.getElementById('ocrRecognizeBtn')) return;
+        // OCR 在 ai-recognition.html 惰加载；ai-chat 通过 _loadExternal 触发时不需事件绑定
+        // （_loadExternal 仅消费/修改 predictionId 等内存态，与按钮事件无关）。
+        if (!document.getElementById('ocrRecognizeBtn')) return;
         this._bindEvents();
     },
 
     // 惰加载时 init 可能错过，切页 refresh 时补绑
     refresh() {
-        if (!this._eventsBound
-            && (document.getElementById('aiSmartParseBtn')
-                || document.getElementById('ocrRecognizeBtn'))) {
+        if (!this._eventsBound && document.getElementById('ocrRecognizeBtn')) {
             this._bindEvents();
         }
     },
@@ -79,32 +77,15 @@ const AISmartEntry = {
     _bindEvents() {
         this._eventsBound = true;
 
-        // —— 智能记账 / 语音 ——
-        const parseBtn = document.getElementById('aiSmartParseBtn');
-        if (parseBtn) parseBtn.addEventListener('click', () => this.parse());
+        // 引导卡「打开 AI 助手」：文本/语音一句话记账已迁出到 AI 助手 FAB
+        const openFabBtn = document.getElementById('aiFabOpenFromRecBtn');
+        openFabBtn?.addEventListener('click', () => window.AIChat?.open?.());
+
+        // 确认 / 弃置（OCR 与 AI 助手识别后共用确认区，v0.2 必经）
         const commitBtn = document.getElementById('aiSmartCommitBtn');
         if (commitBtn) commitBtn.addEventListener('click', () => this.commit());
         const discardBtn = document.getElementById('aiSmartDiscardBtn');
         if (discardBtn) discardBtn.addEventListener('click', () => this.discard());
-
-        // 🎙 语音：单击切到录音态，再单击停止；最长 60 秒（防误触长开）
-        const voiceBtn = document.getElementById('aiSmartVoiceBtn');
-        if (voiceBtn) voiceBtn.addEventListener('click', () => this._toggleVoice());
-
-        const input = document.getElementById('aiSmartText');
-        if (input) {
-            // Ctrl/Cmd + Enter 快捷解析；单独回车留给多行输入
-            input.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.parse(); }
-            });
-        }
-
-        document.querySelectorAll('#aiSmartExamples [data-example]').forEach(chip => {
-            chip.addEventListener('click', () => {
-                input.value = chip.dataset.example;
-                input.focus();
-            });
-        });
 
         // —— OCR 上传（同一 ai-recognition 页面里）——
         const ocrUploadArea = document.getElementById('ocrUploadArea');
@@ -124,153 +105,13 @@ const AISmartEntry = {
         }
     },
 
-    /* ========== 步骤 0：语音转写（点击开始 / 再点击停止） ==========
-     * 浏览器侧 MediaRecorder 录 webm/opus，base64 后 POST /ai/transcribe。
-     * 成功后把转写文本灌回 #aiSmartText（不清空用户已输内容，append 模式），
-     * 用户再点 🪄 解析走原有链路。最长 60 秒（达到上限自动停止）。 */
-    _voice: { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null },
+    // （2026-09 整合）web 端语音转写随「一句话记账」一并迁入 AI 助手，本文件不再保留。
 
-    async _toggleVoice() {
-        const btn = document.getElementById('aiSmartVoiceBtn');
-        if (!btn) return;
-        if (this._voice.recorder && this._voice.recorder.state === 'recording') {
-            this._voice.stopped = true;
-            clearTimeout(this._voice.maxTimer);
-            this._voice.recorder.stop();
-            btn.textContent = tt('aiSmart.voice.transcribing', '⏳ 转写中...');
-            btn.disabled = true;
-            return;
-        }
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showToast(tt('aiSmart.voice.notSupported', '当前浏览器不支持麦克风录制'), 'error'); return;
-        }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // 优先 webm/opus（Chrome/Edge），Safari 用 mp4/m4a 兜底
-            const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
-            this._voice.recorder = mime
-                ? new MediaRecorder(stream, { mimeType: mime })
-                : new MediaRecorder(stream);
-            this._voice.mime = this._voice.recorder.mimeType || mime || 'audio/webm';
-            this._voice.chunks = [];
-            this._voice.stopped = false;
-
-            this._voice.recorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) this._voice.chunks.push(e.data);
-            };
-            this._voice.recorder.onstop = async () => {
-                stream.getTracks().forEach(t => t.stop());   // 关麦克风（关键：不解锁红灯）
-                const blob = new Blob(this._voice.chunks, { type: this._voice.mime });
-                await this._sendTranscribe(blob);
-            };
-            this._voice.recorder.start();
-            btn.textContent = tt('aiSmart.voice.stop', '⏹ 停止');
-            btn.classList.add('is-recording');
-            // 60 秒上限自动停
-            this._voice.maxTimer = setTimeout(() => {
-                if (this._voice.recorder && this._voice.recorder.state === 'recording') {
-                    showToast(tt('aiSmart.voice.timeout', '已达最长录音时长，自动停止'), 'info');
-                    this._voice.recorder.stop();
-                }
-            }, 60_000);
-        } catch (e) {
-            // getUserMedia 失败：权限拒绝 / 设备占用 / 不安全上下文（http）
-            const msg = (e && (e.message || e.name)) || tt('aiSmart.voice.errDefault', '无法访问麦克风');
-            showToast(tt('aiSmart.voice.errTemplate', '录音失败：{msg}（https 站点才可授权）').replace('{msg}', msg), 'error');
-        }
-    },
-
-    async _sendTranscribe(blob) {
-        const btn = document.getElementById('aiSmartVoiceBtn');
-        try {
-            const b64 = await blobToBase64(blob);
-            const res = await api('/ai/transcribe', 'POST', {
-                audio: b64,
-                mime: blob.type || this._voice.mime
-            });
-            const text = (res && (res.text || res.transcript)) || '';
-            const input = document.getElementById('aiSmartText');
-            if (!text) {
-                showToast(tt('aiSmart.voice.noResult', '未识别到语音内容，请重试'), 'warning');
-            } else {
-                // append 模式：已有内容时换行追加；空时直接填入
-                input.value = input.value.trim() ? `${input.value.trim()}\n${text}` : text;
-                input.focus();
-                showToast(tt('aiSmart.voice.filled', '已填入转写文本，可点「解析」'), 'success');
-            }
-        } catch (err) {
-            // 服务端 422 / 502 时仍可保留已录内容，下次再试
-            showToast((err && err.payload && err.payload.message) || tt('aiSmart.voice.fail', '语音转写失败'), 'error');
-        } finally {
-            btn.textContent = tt('aiSmart.voice.pressToTalk', '按住说话');
-            btn.classList.remove('is-recording');
-            btn.disabled = false;
-            this._voice = { recorder: null, chunks: [], mime: '', stopped: false, maxTimer: null };
-        }
-    },
-
-    // ========== 步骤 1：解析 ==========
-    async parse() {
-        if (this.busy) return;
-        const input = document.getElementById('aiSmartText');
-        const text = (input.value || '').trim();
-        if (!text) { showToast(tt('aiSmart.parse.empty', '请先输入要记账的内容'), 'warning'); return; }
-        if (text.length > 2000) { showToast(tt('aiSmart.parse.tooLong', '文本过长（最多 2000 字）'), 'warning'); return; }
-
-        this._setBusy(true, 'parse');
-        this._hide('aiSmartConfirm');
-        this._show('aiSmartLoading');
-
-        try {
-            // context.account_id 给后端做默认账户兜底；date 让后端以本地「今天」为基准而非服务器时区
-            // 注意：source 表示【输入通道】（parse/chat/ocr/voice），受 schema CHECK 约束；
-            //      客户端平台放 context.platform，不要塞进 source。
-            const context = { platform: 'web' };
-            const defAcc = (cache.accounts || [])[0];
-            if (defAcc) context.account_id = defAcc.id;
-            context.date = fmtDate(new Date());
-
-            const res = await api('/ai/transactions/parse', 'POST', { text, context, source: 'parse' });
-
-            this.predictionId = res.prediction_id;
-            this.original = JSON.parse(JSON.stringify(res.transactions || []));
-            this.items = JSON.parse(JSON.stringify(res.transactions || []));
-            this.verdict = res.verdict;
-            this.reasons = res.reasons || [];
-            this.overall = res.overall_confidence;
-            this.validation = null;
-            // 幂等键在此刻固定：后续提交失败重试均复用，保证不会重复落账
-            this.idemKey = this._newIdemKey(res.prediction_id);
-
-            // 需要确认时再拉完整快照，取 validation.per_txn 做精确字段级高亮，
-            // 避免在前端复制一份阈值表造成双份事实来源
-            if (res.needs_confirmation) {
-                try {
-                    const full = await api(`/ai/predictions/${this.predictionId}`, 'GET', null, { silent: true });
-                    this.validation = full && full.validation ? full.validation : null;
-                } catch (e) {
-                    this.validation = null;  // 拉不到就退化为不高亮，不阻塞主流程
-                }
-            }
-
-            this._hide('aiSmartLoading');
-            this._render();
-        } catch (err) {
-            this._hide('aiSmartLoading');
-            // api() 已弹过 toast，这里只补充 422（无法识别）的引导话术
-            if (err.payload && err.payload.message && /未能从文本中识别/.test(err.payload.message)) {
-                showToast(tt('aiSmart.parse.hint', '试试写明金额，例如「星巴克咖啡 35.5」'), 'info');
-            }
-        } finally {
-            this._setBusy(false, 'parse');
-        }
-    },
-
-    /* ========== 步骤 1b：外部通道灌入（OCR / 语音 / 对话） ==========
-     * ocrRecognize() 等非文本通道已有自己的 prediction_id + transactions，
-     * 把响应直接交给本方法，省去再走一遍 parse()。commit / discard 与文本通道共用。 */
+    /* ========== 步骤 1b：外部通道灌入（OCR 图片 / AI 助手对话） ==========
+     * ocrRecognize() 与 ai-chat.js _sendRecord() 等通道已有自己的 prediction_id +
+     * transactions，把响应直接交给本方法，省去再走一遍识别。
+     * （2026-09：web 端文本/语音入口已并入 AI 助手，本文件不再保留 parse()/语音转写，
+     *   确认与落账逻辑 OCR 与 AI 助手共用）commit / discard 与所有通道共用。 */
     async _loadExternal(res, opts = {}) {
         if (this.busy) return;
         if (!res || !res.prediction_id) {
@@ -635,8 +476,6 @@ const AISmartEntry = {
         this.overall = null;
         this.idemKey = null;
         this._hide('aiSmartConfirm');
-        const input = document.getElementById('aiSmartText');
-        if (input) input.value = '';
     },
 
     _newIdemKey(pid) {
@@ -648,7 +487,8 @@ const AISmartEntry = {
 
     _setBusy(busy, which) {
         this.busy = busy;
-        const map = { parse: 'aiSmartParseBtn', commit: 'aiSmartCommitBtn', discard: 'aiSmartDiscardBtn' };
+        // 'load' 用于 _loadExternal：不带 is-loading 动画，只统一把确认/弃置灰显
+        const map = { commit: 'aiSmartCommitBtn', discard: 'aiSmartDiscardBtn' };
         Object.values(map).forEach(id => {
             const el = document.getElementById(id);
             if (el) el.disabled = busy;

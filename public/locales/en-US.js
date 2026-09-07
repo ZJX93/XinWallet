@@ -1404,15 +1404,11 @@ window.I18N_DICT['en-US'] = {
     'aiAdvice.noProvider.desc': 'AI advice needs at least one active chat provider (OpenAI/Claude/Domestic)',
     'aiAdvice.noProvider.cta': 'Go to settings',
 
-    // Smart bookkeeping (recognition page)
-    'aiRec.smart.title': 'One-sentence bookkeeping',
-    'aiRec.smart.desc': 'Natural language → local rule match → model understanding → habit fallback; nothing is recorded until you confirm, timestamps down to the second',
-    'aiRec.smart.placeholder': 'e.g. Starbucks coffee 35.5 today, lunch 28\nMultiple entries supported, one per line or comma separated (Ctrl + Enter to parse)',
-    'aiRec.smart.parse': 'Parse',
-    'aiRec.smart.voice': 'Hold to talk',
-    'aiRec.smart.voiceTip': 'Voice transcription (Whisper)',
-    'aiRec.smart.tip': 'Parsed results are recorded only after confirmation',
-    'aiRec.smart.loading': 'Parsing and scoring confidence...',
+    // Smart bookkeeping (recognition page) — text/voice one-liner moved into the AI Assistant FAB
+    'aiRec.smart.title': 'Text / voice entry',
+    'aiRec.smart.descNew': 'One-sentence bookkeeping now lives in the AI Assistant (bottom-right). Open 💬 and just say it, e.g. "lunch 28 today"',
+    'aiRec.smart.openAssistant': 'Open AI Assistant',
+    'aiRec.smart.tip': 'Parsed results are recorded only after confirmation (v0.2 rule)',
     'aiRec.smart.commit': 'Confirm and record',
     'aiRec.smart.discard': 'Discard',
     'aiRec.ocr.title': 'Upload a bill screenshot',
@@ -1440,10 +1436,6 @@ window.I18N_DICT['en-US'] = {
     'aiRec.chat.chip.lastMonthFood': 'Dining last month',
     'aiRec.chat.chip.budgetOver': 'Over budget?',
     'aiRec.chat.chip.editOne': 'Edit an entry',
-    // Example chip text is inserted into the input / sent to the model, so both label and value are localized
-    'aiRec.smart.ex1': 'Starbucks coffee 35.5',
-    'aiRec.smart.ex2': 'Taxi 28 yesterday, lunch thirty-two',
-    'aiRec.smart.ex3': 'Salary received 15000',
     'aiRec.chat.q.lastMonthFood': 'How much did I spend on dining last month?',
     'aiRec.chat.q.budgetOver': 'Am I over budget this month?',
     'aiRec.chat.q.editOne': 'Change yesterday’s lunch to takeout',

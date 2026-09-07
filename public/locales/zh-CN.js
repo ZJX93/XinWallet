@@ -1408,15 +1408,11 @@ window.I18N_DICT['zh-CN'] = {
     'aiAdvice.noProvider.desc': 'AI 建议需要至少激活一个对话服务商（OpenAI/Claude/国产）',
     'aiAdvice.noProvider.cta': '前往配置',
 
-    // 智能记账（识别页）
-    'aiRec.smart.title': '一句话记账',
-    'aiRec.smart.desc': '自然语言描述 → 本地规则快速匹配 → 模型语义理解 → 记账习惯兜底；确认后才入账，时间精确到秒',
-    'aiRec.smart.placeholder': '例如：今天星巴克咖啡 35.5，午饭 28\n支持多笔，一行或用逗号分隔（Ctrl + Enter 解析）',
-    'aiRec.smart.parse': '解析',
-    'aiRec.smart.voice': '按住说话',
-    'aiRec.smart.voiceTip': '语音转写（Whisper）',
-    'aiRec.smart.tip': '解析结果需确认后才落账',
-    'aiRec.smart.loading': '正在解析并评估置信度...',
+    // 智能记账（识别页）—— 文本/语音一句话记账已并入 AI 助手 FAB，本页只保留引导入口
+    'aiRec.smart.title': '文本/语音记账',
+    'aiRec.smart.descNew': '自然语言一句话记账已统一并入右下角 AI 助手：点开 💬 直接说，如「今天午饭 28」「星巴克咖啡 35.5」',
+    'aiRec.smart.openAssistant': '打开 AI 助手记账',
+    'aiRec.smart.tip': '解析结果需确认后才落账（v0.2 原则）',
     'aiRec.smart.commit': '确认并记账',
     'aiRec.smart.discard': '弃置',
     'aiRec.ocr.title': '上传账单截图',
@@ -1444,10 +1440,6 @@ window.I18N_DICT['zh-CN'] = {
     'aiRec.chat.chip.lastMonthFood': '上月餐饮',
     'aiRec.chat.chip.budgetOver': '预算超支？',
     'aiRec.chat.chip.editOne': '改一笔',
-    // 示例 chip 的文本会被填入输入框/发给模型，故 label 与 value 都要本地化
-    'aiRec.smart.ex1': '星巴克咖啡35.5',
-    'aiRec.smart.ex2': '昨天打车28，午饭三十二块',
-    'aiRec.smart.ex3': '工资到账15000元',
     'aiRec.chat.q.lastMonthFood': '上月餐饮花了多少？',
     'aiRec.chat.q.budgetOver': '这个月预算超支了吗？',
     'aiRec.chat.q.editOne': '把昨天午餐改成外卖',

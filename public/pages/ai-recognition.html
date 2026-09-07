@@ -1,39 +1,23 @@
             <section class="page" id="page-ai-recognition">
-                <!-- ===== AI v0.2 智能记账：一句话 → 预测快照 → 确认 → 原子落账 ===== -->
-                <div class="glass-card ai-smart-card">
-                    <h3 class="card-title" data-i18n="aiRec.smart.title">一句话记账</h3>
-                    <p class="card-desc" data-i18n="aiRec.smart.desc">自然语言描述 → 本地规则快速匹配 → 模型语义理解 → 记账习惯兜底；确认后才入账，时间精确到秒</p>
-                    <textarea id="aiSmartText" class="ai-smart-input" rows="2"
-                              data-i18n-ph="aiRec.smart.placeholder"
-                              placeholder="例如：今天星巴克咖啡 35.5，午饭 28&#10;支持多笔，一行或用逗号分隔（Ctrl + Enter 解析）"></textarea>
-                    <div class="ai-smart-examples" id="aiSmartExamples">
-                        <span class="ai-smart-chip" data-example="星巴克咖啡35.5" data-i18n="aiRec.smart.ex1" data-i18n-attrs="data-example:aiRec.smart.ex1">星巴克咖啡35.5</span>
-                        <span class="ai-smart-chip" data-example="昨天打车28，午饭三十二块" data-i18n="aiRec.smart.ex2" data-i18n-attrs="data-example:aiRec.smart.ex2">昨天打车28，午饭三十二块</span>
-                        <span class="ai-smart-chip" data-example="工资到账15000元" data-i18n="aiRec.smart.ex3" data-i18n-attrs="data-example:aiRec.smart.ex3">工资到账15000元</span>
-                    </div>
+                <!-- ===== 文本/语音一句话记账已并入 AI 助手 FAB（2026-09 整合） =====
+                     AI 识别页专注「图片 OCR + 账单导入」两条上传通道；
+                     自然语言/语音记账统一走右下角 AI 助手，识别成功后切回本页共用下方 v0.2 确认区 -->
+                <div class="glass-card ai-smart-entry-card">
+                    <h3 class="card-title" data-i18n="aiRec.smart.title">文本/语音记账</h3>
+                    <p class="card-desc" data-i18n="aiRec.smart.descNew">自然语言一句话记账已统一并入右下角 AI 助手：点开 💬 直接说，如「今天午饭 28」「星巴克咖啡 35.5」</p>
                     <div class="ai-smart-actions">
-                        <button class="btn btn-primary btn-ai" id="aiSmartParseBtn" data-i18n="aiRec.smart.parse">解析</button>
-                        <button class="btn btn-ghost btn-ai" id="aiSmartVoiceBtn" title="语音转写（Whisper）" data-i18n-title="aiRec.smart.voiceTip" data-i18n="aiRec.smart.voice">按住说话</button>
-                        <span class="ai-smart-tip" data-i18n="aiRec.smart.tip">解析结果需确认后才落账</span>
+                        <button class="btn btn-primary btn-ai" id="aiFabOpenFromRecBtn" data-i18n="aiRec.smart.openAssistant">打开 AI 助手记账</button>
+                        <span class="ai-smart-tip" data-i18n="aiRec.smart.tip">解析结果需确认后才落账（v0.2 原则）</span>
                     </div>
+                </div>
 
-                    <!-- 解析中 -->
-                    <div id="aiSmartLoading" class="ai-smart-loading" style="display:none">
-                        <div class="skeleton-wrap" data-skeleton="text">
-                            <div class="skeleton-line shimmer" style="width:70%"></div>
-                            <div class="skeleton-line shimmer" style="width:52%"></div>
-                        </div>
-                        <p class="ai-smart-loading-text" data-i18n="aiRec.smart.loading">正在解析并评估置信度...</p>
-                    </div>
-
-                    <!-- 确认区 -->
-                    <div id="aiSmartConfirm" class="ai-smart-confirm" style="display:none">
-                        <div id="aiSmartVerdict" class="ai-smart-verdict"></div>
-                        <div id="aiSmartList" class="ai-smart-list"></div>
-                        <div class="ai-smart-confirm-actions">
-                            <button class="btn btn-primary" id="aiSmartCommitBtn" data-i18n="aiRec.smart.commit">确认并记账</button>
-                            <button class="btn btn-ghost" id="aiSmartDiscardBtn" data-i18n="aiRec.smart.discard">弃置</button>
-                        </div>
+                <!-- 确认区：OCR 上传 / AI 助手一句话记账识别后共用（v0.2 必经） -->
+                <div id="aiSmartConfirm" class="ai-smart-confirm" style="display:none">
+                    <div id="aiSmartVerdict" class="ai-smart-verdict"></div>
+                    <div id="aiSmartList" class="ai-smart-list"></div>
+                    <div class="ai-smart-confirm-actions">
+                        <button class="btn btn-primary" id="aiSmartCommitBtn" data-i18n="aiRec.smart.commit">确认并记账</button>
+                        <button class="btn btn-ghost" id="aiSmartDiscardBtn" data-i18n="aiRec.smart.discard">弃置</button>
                     </div>
                 </div>
 
