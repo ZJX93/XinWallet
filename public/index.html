@@ -8,8 +8,11 @@
     <!-- 浏览器标签页标题也跟随语言：applyDOM 会改写 <title> 的 textContent -->
     <title data-i18n="app.docTitle">鑫钱包 · 个人财务助手</title>
     <link rel="icon" type="image/png" href="images/logo.png">
-    <!-- 按钮字体：朱雀仿宋(Zhuque Fangsong, OFL-1.1)，自托管子集，非阻塞加载避免首屏延迟 -->
-    <link id="zhuqueFont" rel="stylesheet" href="./css/fonts/zhuque.css" media="print">
+    <!-- 按钮字体：朱雀仿宋(Zhuque Fangsong, OFL-1.1)，自托管子集，零外网依赖。
+         直接用普通 <link rel=stylesheet> 加载：@font-face 已按 unicode-range 子集化（仅按需下载 woff2），
+         font-display:swap 已避免 FOIT，无需 media="print"+onload 的非阻塞 hack——
+         后者依赖内联 onload，会被 CSP 的 script-src-attr 'none' 拦截导致字体永不生效。 -->
+    <link rel="stylesheet" href="css/fonts/zhuque.css?v=2">
     <!-- 字体优先：Geist 必须先于任何使用它的样式 -->
     <link rel="stylesheet" href="css/fonts.css">
     <!-- 设计令牌：颜色 / 阴影 / 玻璃 / 品牌色，必须先于组件样式 -->
