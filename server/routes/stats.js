@@ -522,11 +522,30 @@ router.get('/dashboard/detail', async (req, res) => {
                 const accountTotal = sumAmounts(accounts, a => a.balance);
                 const investTotal = sumAmounts(accounts, a => a.inv_value);
                 const totalAssets = addAmounts(accountTotal, investTotal);
+                // 多币种（H3）：账户与其持仓各自带 currency，跨币种直接 SUM 无意义。
+                // 这里按币种分组汇总「余额 + 理财市值」交给前端 fmtMix 分列展示；
+                // total 保留（单币种账本下即精确值，兼容既有调用方）。
+                const assetsByCurrency = {};
+                for (const a of accounts) {
+                    const cur = a.currency || 'CNY';
+                    const row = assetsByCurrency[cur] || (assetsByCurrency[cur] = { balance: 0, invValue: 0 });
+                    row.balance = addAmounts(row.balance, a.balance);
+                    row.invValue = addAmounts(row.invValue, a.inv_value);
+                }
+                const totalBreakdown = {};
+                for (const [cur, row] of Object.entries(assetsByCurrency)) {
+                    totalBreakdown[cur] = addAmounts(row.balance, row.invValue);
+                }
+                const assetCurrencies = Object.keys(assetsByCurrency);
                 return res.json(success({
                     type: 'assets', title: '总资产明细',
                     total: totalAssets,
+                    // 单币种时给出明确币种，避免前端回退 CNY 造成符号错配
+                    currency: assetCurrencies.length === 1 ? assetCurrencies[0] : 'CNY',
+                    totalBreakdown,
                     accounts: accounts.map(a => ({
                         name: a.name, icon: a.icon, type: a.type,
+                        currency: a.currency || 'CNY',
                         balance: parseFloat(a.balance),
                         inv_value: parseFloat(a.inv_value),
                         ratio: percentOf(addAmounts(a.balance, a.inv_value), totalAssets, 10)

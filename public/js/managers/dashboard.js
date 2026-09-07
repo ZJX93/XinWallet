@@ -92,7 +92,7 @@ const DashboardManager = {
         const baseCur = (window.PreferencesManager && PreferencesManager.baseCurrency) || 'CNY';
 
         if (type === 'assets') {
-            summaryEl.innerHTML = `<div class="detail-total"><span class="detail-total-label">${escapeHtml(tt('dash.kpi.totalAssets', '总资产'))}</span><span class="detail-total-value">${fmt(data.total)}</span></div>`;
+            summaryEl.innerHTML = `<div class="detail-total"><span class="detail-total-label">${escapeHtml(tt('dash.kpi.totalAssets', '总资产'))}</span><span class="detail-total-value">${fmtMix(data.totalBreakdown && Object.keys(data.totalBreakdown).length ? data.totalBreakdown : { [data.currency || 'CNY']: data.total }, baseCur)}</span></div>`;
             listEl.innerHTML = data.accounts.map(a => `
                 <div class="detail-row">
                     <div class="detail-row-icon">${escapeHtml(a.icon || "💰")}</div>
