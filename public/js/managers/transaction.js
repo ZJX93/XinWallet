@@ -338,7 +338,8 @@ const TransactionManager = {
         const list = (typeof supportedCurrencies !== 'undefined' && Array.isArray(supportedCurrencies))
             ? supportedCurrencies
             : ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD', 'TWD', 'MOP', 'KRW', 'SGD',
-                'THB', 'MYR', 'PHP', 'INR', 'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN'];
+                'THB', 'MYR', 'PHP', 'INR', 'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN',
+                'DKK', 'NOK', 'PLN', 'CZK', 'TRY', 'ZAR', 'SAR', 'ILS'];
         sel.innerHTML = list.map(c => `<option value="${c}">${escapeHtml(c)}</option>`).join('');
     },
     updateCurrencyFromAccount() {

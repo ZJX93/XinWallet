@@ -361,13 +361,15 @@ export function amountColor(type: string): string {
 
 /**
  * 货币符号表（ISO 4217）。未列出的代码用「代码+空格」兜底（如「XXX 」）。
- * 多币种 P2-3d：与 public/js/utils.js#_currencySymbol、安卓 MoneyUtils#CURRENCY_SYMBOLS 逐项对齐（共 23 种）。
+ * 多币种 P2-3e：与 public/js/utils.js#_currencySymbol、安卓 MoneyUtils#CURRENCY_SYMBOLS 逐项对齐（共 31 种）。
  * 同名货币加地区前缀区分：HK$/JP¥/NT$/MOP$/A$/C$/NZ$/S$ —— 否则满屏都是 ¥ 和 $，分不清账。
+ * 三个北欧克朗（SEK/DKK/NOK）统一带前缀 SKr/DKr/NKr，避免三种「kr」混淆。
  */
 const CURRENCY_SYMBOLS: Record<string, string> = {
   CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: 'JP¥', GBP: '£', AUD: 'A$', CAD: 'C$',
   TWD: 'NT$', MOP: 'MOP$', KRW: '₩', SGD: 'S$', THB: '฿', MYR: 'RM', PHP: '₱', INR: '₹',
-  NZD: 'NZ$', CHF: 'CHF', SEK: 'kr', RUB: '₽', AED: 'AED', BRL: 'R$', MXN: 'MX$'
+  NZD: 'NZ$', CHF: 'CHF', SEK: 'SKr', RUB: '₽', AED: 'AED', BRL: 'R$', MXN: 'MX$',
+  DKK: 'DKr', NOK: 'NKr', PLN: 'zł', CZK: 'Kč', TRY: '₺', ZAR: 'R', SAR: 'SAR', ILS: '₪'
 };
 
 /**

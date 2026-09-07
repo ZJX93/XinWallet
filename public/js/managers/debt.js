@@ -360,7 +360,8 @@ const DebtManager = {
         if (!sel) return;
         // 与 utils.js#_currencyLocale 对齐（仅 utils.js 未加载时的兜底）
         const list = window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD',
-            'TWD','MOP','KRW','SGD','THB','MYR','PHP','INR','NZD','CHF','SEK','RUB','AED','BRL','MXN'];
+            'TWD','MOP','KRW','SGD','THB','MYR','PHP','INR','NZD','CHF','SEK','RUB','AED','BRL','MXN',
+            'DKK','NOK','PLN','CZK','TRY','ZAR','SAR','ILS'];
         const cur = (selected || 'CNY').toUpperCase();
         sel.innerHTML = list.map(c => `<option value="${c}">${c}</option>`).join('');
         if (list.includes(cur)) sel.value = cur;

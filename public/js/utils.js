@@ -31,7 +31,7 @@ function escapeHtml(s) {
 
 // 货币格式化（多币种 P2-2a）：按 currency（ISO 4217）选 locale 与符号，去除硬编码 ¥
 // 负数标准格式：符号在前、负号在最前，例如 -74.14 USD → "-$74.14"
-// 多币种 P2-3d：币种表扩充到 23 种（覆盖主流结算币 + 中文用户常用出境/留学/海淘目的地）。
+// 多币种 P2-3e：币种表扩充到 31 种（在 P2-3d 的 23 种基础上，再补北欧/中东/东欧/土耳其/南非等常用目的地）。
 // ⛔ 这里是 Web 端的**唯一数据源**：supportedCurrencies 由 locale 表的键派生，
 //    android MoneyUtils.kt / harmony theme.ts + AddTransaction.ets 必须与之逐项对齐
 //    （三端各有一份硬编码，改这里请同步改那三处，否则下拉与符号会不一致）。
@@ -41,13 +41,17 @@ const _currencyLocale = {
     CNY: 'zh-CN', USD: 'en-US', EUR: 'en-IE', HKD: 'en-US', JPY: 'ja-JP', GBP: 'en-GB',
     AUD: 'en-AU', CAD: 'en-CA', TWD: 'zh-TW', MOP: 'zh-MO', KRW: 'ko-KR', SGD: 'en-SG',
     THB: 'th-TH', MYR: 'ms-MY', PHP: 'en-PH', INR: 'en-IN', NZD: 'en-NZ', CHF: 'de-CH',
-    SEK: 'sv-SE', RUB: 'ru-RU', AED: 'en-AE', BRL: 'pt-BR', MXN: 'es-MX'
+    SEK: 'sv-SE', RUB: 'ru-RU', AED: 'en-AE', BRL: 'pt-BR', MXN: 'es-MX',
+    DKK: 'da-DK', NOK: 'nb-NO', PLN: 'pl-PL', CZK: 'cs-CZ', TRY: 'tr-TR',
+    ZAR: 'en-ZA', SAR: 'ar-SA', ILS: 'he-IL'
 };
 // 同名货币加地区前缀区分：HK$/JP¥/NT$/MOP$/A$/C$/NZ$/S$ —— 否则满屏都是 ¥ 和 $，分不清账。
+// 三个北欧克朗（SEK/DKK/NOK）统一带前缀 SKr/DKr/NKr，避免三种「kr」混淆。
 const _currencySymbol = {
     CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: 'JP¥', GBP: '£', AUD: 'A$', CAD: 'C$',
     TWD: 'NT$', MOP: 'MOP$', KRW: '₩', SGD: 'S$', THB: '฿', MYR: 'RM', PHP: '₱', INR: '₹',
-    NZD: 'NZ$', CHF: 'CHF', SEK: 'kr', RUB: '₽', AED: 'AED', BRL: 'R$', MXN: 'MX$'
+    NZD: 'NZ$', CHF: 'CHF', SEK: 'SKr', RUB: '₽', AED: 'AED', BRL: 'R$', MXN: 'MX$',
+    DKK: 'DKr', NOK: 'NKr', PLN: 'zł', CZK: 'Kč', TRY: '₺', ZAR: 'R', SAR: 'SAR', ILS: '₪'
 };
 const _supportedCurrencies = Object.keys(_currencyLocale);
 const _fmtCache = {};

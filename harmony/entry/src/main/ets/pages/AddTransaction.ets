@@ -36,14 +36,15 @@ function fmtTs(ts: number): string {
 }
 
 /**
- * 记账表单可选币种（与安卓 supportedCurrencyCodes / web utils.js#supportedCurrencies 对齐，共 23 种）。
- * 多币种 P2-3d：从 8 种扩充到 23 种，覆盖主流结算币与中文用户常用出境目的地；
+ * 记账表单可选币种（与安卓 supportedCurrencyCodes / web utils.js#supportedCurrencies 对齐，共 31 种）。
+ * 多币种 P2-3e：在 23 种基础上再补北欧/中东/东欧/土耳其/南非等常用目的地；
  * 符号表见 theme.ts#CURRENCY_SYMBOLS，两处必须同步增删。
  */
 const CURRENCIES: string[] = [
   'CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD',
   'TWD', 'MOP', 'KRW', 'SGD', 'THB', 'MYR', 'PHP', 'INR',
-  'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN'
+  'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN',
+  'DKK', 'NOK', 'PLN', 'CZK', 'TRY', 'ZAR', 'SAR', 'ILS'
 ];
 
 @Entry

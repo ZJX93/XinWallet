@@ -6,16 +6,19 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-// 多币种 P2-3d：货币符号表（与 public/js/utils.js#_currencySymbol 严格同语义）
+// 多币种 P2-3e：货币符号表（与 public/js/utils.js#_currencySymbol 严格同语义）
 // 鸿蒙 theme.ts 也引用本表，保证三端展示一致。
 // 同名货币加地区前缀区分：HK$/JP¥/NT$/MOP$/A$/C$/NZ$/S$ —— 否则满屏都是 ¥ 和 $，分不清账。
+// 三个北欧克朗（SEK/DKK/NOK）统一带前缀 SKr/DKr/NKr，避免三种「kr」混淆。
 private val CURRENCY_SYMBOLS = mapOf(
     "CNY" to "¥", "USD" to "$", "EUR" to "€", "HKD" to "HK$",
     "JPY" to "JP¥", "GBP" to "£", "AUD" to "A$", "CAD" to "C$",
     "TWD" to "NT$", "MOP" to "MOP$", "KRW" to "₩", "SGD" to "S$",
     "THB" to "฿", "MYR" to "RM", "PHP" to "₱", "INR" to "₹",
-    "NZD" to "NZ$", "CHF" to "CHF", "SEK" to "kr", "RUB" to "₽",
-    "AED" to "AED", "BRL" to "R$", "MXN" to "MX$"
+    "NZD" to "NZ$", "CHF" to "CHF", "SEK" to "SKr", "RUB" to "₽",
+    "AED" to "AED", "BRL" to "R$", "MXN" to "MX$",
+    "DKK" to "DKr", "NOK" to "NKr", "PLN" to "zł", "CZK" to "Kč",
+    "TRY" to "₺", "ZAR" to "R", "SAR" to "SAR", "ILS" to "₪"
 )
 
 fun currencySymbol(currency: String?): String {
@@ -23,12 +26,13 @@ fun currencySymbol(currency: String?): String {
     return CURRENCY_SYMBOLS[cur] ?: "$cur "
 }
 
-/** 记账表单可选币种（与 public/js/utils.js#supportedCurrencies 对齐，共 23 种） */
+/** 记账表单可选币种（与 public/js/utils.js#supportedCurrencies 对齐，共 31 种） */
 fun supportedCurrencyCodes(): List<String> =
     listOf(
         "CNY", "USD", "EUR", "HKD", "JPY", "GBP", "AUD", "CAD",
         "TWD", "MOP", "KRW", "SGD", "THB", "MYR", "PHP", "INR",
-        "NZD", "CHF", "SEK", "RUB", "AED", "BRL", "MXN"
+        "NZD", "CHF", "SEK", "RUB", "AED", "BRL", "MXN",
+        "DKK", "NOK", "PLN", "CZK", "TRY", "ZAR", "SAR", "ILS"
     )
 
 /**
