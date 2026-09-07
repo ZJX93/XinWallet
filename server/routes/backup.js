@@ -1213,3 +1213,6 @@ module.exports = router;
 module.exports.buildWorkbook = buildWorkbook;
 module.exports.parseWorkbook = parseWorkbook;
 module.exports.BACKUP_MARK = BACKUP_MARK;
+// 导出版本号：备份 round-trip 测试断言「解析出的版本 === 当前 BACKUP_VERSION」，
+// 使版本从 v3 继续演进时测试自动跟随（原先硬编码 1，v3 后失修且因游离 CI 未被发现）
+module.exports.BACKUP_VERSION = BACKUP_VERSION;

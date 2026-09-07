@@ -24,6 +24,18 @@ const { spawn } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const TEST_DIR = path.join(ROOT, 'test');
 
+// 自执行验证脚本（IIFE / main() + process.exitCode，非 node:test 的 test() 风格）。
+// 这两个「备份导出导入端到端」与「xlsx 解析」脚本长期游离在 CI 之外
+// （原先只扫 test/*.test.js），这里纳入 CI，防止 INSERT 列名与 schema 漂移、
+// 或 xlsx 结构变更后无人发现。
+const PLAIN_SCRIPTS = [
+  path.join('scripts', 'test-backup-xlsx.js'),
+  // ⚠️ scripts/test-backup-routes.js 暂不纳入：其 fakeDb mock 是按 v2 导入结构写的，
+  // v3 备份（新增理财/债务/储蓄表 + 导入流程重构）后，导入段几乎全部被跳过
+  //（实测仅 tags 恢复成功，账户/分类/理财/预算/债务/储蓄/交易/转账均为 0）。
+  // 需先按 v3 导入流程重写 mock 与断言，再纳入 —— 否则「接入即红灯」会阻塞发版链路。
+];
+
 const FILE_TIMEOUT_MS = parseInt(process.env.CI_FILE_TIMEOUT_MS || '150000', 10);
 const CASE_TIMEOUT_MS = parseInt(process.env.CI_CASE_TIMEOUT_MS || '60000', 10);
 // GitHub 每个 step 最多保留 10 条 error/warning 注解，多余会被丢弃
@@ -68,6 +80,54 @@ function runFile(file) {
       clearTimeout(timer);
       resolve({
         file,
+        ok: code === 0 && !killed,
+        killed,
+        code,
+        output,
+        reason: killed
+          ? `文件级超时 ${FILE_TIMEOUT_MS}ms（已 SIGKILL）`
+          : `退出码 ${code}${signal ? ' / signal ' + signal : ''}`,
+      });
+    });
+  });
+}
+
+// 运行「自执行脚本」：不用 node --test —— 它们不是 test() 风格、输出也不是 TAP，
+// 直接起 node 执行并以退出码作为结论；同样套用文件级超时兜底
+//（test-backup-routes 会 listen 一个临时端口，最坏情况下进程可能不退出）。
+function runPlainScript(relPath) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [relPath], {
+      cwd: ROOT,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    let killed = false;
+
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill('SIGKILL');
+    }, FILE_TIMEOUT_MS);
+
+    const onData = (buf) => {
+      const text = buf.toString();
+      output += text;
+      process.stdout.write(text);
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({ file: relPath, ok: false, killed: false, code: null, output, reason: 'spawn error: ' + err.message });
+    });
+
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      resolve({
+        file: relPath,
         ok: code === 0 && !killed,
         killed,
         code,
@@ -140,7 +200,10 @@ async function main() {
     .filter((f) => f.endsWith('.test.js'))
     .sort();
 
-  console.info(`[test-ci] 共 ${files.length} 个测试文件 | 单用例超时 ${CASE_TIMEOUT_MS}ms | 单文件超时 ${FILE_TIMEOUT_MS}ms`);
+  const plainScripts = PLAIN_SCRIPTS.filter((p) => fs.existsSync(path.join(ROOT, p)));
+  const total = files.length + plainScripts.length;
+
+  console.info(`[test-ci] 共 ${files.length} 个测试文件 + ${plainScripts.length} 个自执行脚本 | 单用例超时 ${CASE_TIMEOUT_MS}ms | 单文件超时 ${FILE_TIMEOUT_MS}ms`);
 
   const failures = [];
   for (const file of files) {
@@ -163,18 +226,51 @@ async function main() {
     const kind = leak ? 'HANDLE-LEAK' : (res.killed ? 'TIMEOUT' : 'FAILED');
 
     console.info(`[test-ci] !!! ${file} ${kind} (${cost}ms): ${res.reason} | ${statText || 'no TAP stats'}`);
-    failures.push({ ...res, cost, stats, cases, statText, kind, leak });
+    failures.push({ ...res, cost, stats, cases, statText, kind, leak, label: `test/${file}` });
+  }
+
+  // 自执行脚本：无 TAP 可解析，退出码即结论
+  for (const rel of plainScripts) {
+    const started = Date.now();
+    console.info(`\n[test-ci] === ${rel}`);
+    const res = await runPlainScript(rel);
+    const cost = Date.now() - started;
+
+    if (res.ok) {
+      console.info(`[test-ci] --- ${rel} OK (${cost}ms)`);
+      continue;
+    }
+
+    // 自执行脚本用 console.error('❌ ...') 报告失败，从输出里摘几行线索
+    const errLines = res.output.trim().split(/\r?\n/)
+      .filter((l) => /❌|Error|not ok/i.test(l))
+      .slice(0, 3)
+      .map((l) => truncate(l.trim(), 200));
+
+    console.info(`[test-ci] !!! ${rel} ${res.killed ? 'TIMEOUT' : 'FAILED'} (${cost}ms): ${res.reason}`);
+    failures.push({
+      ...res,
+      cost,
+      stats: {},
+      cases: [],
+      statText: '',
+      kind: res.killed ? 'TIMEOUT' : 'FAILED',
+      leak: false,
+      label: rel.replace(/\\/g, '/'), // Windows 反斜杠 → 正斜杠，便于注解里定位文件
+      detail: errLines.length ? errLines.join(' ;; ') : '无明确错误行（见上方原始输出）',
+    });
   }
 
   console.info('\n================ [test-ci] 汇总 ================');
-  console.info(`通过 ${files.length - failures.length}/${files.length}，失败 ${failures.length}`);
+  console.info(`通过 ${total - failures.length}/${total}，失败 ${failures.length}`);
 
   for (const f of failures.slice(0, MAX_ANNOTATIONS)) {
-    const head = `[${f.kind}] test/${f.file}: ${f.reason} | ${f.statText || 'no TAP stats'} (${f.cost}ms)`;
+    const head = `[${f.kind}] ${f.label}: ${f.reason} | ${f.statText || 'no TAP stats'} (${f.cost}ms)`;
     const detail = f.cases.length
       ? ' | 用例: ' + f.cases.slice(0, 3).map((c) => `${c.name}${c.err ? ' → ' + truncate(c.err, 300) : ''}`).join(' ;; ')
-      : (f.leak ? ' | 所有用例均通过但进程未退出，疑似句柄泄漏（连接池未 end / 服务未 close）' : ' | 无 TAP 输出（可能是启动即崩溃或整体超时）');
-    console.info(`::error file=test/${f.file},title=${f.kind} test/${f.file}::${truncate(head + detail, 1400)}`);
+      : (f.leak ? ' | 所有用例均通过但进程未退出，疑似句柄泄漏（连接池未 end / 服务未 close）'
+        : (f.detail ? ' | ' + f.detail : ' | 无 TAP 输出（可能是启动即崩溃或整体超时）'));
+    console.info(`::error file=${f.label},title=${f.kind} ${f.label}::${truncate(head + detail, 1400)}`);
   }
   if (failures.length > MAX_ANNOTATIONS) {
     console.info(`::error title=更多失败文件::另有 ${failures.length - MAX_ANNOTATIONS} 个失败文件未展示（注解上限 ${MAX_ANNOTATIONS}）`);

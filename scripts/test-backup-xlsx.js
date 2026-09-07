@@ -3,7 +3,7 @@ const assert = require('assert');
 const path = require('path');
 
 async function main() {
-    const { buildWorkbook, parseWorkbook, BACKUP_MARK } = require('../server/routes/backup');
+    const { buildWorkbook, parseWorkbook, BACKUP_MARK, BACKUP_VERSION } = require('../server/routes/backup');
 
     const sample = {
         book: { name: '我的账本', icon: '📒', color: '#6366f1', is_default: true },
@@ -46,7 +46,7 @@ async function main() {
     console.info('✅ 解析工作簿成功');
 
     // 3) 识别标记
-    assert.strictEqual(parsed.version, 1, '版本应为 1');
+    assert.strictEqual(parsed.version, BACKUP_VERSION, `版本应为当前 BACKUP_VERSION(${BACKUP_VERSION})`);
     console.info('✅ 识别标记/版本正确');
 
     // 4) 配置页各区段
