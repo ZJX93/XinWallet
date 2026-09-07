@@ -24,8 +24,8 @@ function _writeCrash(tag, err) {
         fs.appendFileSync(_crashLog, `[${new Date().toISOString()}] ${tag}\n${stack}\n${'='.repeat(60)}\n`);
     } catch (_) {}
 }
-process.on('uncaughtException', (err) => { _writeCrash('uncaughtException', err); });
-process.on('unhandledRejection', (reason) => { _writeCrash('unhandledRejection', reason); });
+// 注意：uncaughtException / unhandledRejection 的监听统一在下方 start() 内注册（落盘 + 退出/日志），
+// 避免此处与 start() 双重注册导致语义冲突（一处只落盘不退出、一处落盘 + 退出）。
 
 const db = require('./db');
 const routes = require('./routes');
@@ -214,7 +214,13 @@ app.use('/swagger-static', express.static(swaggerAssetPath, {
 }));
 
 // 暴露 OpenAPI 规范（Swagger UI 通过 /openapi.json 拉取）
-app.get('/openapi.json', (req, res) => res.json(openapiSpec));
+app.get('/openapi.json', (req, res) => {
+    // 与 /docs 一致：生产环境关闭未鉴权的接口清单，避免向外界泄露完整 API 面
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ success: false, message: 'Not Found' });
+    }
+    res.json(openapiSpec);
+});
 
 // Swagger UI 页面（自定义 HTML，引用 /swagger-static 下的本地资源）
 // 安全加固：生产环境关闭未鉴权的 API 文档，避免对内暴露完整接口清单。
@@ -487,12 +493,14 @@ async function start() {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
-    // 未捕获异常 → 立即退出（容器编排器会自动重启）
+    // 未捕获异常 → 同步落盘 + 立即退出（容器编排器会自动重启）
     process.on('uncaughtException', (err) => {
+        _writeCrash('uncaughtException', err);
         console.error('❌ Uncaught Exception:', err);
         shutdown('uncaughtException');
     });
     process.on('unhandledRejection', (reason) => {
+        _writeCrash('unhandledRejection', reason);
         // 增强：打印堆栈（含来源位置），便于定位未捕获的 async 错误。
         // 注：Express 4 不会把 async 路由内未捕获的 rejection 自动转发到错误中间件，
         // 业务路由普遍已 try/catch，此处仅兜底日志，避免无堆栈时难以排查。
