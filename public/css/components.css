@@ -1033,10 +1033,14 @@
 }
 .inv-txn-type.inv-txn-expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 14%, transparent); }
 .inv-txn-type.inv-txn-income { color: var(--income); background: color-mix(in srgb, var(--income) 14%, transparent); }
+/* 2026-09-07：reinvest（红利再投）无现金流、不应被误以为是支出；用中性色 */
+.inv-txn-type.inv-txn-neutral { color: var(--text-secondary); background: color-mix(in srgb, var(--text-secondary) 14%, transparent); }
 .inv-txn-date { font-size: var(--text-caption); color: var(--text-tertiary); }
 .inv-txn-amount { grid-area: amount; font-size: var(--text-body-lg); font-weight: var(--fw-semibold); text-align: right; }
 .inv-txn-amount.expense { color: var(--expense); }
 .inv-txn-amount.income { color: var(--income); }
+/* 2026-09-07：reinvest 用中性色 + 不带 +/- 符号，避免被误读为支出或收入 */
+.inv-txn-amount.neutral { color: var(--text-secondary); font-weight: var(--fw-semibold); }
 .inv-txn-meta { grid-area: meta; font-size: var(--text-caption); color: var(--text-muted); }
 .inv-txn-actions { display: inline-flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .inv-txn-edit, .inv-txn-del {

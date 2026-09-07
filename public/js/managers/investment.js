@@ -805,10 +805,20 @@ const InvestmentManager = {
             body.innerHTML = `<div class="bs-empty">${escapeHtml(tt('inv.txns.empty', '暂无交易记录'))}</div>`;
             return;
         }
-        const TYPE_CLS = { buy: 'expense', sell: 'income', dividend: 'income', interest: 'income', reinvest: 'expense' };
+        // 2026-09-07：reinvest（红利再投）的记账语义纠正。
+        // 后端 server/routes/transactions.js 的 recomputeInvestmentPosition 现在已**只增份额、不入 cost**：
+        // - 后端不写 accounts 余额（不进现金、不扣现金）
+        // - 后端只 UPDATE investments.quantity / current_value
+        // 因此本质是「持仓内部转换」，对用户总资产影响 = 0，但**累计已收利息**应反映为「浮动盈亏」+持仓市值增加。
+        // 前端若用 expense 红色 -¥192.08 显示，会让用户误以为「理财亏了 192.08 元」，
+        // 改为 'neutral' + 无符号 + 在 meta 追加「无现金流（份额 +N）」注解。
+        const TYPE_CLS = { buy: 'expense', sell: 'income', dividend: 'income', interest: 'income', reinvest: 'neutral' };
         const rows = list.map(t => {
-            const cls = TYPE_CLS[t.type] || 'expense';
-            const sign = t.type === 'sell' || t.type === 'dividend' || t.type === 'interest' ? '+' : '-';
+            const isReinvest = t.type === 'reinvest';
+            const cls = isReinvest ? 'neutral' : (TYPE_CLS[t.type] || 'expense');
+            const sign = isReinvest
+                ? ''
+                : (t.type === 'sell' || t.type === 'dividend' || t.type === 'interest' ? '+' : '-');
             const amt = Number(t.amount || 0);
             // 系统自动生成的备注文案（与手续费展示二选一，不再显示这些无意义文字）
             const SYS_NOTES = new Set(['初始买入', '加仓', '部分卖出', '清仓卖出', '建仓']);
@@ -816,6 +826,10 @@ const InvestmentManager = {
             if (t.price != null && t.price !== '') parts.push(escapeHtml(tt('inv.txns.price', '单价 {amt}').replace('{amt}', fmt(t.price))));
             if (t.quantity != null && t.quantity !== '') parts.push(escapeHtml(tt('inv.txns.qty', '数量 {n}').replace('{n}', t.quantity)));
             parts.push(escapeHtml(tt('inv.txns.fee', '手续费 {amt}').replace('{amt}', fmt(Number(t.fee) || 0))));
+            // reinvest 追加「无现金流（份额 +N）」注解，让用户一眼明白这是持仓调整而非支出
+            if (isReinvest) {
+                parts.push(escapeHtml(tt('inv.txns.reinvestMeta', '无现金流（份额 +{n}）').replace('{n}', t.quantity || 0)));
+            }
             if (t.note && !SYS_NOTES.has(t.note)) parts.push('📝 ' + escapeHtml(t.note));
             return `
             <div class="inv-txn-row" data-txn-id="${t.id}">

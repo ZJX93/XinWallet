@@ -1088,6 +1088,7 @@ window.I18N_DICT['en-US'] = {
     'inv.txns.price': 'Price {amt}',
     'inv.txns.qty': 'Qty {n}',
     'inv.txns.fee': 'Fee {amt}',
+    'inv.txns.reinvestMeta': 'No cash flow (shares +{n})',
     'inv.reduce.meta': 'Holding <b>{qty}</b>, value {amt}',
     'inv.reduce.buyPrice': 'Buy price',
     'inv.reduce.buyQty': 'Buy quantity',

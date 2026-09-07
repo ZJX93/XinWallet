@@ -1091,6 +1091,7 @@ window.I18N_DICT['zh-CN'] = {
     'inv.txns.price': '单价 {amt}',
     'inv.txns.qty': '数量 {n}',
     'inv.txns.fee': '手续费 {amt}',
+    'inv.txns.reinvestMeta': '无现金流（份额 +{n}）',
     'inv.reduce.meta': '当前持有 <b>{qty}</b>，市值 {amt}',
     'inv.reduce.buyPrice': '买入单价',
     'inv.reduce.buyQty': '买入数量',

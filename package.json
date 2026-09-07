@@ -18,7 +18,9 @@
     "test:full": "node scripts/full-verify.js",
     "mysql:init": "node scripts/mysql-init.js",
     "schema:convert": "node scripts/convert-pg-schema-to-mysql.js",
-    "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run"
+    "mysql:compat": "node scripts/mysql-compat-fix.js --dry-run",
+    "fix:reinvest-costs": "node scripts/fix-reinvest-cost-contamination.js",
+    "fix:reinvest-costs:apply": "node scripts/fix-reinvest-cost-contamination.js --apply"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

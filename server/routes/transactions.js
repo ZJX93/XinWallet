@@ -33,9 +33,19 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
     for (const t of txns) {
         const q = parseFloat(t.quantity) || 0;
         const amt = parseFloat(t.amount) || 0;
-        if (t.type === 'buy' || t.type === 'reinvest') {
+        if (t.type === 'buy') {
+            // 买入：用户真实现金投入，计入成本基数
             qty += q;
-            cost += amt; // 买入金额(含费)/红利再投金额计入成本基数
+            cost += amt;
+        } else if (t.type === 'reinvest') {
+            // 红利再投：利息立刻再投资 → 仅增加持仓份额，**不计入成本基数**。
+            // 用户的真实现金投入未增加（资金来源是已入账的利息，本应已通过 type='interest' 流水入账），
+            // 若把 reinvest 金额错误累加进 total_cost，会让：
+            //   浮动盈亏 = currentValue - total_cost 被抵消为 0、收益率 / 年化被压成 0%；
+            //   投资总览、报表、排序、止损预警等所有依赖成本基数的指标都会失真。
+            // 修复（2026-09-07）：与 'interest' 保持一致地走「不动 cost」分支。
+            // 旧数据修复见 scripts/fix-reinvest-cost-contamination.js。
+            qty += q;
         } else if (t.type === 'sell') {
             // 券商净投入本金口径：卖出按实际回款(amount)全额从成本基数扣减，
             // 而非按当时均价比例扣减。这样持仓盈亏与同花顺/东方财富等券商一致。
