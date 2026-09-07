@@ -465,8 +465,33 @@ function renderUpdateLast(d) {
         });
     }
 
-    // 3) 状态目录不可写（/app/data 卷没挂上）：无法回写，提示手动确认
-    if (d.stateDirAvailable === false) {
+    // 3) /app/data 卷挂载诊断（2026-09-07 升级：替代旧版单一 "未挂载" 文案）
+    //    新版 server 端返回 appData.{mounted,type,source,persistent}，按持久化状态分四档：
+    //      type='none'      → 完全没挂 /app/data（最严重，重启丢所有持久数据，不只是更新记录）
+    //      type='bind'/'volume' + !persistent → 类型字段异常，标记不持久化（兜底告警）
+    //      type='bind'/'volume' +  persistent + !stateDirAvailable → 已挂但 /app/data/.update 子目录
+    //                          还没被创建（首次更新前的正常态，不是问题）
+    //      type='unknown'   → 拿不到 docker.sock（前端拿不到诊断，降级到原 "未挂载" 文案）
+    if (d.appData && typeof d.appData === 'object') {
+        const ad = d.appData;
+        if (ad.type === 'none') {
+            // 最严重的根因：连 ENCRYPTION_KEY 都不会持久化。每次重启 AI/OCR 凭证都解不开。
+            // 必须挂上 /app/data 才会一切正常。
+            items.push({
+                kind: 'warn',
+                text: tt('update.noStateNone', '容器内 /app/data 数据卷未挂载，加密密钥与更新记录均不持久化（重启后丢失）'),
+            });
+            items.push({ kind: 'fix', text: tt('update.mountFixTitle', '如何挂载 /app/data') });
+        } else if (ad.persistent === false) {
+            items.push({
+                kind: 'warn',
+                text: tt('update.noStateUnknown', '无法识别 /app/data 的挂载类型，请检查容器挂载配置'),
+            });
+            items.push({ kind: 'fix', text: tt('update.mountFixTitle', '如何挂载 /app/data') });
+        }
+        // type='bind'/'volume' + stateDirAvailable=false → 已挂，仅子目录未建（首次更新前的正常态），不告警
+    } else if (d.stateDirAvailable === false) {
+        // 旧镜像 / 容器内 docker 不可用时 appData 拿不到，降级到原文案
         items.push({ kind: 'warn', text: tt('update.noState', '服务器无法回写更新记录（未挂载 /app/data 数据卷），请手动确认镜像是否已更新') });
     }
     // 容器内 docker 不可用
@@ -480,12 +505,77 @@ function renderUpdateLast(d) {
         const li = document.createElement('li');
         const badge = document.createElement('span');
         badge.className = 'ul-badge ' + it.kind;
-        badge.textContent = it.kind === 'ok' ? '✓' : (it.kind === 'warn' ? '!' : '✕');
+        badge.textContent = it.kind === 'ok' ? '✓'
+            : (it.kind === 'warn' ? '!')
+                : (it.kind === 'fix' ? '?' : '✕');
         li.appendChild(badge);
         const txt = document.createElement('span');
         txt.textContent = it.text;
         li.appendChild(txt);
-        if (it.log) {
+        // 'fix' 类：单独挂一段折叠的修复指引（docker compose / docker run 两套挂载示例），
+        // 文案命令部分不在 i18n（命令固定，不分语言），描述性句子独立 i18n。
+        if (it.kind === 'fix') {
+            const det = document.createElement('details');
+            const sum = document.createElement('summary');
+            sum.textContent = tt('update.mountFixDetails', '查看修复示例');
+            det.appendChild(sum);
+            const guide = document.createElement('div');
+            guide.className = 'ul-fix-guide';
+
+            // 方式 1：docker compose（推荐 —— 沿用项目自带的 docker-compose.yml）
+            const p1 = document.createElement('p');
+            p1.textContent = tt('update.mountFixCompose', '方式 1：docker compose 部署（推荐）');
+            guide.appendChild(p1);
+            const pre1 = document.createElement('pre');
+            pre1.textContent =
+                '# docker-compose.yml → services.app.volumes 加一条挂载\n' +
+                'volumes:\n' +
+                '  - xinwallet-app-data:/app/data   # 命名卷（推荐，docker 自动管理）\n' +
+                '  # 或者 bind-mount 到当前目录下的 data 子目录：\n' +
+                '  # - ./data:/app/data\n' +
+                '\n' +
+                '# volumes 段保留命名卷定义：\n' +
+                'volumes:\n' +
+                '  xinwallet-app-data:';
+            guide.appendChild(pre1);
+            const p1Note = document.createElement('p');
+            p1Note.textContent = tt('update.mountFixComposeNote', '改完保存后执行 docker compose up -d 即可生效；旧容器若已有密钥文件可一并迁移到新卷。');
+            guide.appendChild(p1Note);
+
+            // 方式 2：手动 docker run
+            const p2 = document.createElement('p');
+            p2.textContent = tt('update.mountFixRun', '方式 2：手动 docker run 部署');
+            guide.appendChild(p2);
+            const pre2 = document.createElement('pre');
+            pre2.textContent =
+                '# Linux / macOS 宿主机：\n' +
+                'docker run -d --name xinwallet-app \\\n' +
+                '  -v /var/lib/xinwallet/data:/app-data \\\n' +
+                '  ...\n' +
+                '\n' +
+                '# Windows 宿主机（PowerShell，反斜杠需转义）：\n' +
+                'docker run -d --name xinwallet-app ^\n' +
+                '  -v "D:\\Docker\\XINWallet\\data:/app/data" ^\n' +
+                '  ...';
+            guide.appendChild(pre2);
+            const p2Note = document.createElement('p');
+            p2Note.textContent = tt('update.mountFixRunNote', '挂载的本机路径需提前创建（mkdir / mkdir New-Item）；Docker Desktop 默认会把 D:\\... 自动映射进 WSL2 内的 /mnt/host/...，无需额外配置。');
+            guide.appendChild(p2Note);
+
+            // 方式 3：临时绕过（不挂载 /app/data 时也能让 ENCRYPTION_KEY 持久化）
+            const p3 = document.createElement('p');
+            p3.textContent = tt('update.mountFixEnv', '方式 3：临时方案 —— 显式注入 ENCRYPTION_KEY');
+            guide.appendChild(p3);
+            const pre3 = document.createElement('pre');
+            pre3.textContent =
+                '# 在 docker run / docker-compose.yml 里加一个固定的 64 位 hex 密钥，\n' +
+                '# 不挂载 /app/data 也能让 AI/OCR 凭证稳定解密（但更新记录仍无法落盘）：\n' +
+                '-e ENCRYPTION_KEY=$(openssl rand -hex 32)';
+            guide.appendChild(pre3);
+
+            det.appendChild(guide);
+            li.appendChild(det);
+        } else if (it.log) {
             const det = document.createElement('details');
             const sum = document.createElement('summary');
             sum.textContent = tt('update.viewLog', '查看日志');

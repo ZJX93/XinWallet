@@ -297,6 +297,15 @@ window.I18N_DICT['zh-CN'] = {
     'update.viewLog': '查看日志',
     'update.notLatest': '当前运行镜像 {img} ≠ 最新 {latest}，自动更新未真正生效（compose 是否固定了旧 tag？）',
     'update.noState': '服务器无法回写更新记录（未挂载 /app/data 数据卷），请手动确认镜像是否已更新',
+    // 2026-09-07 升级：区分「完全没挂」与「挂的是临时层 / 挂错位置」，更精准引导修复
+    'update.noStateNone': '容器内 /app/data 数据卷未挂载，加密密钥与更新记录均不持久化（重启后丢失）',
+    'update.noStateUnknown': '无法识别 /app/data 的挂载类型，请检查容器挂载配置',
+    'update.mountFixDetails': '查看修复示例',
+    'update.mountFixCompose': '方式 1：docker compose 部署（推荐）',
+    'update.mountFixComposeNote': '改完保存后执行 docker compose up -d 即可生效；旧容器若已有密钥文件可一并迁移到新卷。',
+    'update.mountFixRun': '方式 2：手动 docker run 部署',
+    'update.mountFixRunNote': '挂载的本机路径需提前创建（mkdir / New-Item）；Docker Desktop 默认会把 D:\\... 自动映射进 WSL2 内的 /mnt/host/...，无需额外配置。',
+    'update.mountFixEnv': '方式 3：临时方案 —— 显式注入 ENCRYPTION_KEY',
     'update.noDocker': '容器内 docker 不可用，无法自动更新/校验镜像',
 
     // ============ Boot 启动横幅（仅 localhost / DEBUG 模式打印） ============

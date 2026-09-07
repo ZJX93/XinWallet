@@ -121,8 +121,11 @@ async function fetchLatestVersion() {
 
 // 采集当前容器 compose 编排信息 + /app/data 卷宿主 Source。
 // 一次 inspect 拿 Labels JSON，一次拿 Mounts JSON（绕开 Go template index 兼容 bug）。
+// Mounts.Type ∈ {'bind','volume'}：前/后端均表示持久卷，挂错位置/缺失时为 'none'/'unknown'，
+// 用此在 /status 返回 appData 诊断，前端可按持久化状态给出不同的修复指引，
+// 不再像旧版仅看 /app/data/.update 子目录是否存在（首次更新前误报"未挂载"）。
 async function collectContainerInfo() {
-    const info = { project: null, service: null, workDir: null, appDataSource: null };
+    const info = { project: null, service: null, workDir: null, appDataSource: null, appDataType: 'unknown' };
     const labelR = await dockerExec(['inspect', UPDATE_CONTAINER, '--format', '{{json .Config.Labels}}']);
     if (!labelR.err && labelR.stdout.trim()) {
         try {
@@ -139,7 +142,14 @@ async function collectContainerInfo() {
         try {
             const mounts = JSON.parse(mountR.stdout.trim());
             const m = (Array.isArray(mounts) ? mounts : []).find(x => x.Destination === '/app/data');
-            info.appDataSource = (m && m.Source) ? m.Source : null;
+            if (m) {
+                info.appDataSource = m.Source || null;
+                // Type ∈ {'bind','volume'}：均为持久卷（前者 bind-mount，后者命名卷）
+                info.appDataType = (m.Type === 'bind' || m.Type === 'volume') ? m.Type : 'unknown';
+            } else {
+                info.appDataSource = null;
+                info.appDataType = 'none';
+            }
         } catch (e) {
             console.error('[update] 解析容器挂载 JSON 失败:', e.message);
         }
@@ -171,7 +181,10 @@ router.get('/check', checkLimiter, async (req, res) => {
 
 // GET /api/update/status —— 上次更新结果 + 当前容器是否真的运行在 :latest 上
 // （2026-09-07 新增：解决「辅助容器启动成功 ≠ 更新成功」的假象。
-//   若 compose 把 image 固定到旧 tag、或 up 中途失败，这里都能如实地暴露出来。）
+//   若 compose 把 image 固定到旧 tag、或 up 中途失败，这里都能如实地暴露出来。
+//   2026-09-07 又增：返回 /app/data 卷的挂载诊断（type / source），
+//   让前端能区分「完全没挂」、「挂错位置」、「挂的是容器临时层」三种根因，
+//   并把 ENCRYPTION_KEY 不能持久化的更严重后果也带上。）
 router.get('/status', statusLimiter, async (req, res) => {
     const exitCodeRaw = readStateFile('exit_code');
     const ts = readStateFile('ts');
@@ -185,6 +198,25 @@ router.get('/status', statusLimiter, async (req, res) => {
         ts,
         logTail,
     };
+
+    // 容器级诊断：/app/data 是否真挂上、挂的类型（决定能否跨容器重建持久化）。
+    // collectContainerInfo 内部用 docker inspect，需 docker.sock 可见：
+    // - 没 socket 时 appDataType 维持 'unknown'、appDataSource=null，前端文案降级到旧版。
+    // - 'none' = 完全没挂 Destination==='/app/data' 的 mount（最严重，加密密钥也会丢）。
+    // - 'bind' / 'volume' = 真持久卷，仅 .update 子目录尚未被创建（首次更新前的正常态）。
+    let appDataDiag = { mounted: false, type: 'unknown', source: null, persistent: false };
+    try {
+        const info = await collectContainerInfo();
+        appDataDiag = {
+            mounted: !!info.appDataSource,
+            type: info.appDataType,
+            source: info.appDataSource,
+            // 'bind' / 'volume' 跨容器重建后仍可读（外置 / 命名卷）；'none' / 'unknown' 视为不持久化
+            persistent: info.appDataType === 'bind' || info.appDataType === 'volume',
+        };
+    } catch (e) {
+        console.warn('[update] collectContainerInfo 失败:', e.message);
+    }
 
     // 实时校验运行镜像（只有 pull + recreate 真正完成、且 compose 未被 pin 旧 tag，
     // runningId 才会等于本地 :latest 解析出的镜像 ID）
@@ -211,7 +243,10 @@ router.get('/status', statusLimiter, async (req, res) => {
         data: {
             updateImage: UPDATE_IMAGE,
             dockerAvailable: dockerOk,
+            // 旧字段保留：stateDirAvailable 直接反映 /app/data/.update 子目录是否存在
             stateDirAvailable: hasStateDir,
+            // 新字段：详细的挂载诊断，前端优先用此给出差异化文案与修复指引
+            appData: appDataDiag,
             last,
             current,
             checkedAt: new Date().toISOString(),

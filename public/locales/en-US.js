@@ -297,6 +297,15 @@ window.I18N_DICT['en-US'] = {
     'update.viewLog': 'View log',
     'update.notLatest': 'Running image {img} ≠ latest {latest} — auto-update did not take effect (is compose pinned to an old tag?)',
     'update.noState': 'Server cannot persist update records (no /app/data volume) — please verify the image manually',
+    // 2026-09-07: distinguish "not mounted at all" from "mounted but not persistent" for better fix guidance
+    'update.noStateNone': '/app/data volume is NOT mounted — encryption key & update records will be lost on every container restart',
+    'update.noStateUnknown': 'Cannot detect /app/data mount type — please verify container volume configuration',
+    'update.mountFixDetails': 'Show fix examples',
+    'update.mountFixCompose': 'Option 1: docker compose (preferred)',
+    'update.mountFixComposeNote': 'After saving, run `docker compose up -d` to apply. Migrate the key file from the old volume if you already have one.',
+    'update.mountFixRun': 'Option 2: manual `docker run`',
+    'update.mountFixRunNote': 'Create the host directory first (mkdir / New-Item). Docker Desktop auto-maps D:\\... into WSL2 /mnt/host/..., no extra setup needed.',
+    'update.mountFixEnv': 'Option 3: workaround — inject a fixed ENCRYPTION_KEY',
     'update.noDocker': 'docker unavailable inside container — cannot auto-update / verify image',
 
     // ============ Boot startup banner (localhost / DEBUG only) ============
