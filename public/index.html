@@ -9,7 +9,7 @@
     <title data-i18n="app.docTitle">鑫钱包 · 个人财务助手</title>
     <link rel="icon" type="image/png" href="images/logo.png">
     <!-- 按钮字体：朱雀仿宋(Zhuque Fangsong, OFL-1.1)，自托管子集，非阻塞加载避免首屏延迟 -->
-    <link rel="stylesheet" href="./css/fonts/zhuque.css" media="print" onload="this.media='all'">
+    <link id="zhuqueFont" rel="stylesheet" href="./css/fonts/zhuque.css" media="print">
     <!-- 字体优先：Geist 必须先于任何使用它的样式 -->
     <link rel="stylesheet" href="css/fonts.css">
     <!-- 设计令牌：颜色 / 阴影 / 玻璃 / 品牌色，必须先于组件样式 -->
@@ -864,7 +864,9 @@
         <button class="ai-fab-btn" id="aiFabBtn" type="button" aria-label="AI 助手" title="AI 助手"
                 data-i18n-aria="aiRec.chat.title" data-i18n-title="aiRec.chat.title">
             <svg class="ai-fab-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-                <path d="M12 2a2 2 0 0 1 2 2v1h3a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8.5L5 22v-2H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h3V4a2 2 0 0 1 2-2Zm-2 7a1 1 1 0 0 0-1 1 1 1 0 0 0 1 1 1 1 0 0 0 1-1 1 1 0 0 0-1-1Zm4 0a1 1 1 0 0 0-1 1 1 1 0 0 0 1 1 1 1 0 0 0 1-1 1 1 0 0 0-1-1Z" fill="currentColor"/>
+                <path d="M12 2a2 2 0 0 1 2 2v1h3a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8.5L5 22v-2H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h3V4a2 2 0 0 1 2-2Z" fill="currentColor"/>
+                <circle cx="10" cy="11" r="1.3" fill="currentColor"/>
+                <circle cx="14" cy="11" r="1.3" fill="currentColor"/>
             </svg>
             <span class="ai-fab-pulse" aria-hidden="true"></span>
         </button>
