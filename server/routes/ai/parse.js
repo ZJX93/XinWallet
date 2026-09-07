@@ -30,11 +30,11 @@ router.post('/transactions/parse', async (req, res) => {
         /* ---- dev-only mock 短路 ----
          * 用途：本地/UI 自测 —— 没配 AI provider 时，让 chip 化卡片/确认链路跑通。
          *   启用：?mock=1 query 或 body.mock === true
-         *   ⚠️ 当前不加 NODE_ENV 门禁（docker-compose 默认 production，但本地测试时不一定能改）。
-         *      线上误带 query 几乎不可能（普通用户不会写 ?mock=1），保留简短判定。
+         *   ⚠️ 生产环境（NODE_ENV=production）禁用 mock 短路，防止线上误触 ?mock=1 返回伪造解析结果；
+         *      仅开发/测试环境保留，便于本地自测。
          *   ⚠️ mock 数据含低置信字段以触发 needs_confirmation，UI 才能展示「高亮低置信」横幅。
          */
-        if (req.query.mock === '1' || (req.body && req.body.mock === true)) {
+        if (process.env.NODE_ENV !== 'production' && (req.query.mock === '1' || (req.body && req.body.mock === true))) {
             const now = new Date();
             const ymd = now.toISOString().slice(0, 10);
             const transactions = [

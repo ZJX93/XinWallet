@@ -32,7 +32,7 @@ function escapeHtml(s) {
 // 货币格式化（多币种 P2-2a）：按 currency（ISO 4217）选 locale 与符号，去除硬编码 ¥
 // 负数标准格式：符号在前、负号在最前，例如 -74.14 USD → "-$74.14"
 const _currencyLocale = { CNY: 'zh-CN', USD: 'en-US', EUR: 'en-IE', HKD: 'en-US', JPY: 'ja-JP', GBP: 'en-GB', AUD: 'en-AU', CAD: 'en-CA' };
-const _currencySymbol = { CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: '¥', GBP: '£', AUD: 'A$', CAD: 'C$' };
+const _currencySymbol = { CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: 'JP¥', GBP: '£', AUD: 'A$', CAD: 'C$' };
 const _supportedCurrencies = Object.keys(_currencyLocale); // ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']
 const _fmtCache = {};
 function _getFmt(locale) {
