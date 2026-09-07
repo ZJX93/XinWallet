@@ -108,6 +108,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   -- 列表/搜索/单条接口统一 JOIN accounts.currency 兜底返回；列表已按 t.currency || acc_currency 优先级回填，
   -- 即使老数据 currency=NULL 也能展示正确币种。独立存列是为报表混币种汇总 GROUP BY 时不再 JOIN 双表。
   currency VARCHAR(3) NOT NULL DEFAULT 'CNY',
+  -- 多币种折算痕迹：外币消费折成账户币种入账时记录原币与汇率（方案B：折合成主账户币种记账）
+  original_amount DECIMAL(15,2) DEFAULT NULL,         -- 原币金额
+  original_currency VARCHAR(3) DEFAULT NULL,          -- 原币（ISO 4217）
+  exchange_rate DECIMAL(18,6) DEFAULT NULL,           -- 折算汇率（1 原币 = ? 账户币）
+  rate_date DATE DEFAULT NULL,                        -- 汇率日期
   note VARCHAR(200) DEFAULT '',                       -- 备注
   date TIMESTAMP NOT NULL,                            -- 交易时间（精确到秒）
   transfer_id INT DEFAULT NULL,                       -- 关联转账ID
@@ -132,6 +137,11 @@ ALTER TABLE transactions ADD COLUMN link_type VARCHAR(20) DEFAULT NULL;
 ALTER TABLE transactions ADD COLUMN link_id INT DEFAULT NULL;
 -- 多币种 P2-3c：每笔交易币种（默认 CNY）。列表接口 SELECT t.* 自动带出，配合 JOIN accounts.currency 兜底
 ALTER TABLE transactions ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'CNY';
+-- 多币种折算痕迹（老库补齐，新库由上方 CREATE TABLE 覆盖）
+ALTER TABLE transactions ADD COLUMN original_amount DECIMAL(15,2) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN original_currency VARCHAR(3) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN exchange_rate DECIMAL(18,6) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN rate_date DATE DEFAULT NULL;
 CREATE INDEX idx_transactions_inv_txn ON transactions (investment_txn_id);
 
 -- 内部转账记录表

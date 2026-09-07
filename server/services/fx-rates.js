@@ -18,11 +18,20 @@ const db = require('../db');
 
 const SOURCE_NAME = 'fawazahmed0-currency-api';
 const DEFAULT_BASE = 'USD';
-// 固定版本号：避免 jsdelivr 的 @latest 跨天拉到不同 schema；2024-03-06 起的 schema 已稳定
-const SOURCE_URL_BASE = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@2024-03-06/v1/currencies';
+// 最新汇率源：currency-api 的 Cloudflare Pages 镜像（真正按日更新）。
+// ⛔ 旧数据源 cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@2024-03-06 是【固定日期快照】，
+//    无论何时访问都返回 2024-03-06 的汇率，也不含任意历史日期——此前 fx_rates 拿到的
+//    实为 2024 年的旧汇率（2026-09-07 实测确认），必须切到 pages.dev 才能拿到最新值。
+const SOURCE_URL_BASE = 'https://latest.currency-api.pages.dev/v1/currencies';
+// 历史汇率源：frankfurter（欧洲央行参考汇率，免费、无 key、CORS 友好）。
+// 支持「任意历史日期」+「最新」，覆盖主流货币（CNY/USD/EUR/JPY/HKD/KRW/GBP 等约 30 种）。
+// 用于「按交易日期取当日汇率折算」；pages.dev 只提供最新，作小币种兜底。
+const FRANKFURTER_BASE = 'https://api.frankfurter.app';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 小时
 
 let _memCache = null; // { data, expiresAt }
+// 单次折算汇率缓存：key 'from:to:date' → { rate, date, source, expiresAt }
+const _rateCache = new Map();
 
 function httpGetJson(url, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
@@ -164,8 +173,107 @@ async function getLatest({ forceRefresh = false } = {}) {
   return result;
 }
 
+/**
+ * 获取 from → to 的汇率（1 from = rate to），用于「外币消费折算成账户币种」。
+ *
+ * ⛔ 按【交易日期】取当日汇率：优先 frankfurter（欧洲央行，支持任意历史日期 +
+ *    最新），失败再回退 pages.dev（仅最新，作小币种/故障兜底，cross rate 折算）。
+ *    frankfurter 对周末/节假日会返回最近一个工作日的汇率，其 date 字段即为
+ *    真实报价日期，落账时原样记到 rate_date。
+ *
+ * @param {string} from  源币种（ISO 4217，如 'USD'）
+ * @param {string} to    目标币种（通常为账户币种，如 'CNY'）
+ * @param {string} [date] 交易日期 'YYYY-MM-DD'；缺省取最新
+ * @returns {Promise<{rate:number, date:string, source:string, from:string, to:string}>}
+ */
+async function getRate(from, to, date) {
+  const f = String(from || '').toUpperCase();
+  const t = String(to || '').toUpperCase();
+  if (!/^[A-Z]{3}$/.test(f) || !/^[A-Z]{3}$/.test(t)) {
+    throw new Error(`币种代码非法：${from} → ${to}`);
+  }
+  if (f === t) return { rate: 1, date: date || todayIso(), source: 'identity', from: f, to: t };
+
+  const key = `${f}:${t}:${date || 'latest'}`;
+  const cached = _rateCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { rate: cached.rate, date: cached.date, source: cached.source, from: f, to: t };
+  }
+
+  // 1) frankfurter：历史日期 + 最新
+  const path = date ? `/${String(date).slice(0, 10)}` : '/latest';
+  try {
+    const json = await httpGetJson(`${FRANKFURTER_BASE}${path}?from=${f}&to=${t}`);
+    const rate = json && json.rates ? Number(json.rates[t]) : 0;
+    if (rate && rate > 0) {
+      const d = (json && json.date) || date || todayIso();
+      _rateCache.set(key, { rate, date: d, source: 'frankfurter', expiresAt: Date.now() + CACHE_TTL_MS });
+      return { rate, date: d, source: 'frankfurter', from: f, to: t };
+    }
+  } catch (_) { /* fallthrough → pages.dev 兜底 */ }
+
+  // 2) pages.dev 兜底：仅有最新。以请求币种为 base，反过来按 USD/from 视角算 cross rate
+  try {
+    const lc = f.toLowerCase();
+    const json = await httpGetJson(`${SOURCE_URL_BASE}/${lc}.json`);
+    const rates = normalizeRates(json && json[lc]);
+    const baseRate = rates[f] || 1;
+    const rate = rates[t] ? rates[t] / baseRate : 0;
+    if (rate && rate > 0) {
+      const d = (json && json.date) || todayIso();
+      _rateCache.set(key, { rate, date: d, source: SOURCE_NAME, expiresAt: Date.now() + CACHE_TTL_MS });
+      return { rate, date: d, source: SOURCE_NAME, from: f, to: t };
+    }
+  } catch (_) { /* fallthrough → 抛错 */ }
+
+  throw new Error(`无法获取 ${f} → ${t} 汇率（${date ? `日期 ${date}` : '最新'}）`);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * 把一笔外币金额折算成账户币种，返回落账所需字段（原币痕迹一并带回）。
+ *
+ * ⛔ 这是「方案B 折合成主账户币种」的唯一落账口径，手动记账（transactions.js）
+ *    与 AI 预测落账（prediction-store.js）共用，避免两处各写一套折算逻辑。
+ *    from === to（同币种）时不折算，原币字段一律为 null。
+ *
+ * @param {object} p
+ * @param {number} p.amount 原币金额
+ * @param {string} p.from    原币（如 'USD'）
+ * @param {string} p.to      账户币种（如 'CNY'）
+ * @param {string} [p.date] 交易日期 'YYYY-MM-DD'（取当日汇率）
+ * @returns {Promise<{amount:number, currency:string, original_amount:number|null,
+ *                    original_currency:string|null, exchange_rate:number|null, rate_date:string|null}>}
+ */
+async function convertAmount({ amount, from, to, date }) {
+  const fromC = String(from || '').toUpperCase();
+  const toC = String(to || '').toUpperCase();
+  if (!fromC || fromC === toC) {
+    return {
+      amount, currency: toC,
+      original_amount: null, original_currency: null,
+      exchange_rate: null, rate_date: null,
+    };
+  }
+  const r = await getRate(fromC, toC, date || null);
+  const converted = Math.round(amount * r.rate * 100) / 100;
+  return {
+    amount: converted,
+    currency: toC,
+    original_amount: amount,
+    original_currency: fromC,
+    exchange_rate: r.rate,
+    rate_date: r.date || date || null,
+  };
+}
+
 module.exports = {
   getLatest,
+  getRate,
+  convertAmount,
   fetchAndStore,
   SOURCE_NAME,
   DEFAULT_BASE,

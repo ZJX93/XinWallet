@@ -26,4 +26,20 @@ router.post('/refresh', async (req, res, next) => {
   }
 });
 
+// 实时折算：GET /api/fx/rate?from=USD&to=CNY&date=2026-09-07
+// 用于记账表单在用户输入外币金额时实时预览折算后账户金额。
+// date 可选；缺省取最新汇率。汇率取不到时返回 502 + 明确 message，前端据此提示手动填汇率。
+router.get('/rate', async (req, res) => {
+  try {
+    const { from, to, date } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ success: false, message: '缺少 from / to 币种参数' });
+    }
+    const r = await fxService.getRate(from, to, date || null);
+    res.json({ success: true, data: r });
+  } catch (e) {
+    res.status(502).json({ success: false, message: e && e.message ? e.message : '汇率获取失败' });
+  }
+});
+
 module.exports = router;

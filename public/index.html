@@ -181,6 +181,10 @@
                             <div class="form-group"><label id="transAccountLabel" data-i18n="trans.form.account">账户</label><select id="transAccount" required></select></div>
                             <div class="form-group transfer-only" style="display:none"><label data-i18n="trans.form.toAccount">转入账户</label><select id="transToAccount"></select></div>
                         </div>
+                        <div class="form-row non-transfer" id="transCurrencyRow">
+                            <div class="form-group"><label data-i18n="trans.form.currency">币种</label><select id="transCurrency"></select></div>
+                            <div class="form-group"><label data-i18n="trans.form.fxPreview">折合（按日期汇率）</label><div id="transFxPreview" class="fx-preview"></div></div>
+                        </div>
                         <div class="form-row transfer-only" id="transSingleAccountHint" style="display:none">
                             <div class="form-group full-width transfer-hint" data-i18n="trans.form.singleAccHint">⚠️ 当前只有一个账户，无法转账。请先添加至少一个账户。</div>
                         </div>

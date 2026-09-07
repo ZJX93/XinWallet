@@ -1,9 +1,14 @@
 /* ============================================
-   鑫钱包 · 多币种 P2-3c 集成测试
+   鑫钱包 · 多币种集成测试
    覆盖：交易路由的 currency 透出链（POST/PUT/列表/单条/summary）
-   兜底链：body.currency → 关联账户 currency → 'CNY'
+   语义（方案B·多币种折算）：
+     · 落账币种恒为【账户币种】；body.currency 是用户输入的原币。
+     · 原币 ≠ 账户币种（外币消费）→ 按交易日期汇率折成账户币种入账，
+       并记录原币痕迹（original_amount/original_currency/exchange_rate/rate_date）。
+     · 同币种（含不传 currency 时跟随账户）→ 恒等，不发起网络请求。
    旧数据 currency=NULL 也会经 JOIN accounts 兜底（路由层 SELECT t.* 已自动带回 currency）
-   运行前置：需 PostgreSQL 连接（通过 .env 或默认 localhost:5432）
+   运行前置：需 PostgreSQL 连接（通过 .env 或默认 localhost:5432）；
+     外币折算用例需要可访问汇率源 frankfurter.app（网络）。
    ============================================ */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -212,22 +217,25 @@ dbTest('POST /transactions 不传 currency → 关联 USD 账户时写入 USD（
     }
 });
 
-dbTest('POST /transactions 显式传 currency → 写入 body.currency（兜底链 level 1，跨账户币种）', async () => {
+dbTest('POST /transactions 显式传外币 currency → 折算成账户币种并记录原币痕迹（方案B）', async () => {
     const user = await createTestUser();
     try {
         const accId = await createTestAccount(user.id, user.bookId, 'CNY 账户', 'CNY', 10000);
         const catId = await getCategoryId(user.id, '餐饮', 'expense');
         baseUrl = await startServer(user.id, user.bookId);
 
-        // CNY 账户下手动记一笔 JPY 餐费（混币种账本下常见：去日本出差用 CNY 卡付日元）
+        // CNY 账户下记一笔 JPY 餐费：按交易日期汇率折算成 CNY 落账，原币迹痕保留
         const res = await httpJson('POST', '/api/transactions', {
             account_id: accId, category_id: catId, type: 'expense',
             amount: 3000, currency: 'JPY', note: '东京拉面', date: '2026-09-01'
         });
         assert.strictEqual(res.status, 200);
 
-        const tx = await db.queryOne('SELECT currency FROM transactions WHERE id = ?', [res.body.data.id]);
-        assert.strictEqual(tx.currency, 'JPY');
+        const tx = await db.queryOne('SELECT currency, original_currency, original_amount, exchange_rate FROM transactions WHERE id = ?', [res.body.data.id]);
+        assert.strictEqual(tx.currency, 'CNY');                  // 落账恒为账户币种
+        assert.strictEqual(tx.original_currency, 'JPY');         // 原币
+        assert.strictEqual(Number(tx.original_amount), 3000);    // 原币金额
+        assert.ok(Number(tx.exchange_rate) > 0, '应有折算汇率');
     } finally {
         await stopServer();
         await cleanupTestUser(user.id);
@@ -237,7 +245,8 @@ dbTest('POST /transactions 显式传 currency → 写入 body.currency（兜底�
 dbTest('POST /transactions currency 小写自动转大写', async () => {
     const user = await createTestUser();
     try {
-        const accId = await createTestAccount(user.id, user.bookId, '现金', 'CNY', 5000);
+        // 用 EUR 账户（同币种不触发折算），专注验证大小写归一化
+        const accId = await createTestAccount(user.id, user.bookId, '欧元账户', 'EUR', 5000);
         const catId = await getCategoryId(user.id, '餐饮', 'expense');
         baseUrl = await startServer(user.id, user.bookId);
 
@@ -370,7 +379,7 @@ dbTest('PUT /transactions/:id 不传 currency 且不切账户 → 跟随当前�
     }
 });
 
-dbTest('PUT /transactions/:id 显式传 currency → 覆盖为新币种', async () => {
+dbTest('PUT /transactions/:id 显式传外币 currency → 折算成账户币种并记录原币痕迹', async () => {
     const user = await createTestUser();
     try {
         const accId = await createTestAccount(user.id, user.bookId, 'CNY 账户', 'CNY', 10000);
@@ -382,14 +391,17 @@ dbTest('PUT /transactions/:id 显式传 currency → 覆盖为新币种', async 
         });
         const txId = createRes.body.data.id;
 
-        // 编辑时改币种为 USD（汇率折算场景）
+        // 编辑时改币种为 USD：按日期汇率折算成 CNY 落账，原币迹痕保留
         await httpJson('PUT', `/api/transactions/${txId}`, {
             account_id: accId, category_id: catId, type: 'income',
             amount: 700, currency: 'USD', date: '2026-09-01'
         });
 
-        const tx = await db.queryOne('SELECT currency FROM transactions WHERE id = ?', [txId]);
-        assert.strictEqual(tx.currency, 'USD');
+        const tx = await db.queryOne('SELECT currency, original_currency, original_amount, exchange_rate FROM transactions WHERE id = ?', [txId]);
+        assert.strictEqual(tx.currency, 'CNY');                  // 落账恒为账户币种
+        assert.strictEqual(tx.original_currency, 'USD');         // 原币
+        assert.strictEqual(Number(tx.original_amount), 700);     // 原币金额
+        assert.ok(Number(tx.exchange_rate) > 0, '应有折算汇率');
     } finally {
         await stopServer();
         await cleanupTestUser(user.id);

@@ -18,6 +18,7 @@ const { computeAccountBalance, enforceBalanceLimit } = require('../../../routes/
 const { syncCreditCardDebt, resolveNote } = require('../../../routes/utils');
 const { validateResult } = require('../validation/result-validator');
 const { toAmount, toNumber } = require('../../../validate');
+const fxService = require('../../../services/fx-rates');
 
 /**
  * 创建不可变预测快照。
@@ -218,7 +219,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 // ⚠️ 越权防线（H1）：account_id 必须属于当前用户且当前账本，
                 // 否则任何登录用户可借 AI 修正落账接口篡改他人账户余额（IDOR）。
                 const ownedAccount = await conn.queryOne(
-                    'SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?',
+                    'SELECT id, currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?',
                     [accountId, userId, bookId]
                 );
                 if (!ownedAccount) {
@@ -240,12 +241,29 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                     return { status: 422, body: { error: `第${txn.seq}笔无法确定类目` } };
                 }
 
+                // 多币种方案B：AI 抽取出的币种（txn.currency）≠ 账户币种时，按交易日期汇率折成账户币种。
+                // 同币种恒等（不发起网络请求）；汇率取不到时返回 422 让用户改走手动或重试。
+                const accCurrency = (ownedAccount.currency || 'CNY').toUpperCase();
+                const reqCurrency = (txn.currency && String(txn.currency).trim())
+                    ? String(txn.currency).toUpperCase()
+                    : accCurrency;
+                let fx;
+                try {
+                    fx = await fxService.convertAmount({
+                        amount, from: reqCurrency, to: accCurrency,
+                        date: (date || '').slice(0, 10),
+                    });
+                } catch (e) {
+                    return { status: 422, body: { error: `第${txn.seq}笔无法获取 ${reqCurrency}→${accCurrency} 汇率（${(e && e.message) || '网络或数据源异常'}）` } };
+                }
+
                 const ins = await conn.query(
-                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, location, source_account_id, destination_account_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [userId, bookId, accountId, categoryId, txn.type, amount, note, date, txn.location || null,
+                    `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, currency, note, date, location, source_account_id, destination_account_id, original_amount, original_currency, exchange_rate, rate_date)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [userId, bookId, accountId, categoryId, txn.type, fx.amount, fx.currency, note, date, txn.location || null,
                      txn.type === 'expense' ? accountId : null,
-                     txn.type === 'income' ? accountId : null]
+                     txn.type === 'income' ? accountId : null,
+                     fx.original_amount, fx.original_currency, fx.exchange_rate, fx.rate_date]
                 );
                 const txId = ins.insertId;
 
@@ -258,7 +276,13 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 /*  ⚠️ 必须回填 note 与 date：这两个字段在服务端会被改写
                     （note 经 note-composer 规范化成「场景-对象」、date 有默认值兜底），
                     不返回的话前端只能显示自己提交的原值，与真实落账内容不一致。 */
-                committedTxns.push({ id: txId, seq: txn.seq, type: txn.type, amount, category_id: categoryId, account_id: accountId, note, date });
+                committedTxns.push({
+                    id: txId, seq: txn.seq, type: txn.type,
+                    amount: fx.amount, currency: fx.currency,
+                    category_id: categoryId, account_id: accountId, note, date,
+                    original_amount: fx.original_amount, original_currency: fx.original_currency,
+                    exchange_rate: fx.exchange_rate, rate_date: fx.rate_date,
+                });
             }
 
             // 转账 —— 需要走 transfer_out + transfer_in 双分录

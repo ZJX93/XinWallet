@@ -171,6 +171,12 @@ const TransactionManager = {
         document.getElementById('addTransBtn').addEventListener('click', () => this.openModal());
         document.getElementById('transModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('transCancelBtn').addEventListener('click', () => this.closeModal());
+        // 多币种折算：币种下拉一次性填充；账户/金额/币种/日期变化时实时重算折合预览
+        this.renderCurrencySelect();
+        document.getElementById('transAccount').addEventListener('change', () => { this.updateCurrencyFromAccount(); this.refreshFxPreview(); });
+        document.getElementById('transAmount').addEventListener('input', () => this.refreshFxPreview());
+        document.getElementById('transDate').addEventListener('change', () => this.refreshFxPreview());
+        document.getElementById('transCurrency').addEventListener('change', () => this.refreshFxPreview());
         document.querySelectorAll('#transForm .type-btn').forEach(b => b.addEventListener('click', () => {
             document.querySelectorAll('#transForm .type-btn').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
             b.classList.add('active');
@@ -317,6 +323,56 @@ const TransactionManager = {
     updateAccSelect() {
         const sel = document.getElementById('transAccount');
         sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
+        this.updateCurrencyFromAccount();
+        this.refreshFxPreview();
+    },
+    // —— 多币种方案B：外币消费折合成账户币种记账 ——
+    // 「币种」下拉存用户输入的原币；默认跟随所选账户币种。
+    renderCurrencySelect() {
+        const sel = document.getElementById('transCurrency');
+        if (!sel) return;
+        const list = (typeof supportedCurrencies !== 'undefined' && Array.isArray(supportedCurrencies))
+            ? supportedCurrencies : ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD'];
+        sel.innerHTML = list.map(c => `<option value="${c}">${escapeHtml(c)}</option>`).join('');
+    },
+    updateCurrencyFromAccount() {
+        const sel = document.getElementById('transCurrency');
+        const accId = document.getElementById('transAccount')?.value;
+        const acc = cache.accounts.find(a => String(a.id) === String(accId));
+        const cur = (acc && acc.currency) ? String(acc.currency).toUpperCase() : 'CNY';
+        if (sel && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+    },
+    // 编辑/复制原币交易时回填：币种回原币，金额由调用方回填 original_amount。
+    fillCurrencyForTx(t) {
+        this.updateCurrencyFromAccount();
+        const sel = document.getElementById('transCurrency');
+        if (sel && t && t.original_currency) sel.value = t.original_currency;
+        this.refreshFxPreview();
+    },
+    async refreshFxPreview() {
+        const box = document.getElementById('transFxPreview');
+        if (!box) return;
+        const accId = document.getElementById('transAccount')?.value;
+        const acc = cache.accounts.find(a => String(a.id) === String(accId));
+        const accCur = ((acc && acc.currency) || 'CNY').toUpperCase();
+        const cur = document.getElementById('transCurrency')?.value;
+        const amt = parseFloat(document.getElementById('transAmount')?.value);
+        if (!acc || !cur || cur === accCur || !amt || isNaN(amt)) { box.textContent = ''; return; }
+        const date = document.getElementById('transDate')?.value || '';
+        box.textContent = tt('trans.form.fxLoading', '计算中…');
+        try {
+            const q = `from=${encodeURIComponent(cur)}&to=${encodeURIComponent(accCur)}`
+                + (date ? `&date=${encodeURIComponent(String(date).slice(0, 10))}` : '');
+            const res = await api(`/fx/rate?${q}`, 'GET', null, { silent: true });
+            const r = res && res.data;
+            if (r && r.rate) {
+                box.textContent = `${escapeHtml(cur)} ${fmt(amt, cur)} × ${r.rate} → ≈ ${fmt(amt * r.rate, accCur)}`;
+            } else {
+                box.textContent = tt('trans.form.fxUnavailable', '汇率取不到，可手动折算');
+            }
+        } catch (e) {
+            box.textContent = tt('trans.form.fxUnavailable', '汇率取不到，可手动折算');
+        }
     },
     renderTagPicker(selectedIds = []) {
         const picker = document.getElementById('transTagPicker');
@@ -341,7 +397,7 @@ const TransactionManager = {
             if (t) {
                 const isTransfer = t.type === 'transfer_out' || t.type === 'transfer_in';
                 document.getElementById('transEditId').value = t.id;
-                document.getElementById('transAmount').value = t.amount;
+                document.getElementById('transAmount').value = (t.original_currency && t.original_amount != null) ? t.original_amount : t.amount;
                 // transDate 是 datetime-local step="1"，回填必须到秒，
                 // 否则秒位空着，用户没碰过也可能被滚成 00:02:00 提交上去
                 document.getElementById('transDate').value = fmtDateTimeLocal(t.date);
@@ -393,6 +449,7 @@ const TransactionManager = {
                     this._editingTxId = null;
                     this._editingTransferId = null;
                     document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
+                    this.fillCurrencyForTx(t);
                     document.getElementById('transCategory').value = t.category?.id;
                     document.getElementById('transBudget').value = t.budget_id || '';
                     this.renderTagPicker(t.tags ? t.tags.map(x => x.id) : []);
@@ -513,6 +570,7 @@ const TransactionManager = {
                 category_id: parseInt(document.getElementById('transCategory').value),
                 budget_id: budgetVal ? parseInt(budgetVal) : null,
                 type, amount,
+                currency: document.getElementById('transCurrency')?.value || undefined,
                 date,
                 note,
                 tags: Array.from(document.querySelectorAll('#transTagPicker .tag-chip.selected')).map(c => parseInt(c.dataset.id))
@@ -702,7 +760,7 @@ const TransactionManager = {
                     <div class="trans-td trans-time">${time}</div>
                     <div class="trans-td trans-type">${typeLabel}</div>
                     <div class="trans-td trans-category">${categoryHtml}</div>
-                    <div class="trans-td trans-amount ${typeClass}">${fmtSigned(t.amount, t.type)}</div>
+                    <div class="trans-td trans-amount ${typeClass}">${fmtSigned(t.amount, t.type)}${t.original_currency ? `<span class="trans-fx-orig">${escapeHtml(tt('trans.fxOrigin', '原'))} ${escapeHtml(t.original_currency)} ${escapeHtml(t.original_amount)}</span>` : ''}</div>
                     <div class="trans-td trans-account">${accountName}</div>
                     <div class="trans-td trans-tags">${tagsHtml}</div>
                     <div class="trans-td trans-desc">${escapeHtml(t.note || '')}</div>
@@ -800,7 +858,7 @@ const TransactionManager = {
         this.setFormMode(targetType);
 
         // 公共字段
-        document.getElementById('transAmount').value = t.amount;
+        document.getElementById('transAmount').value = (t.original_currency && t.original_amount != null) ? t.original_amount : t.amount;
         document.getElementById('transDate').value = fmtDateTimeLocal(t.date);
         document.getElementById('transNote').value = t.note || '';
 
@@ -822,6 +880,7 @@ const TransactionManager = {
             document.getElementById('transCategory').value = t.category?.id || '';
         } else {
             document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
+            this.fillCurrencyForTx(t);
             document.getElementById('transCategory').value = t.category?.id;
             document.getElementById('transBudget').value = t.budget_id || '';
             this.renderTagPicker(Array.isArray(t.tags) ? t.tags.map(x => x.id ?? x) : []);

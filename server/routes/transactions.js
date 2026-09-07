@@ -11,6 +11,7 @@ const {
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
 const { syncCreditCardDebt, resolveNote } = require('./utils');
+const fxService = require('../services/fx-rates');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
@@ -438,17 +439,28 @@ router.post('/', async (req, res) => {
         // 账户归属校验：必须属于当前用户 + 当前账本（防越权篡改他人账户余额）
         const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('账户不存在'));
-        // 多币种 P2-3c：写入 transactions.currency。优先级 body.currency > 关联账户 currency > 'CNY'。
-        // 调用方（AI 记账 / 编辑表单）若显式传 currency 则尊重之（用户在多币种账户之间手动调整时用）；
-        // 未传则取关联账户币种 —— 这是「同一账户下收支都跟账户走」的标准行为，
-        // 与单账户典型场景保持一致，混币种账本下「CNY 工资卡记 USD 餐费」仍由用户在 UI 显式切币种。
+        // 多币种 P2-3c + 方案B：落账币种恒为账户币种；body.currency 是用户输入的原币。
+        // 原币 ≠ 账户币种（外币消费）时，按交易日期汇率折成账户币种入账，并记录原币痕迹。
         const accCurRow = await db.queryOne('SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
-        const txCurrency = (req.body.currency && String(req.body.currency).trim())
+        const accCurrency = (accCurRow && accCurRow.currency) || 'CNY';
+        const reqCurrency = (req.body.currency && String(req.body.currency).trim())
             ? String(req.body.currency).toUpperCase()
-            : ((accCurRow && accCurRow.currency) || 'CNY');
+            : accCurrency;
 
         // 日期归一化（兼容 datetime-local / ISO / 纯日期；缺省回退 now）
         const transDate = normDate(date);
+
+        // 外币折算：同币种恒等（不产生网络请求）；异构时取当日汇率折成账户币种
+        let fx;
+        try {
+            fx = await fxService.convertAmount({
+                amount: amountNum, from: reqCurrency, to: accCurrency,
+                date: (transDate || '').slice(0, 10),
+            });
+        } catch (e) {
+            return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation(
+                `无法获取 ${reqCurrency}→${accCurrency} 汇率（${(e && e.message) || '网络或数据源异常'}），可直接填写折合后的金额后重试`));
+        }
         // 复式记账：支出/转出(source=扣款账户)，收入/转入(dest=入账账户)
         const src = (type === 'expense' || type === 'transfer_out') ? accId : null;
         const dst = (type === 'income' || type === 'transfer_in') ? accId : null;
@@ -461,9 +473,9 @@ router.post('/', async (req, res) => {
             // 备注：尊重调用方给定的 note（AI 流程由 AI 自填；手动记账由用户填），无则 fallback 到 merchant，再无则用类目名
             const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
             const insertResult = await conn.query(
-                `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, currency, note, date, source_account_id, destination_account_id, location, link_type, link_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, accId, catId, bId, type, amountNum, txCurrency, finalNote, transDate, src, dst, loc, lt, li]
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, currency, note, date, source_account_id, destination_account_id, location, link_type, link_id, original_amount, original_currency, exchange_rate, rate_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, accId, catId, bId, type, fx.amount, fx.currency, finalNote, transDate, src, dst, loc, lt, li, fx.original_amount, fx.original_currency, fx.exchange_rate, fx.rate_date]
             );
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
@@ -522,15 +534,23 @@ router.put('/:id', async (req, res) => {
         const li = link_id ? parseInt(link_id) : null;
         // 日期：提供则归一化（兼容 datetime-local/ISO/纯日期），未提供则保留原值
         const finalDate = date ? normDate(date) : old.date;
-        // 多币种 P2-3c：编辑时可更新 currency。优先级 body.currency > 新关联账户 currency > 原值。
-        // 「保留原值」兜底是为了避免编辑表单没带 currency 字段时把已存在的 USD 误改回 CNY
-        // （前端 AddTransaction 在切换账户时会自动跟随，但旧版本可能不传）。
-        let txCurrency;
-        if (req.body.currency && String(req.body.currency).trim()) {
-            txCurrency = String(req.body.currency).toUpperCase();
-        } else {
-            const accCurRow = await db.queryOne('SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
-            txCurrency = (accCurRow && accCurRow.currency) || old.currency || 'CNY';
+        // 多币种 P2-3c + 方案B：落账币种恒为账户币种；body.currency 是用户输入的原币。
+        // 原币 ≠ 账户币种（外币消费）时，按交易日期汇率折成账户币种入账，并记录原币痕迹。
+        const accCurRow = await db.queryOne('SELECT currency FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        const accCurrency = (accCurRow && accCurRow.currency) || 'CNY';
+        const reqCurrency = (req.body.currency && String(req.body.currency).trim())
+            ? String(req.body.currency).toUpperCase()
+            : accCurrency;
+
+        let fx;
+        try {
+            fx = await fxService.convertAmount({
+                amount: amountNum, from: reqCurrency, to: accCurrency,
+                date: (finalDate || '').slice(0, 10),
+            });
+        } catch (e) {
+            return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation(
+                `无法获取 ${reqCurrency}→${accCurrency} 汇率（${(e && e.message) || '网络或数据源异常'}），可直接填写折合后的金额后重试`));
         }
 
         await db.transaction(async (conn) => {
@@ -538,8 +558,8 @@ router.put('/:id', async (req, res) => {
             const finalNote = await resolveNote(conn, req.userId, catId, note, merchant);
             // 更新交易记录（含复式记账借贷双方字段 + currency + location/link）
             await conn.query(
-                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, currency=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
-                [accId, catId, bId, type, amountNum, txCurrency, finalNote, finalDate, src, dst, loc, lt, li, id, req.userId, req.bookId]
+                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, currency=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=?, original_amount=?, original_currency=?, exchange_rate=?, rate_date=? WHERE id=? AND user_id=? AND book_id=?`,
+                [accId, catId, bId, type, fx.amount, fx.currency, finalNote, finalDate, src, dst, loc, lt, li, fx.original_amount, fx.original_currency, fx.exchange_rate, fx.rate_date, id, req.userId, req.bookId]
             );
 
             // 重置交易标签
