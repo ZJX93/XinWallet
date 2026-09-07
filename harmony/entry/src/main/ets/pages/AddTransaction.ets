@@ -35,8 +35,16 @@ function fmtTs(ts: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 记账表单可选币种（与安卓 supportedCurrencyCodes / web supportedCurrencies 对齐） */
-const CURRENCIES: string[] = ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD'];
+/**
+ * 记账表单可选币种（与安卓 supportedCurrencyCodes / web utils.js#supportedCurrencies 对齐，共 23 种）。
+ * 多币种 P2-3d：从 8 种扩充到 23 种，覆盖主流结算币与中文用户常用出境目的地；
+ * 符号表见 theme.ts#CURRENCY_SYMBOLS，两处必须同步增删。
+ */
+const CURRENCIES: string[] = [
+  'CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD',
+  'TWD', 'MOP', 'KRW', 'SGD', 'THB', 'MYR', 'PHP', 'INR',
+  'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN'
+];
 
 @Entry
 @Component

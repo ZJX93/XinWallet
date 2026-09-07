@@ -780,8 +780,12 @@ function initCurrencySwitcher() {
     const btn = document.getElementById('currencyBtn');
     const menu = document.getElementById('currencyMenu');
     if (!btn || !menu) return;
-    const supported = (window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']);
-    const symbolMap = { CNY:'¥', USD:'$', EUR:'€', HKD:'HK$', JPY:'¥', GBP:'£', AUD:'A$', CAD:'C$' };
+    // 与 utils.js#_currencyLocale / _currencySymbol 对齐（仅 utils.js 未加载时的兜底）
+    const supported = window.supportedCurrencies || ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD',
+        'TWD','MOP','KRW','SGD','THB','MYR','PHP','INR','NZD','CHF','SEK','RUB','AED','BRL','MXN'];
+    const symbolMap = { CNY:'¥', USD:'$', EUR:'€', HKD:'HK$', JPY:'JP¥', GBP:'£', AUD:'A$', CAD:'C$',
+        TWD:'NT$', MOP:'MOP$', KRW:'₩', SGD:'S$', THB:'฿', MYR:'RM', PHP:'₱', INR:'₹',
+        NZD:'NZ$', CHF:'CHF', SEK:'kr', RUB:'₽', AED:'AED', BRL:'R$', MXN:'MX$' };
 
     // 多币种 P2-2b：汇率元信息行（订阅 FxManager，refresh 后自动刷新）
     const metaEl = document.createElement('div');

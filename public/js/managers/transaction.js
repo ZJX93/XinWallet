@@ -334,8 +334,11 @@ const TransactionManager = {
     renderCurrencySelect() {
         const sel = document.getElementById('transCurrency');
         if (!sel) return;
+        // 与 utils.js#_currencyLocale 对齐（仅 utils.js 未加载时的兜底）
         const list = (typeof supportedCurrencies !== 'undefined' && Array.isArray(supportedCurrencies))
-            ? supportedCurrencies : ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD'];
+            ? supportedCurrencies
+            : ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD', 'TWD', 'MOP', 'KRW', 'SGD',
+                'THB', 'MYR', 'PHP', 'INR', 'NZD', 'CHF', 'SEK', 'RUB', 'AED', 'BRL', 'MXN'];
         sel.innerHTML = list.map(c => `<option value="${c}">${escapeHtml(c)}</option>`).join('');
     },
     updateCurrencyFromAccount() {

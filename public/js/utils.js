@@ -31,9 +31,25 @@ function escapeHtml(s) {
 
 // 货币格式化（多币种 P2-2a）：按 currency（ISO 4217）选 locale 与符号，去除硬编码 ¥
 // 负数标准格式：符号在前、负号在最前，例如 -74.14 USD → "-$74.14"
-const _currencyLocale = { CNY: 'zh-CN', USD: 'en-US', EUR: 'en-IE', HKD: 'en-US', JPY: 'ja-JP', GBP: 'en-GB', AUD: 'en-AU', CAD: 'en-CA' };
-const _currencySymbol = { CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: 'JP¥', GBP: '£', AUD: 'A$', CAD: 'C$' };
-const _supportedCurrencies = Object.keys(_currencyLocale); // ['CNY','USD','EUR','HKD','JPY','GBP','AUD','CAD']
+// 多币种 P2-3d：币种表扩充到 23 种（覆盖主流结算币 + 中文用户常用出境/留学/海淘目的地）。
+// ⛔ 这里是 Web 端的**唯一数据源**：supportedCurrencies 由 locale 表的键派生，
+//    android MoneyUtils.kt / harmony theme.ts + AddTransaction.ets 必须与之逐项对齐
+//    （三端各有一份硬编码，改这里请同步改那三处，否则下拉与符号会不一致）。
+// locale 只影响千分位与小数点样式；符号单独取 _currencySymbol，
+// 因为 Intl 的 currency 符号在不同 ICU 版本下可能回退成 ISO 代码（如 "CNY 1,234.00"）。
+const _currencyLocale = {
+    CNY: 'zh-CN', USD: 'en-US', EUR: 'en-IE', HKD: 'en-US', JPY: 'ja-JP', GBP: 'en-GB',
+    AUD: 'en-AU', CAD: 'en-CA', TWD: 'zh-TW', MOP: 'zh-MO', KRW: 'ko-KR', SGD: 'en-SG',
+    THB: 'th-TH', MYR: 'ms-MY', PHP: 'en-PH', INR: 'en-IN', NZD: 'en-NZ', CHF: 'de-CH',
+    SEK: 'sv-SE', RUB: 'ru-RU', AED: 'en-AE', BRL: 'pt-BR', MXN: 'es-MX'
+};
+// 同名货币加地区前缀区分：HK$/JP¥/NT$/MOP$/A$/C$/NZ$/S$ —— 否则满屏都是 ¥ 和 $，分不清账。
+const _currencySymbol = {
+    CNY: '¥', USD: '$', EUR: '€', HKD: 'HK$', JPY: 'JP¥', GBP: '£', AUD: 'A$', CAD: 'C$',
+    TWD: 'NT$', MOP: 'MOP$', KRW: '₩', SGD: 'S$', THB: '฿', MYR: 'RM', PHP: '₱', INR: '₹',
+    NZD: 'NZ$', CHF: 'CHF', SEK: 'kr', RUB: '₽', AED: 'AED', BRL: 'R$', MXN: 'MX$'
+};
+const _supportedCurrencies = Object.keys(_currencyLocale);
 const _fmtCache = {};
 function _getFmt(locale) {
     if (!_fmtCache[locale]) _fmtCache[locale] = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
