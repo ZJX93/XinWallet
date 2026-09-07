@@ -727,62 +727,43 @@ const TransactionManager = {
         tbodyEl.innerHTML = tbody;
         this.renderPager(filtered.length, totalPages);
 
-        // 事件委托：编辑和删除按钮
-        // 债务还款生成的流水必须从债务管理入口改，否则余额与债务剩余本金会脱节
-        tbodyEl.querySelectorAll('[data-action="edit-trans"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (btn.dataset.link === 'debt_repayment') {
-                    showToast(tt('trans.toast.linkedDebtEdit', '该流水由债务还款生成，请在「债务管理 · 明细」中修改'), 'info');
-                    return;
+        // 事件委托：编辑 / 删除 / 复制按钮（只在持久容器 transTbody 上绑定一次）
+        // 旧实现每次渲染都对 3N 个按钮逐个 addEventListener，开销随列表长度线性增长；
+        // 改委托后只依赖按钮上的 data-action / data-id / data-link，重复渲染无需重新绑定。
+        if (tbodyEl.dataset.listEventsBound !== '1') {
+            tbodyEl.dataset.listEventsBound = '1';
+            tbodyEl.addEventListener('click', async (e) => {
+                const btn = e.target.closest && e.target.closest('button[data-action]');
+                if (!btn || !tbodyEl.contains(btn)) return;
+                const action = btn.dataset.action;
+                const link = btn.dataset.link;
+                const id = parseInt(btn.dataset.id, 10);
+                // 复制按钮不冒泡到行点击（与原实现逐按钮 stopPropagation 行为一致）
+                if (action === 'copy-trans') e.stopPropagation();
+
+                // 关联流水（债务还款 / 理财 / 计息）必须回对应管理页处理：
+                // 直接改删会让账户余额与债务剩余本金、持仓脱节；复制则会变成游离交易
+                if (link === 'debt_repayment') {
+                    if (action === 'edit-trans') return showToast(tt('trans.toast.linkedDebtEdit', '该流水由债务还款生成，请在「债务管理 · 明细」中修改'), 'info');
+                    if (action === 'delete-trans') return showToast(tt('trans.toast.linkedDebtDel', '该流水由债务还款生成，请在「债务管理 · 明细」中删除'), 'info');
+                    return showToast(tt('trans.toast.linkedDebtCopy', '该流水由债务还款生成，请在「债务管理 · 明细」中处理'), 'info');
                 }
-                if (btn.dataset.link === 'investment') {
-                    showToast(tt('trans.toast.linkedInvEdit', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中修改'), 'info');
-                    return;
+                if (link === 'investment') {
+                    if (action === 'edit-trans') return showToast(tt('trans.toast.linkedInvEdit', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中修改'), 'info');
+                    if (action === 'delete-trans') return showToast(tt('trans.toast.linkedInvDel', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中删除'), 'info');
+                    return showToast(tt('trans.toast.linkedInvCopy', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中处理'), 'info');
                 }
-                if (btn.dataset.link === 'account_interest') {
-                    showToast(tt('trans.toast.linkedInterestEdit', '该流水由账户计息生成，请在「账户管理 · 账户详情」中修改'), 'info');
-                    return;
+                if (link === 'account_interest') {
+                    if (action === 'edit-trans') return showToast(tt('trans.toast.linkedInterestEdit', '该流水由账户计息生成，请在「账户管理 · 账户详情」中修改'), 'info');
+                    if (action === 'delete-trans') return showToast(tt('trans.toast.linkedInterestDel', '该流水由账户计息生成，请在「账户管理 · 账户详情」中删除'), 'info');
+                    return showToast(tt('trans.toast.linkedInterestCopy', '该流水由账户计息生成，请在「账户管理 · 账户详情」中处理'), 'info');
                 }
-                this.openModal(parseInt(btn.dataset.id));
+
+                if (action === 'edit-trans') this.openModal(id);
+                else if (action === 'delete-trans') this.delete(id);
+                else if (action === 'copy-trans') await this.duplicateAsNew(id);
             });
-        });
-        tbodyEl.querySelectorAll('[data-action="delete-trans"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (btn.dataset.link === 'debt_repayment') {
-                    showToast(tt('trans.toast.linkedDebtDel', '该流水由债务还款生成，请在「债务管理 · 明细」中删除'), 'info');
-                    return;
-                }
-                if (btn.dataset.link === 'investment') {
-                    showToast(tt('trans.toast.linkedInvDel', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中删除'), 'info');
-                    return;
-                }
-                if (btn.dataset.link === 'account_interest') {
-                    showToast(tt('trans.toast.linkedInterestDel', '该流水由账户计息生成，请在「账户管理 · 账户详情」中删除'), 'info');
-                    return;
-                }
-                this.delete(parseInt(btn.dataset.id));
-            });
-        });
-        // 复制按钮：打开"新增交易"弹窗并预填原交易字段，用户简单修改后保存即可
-        // 关联流水（债务还款/理财/计息）同样必须回对应管理页处理，否则会脱离管理页成为游离交易
-        tbodyEl.querySelectorAll('[data-action="copy-trans"]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                if (btn.dataset.link === 'debt_repayment') {
-                    showToast(tt('trans.toast.linkedDebtCopy', '该流水由债务还款生成，请在「债务管理 · 明细」中处理'), 'info');
-                    return;
-                }
-                if (btn.dataset.link === 'investment') {
-                    showToast(tt('trans.toast.linkedInvCopy', '该流水由理财操作生成，请在「理财管理 · 持仓详情」中处理'), 'info');
-                    return;
-                }
-                if (btn.dataset.link === 'account_interest') {
-                    showToast(tt('trans.toast.linkedInterestCopy', '该流水由账户计息生成，请在「账户管理 · 账户详情」中处理'), 'info');
-                    return;
-                }
-                await this.duplicateAsNew(parseInt(btn.dataset.id));
-            });
-        });
+        }
     },
 
     /**
