@@ -10,20 +10,7 @@
 //                    initCache、DashboardManager、DOM 元素
 //                    （reportType、reportPeriod、reportContent、importFullInput 等）
 
-// 全局数字滚动函数（报表中心用）
-window.countUpReport = function(el, target, duration, formatter) {
-    if (!el) return;
-    const startTime = performance.now();
-    const easeOut = t => 1 - Math.pow(1 - t, 3);
-    function tick(now) {
-        const t = Math.min(1, (now - startTime) / duration);
-        const v = target * easeOut(t);
-        el.textContent = formatter ? formatter(v) : Math.round(v).toLocaleString('zh-CN');
-        if (t < 1) requestAnimationFrame(tick);
-        else el.textContent = formatter ? formatter(target) : Math.round(target).toLocaleString('zh-CN');
-    }
-    requestAnimationFrame(tick);
-};
+// 数字滚动动画已统一到 utils.js 的 countUp（原先此处为 window.countUpReport 重复实现）
 
 // 债务类型标签兜底（走字典 report.debt.type.*，不能用模块级常量直接展示：语言切换后需实时取值）
 const DEBT_TYPE_FALLBACK = { credit_card: '信用卡', loan: '贷款', personal: '个人借款', other: '其他' };
@@ -160,7 +147,7 @@ const ReportManager = {
     },
     // 数字滚动动画：所有 .report-kpi-value / .report-assets-value / .report-compare-value 从 0 滚动到当前显示值
     animateNumbers(container) {
-        if (!container || !window.countUpReport) return;
+        if (!container) return;
         // 反解已渲染文本里的数字：货币符号随语言/币种变化（¥ / $ / € …），
         // 故按「只保留数字、正负号、小数点」清洗，而不是枚举符号。
         const parseNum = str => {
@@ -172,7 +159,7 @@ const ReportManager = {
             const isPct = el.textContent.includes('%');
             const isSigned = /^[+\-]/.test(el.textContent.trim());
             const sign = isSigned ? el.textContent.trim()[0] : '';
-            window.countUpReport(el, target, 900, v => {
+            countUp(el, target, 900, v => {
                 if (isPct) return sign + Math.round(v).toFixed(1) + '%';
                 // 走 fmt() 复用多币种格式化，避免动画结束后与静态渲染的符号不一致
                 return sign + fmt(Math.round(v));

@@ -10,22 +10,7 @@
 //                    showEmpty、DOM 元素（dashKpiBar、dashDetailModal 等）
 // ============================================================
 
-// 数字滚动动画：从 0 滚动到目标值（KPI 灵动入场）
-// 传入 el 元素、目标数值、duration(ms)、格式化函数
-function countUp(el, target, duration = 800, formatter) {
-    if (!el) return;
-    const startVal = 0;
-    const startTime = performance.now();
-    const easeOut = t => 1 - Math.pow(1 - t, 3);
-    function tick(now) {
-        const t = Math.min(1, (now - startTime) / duration);
-        const v = startVal + (target - startVal) * easeOut(t);
-        el.textContent = formatter ? formatter(v) : Math.round(v).toLocaleString('zh-CN');
-        if (t < 1) requestAnimationFrame(tick);
-        else el.textContent = formatter ? formatter(target) : Math.round(target).toLocaleString('zh-CN');
-    }
-    requestAnimationFrame(tick);
-}
+// 数字滚动动画已统一到 utils.js 的 countUp（原先此处有一份重复实现，逻辑相同但易漂移）
 
 const DashboardManager = {
     async init() {

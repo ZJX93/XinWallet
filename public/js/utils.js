@@ -116,6 +116,23 @@ function fmtMix(breakdown, baseCurrency = 'CNY') {
     return fmt(primaryVal, primary) + (others ? ` (${others})` : '');
 }
 
+// 数字滚动动画（KPI 卡片 / 报表）：easeOut 缓动到 target，formatter 控制展示格式。
+// 原先 dashboard.js 与 report.js 各有一份实现（report 挂在 window.countUpReport），
+// 逻辑重复且易漂移，这里统一到 utils.js 由两处复用。
+function countUp(el, target, duration = 800, formatter) {
+    if (!el) return;
+    const startTime = performance.now();
+    const easeOut = t => 1 - Math.pow(1 - t, 3);
+    function tick(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const v = target * easeOut(t);
+        el.textContent = formatter ? formatter(v) : Math.round(v).toLocaleString('zh-CN');
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = formatter ? formatter(target) : Math.round(target).toLocaleString('zh-CN');
+    }
+    requestAnimationFrame(tick);
+}
+
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
 function csvCell(v) {
     const s = String(v == null ? '' : v);
@@ -340,6 +357,7 @@ if (typeof window !== 'undefined') {
     window.escapeHtml = escapeHtml;
     window.fmt = fmt;
     window.fmtMix = fmtMix;
+    window.countUp = countUp;
     window.supportedCurrencies = _supportedCurrencies;
     window.csvCell = csvCell;
     window.blobToBase64 = blobToBase64;
