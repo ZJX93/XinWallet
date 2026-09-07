@@ -16,6 +16,17 @@
         .about-links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
         .about-update { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
         .about-update-status { font-size: 13px; color: var(--text-secondary); }
+        .about-update-last { margin-top: 10px; font-size: 13px; }
+        .about-update-last ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        .about-update-last li { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+        .about-update-last .ul-badge { flex: none; font-weight: 700; padding: 0 10px; border-radius: 999px; line-height: 1.7; }
+        .about-update-last .ul-badge.ok { color: #0e7a37; background: rgba(24, 160, 88, 0.15); }
+        .about-update-last .ul-badge.warn { color: #9a6700; background: rgba(209, 154, 0, 0.18); }
+        .about-update-last .ul-badge.fail { color: #c0392b; background: rgba(231, 76, 60, 0.15); }
+        .about-update-last details { flex-basis: 100%; }
+        .about-update-last pre { margin: 4px 0 0; padding: 8px 10px; max-height: 220px; overflow: auto;
+            font-size: 12px; white-space: pre-wrap; word-break: break-all; border-radius: 8px;
+            background: rgba(120, 120, 120, 0.09); }
     </style>
 
     <div class="glass-card about-hero">
@@ -77,5 +88,7 @@
             <button class="btn btn-primary" id="aboutApplyUpdateBtn" style="display:none" data-i18n="about.update.apply">立即更新</button>
             <span class="about-update-status" id="aboutUpdateStatus"></span>
         </div>
+        <!-- 上次更新结果（成功/失败/镜像未真正切换告警），由 app.js refreshUpdateLast() 渲染 -->
+        <div class="about-update-last" id="aboutUpdateLast" hidden></div>
     </div>
 </section>

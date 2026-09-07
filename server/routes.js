@@ -95,16 +95,10 @@ router.use('/backup', require('./routes/backup'));   // /backup/export, /backup/
 router.use('/fx', require('./routes/fx'));           // /fx/rates, /fx/refresh（多币种 P2-2b）
 
 // 应用一键更新（检测最新镜像 + 应用更新）；受全局 authMiddleware 保护（仅登录用户）。
-// 限流：10 分钟内最多 10 次（2026-09-05 统一放宽，原 3 次偏紧），防滥用反复重启容器。
-const rateLimit = require('express-rate-limit');
-const updateLimiter = rateLimit({
-    windowMs: 10 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false, message: '更新操作过于频繁，请 10 分钟后再试' },
-});
-router.use('/update', updateLimiter, require('./routes/update'));
+// 限流已细分到 routes/update.js 内部：
+//   POST /apply（重建容器，5 次/10min）、GET /check（10 次/10min）、
+//   GET /status（只读本地状态，60 次/10min）互不挤占配额。
+router.use('/update', require('./routes/update'));
 
 // ==========================================
 // 导出

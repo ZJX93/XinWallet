@@ -229,6 +229,17 @@ window.I18N_DICT['zh-CN'] = {
     'app.update.maybeDone': '更新可能已完成，请手动刷新页面',
     'app.update.applyFailed': '更新失败：{msg}',
 
+    // ============ 关于页：上次更新结果（/api/update/status） ============
+    'update.lastOk': '上次更新成功',
+    'update.okButNotLatest': '上次重建命令已执行，但容器未运行在最新镜像上{ts}',
+    'update.lastFail': '上次更新失败',
+    'update.lastAt': '（{time}）',
+    'update.exitCode': '退出码 {code}',
+    'update.viewLog': '查看日志',
+    'update.notLatest': '当前运行镜像 {img} ≠ 最新 {latest}，自动更新未真正生效（compose 是否固定了旧 tag？）',
+    'update.noState': '服务器无法回写更新记录（未挂载 /app/data 数据卷），请手动确认镜像是否已更新',
+    'update.noDocker': '容器内 docker 不可用，无法自动更新/校验镜像',
+
     // ============ Boot 启动横幅（仅 localhost / DEBUG 模式打印） ============
     'app.boot.start': '🚀 鑫钱包启动...',
     'app.boot.ready': '✅ 鑫钱包系统已就绪',

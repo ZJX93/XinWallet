@@ -394,6 +394,113 @@ function pageUrl(page) {
     return base + '/' + page;
 }
 
+// 拉取「上次更新结果」并渲染到关于页（对应服务端 /api/update/status，
+// 2026-09-07 新增：暴露辅助容器重建的真实 exit code + 运行镜像是否真的切到 :latest）
+async function refreshUpdateLast() {
+    const el = document.getElementById('aboutUpdateLast');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/update/status`, { credentials: 'same-origin' });
+        // 旧镜像无该路由(404) / 限流(429) / 未登录(401)：静默隐藏，不打扰用户
+        if (!res.ok) { el.hidden = true; return; }
+        const j = await res.json().catch(() => null);
+        renderUpdateLast(j && j.success ? j.data : null);
+    } catch (e) {
+        el.hidden = true;
+    }
+}
+
+function renderUpdateLast(d) {
+    const el = document.getElementById('aboutUpdateLast');
+    if (!el) return;
+    if (!d) { el.hidden = true; return; }
+    const fmtTs = s => {
+        try { const dt = new Date(s); return Number.isNaN(dt.getTime()) ? (s || '') : dt.toLocaleString(); }
+        catch (e) { return s || ''; }
+    };
+    const cur = d.current;
+    const mismatch = !!(cur && cur.containerImage && cur.latestId && cur.isLatest === false);
+    const items = [];
+
+    // 1) 上次更新执行结果（exit code 由辅助容器真实回写）
+    if (d.last) {
+        const tsTxt = d.last.ts ? tt('update.lastAt', '（{time}）').replace('{time}', fmtTs(d.last.ts)) : '';
+        const codeTxt = (d.last.exitCode != null)
+            ? tt('update.exitCode', '退出码 {code}').replace('{code}', d.last.exitCode) : '';
+        if (d.last.ok) {
+            if (mismatch) {
+                // 命令本身成功了，但容器并没有运行在 :latest —— 半成功，必须告警
+                items.push({
+                    kind: 'warn',
+                    text: tt('update.okButNotLatest', '上次重建命令已执行，但容器未运行在最新镜像上{ts}').replace('{ts}', tsTxt),
+                    log: d.last.logTail,
+                });
+            } else {
+                items.push({ kind: 'ok', text: tt('update.lastOk', '上次更新成功') + tsTxt });
+            }
+        } else {
+            items.push({
+                kind: 'fail',
+                text: tt('update.lastFail', '上次更新失败') + (codeTxt ? '（' + codeTxt + '）' : '') + tsTxt,
+                log: d.last.logTail,
+            });
+        }
+    }
+
+    // 2) 无记录但当前运行镜像 ≠ :latest：更新从未真正生效（最典型的 pin 旧 tag 场景）
+    if (!d.last && mismatch) {
+        items.push({
+            kind: 'warn',
+            text: tt('update.notLatest', '当前运行镜像 {img} ≠ 最新 {latest}，自动更新未真正生效（compose 是否固定了旧 tag？）')
+                .replace('{img}', cur.containerImage).replace('{latest}', cur.latestImage),
+        });
+    }
+    // 失败记录 + 镜像确实没切换：追加一条原因提示
+    if (d.last && d.last.ok === false && mismatch) {
+        items.push({
+            kind: 'warn',
+            text: tt('update.notLatest', '当前运行镜像 {img} ≠ 最新 {latest}，自动更新未真正生效（compose 是否固定了旧 tag？）')
+                .replace('{img}', cur.containerImage).replace('{latest}', cur.latestImage),
+        });
+    }
+
+    // 3) 状态目录不可写（/app/data 卷没挂上）：无法回写，提示手动确认
+    if (d.stateDirAvailable === false) {
+        items.push({ kind: 'warn', text: tt('update.noState', '服务器无法回写更新记录（未挂载 /app/data 数据卷），请手动确认镜像是否已更新') });
+    }
+    // 容器内 docker 不可用
+    if (d.dockerAvailable === false) {
+        items.push({ kind: 'warn', text: tt('update.noDocker', '容器内 docker 不可用，无法自动更新/校验镜像') });
+    }
+
+    if (!items.length) { el.hidden = true; return; }
+    const ul = document.createElement('ul');
+    items.forEach(it => {
+        const li = document.createElement('li');
+        const badge = document.createElement('span');
+        badge.className = 'ul-badge ' + it.kind;
+        badge.textContent = it.kind === 'ok' ? '✓' : (it.kind === 'warn' ? '!' : '✕');
+        li.appendChild(badge);
+        const txt = document.createElement('span');
+        txt.textContent = it.text;
+        li.appendChild(txt);
+        if (it.log) {
+            const det = document.createElement('details');
+            const sum = document.createElement('summary');
+            sum.textContent = tt('update.viewLog', '查看日志');
+            det.appendChild(sum);
+            const pre = document.createElement('pre');
+            pre.textContent = it.log;
+            det.appendChild(pre);
+            li.appendChild(det);
+        }
+        ul.appendChild(li);
+    });
+    el.innerHTML = '';
+    el.appendChild(ul);
+    el.hidden = false;
+}
+
 // 仅负责 DOM 渲染（不修改历史），供 switchPage 与 popstate 复用
 async function showPage(page) {
     // 懒加载：若该 page 为占位 section（data-lazy），先 fetch 进来
@@ -422,6 +529,9 @@ async function showPage(page) {
             const el = document.getElementById('aboutVersion');
             if (v && el) el.textContent = v;
         }).catch(() => {});
+
+        // 展示上次更新结果（成功/失败/镜像未真正切换告警）；页面刷新后自动重新拉取
+        refreshUpdateLast();
 
         // 应用一键更新：检测最新镜像 / 应用更新
         const checkBtn = document.getElementById('aboutCheckUpdateBtn');

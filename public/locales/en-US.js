@@ -229,6 +229,17 @@ window.I18N_DICT['en-US'] = {
     'app.update.maybeDone': 'Update may have finished — please refresh the page',
     'app.update.applyFailed': 'Update failed: {msg}',
 
+    // ============ About page: last update result (/api/update/status) ============
+    'update.lastOk': 'Last update succeeded',
+    'update.okButNotLatest': 'Last rebuild command ran, but the container is not running the latest image{ts}',
+    'update.lastFail': 'Last update failed',
+    'update.lastAt': ' ({time})',
+    'update.exitCode': 'exit code {code}',
+    'update.viewLog': 'View log',
+    'update.notLatest': 'Running image {img} ≠ latest {latest} — auto-update did not take effect (is compose pinned to an old tag?)',
+    'update.noState': 'Server cannot persist update records (no /app/data volume) — please verify the image manually',
+    'update.noDocker': 'docker unavailable inside container — cannot auto-update / verify image',
+
     // ============ Boot startup banner (localhost / DEBUG only) ============
     'app.boot.start': '🚀 Starting XinWallet...',
     'app.boot.ready': '✅ XinWallet ready',
