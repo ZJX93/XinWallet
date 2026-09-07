@@ -20,47 +20,61 @@
 
     <div class="glass-card about-hero">
         <div class="about-logo"></div>
-        <h2 class="about-name">鑫钱包</h2>
-        <p class="about-tagline">个人财务助手 · Personal Finance</p>
-        <p class="about-version">版本 <span id="aboutVersion">v0.1.x</span></p>
-        <p class="about-desc">一个注重隐私与可解释性的自托管个人记账应用：多账户复式记账、预算、债务、理财、AI 智能识别记账与深度报表，数据完全掌握在自己手中。</p>
+        <h2 class="about-name" data-i18n="app.name">鑫钱包</h2>
+        <p class="about-tagline" data-i18n="about.tagline">个人财务助手 · Personal Finance</p>
+        <!-- 版本号由 JS 从 /api/version 回填，故「版本」二字单独成 span，
+             不能把 data-i18n 挂在 <p> 上（会覆盖掉 #aboutVersion）。 -->
+        <p class="about-version"><span data-i18n="about.versionLabel">版本</span> <span id="aboutVersion">v0.1.x</span></p>
+        <p class="about-desc" data-i18n="about.desc">一个注重隐私与可解释性的自托管个人记账应用：多账户复式记账、预算、债务、理财、AI 智能识别记账与深度报表，数据完全掌握在自己手中。</p>
     </div>
 
     <div class="glass-card">
-        <h3 class="card-title">核心特性</h3>
+        <h3 class="card-title" data-i18n="about.featuresTitle">核心特性</h3>
         <div class="about-features">
-            <div class="about-feature"><div><b>多账户复式记账</b><p>现金 / 银行卡 / 信用卡 / 电子支付 / 金融账户统一记账，自动对账防漂移。</p></div></div>
-            <div class="about-feature"><div><b>AI 智能识别</b><p>一句话或截图，AI 自动归类落地；模型可复核、可回退。</p></div></div>
-            <div class="about-feature"><div><b>预算与债务</b><p>多周期预算、贷款 / 信用卡 / 借贷全周期跟踪。</p></div></div>
-            <div class="about-feature"><div><b>报表与洞察</b><p>专业报表、AI 消费洞察与习惯学习。</p></div></div>
+            <div class="about-feature"><div>
+                <b data-i18n="about.feat.ledger.title">多账户复式记账</b>
+                <p data-i18n="about.feat.ledger.desc">现金 / 银行卡 / 信用卡 / 电子支付 / 金融账户统一记账，自动对账防漂移。</p>
+            </div></div>
+            <div class="about-feature"><div>
+                <b data-i18n="about.feat.ai.title">AI 智能识别</b>
+                <p data-i18n="about.feat.ai.desc">一句话或截图，AI 自动归类落地；模型可复核、可回退。</p>
+            </div></div>
+            <div class="about-feature"><div>
+                <b data-i18n="about.feat.budget.title">预算与债务</b>
+                <p data-i18n="about.feat.budget.desc">多周期预算、贷款 / 信用卡 / 借贷全周期跟踪。</p>
+            </div></div>
+            <div class="about-feature"><div>
+                <b data-i18n="about.feat.report.title">报表与洞察</b>
+                <p data-i18n="about.feat.report.desc">专业报表、AI 消费洞察与习惯学习。</p>
+            </div></div>
         </div>
     </div>
 
     <div class="glass-card">
-        <h3 class="card-title">技术栈</h3>
+        <h3 class="card-title" data-i18n="about.stackTitle">技术栈</h3>
         <ul class="about-stack">
-            <li><b>后端</b>：Node.js + Express + PostgreSQL / MySQL（双方言）</li>
-            <li><b>前端</b>：原生 HTML / CSS / JS（毛玻璃 UI）+ Chart.js</li>
-            <li><b>移动端</b>：原生 Android（Kotlin）· 鸿蒙 HarmonyOS（ArkTS）</li>
-            <li><b>部署</b>：Docker 镜像，统一版本线，一键自托管</li>
+            <li><b data-i18n="about.stack.backend">后端</b><span data-i18n="about.stack.backendVal">：Node.js + Express + PostgreSQL / MySQL（双方言）</span></li>
+            <li><b data-i18n="about.stack.frontend">前端</b><span data-i18n="about.stack.frontendVal">：原生 HTML / CSS / JS（毛玻璃 UI）+ Chart.js</span></li>
+            <li><b data-i18n="about.stack.mobile">移动端</b><span data-i18n="about.stack.mobileVal">：原生 Android（Kotlin）· 鸿蒙 HarmonyOS（ArkTS）</span></li>
+            <li><b data-i18n="about.stack.deploy">部署</b><span data-i18n="about.stack.deployVal">：Docker 镜像，统一版本线，一键自托管</span></li>
         </ul>
     </div>
 
     <div class="glass-card">
-        <h3 class="card-title">开源协议与链接</h3>
-        <p class="about-desc" style="margin:0;text-align:left">本项目以 MIT 协议开源，欢迎在 GitHub 上提 Issue 与 PR。</p>
+        <h3 class="card-title" data-i18n="about.ossTitle">开源协议与链接</h3>
+        <p class="about-desc" style="margin:0;text-align:left" data-i18n="about.oss.desc">本项目以 MIT 协议开源，欢迎在 GitHub 上提 Issue 与 PR。</p>
         <div class="about-links">
-            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet" target="_blank" rel="noopener">GitHub 仓库</a>
-            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet/releases" target="_blank" rel="noopener">更新日志</a>
+            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet" target="_blank" rel="noopener" data-i18n="about.link.repo">GitHub 仓库</a>
+            <a class="btn btn-ghost" href="https://github.com/ZJX93/XinWallet/releases" target="_blank" rel="noopener" data-i18n="about.link.changelog">更新日志</a>
         </div>
     </div>
 
     <div class="glass-card">
-        <h3 class="card-title">应用更新</h3>
-        <p class="about-desc" style="margin:0 0 14px;text-align:left">检测并一键更新到最新 Docker 镜像（ghcr.io 官方镜像）。</p>
+        <h3 class="card-title" data-i18n="about.updateTitle">应用更新</h3>
+        <p class="about-desc" style="margin:0 0 14px;text-align:left" data-i18n="about.update.desc">检测并一键更新到最新 Docker 镜像（ghcr.io 官方镜像）。</p>
         <div class="about-update">
-            <button class="btn btn-primary" id="aboutCheckUpdateBtn">检查更新</button>
-            <button class="btn btn-primary" id="aboutApplyUpdateBtn" style="display:none">立即更新</button>
+            <button class="btn btn-primary" id="aboutCheckUpdateBtn" data-i18n="about.update.check">检查更新</button>
+            <button class="btn btn-primary" id="aboutApplyUpdateBtn" style="display:none" data-i18n="about.update.apply">立即更新</button>
             <span class="about-update-status" id="aboutUpdateStatus"></span>
         </div>
     </div>

@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="referrer" content="no-referrer-when-downgrade">
-    <title>鑫钱包 · 个人财务助手</title>
+    <!-- 浏览器标签页标题也跟随语言：applyDOM 会改写 <title> 的 textContent -->
+    <title data-i18n="app.docTitle">鑫钱包 · 个人财务助手</title>
     <link rel="icon" type="image/png" href="images/logo.png">
     <!-- 按钮字体：朱雀仿宋(Zhuque Fangsong, OFL-1.1)，自托管子集，非阻塞加载避免首屏延迟 -->
     <link rel="stylesheet" href="./css/fonts/zhuque.css" media="print" onload="this.media='all'">
@@ -236,9 +237,9 @@
                             <div class="form-group"><label data-i18n="budget.form.name">预算名称</label><input type="text" id="budgetName" placeholder="例如：旅游预算、装修预算" data-i18n-ph="budget.form.namePh" required></div>
                             <div class="form-group"><label data-i18n="budget.form.periodType">周期类型</label><select id="budgetPeriodTypeSelect" required>
                                 <option value="month" data-i18n="budget.period.month">月度</option>
-                                <option value="quarter">季度</option>
-                                <option value="half">半年</option>
-                                <option value="year">年度</option>
+                                <option value="quarter" data-i18n="budget.period.quarter">季度</option>
+                                <option value="half" data-i18n="budget.period.half">半年</option>
+                                <option value="year" data-i18n="budget.period.year">年度</option>
                             </select></div>
                         </div>
                         <div class="form-row">
@@ -517,7 +518,7 @@
                     </div>
                     <div class="provider-list" id="aiProviderList"></div>
                     <div id="aiProviderEmpty" class="empty-hint" style="display:none;margin-top:24px">
-                        <p>暂无服务商，点击右上角添加一个</p>
+                        <p data-i18n="aiConfig.providers.empty">暂无服务商，点击右上角添加一个</p>
                     </div>
                 </div>
 
@@ -531,7 +532,7 @@
                         <form class="trans-form" id="aiProviderForm">
                             <input type="hidden" id="aiProviderId">
                             <div class="form-group full-width" style="margin-bottom:0">
-                                <label>快捷选择（点击自动填充下方所有字段）</label>
+                                <label data-i18n="aiProvider.preset.label">快捷选择（点击自动填充下方所有字段）</label>
                                 <div class="provider-presets" id="aiProviderPresets">
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="minimax">MiniMax</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="deepseek">DeepSeek</button>
@@ -547,50 +548,50 @@
                             </div>
 
                             <div class="form-group full-width">
-                                <label>服务商名称</label>
-                                <input type="text" id="aiProviderName" placeholder="如 DeepSeek 官方" required>
+                                <label data-i18n="aiProvider.form.name">服务商名称</label>
+                                <input type="text" id="aiProviderName" placeholder="如 DeepSeek 官方" data-i18n-ph="aiProvider.form.namePh" required>
                             </div>
                             <div class="form-group full-width" id="aiProviderRegionGroup">
-                                <label>服务地区</label>
+                                <label data-i18n="aiProvider.form.region">服务地区</label>
                                 <div class="region-switch" id="aiProviderRegionSwitch">
-                                    <button type="button" class="region-btn" data-region="cn">国内版</button>
-                                    <button type="button" class="region-btn" data-region="en">国际版</button>
+                                    <button type="button" class="region-btn" data-region="cn" data-i18n="aiProvider.region.cn">国内版</button>
+                                    <button type="button" class="region-btn" data-region="en" data-i18n="aiProvider.region.en">国际版</button>
                                 </div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label>接口类型</label>
+                                    <label data-i18n="aiProvider.form.apiType">接口类型</label>
                                     <select id="aiProviderType" class="filter-select">
                                         <option value="openai" data-i18n="aiProvider.apiType.opt.openai">OpenAI 兼容</option>
                                         <option value="anthropic" data-i18n="aiProvider.apiType.opt.anthropic">Anthropic Messages</option>
                                     </select>
-                                    <small class="form-hint">绝大多数服务商选 OpenAI 兼容；MiniMax/Anthropic 选 Anthropic</small>
+                                    <small class="form-hint" data-i18n="aiProvider.form.apiTypeHint">绝大多数服务商选 OpenAI 兼容；MiniMax/Anthropic 选 Anthropic</small>
                                 </div>
                                 <div class="form-group">
-                                    <label>模型名</label>
+                                    <label data-i18n="aiProvider.form.model">模型名</label>
                                     <div style="display:flex;gap:8px;align-items:center">
-                                        <input type="text" id="aiProviderModel" list="aiModelList" required placeholder="选择或输入模型名" style="flex:1">
-                                        <button type="button" class="btn btn-ghost btn-sm" id="aiFetchModelsBtn">拉取模型</button>
+                                        <input type="text" id="aiProviderModel" list="aiModelList" required placeholder="选择或输入模型名" data-i18n-ph="aiProvider.form.modelPh" style="flex:1">
+                                        <button type="button" class="btn btn-ghost btn-sm" id="aiFetchModelsBtn" data-i18n="aiProvider.form.fetchModels">拉取模型</button>
                                     </div>
                                     <datalist id="aiModelList"></datalist>
-                                    <small class="form-hint">点「拉取模型」自动获取该服务商可用模型（OpenAI 兼容 / Ollama 支持；Anthropic 请手动输入）</small>
+                                    <small class="form-hint" data-i18n="aiProvider.form.fetchModelsHint">点「拉取模型」自动获取该服务商可用模型（OpenAI 兼容 / Ollama 支持；Anthropic 请手动输入）</small>
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>接口地址</label>
+                                <label data-i18n="aiProvider.form.baseUrl">接口地址</label>
                                 <input type="text" id="aiProviderBaseUrl" placeholder="https://api.openai.com/v1" required>
-                                <small class="form-hint" id="aiBaseUrlHint">通常以 /v1 结尾，无需尾部斜杠</small>
+                                <small class="form-hint" id="aiBaseUrlHint" data-i18n="aiProvider.apiType.hintDefault">通常以 /v1 结尾，无需尾部斜杠</small>
                             </div>
                             <div class="form-group full-width">
                                 <label data-i18n="aiProvider.form.apiKey">API Key</label>
                                 <input type="password" id="aiProviderKey" placeholder="sk-..." autocomplete="off">
-                                <small class="form-hint" id="aiKeyHint">编辑时留空表示保留已保存的 Key</small>
+                                <small class="form-hint" id="aiKeyHint" data-i18n="aiProvider.keepKeyHint">编辑时留空表示保留已保存的 Key</small>
                             </div>
 
                             <div class="form-actions">
-                                <button type="submit" class="btn btn-ghost" id="aiProviderSaveBtn">保存</button>
-                                <button type="button" class="btn btn-ghost" id="aiProviderTestBtn">测试连接</button>
-                                <button type="button" class="btn btn-ghost" id="aiProviderCancelBtn">取消</button>
+                                <button type="submit" class="btn btn-ghost" id="aiProviderSaveBtn" data-i18n="common.save">保存</button>
+                                <button type="button" class="btn btn-ghost" id="aiProviderTestBtn" data-i18n="aiProvider.form.test">测试连接</button>
+                                <button type="button" class="btn btn-ghost" id="aiProviderCancelBtn" data-i18n="common.cancel">取消</button>
                             </div>
                             <div id="aiProviderMsg" class="form-msg" style="margin-top:12px"></div>
                         </form>
@@ -601,8 +602,8 @@
                 </div><!-- /aiConfigPanel-providers -->
                 <div class="ai-config-panel" id="aiConfigPanel-ocr" style="display:none">
                 <div class="glass-card" style="margin-top:16px">
-                    <h3 class="card-title">OCR 配置</h3>
-                    <p class="card-desc">配置腾讯云 OCR 密钥，用于账单截图文字识别。SecretKey 仅保存在服务端。</p>
+                    <h3 class="card-title" data-i18n="aiConfig.ocr.title">OCR 配置</h3>
+                    <p class="card-desc" data-i18n="aiConfig.ocr.desc">配置腾讯云 OCR 密钥，用于账单截图文字识别。SecretKey 仅保存在服务端。</p>
                     <form class="trans-form" id="ocrConfigForm" style="margin-top:12px">
                         <div class="form-row">
                             <div class="form-group">
@@ -612,18 +613,18 @@
                             <div class="form-group">
                                 <label data-i18n="aiProvider.form.secretKey">SecretKey</label>
                                 <input type="password" id="ocrSecretKey" placeholder="SecretKey" autocomplete="off">
-                                <small class="form-hint">留空表示保留已保存的 Key</small>
+                                <small class="form-hint" data-i18n="aiProvider.ocr.keepKeyHint">留空表示保留已保存的 Key</small>
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="max-width:200px">
-                                <label>地域</label>
+                                <label data-i18n="aiProvider.form.ocrRegion">地域</label>
                                 <input type="text" id="ocrRegion" value="ap-guangzhou" placeholder="ap-guangzhou">
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-ghost">保存 OCR 配置</button>
-                            <button type="button" class="btn btn-ghost" id="ocrTestBtn">测试 OCR</button>
+                            <button type="submit" class="btn btn-ghost" data-i18n="aiConfig.ocr.save">保存 OCR 配置</button>
+                            <button type="button" class="btn btn-ghost" id="ocrTestBtn" data-i18n="aiConfig.ocr.test">测试 OCR</button>
                         </div>
                         <div id="ocrConfigMsg" class="form-msg" style="margin-top:12px"></div>
                     </form>
@@ -639,40 +640,40 @@
                         <div class="form-row" style="flex-wrap:wrap">
                             <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
                                 <input type="checkbox" id="aiSettingModelRoute" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
-                                <span><strong>模型复核</strong><br><small class="form-hint">大模型复核并修正本地识别结果（需要启用一个 AI 服务商）。</small></span>
+                                <span><strong data-i18n="aiConfig.behavior.modelRoute.title">模型复核</strong><br><small class="form-hint" data-i18n="aiConfig.behavior.modelRoute.hint">大模型复核并修正本地识别结果（需要启用一个 AI 服务商）。</small></span>
                             </label>
                             <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
                                 <input type="checkbox" id="aiSettingModelRouteSimple" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
-                                <span><strong>简单输入也过模型</strong><br><small class="form-hint">简短账单也发给模型，用少量 token 换语义准确率。</small></span>
+                                <span><strong data-i18n="aiConfig.behavior.modelRouteSimple.title">简单输入也过模型</strong><br><small class="form-hint" data-i18n="aiConfig.behavior.modelRouteSimple.hint">简短账单也发给模型，用少量 token 换语义准确率。</small></span>
                             </label>
                         </div>
                         <div class="form-row" style="flex-wrap:wrap">
                             <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
                                 <input type="checkbox" id="aiSettingLlmFirst" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
-                                <span><strong>模型主抽取</strong><br><small class="form-hint">让模型独立从原文抽取，不依赖本地候选。识别更准但更耗 token，建议先试默认模式。</small></span>
+                                <span><strong data-i18n="aiConfig.behavior.llmFirst.title">模型主抽取</strong><br><small class="form-hint" data-i18n="aiConfig.behavior.llmFirst.hint">让模型独立从原文抽取，不依赖本地候选。识别更准但更耗 token，建议先试默认模式。</small></span>
                             </label>
                             <label style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:300px">
                                 <input type="checkbox" id="aiSettingFewShot" style="margin-top:3px;width:15px;height:15px;accent-color:var(--accent)">
-                                <span><strong>历史先例</strong><br><small class="form-hint">把脱敏后的历史归类样例注入 prompt，帮助模型贴合你的记账习惯。</small></span>
+                                <span><strong data-i18n="aiConfig.behavior.fewShot.title">历史先例</strong><br><small class="form-hint" data-i18n="aiConfig.behavior.fewShot.hint">把脱敏后的历史归类样例注入 prompt，帮助模型贴合你的记账习惯。</small></span>
                             </label>
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="max-width:220px">
-                                <label>Prompt 版本</label>
+                                <label data-i18n="aiConfig.behavior.promptVersion">Prompt 版本</label>
                                 <select id="aiSettingPromptVersion">
                                     <option value="v3" data-i18n="aiProvider.promptVersion.v3Label">v3 · 最新（历史先例）</option>
                                 </select>
-                                <small class="form-hint">当前仅保留最新 v3 版本</small>
+                                <small class="form-hint" data-i18n="aiConfig.behavior.promptVersionHint">当前仅保留最新 v3 版本</small>
                             </div>
                             <div class="form-group" style="max-width:320px">
-                                <label>AI 助手名称</label>
+                                <label data-i18n="aiConfig.behavior.aiName">AI 助手名称</label>
                                 <input type="text" id="aiSettingAiName" maxlength="20" class="form-input"
-                                       placeholder="例如：小鑫（默认）" autocomplete="off">
-                                <small class="form-hint">给 AI 助手起个名字，会显示在对话与回复自称中（最多 20 字）。</small>
+                                       placeholder="例如：小鑫（默认）" data-i18n-ph="aiConfig.behavior.aiNamePh" autocomplete="off">
+                                <small class="form-hint" data-i18n="aiConfig.behavior.aiNameHint">给 AI 助手起个名字，会显示在对话与回复自称中（最多 20 字）。</small>
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-ghost">保存 AI 识别设置</button>
+                            <button type="submit" class="btn btn-ghost" data-i18n="aiConfig.behavior.save">保存 AI 识别设置</button>
                         </div>
                         <div id="aiSettingsMsg" class="form-msg" style="margin-top:12px"></div>
                     </form>
@@ -853,7 +854,8 @@
          2026-09 从 ai-recognition 抽出；点击展开浮层，所有页面可用。
          共享 /ai/chat（只读咨询 + 改删已存交易，不直接记账）-->
     <div class="ai-fab-root">
-        <button class="ai-fab-btn" id="aiFabBtn" type="button" aria-label="AI 助手" title="AI 助手">
+        <button class="ai-fab-btn" id="aiFabBtn" type="button" aria-label="AI 助手" title="AI 助手"
+                data-i18n-aria="aiRec.chat.title" data-i18n-title="aiRec.chat.title">
             <svg class="ai-fab-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
                 <path d="M12 2a2 2 0 0 1 2 2v1h3a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8.5L5 22v-2H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h3V4a2 2 0 0 1 2-2Zm-2 7a1 1 1 0 0 0-1 1 1 1 0 0 0 1 1 1 1 0 0 0 1-1 1 1 0 0 0-1-1Zm4 0a1 1 1 0 0 0-1 1 1 1 0 0 0 1 1 1 1 0 0 0 1-1 1 1 0 0 0-1-1Z" fill="currentColor"/>
             </svg>
@@ -865,7 +867,8 @@
                     <strong data-i18n="aiRec.chat.title">AI 助手</strong>
                     <p class="ai-fab-subtitle" data-i18n="aiRec.chat.desc">问账、改账、答疑</p>
                 </div>
-                <button class="ai-fab-close" id="aiFabClose" type="button" aria-label="关闭" title="关闭">×</button>
+                <button class="ai-fab-close" id="aiFabClose" type="button" aria-label="关闭" title="关闭"
+                        data-i18n-aria="common.close" data-i18n-title="common.close">×</button>
             </header>
             <div class="ai-fab-messages" id="aiFabMessages"></div>
             <div class="ai-fab-input-row">
