@@ -1088,14 +1088,15 @@ function confirmClearImport(mode) {
                 </div>
             </div>`;
         document.body.appendChild(overlay);
-        const done = (val) => { overlay.remove(); resolve(val); };
+        // 统一在 done() 里移除 keydown 监听器，避免仅 Esc 分支清理、
+        // 点击确定/取消/遮罩关闭时 onEsc 残留累积（反复导入导致监听器泄漏）
+        const onEsc = (e) => { if (e.key === 'Escape') done(false); };
+        const done = (val) => { document.removeEventListener('keydown', onEsc); overlay.remove(); resolve(val); };
         overlay.querySelector('.modal-close').addEventListener('click', () => done(false));
         overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
         overlay.querySelector('[data-act="ok"]').addEventListener('click', () => done(true));
         overlay.addEventListener('click', (e) => { if (e.target === overlay) done(false); });
-        document.addEventListener('keydown', function onEsc(e) {
-            if (e.key === 'Escape') { overlay.remove(); resolve(false); document.removeEventListener('keydown', onEsc); }
-        });
+        document.addEventListener('keydown', onEsc);
     });
 }
 

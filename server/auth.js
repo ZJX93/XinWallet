@@ -66,6 +66,13 @@ function signRefreshToken(user) {
     );
 }
 
+// 校验 refresh token：统一 refresh secret 取值逻辑（与 signRefreshToken 同源，避免两处硬编码漂移）。
+// 交由调用方判断 payload.type，本函数只负责验签。
+function verifyRefreshToken(token) {
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || EFFECTIVE_SECRET;
+    return jwt.verify(token, refreshSecret, { algorithms: ['HS256'] });
+}
+
 // 路由鉴权中间件：校验 Bearer Token，注入 req.userId
 function authMiddleware(req, res, next) {
     const header = req.headers.authorization || '';
@@ -86,4 +93,4 @@ function authMiddleware(req, res, next) {
     }
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, signRefreshToken, authMiddleware };
+module.exports = { hashPassword, verifyPassword, signToken, signRefreshToken, verifyRefreshToken, authMiddleware };

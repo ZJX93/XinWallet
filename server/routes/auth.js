@@ -4,9 +4,8 @@
 
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { hashPassword, verifyPassword, signToken, signRefreshToken, authMiddleware } = require('../auth');
+const { hashPassword, verifyPassword, signToken, signRefreshToken, verifyRefreshToken, authMiddleware } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
@@ -178,8 +177,7 @@ router.post('/refresh', validate({
         return res.status(400).json(fail('缺少 refreshToken'));
     }
     try {
-        const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'zhicai-dev-secret-change-me';
-        const payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
+        const payload = verifyRefreshToken(refreshToken);
         // 仅允许 refresh token
         if (payload.type !== 'refresh') {
             return res.status(401).json(fail('非法的 refresh token 类型'));
