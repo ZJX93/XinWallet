@@ -30,10 +30,7 @@ const TEST_DIR = path.join(ROOT, 'test');
 // 或 xlsx 结构变更后无人发现。
 const PLAIN_SCRIPTS = [
   path.join('scripts', 'test-backup-xlsx.js'),
-  // ⚠️ scripts/test-backup-routes.js 暂不纳入：其 fakeDb mock 是按 v2 导入结构写的，
-  // v3 备份（新增理财/债务/储蓄表 + 导入流程重构）后，导入段几乎全部被跳过
-  //（实测仅 tags 恢复成功，账户/分类/理财/预算/债务/储蓄/交易/转账均为 0）。
-  // 需先按 v3 导入流程重写 mock 与断言，再纳入 —— 否则「接入即红灯」会阻塞发版链路。
+  path.join('scripts', 'test-backup-routes.js'),
 ];
 
 const FILE_TIMEOUT_MS = parseInt(process.env.CI_FILE_TIMEOUT_MS || '150000', 10);

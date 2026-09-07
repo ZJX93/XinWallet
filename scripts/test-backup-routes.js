@@ -29,13 +29,15 @@ const schemaMap = {};
         schemaMap[tname] = cols;
     }
 }
-// 多账本迁移：book_id 通过 ALTER TABLE ADD COLUMN 追加（不在 CREATE TABLE 中），补齐到 schema 映射
+// 迁移列：book_id / link_type / link_id 等由 ALTER TABLE ADD COLUMN 追加，不在 CREATE TABLE 里。
+// 这里泛化解析所有「ALTER TABLE <t> ADD COLUMN [IF NOT EXISTS] <col>」并补进 schema 映射；
+// 原实现只特判 book_id，导致导入用到的 link_type/link_id 被误判成「未知列」。
 {
-    const re = /ALTER TABLE\s+(\w+)\s+ADD COLUMN[^;]*?\bbook_id\b/ig;
+    const re = /ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(?:IF NOT EXISTS\s+)?([a-zA-Z_]\w*)/ig;
     let m;
     while ((m = re.exec(schemaSrc))) {
         const t = m[1];
-        if (schemaMap[t]) schemaMap[t].add('book_id');
+        if (schemaMap[t]) schemaMap[t].add(m[2]);
     }
 }
 
@@ -108,7 +110,17 @@ const fakeDb = {
     pool: {},
     query: mockQuery,
     queryOne: (sql, params) => mockQuery(sql, params).then(r => (r && r.length ? r[0] : null)),
-    transaction: (fn) => fn({ query: mockQuery, queryOne: (s, p) => mockQuery(s, p).then(r => (r && r.length ? r[0] : null)) })
+    transaction: (fn) => fn({ query: mockQuery, queryOne: (s, p) => mockQuery(s, p).then(r => (r && r.length ? r[0] : null)) }),
+    // 方言助手：与 db.js 同签名。mock 只需生成形如 INSERT INTO t (cols) VALUES (...) 的语句，
+    // 让 mockQuery 的 INSERT 分支能校验列名并返回 insertId。
+    // v3 导入改走 insertIgnore/upsert 后，缺这两个方法会直接 500（TypeError），
+    // 导致导入在「分类」步中断、后续实体全部未恢复。
+    insertIgnoreSql: (table, columns) =>
+        `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    upsertSql: (table, keyColumns, valueColumns) => {
+        const cols = [...(keyColumns || []), ...(valueColumns || [])];
+        return `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
+    },
 };
 
 // ---------- 3) 注入 mock db 并加载 backup 路由 ----------
