@@ -325,7 +325,7 @@ const initBottomNav = () => {
     labels.forEach(label => {
         const name = label.textContent.trim();
         label.dataset.group = name;
-        label.innerHTML = `<span style="display:block;font-size:11px;line-height:1;font-weight:var(--fw-medium)">${name}</span>`;
+        label.innerHTML = `<span style="display:block;font-size:11px;line-height:1;font-weight:var(--fw-medium)">${escapeHtml(name)}</span>`;
     });
 
     // 点击分组标签展开子菜单
@@ -356,7 +356,7 @@ const initBottomNav = () => {
                 const text = it.querySelector('.nav-text')?.textContent || it.dataset.page;
                 const page = it.dataset.page;
                 return `<div class="mobile-subitem" data-page="${page}" style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text-primary);">
-                    <span>${text}</span>
+                    <span>${escapeHtml(text)}</span>
                 </div>`;
             }).join('');
             popup.style.display = 'block';

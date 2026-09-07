@@ -12,6 +12,7 @@
     "dev": "node --watch server/index.js",
     "test": "node --test \"test/*.test.js\"",
     "test:ci": "node scripts/test-ci.js",
+    "lint": "eslint --rulesdir scripts/eslint public/js --ext .js",
     "test:integration": "node scripts/smoke-test.js",
     "test:routes": "node scripts/verify-routes.js",
     "test:full": "node scripts/full-verify.js",
@@ -39,5 +40,8 @@
   },
   "overrides": {
     "uuid": "^11.1.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1"
   }
 }

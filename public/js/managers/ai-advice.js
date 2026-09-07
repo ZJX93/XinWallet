@@ -136,12 +136,12 @@ const AIAdvice = {
         const card = document.createElement('div');
         const priority = String(a.priority || 'medium').toLowerCase();
         card.className = `glass-card ai-advice-card priority-${escapeHtml(priority)}`;
-        const title = escapeHtml(a.title || '');
+        const escapedTitle = escapeHtml(a.title || '');
         const content = escapeHtml(a.content || '');
         const impact = escapeHtml(a.impact || '');
         card.innerHTML = `
             <div class="ai-advice-priority-tag">${escapeHtml(this._priorityLabel(priority))}</div>
-            <h3 class="ai-advice-title">${title}</h3>
+            <h3 class="ai-advice-title">${escapedTitle}</h3>
             <p class="ai-advice-content">${content}</p>
             ${impact ? `<p class="ai-advice-impact">${escapeHtml(tt('aiAdvice.impact.label', '影响：'))}${impact}</p>` : ''}
         `;

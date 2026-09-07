@@ -14,6 +14,8 @@ module.exports = {
     ecmaVersion: 2021,
     sourceType: 'script',
   },
+  // 第三方库 / 压缩产物不参与 lint（体积大、非本项目源码，且常含非常规写法导致解析失败）
+  ignorePatterns: ['public/js/vendor/**'],
   rules: {
     // 自定义规则（由 --rulesdir scripts/eslint 加载）
     'no-unescaped-innerhtml': 'error',
@@ -22,4 +24,13 @@ module.exports = {
     'no-unused-vars': 'off',
     'no-console': 'off',
   },
+  overrides: [
+    {
+      // managers/*.js 与 auth.js、bootstrap.js 是 ES module（export default / import ... from）。
+      // 默认 sourceType: 'script' 会在 import/export 处直接解析失败，这里单独放开为 module；
+      // utils.js 等经典脚本仍按 script 解析，避免严格模式语义影响既有代码。
+      files: ['public/js/managers/**/*.js', 'public/js/auth.js', 'public/js/bootstrap.js'],
+      parserOptions: { sourceType: 'module' },
+    },
+  ],
 };

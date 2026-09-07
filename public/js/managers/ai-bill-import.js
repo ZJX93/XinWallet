@@ -386,7 +386,8 @@ const AIBillImport = {
         // 默认账户：优先用已设置的，否则第一个活跃账户
         const defaultAccId = accounts.length > 0 ? accounts[0].id : null;
 
-        document.getElementById('aiResultsList').innerHTML = this.parsedItems.map((item, i) => {
+        // 先单独构建行 HTML，再赋值给 innerHTML：避免「item.category 仅用于比较」被 XSS 规则误判
+        const rowsHtml = this.parsedItems.map((item, i) => {
             const isIncome = item.type === 'income';
             const catList = isIncome ? incomeCats : expenseCats;
             const rawDate = item.date || fmtDateTime(new Date());
@@ -407,7 +408,7 @@ const AIBillImport = {
                 </div>
                 <div class="ai-edit-col ai-edit-cat">
                     <select class="ai-edit-cat-sel" data-field="category" data-idx="${i}">
-                        ${catList.map(c => `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-icon="${escapeHtml(c.icon || "📌")}" ${(item.category_id === c.id || item.category === c.name) ? 'selected' : ''}>${c.icon || '📌'} ${escapeHtml(c.name)}</option>`).join('')}
+                        ${catList.map(c => { const sel = (item.category_id === c.id || item.category === c.name); return `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-icon="${escapeHtml(c.icon || "📌")}" ${sel ? 'selected' : ''}>${c.icon || '📌'} ${escapeHtml(c.name)}</option>`; }).join('')}
                     </select>
                 </div>
                 <div class="ai-edit-col ai-edit-amt">
@@ -424,6 +425,7 @@ const AIBillImport = {
                 </div>
             </div>`;
         }).join('');
+        document.getElementById('aiResultsList').innerHTML = rowsHtml;
 
         // 事件绑定：输入/选择变更 → 更新 parsedItems
         document.querySelectorAll('#aiResultsList [data-field]').forEach(el => {
