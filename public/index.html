@@ -44,10 +44,7 @@
                 <button class="theme-btn active" data-theme="dark" title="暗色" data-i18n-title="theme.dark">🌙</button>
                 <button class="theme-btn" data-theme="system" title="跟随系统" data-i18n-title="theme.system">💻</button>
             </div>
-            <div class="currency-switcher" id="currencySwitcher" style="position:relative;display:inline-flex">
-                <button class="btn btn-ghost btn-icon" id="currencyBtn" aria-label="本位币" title="Base Currency" data-i18n-aria="header.baseCurrency" data-i18n-title="currency.menuTitle" style="font-size:14px">¥</button>
-                <div class="currency-menu" id="currencyMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.25)"></div>
-            </div>
+
             <div class="lang-switcher" id="langSwitcher" style="position:relative;display:inline-flex">
                 <button class="btn btn-ghost btn-icon" id="langBtn" aria-label="语言" title="Language" data-i18n-aria="header.language" data-i18n-title="lang.switch" style="font-size:14px">🌐</button>
                 <div class="lang-menu" id="langMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border-subtle);border-radius:10px;padding:4px;z-index:60;min-width:120px;box-shadow:0 8px 24px rgba(0,0,0,.25)">
@@ -111,6 +108,9 @@
                 <li class="nav-group-label" data-i18n="nav.group.settings">设置</li>
                 <li class="nav-item" data-page="data-center">
                     <span class="nav-text" data-i18n="nav.data-center">基础数据</span>
+                </li>
+                <li class="nav-item" data-page="fx-rates">
+                    <span class="nav-text" data-i18n="nav.fx-rates">汇率查询</span>
                 </li>
                 <li class="nav-item" data-page="about">
                     <span class="nav-text" data-i18n="nav.about">关于</span>
@@ -699,6 +699,9 @@
 
             <!-- ========== 关于 ========== -->
             <section class="page" id="page-about" data-lazy="pages/about.html"></section>
+
+            <!-- ========== 汇率查询 ========== -->
+            <section class="page" id="page-fx-rates" data-lazy="pages/fx-rates.html"></section>
         </main>
     </div>
 

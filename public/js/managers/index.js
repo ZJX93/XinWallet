@@ -27,6 +27,7 @@ import ReportManager from './report.js';
 import QuickAdd from './quick-add.js';
 import DashboardManager from './dashboard.js';
 import ChartManager from './chart.js';
+import FxRates from './fx-rates.js';
 
 // app.js 是经典 script（非 module），所有函数自动在 window 上，直接用
 const boot = window.boot;
@@ -56,6 +57,7 @@ window.ReportManager = ReportManager;
 window.QuickAdd = QuickAdd;
 window.DashboardManager = DashboardManager;
 window.ChartManager = ChartManager;
+window.FxRates = FxRates;
 
 // ==========================================
 // 应用启动（防止重复调用 + 错误兜底）

@@ -1,0 +1,81 @@
+<!-- 汇率查询（多币种 P2-3d）：原顶栏「本位币」入口移除后，货币相关设置与汇率查询统一收在这里。 -->
+<section class="page" id="page-fx-rates">
+    <style>
+        .fx-wrap { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 16px; align-items: start; }
+        @media (max-width: 900px) { .fx-wrap { grid-template-columns: 1fr; } }
+        .fx-meta { display: flex; flex-direction: column; gap: 10px; }
+        .fx-meta-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+        .fx-meta-row span:first-child { color: var(--text-secondary); flex: none; }
+        .fx-meta-row span:last-child { color: var(--text-primary); text-align: right; word-break: break-all; }
+        .fx-stale { color: var(--danger, #e74c3c); font-weight: 600; }
+        .fx-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .fx-table th, .fx-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-subtle); text-align: left; }
+        .fx-table th { color: var(--text-secondary); font-weight: 600; font-size: 12px; }
+        .fx-table tbody tr:hover { background: var(--surface-hover); }
+        .fx-table td.fx-amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+        .fx-code { font-weight: 700; }
+        .fx-setbase { background: none; border: none; color: var(--interactive-default, var(--brand));
+            cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 6px; }
+        .fx-setbase:hover { background: var(--surface-hover); }
+        .fx-scroll { max-height: 62vh; overflow: auto; }
+    </style>
+
+    <div class="fx-wrap">
+        <!-- 左：概览 + 本位币设置 + 换算基准 -->
+        <div class="glass-card">
+            <h3 class="card-title" data-i18n="fx.overview">汇率概览</h3>
+            <div class="fx-meta" style="margin-top:10px">
+                <div class="fx-meta-row"><span data-i18n="fx.source">数据源</span><span id="fxSource">—</span></div>
+                <div class="fx-meta-row"><span data-i18n="fx.rateDate">汇率日期</span><span id="fxDate">—</span></div>
+                <div class="fx-meta-row"><span data-i18n="fx.updatedAt">更新于</span><span id="fxUpdated">—</span></div>
+            </div>
+
+            <div class="form-group" style="margin-top:18px">
+                <label data-i18n="fx.baseCurrency">本位币</label>
+                <select id="fxBaseSelect" class="filter-select"></select>
+                <small class="form-hint" data-i18n="fx.baseCurrencyHint">多币种合计按此币种折算展示</small>
+            </div>
+
+            <div class="form-row" style="margin-top:12px">
+                <div class="form-group">
+                    <label data-i18n="fx.baseAmount">基准金额</label>
+                    <input type="number" id="fxAmount" class="form-input" value="1" min="0" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="fx.quoteCurrency">报价币种</label>
+                    <select id="fxQuoteSelect" class="filter-select"></select>
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top:14px">
+                <button type="button" class="btn btn-ghost" id="fxRefreshBtn" data-i18n="fx.refresh">刷新汇率</button>
+            </div>
+            <div id="fxMsg" class="form-msg" style="margin-top:10px"></div>
+        </div>
+
+        <!-- 右：汇率表 -->
+        <div class="glass-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <h3 class="card-title" style="margin:0">
+                    <span id="fxTableTitle">—</span>
+                </h3>
+                <input type="search" id="fxSearch" class="form-input" style="max-width:180px"
+                       placeholder="搜索币种" data-i18n-ph="fx.searchPh">
+            </div>
+            <div class="fx-scroll" style="margin-top:10px">
+                <table class="fx-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="fx.col.code">代码</th>
+                            <th data-i18n="fx.col.name">货币</th>
+                            <th style="text-align:right" data-i18n="fx.col.amount">金额</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="fxTableBody"></tbody>
+                </table>
+            </div>
+            <p id="fxEmpty" class="empty-hint" style="display:none;margin-top:16px" data-i18n="fx.empty">暂无汇率数据，点「刷新汇率」获取</p>
+        </div>
+    </div>
+</section>
