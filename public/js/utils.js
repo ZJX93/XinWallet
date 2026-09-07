@@ -101,10 +101,13 @@ function fmtMix(breakdown, baseCurrency = 'CNY') {
     }
     // 主货币 != base：有 fxManager → 折算到 base 显示
     if (fx && typeof fx.convert === 'function') {
-        const baseSum = entries.reduce((sum, [c, v]) => {
+        // 精度（M3）：折算结果量化到「分」后整数累加，避免浮点漂移（同 FxManager.aggregateToBase）
+        let baseSumCents = 0;
+        for (const [c, v] of entries) {
             const num = parseFloat(v) || 0;
-            return sum + (c === base ? num : (fx.convert(num, c, base) || 0));
-        }, 0);
+            baseSumCents += Math.round((c === base ? num : (fx.convert(num, c, base) || 0)) * 100);
+        }
+        const baseSum = baseSumCents / 100;
         const others = entries.filter(([c]) => c !== base).map(([c, v]) => fmt(v, c)).join(' + ');
         return fmt(baseSum, base) + (others ? ` (${others})` : '');
     }

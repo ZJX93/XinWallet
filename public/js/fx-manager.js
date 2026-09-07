@@ -89,14 +89,17 @@ const FxManager = {
     aggregateToBase(items, baseCurrency, currencyField = 'currency', amountField = 'amount') {
         if (!Array.isArray(items) || items.length === 0) return 0;
         const base = String(baseCurrency || 'CNY').toUpperCase();
-        let total = 0;
+        // 精度（M3）：每笔折算结果先量化到「分」再累加整数，最后一次性还原。
+        // 直接 total += 浮点会让误差随笔数累积（0.1+0.2 类漂移），
+        // 与后端 money.js 的整数分内核对齐，保证前后端聚合口径一致。
+        let totalCents = 0;
         for (const it of items) {
             const amt = Number(it[amountField]);
             if (!Number.isFinite(amt)) continue;
             const cur = String(it[currencyField] || 'CNY').toUpperCase();
-            total += this.convert(amt, cur, base);
+            totalCents += Math.round((this.convert(amt, cur, base) || 0) * 100);
         }
-        return Math.round(total * 100) / 100;
+        return totalCents / 100;
     },
 };
 
