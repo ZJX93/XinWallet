@@ -398,6 +398,12 @@ export struct TransactionRow {
           .fontColor(this.isTransfer()
             ? COLORS.textSecondary
             : (this.item?.type === 'income' ? COLORS.income : COLORS.expense))
+        // 多币种方案B：外币消费已折成账户币种入账（amount 是账户币种金额），
+        // 此处回显原币便于核对，与 web 端列表「原 USD 50」同语义。
+        if (this.item?.original_currency && this.item?.original_amount != null) {
+          Text('原 ' + (this.item.original_currency as string).toUpperCase() + ' ' + String(this.item.original_amount))
+            .fontSize(10).fontColor(COLORS.textSecondary)
+        }
         // 转账不再在右下角重复写「转账」：左侧 🔄 + 第二行 A → B 已表达清楚，
         // 第三处重复只是噪声。普通记录仍显示所属账户（列表里区分账户的唯一线索）。
         if (!this.isTransfer() && this.item?.account?.name) {

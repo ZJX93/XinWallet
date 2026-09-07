@@ -704,12 +704,26 @@ private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) 
             }
             Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
-        Text(
-            // 转账取绝对值：折叠后的那条腿可能是 transfer_out 的负数金额
-            if (isTransfer) formatMoney(kotlin.math.abs(item.amount), item.currency)
-            else (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount, item.currency),
-            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                // 转账取绝对值：折叠后的那条腿可能是 transfer_out 的负数金额
+                if (isTransfer) formatMoney(kotlin.math.abs(item.amount), item.currency)
+                else (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount, item.currency),
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
+            )
+            // 多币种方案B：外币消费已折成账户币种入账（amount 是账户币种），
+            // 此处回显原币便于核对，与 web 端列表「原 USD 50」同语义。
+            val origCur = item.originalCurrency
+            val origAmt = item.originalAmount
+            if (!origCur.isNullOrBlank() && origAmt != null) {
+                Text(
+                    "原 ${origCur.uppercase()} ${trimAmount(origAmt)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 

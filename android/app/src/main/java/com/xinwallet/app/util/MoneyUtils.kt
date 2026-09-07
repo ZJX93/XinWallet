@@ -18,6 +18,10 @@ fun currencySymbol(currency: String?): String {
     return CURRENCY_SYMBOLS[cur] ?: "$cur "
 }
 
+/** 记账表单可选币种（与 public/js/utils.js#supportedCurrencies 对齐） */
+fun supportedCurrencyCodes(): List<String> =
+    listOf("CNY", "USD", "EUR", "HKD", "JPY", "GBP", "AUD", "CAD")
+
 /**
  * 金额格式化。
  *

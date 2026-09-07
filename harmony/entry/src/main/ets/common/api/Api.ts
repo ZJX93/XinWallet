@@ -8,7 +8,7 @@ import {
   Account, AccountsResponse, CreateAccountRequest, UpdateAccountRequest,
   AddAccountInterestRequest, AddAccountInterestResult,
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
-  Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse, DebtDetail,
+  Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse, DebtDetail, FxRate,
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
   TranscribeRequest, TranscribeResponse, IdResponse,
   AiParseRequest, AiParseResponse, AiPredictionSnapshot,
@@ -74,6 +74,12 @@ export async function getTransactionMonths(): Promise<ApiResponse<string[]>> {
 }
 export async function getTransactionSummary(month: string): Promise<ApiResponse<TxSummary>> {
   return get<TxSummary>('transactions/summary', { month });
+}
+/** 实时汇率：GET /fx/rate?from=USD&to=CNY[&date=YYYY-MM-DD]，记账表单外币折算预览用 */
+export async function getFxRate(from: string, to: string, date?: string): Promise<ApiResponse<FxRate>> {
+  const p: Record<string, Object> = { from: from, to: to };
+  if (date) p.date = date;
+  return get<FxRate>('fx/rate', p);
 }
 
 /* 转账 */

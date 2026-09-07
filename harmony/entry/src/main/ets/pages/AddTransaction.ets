@@ -17,8 +17,8 @@ import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import geoLocationManager from '@ohos.geoLocationManager';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
-import { COLORS, fmtMoney } from '../common/theme';
-import { Category, CreateTransactionRequest } from '../common/models';
+import { COLORS, fmtMoney, currencySymbol } from '../common/theme';
+import { Category, CreateTransactionRequest, FxRate } from '../common/models';
 import { TopBar, CategoryIcon, LoadingBox, DropdownField, DateTimePickerField, DatePickerField, DropdownOption, AppBackground, BottomSheet } from '../common/components/Components';
 
 function today(): string {
@@ -34,6 +34,9 @@ function fmtTs(ts: number): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/** 记账表单可选币种（与安卓 supportedCurrencyCodes / web supportedCurrencies 对齐） */
+const CURRENCIES: string[] = ['CNY', 'USD', 'EUR', 'HKD', 'JPY', 'GBP', 'AUD', 'CAD'];
 
 @Entry
 @Component
@@ -52,6 +55,10 @@ struct AddTransaction {
   @State amount: string = '';
   @State note: string = '';
   @State location: string = '';
+  // 多币种方案B：币种 = 用户输入的原币（默认跟随账户币种），amount 即原币金额
+  @State currency: string = 'CNY';
+  /** 折合预览文案：原币 → 账户币种（空 = 无需折算） */
+  @State fxHint: string = '';
   @State loading: boolean = false;
   @State loadingData: boolean = false;
   // 转账专用字段
@@ -93,6 +100,8 @@ struct AddTransaction {
         this.accounts = (a.data as ESObject)?.accounts || [];
         this.accId = this.accounts[0]?.id || 0;
         this.accName = this.accounts[0]?.name || '';
+        // 币种默认跟随账户币种（web 端 updateCurrencyFromAccount 同语义）
+        this.currency = ((this.accounts[0]?.currency as string) || 'CNY').toUpperCase();
       }
       if (this.editId) {
         const r = await Api.getTransactions({ limit: 1 });
@@ -131,15 +140,15 @@ struct AddTransaction {
   }
 
   onKey(k: string): void {
-    if (k === '⌫' || k === '删除') { this.amount = this.amount.slice(0, -1); return; }
-    if (k === '清空') { this.amount = ''; return; }
     if (k === '确定') { this.submit(false); return; }
+    if (k === '⌫' || k === '删除') { this.amount = this.amount.slice(0, -1); }
+    else if (k === '清空') { this.amount = ''; }
     // 小数点：最多一个，空时补0
-    if (k === '.') { if (!this.amount.includes('.')) this.amount += this.amount ? '.' : '0.'; return; }
+    else if (k === '.') { if (!this.amount.includes('.')) this.amount += this.amount ? '.' : '0.'; }
     // 运算符：直接追加
-    if (['+', '-', '*', '/', '(', ')'].includes(k)) { this.amount += k; return; }
+    else if (['+', '-', '*', '/', '(', ')'].includes(k)) { this.amount += k; }
     // 数字
-    if (/[0-9]/.test(k)) {
+    else if (/[0-9]/.test(k)) {
       if (this.amount === '0') this.amount = k;
       else this.amount += k;
       // 小数位限制（最多2位）
@@ -147,6 +156,35 @@ struct AddTransaction {
       if (dotIdx >= 0 && this.amount.length - dotIdx - 1 > 2) {
         this.amount = this.amount.slice(0, dotIdx + 3);
       }
+    }
+    // 金额变化 → 重算折合预览（外币 → 账户币种）
+    this.refreshFx();
+  }
+
+  /**
+   * 外币折算预览：原币金额 × 当日汇率 → 账户币种金额（多币种方案B）。
+   * 与 web 端 transFxPreview 同语义；汇率取不到时提示可手动折算，不阻塞记账。
+   */
+  async refreshFx(): Promise<void> {
+    const acc: ESObject | undefined = (this.accounts as ESObject[])
+      .find((x: ESObject): boolean => x.id === this.accId);
+    const accCur: string = ((acc?.currency as string) || 'CNY').toUpperCase();
+    const cur: string = (this.currency || accCur).toUpperCase();
+    const amt: number = Number(this.amount);
+    // 转账模式 / 跟账户同币种 / 无金额 → 无需折算
+    if (this.type === 'transfer' || cur === accCur || !amt || isNaN(amt)) { this.fxHint = ''; return; }
+    this.fxHint = '汇率换算中…';
+    try {
+      const r = await Api.getFxRate(cur, accCur, this.date.slice(0, 10));
+      const rate: number = r.success ? (r.data as FxRate).rate : 0;
+      if (rate > 0) {
+        const converted = Math.round(amt * rate * 100) / 100;
+        this.fxHint = `${cur} ${fmtMoney(amt, cur)} × ${rate} → ≈ ${fmtMoney(converted, accCur)}`;
+      } else {
+        this.fxHint = '汇率取不到，可手动折算';
+      }
+    } catch (e) {
+      this.fxHint = '汇率取不到，可手动折算';
     }
   }
 
@@ -165,11 +203,18 @@ struct AddTransaction {
     if (!amt || !this.catId || !this.accId) { return; }
     this.loading = true;
     try {
+      const acc: ESObject | undefined = (this.accounts as ESObject[])
+        .find((x: ESObject): boolean => x.id === this.accId);
+      const accCur: string = ((acc?.currency as string) || 'CNY').toUpperCase();
+      const cur: string = (this.currency || accCur).toUpperCase();
       const req: CreateTransactionRequest = {
         account_id: this.accId,
         category_id: this.catId,
         type: this.type,
         amount: amt,
+        // 多币种方案B：currency = 用户输入的原币，后端按当日汇率折成账户币种入账；
+        // 跟账户同币种时传 undefined，后端按账户币种兜底，避免多余折算。
+        currency: cur === accCur ? undefined : cur,
         note: this.note,
         date: this.date,
         location: this.location || undefined
@@ -414,10 +459,21 @@ struct AddTransaction {
                   onSelected: (id: number) => {
                     const list: ESObject[] = this.accounts as ESObject[];
                     const a: ESObject | undefined = list.find((x: ESObject): boolean => x.id === id);
-                    if (a) { this.accId = id; this.accName = a.name as string; }
+                    if (a) {
+                      this.accId = id;
+                      this.accName = a.name as string;
+                      // 币种默认跟随账户币种（web 端 updateCurrencyFromAccount 同语义）
+                      this.currency = ((a.currency as string) || 'CNY').toUpperCase();
+                      this.refreshFx();
+                    }
                   }
                 })
-                DateTimePickerField({ label: '日期时间', value: this.date, onValueChange: (d: string) => this.date = d })
+                // 日期变化也要重算折合预览：汇率是【按交易日期】取的
+                DateTimePickerField({
+                  label: '日期时间',
+                  value: this.date,
+                  onValueChange: (d: string) => { this.date = d; this.refreshFx(); }
+                })
                 // 地点
                 Row({ space: 6 }) {
                   Text('📍').fontSize(16)
@@ -428,10 +484,22 @@ struct AddTransaction {
 
               // 金额 + 备注
               Row({ space: 8 }) {
-                Text('¥').fontSize(26).fontColor(COLORS.textPrimary)
+                Text(currencySymbol(this.currency)).fontSize(26).fontColor(COLORS.textPrimary)
                 Text(this.amount || '0.00').fontSize(32).fontWeight(FontWeight.Bold).layoutWeight(1).fontColor(COLORS.textPrimary)
               }.width('100%').padding(12).backgroundColor(COLORS.cardGlass).borderRadius(12)
               .border({ width: 0.5, color: COLORS.outlineVariant })
+              // 多币种方案B：币种（原币）选择 + 折合预览（转账是同币种，不显示）
+              if (this.type !== 'transfer') {
+                DropdownField({
+                  label: '币种',
+                  value: this.currency,
+                  options: CURRENCIES.map((c: string, i: number): DropdownOption => ({ name: c, id: i })),
+                  onSelected: (idx: number) => { this.currency = CURRENCIES[idx]; this.refreshFx(); }
+                })
+                if (this.fxHint !== '') {
+                  Text(this.fxHint).fontSize(12).fontColor(COLORS.brand).width('100%')
+                }
+              }
               TextInput({ placeholder: '备注（可选）', text: this.note }).onChange((v: string) => this.note = v)
 
               // 金额键盘（对齐安卓 NewKeypad 4×5）

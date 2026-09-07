@@ -175,6 +175,14 @@ export interface TransactionItem {
   amount: number;
   /** 多币种 P2-3c：每笔交易的币种（后端 transactions.js 列表/单条/ledger 已 LEFT JOIN accounts.currency 并兜底 'CNY'）。调用 TransactionRow 时不传 currency prop 即可让它自动取此字段。 */
   currency?: string;
+  /** 多币种方案B：原币金额（外币消费折成账户币种后，原币保留在此，列表回显「原 USD 50」） */
+  original_amount?: number;
+  /** 原币（ISO 4217，如 USD）；无折算（本就是账户币种入账）时为 undefined */
+  original_currency?: string;
+  /** 折算汇率（1 原币 = ? 账户币） */
+  exchange_rate?: number;
+  /** 汇率报价日期 YYYY-MM-DD */
+  rate_date?: string;
   note?: string;
   date: string;
   location?: string;
@@ -206,6 +214,15 @@ export interface Transaction {
   cat_icon?: string;
   acc_name?: string;
   acc_icon?: string;
+}
+
+/** GET /fx/rate 响应：1 from = rate to 的折算结果（记账表单外币折算预览用） */
+export interface FxRate {
+  rate: number;
+  date?: string;
+  source?: string;
+  from?: string;
+  to?: string;
 }
 
 export interface CreateTransactionRequest {

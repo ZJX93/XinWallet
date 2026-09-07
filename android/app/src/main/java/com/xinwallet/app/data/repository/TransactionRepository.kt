@@ -41,6 +41,10 @@ class TransactionRepository(private val apiProvider: () -> ApiService) {
     suspend fun getMonths() = safeApiCall { apiProvider().getTransactionMonths() }
     suspend fun getSummary(month: String) = safeApiCall { apiProvider().getTransactionSummary(month) }
 
+    /** 实时汇率（外币折算预览用）：1 from = rate to */
+    suspend fun getFxRate(from: String, to: String, date: String? = null) =
+        safeApiCall { apiProvider().getFxRate(from, to, date) }
+
     suspend fun getTransfers(month: String? = null) = safeApiCall { apiProvider().getTransfers(month) }
     suspend fun createTransfer(req: CreateTransferRequest) = safeApiCall { apiProvider().createTransfer(req) }
     /**

@@ -103,6 +103,8 @@ import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.todayDateTime
 import com.xinwallet.app.util.formatMoney
+import com.xinwallet.app.util.currencySymbol
+import com.xinwallet.app.util.supportedCurrencyCodes
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -244,6 +246,8 @@ fun AddTransactionScreen(
     /** 手动选择的标签 id 集合（关联标签接口对接）；空集合 = 不关联 */
     var selectedTagIds by rememberSaveable { mutableStateOf<Set<Int>>(emptySet()) }
     var showTagSheet by remember { mutableStateOf(false) }
+    // 多币种方案B：币种 = 用户输入的原币（默认跟随账户币种）
+    var currency by rememberSaveable { mutableStateOf<String?>(null) }
 
     // 选择类弹层 / 对话框状态
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -296,6 +300,14 @@ fun AddTransactionScreen(
             accountId = state.accounts.firstOrNull { it.isDefault }?.id ?: state.accounts.first().id
         }
     }
+    // 币种默认跟随账户币种（Web 端 updateCurrencyFromAccount 同语义）。
+    // prefilled（编辑回填）后不再跟随 —— 编辑原币交易时币种应回显 original_currency。
+    LaunchedEffect(accountId) {
+        if (!prefilled && accountId != null) {
+            val acc = state.accounts.find { it.id == accountId }
+            if (acc != null) currency = acc.currency.ifBlank { "CNY" }
+        }
+    }
     // 账本默认选中当前账本
     LaunchedEffect(books) {
         if (selectedBookId == null && books.isNotEmpty()) {
@@ -309,12 +321,17 @@ fun AddTransactionScreen(
         val tx = state.editing
         if (tx != null && !prefilled) {
             type = if (tx.type == "income") "income" else "expense"
-            amount = trimAmount(tx.amount)
+            // 多币种方案B：有折算时金额回填【原币】（currency 也回原币），
+            // 否则会把已折成账户币种的金额当原币再折一次（50 USD→¥335.59 再当 335.59 USD 折 = 错账）
+            val editOrigAmt = tx.originalAmount
+            amount = trimAmount(if (editOrigAmt != null && !tx.originalCurrency.isNullOrBlank()) editOrigAmt else tx.amount)
             note = tx.note.orEmpty()
             accountId = tx.account?.id
             categoryId = tx.category?.id
             date = tx.date.trim().let { if (it.length >= 19) it.substring(0, 19) else it.take(10) + " 00:00:00" }
             location = tx.location.orEmpty()
+            // 多币种方案B：币种回显原币（有折算时），否则跟账户币种
+            currency = tx.originalCurrency?.takeIf { it.isNotBlank() } ?: tx.currency
             notReimbursable = (tx.linkType == "none")
             // 标签回填：使用现有标签 id 集合（空时也允许清除，避免脏状态）
             selectedTagIds = tx.tags.map { it.id }.toSet()
@@ -336,6 +353,15 @@ fun AddTransactionScreen(
             }
             prefilled = true
         }
+    }
+
+    // 外币折算预览：金额/币种/账户/日期 任一变化即重算（转账模式同币种，不发请求）
+    LaunchedEffect(amount, currency, accountId, date, type) {
+        if (type == "transfer") { vm.clearFxPreview(); return@LaunchedEffect }
+        val acc = state.accounts.find { it.id == accountId }
+        val accCur = acc?.currency?.ifBlank { "CNY" } ?: "CNY"
+        val amt = amount.toDoubleOrNull() ?: 0.0
+        vm.previewFx(amt, currency, accCur, date)
     }
 
     fun doSubmit(keepOpen: Boolean) {
@@ -365,14 +391,36 @@ fun AddTransactionScreen(
             else -> linkedBudgetId
         }
         val lt = if (notReimbursable) "none" else null
+        // 多币种方案B：提交币种 = 用户输入的原币；跟账户同币种时传 null，后端按账户币种兜底，避免多余折算
+        val accCur = state.accounts.find { it.id == accountId }?.currency?.ifBlank { "CNY" }?.uppercase() ?: "CNY"
+        val curToSend = (currency ?: accCur).trim().uppercase().let { if (it == accCur) null else it }
         if (isEdit) {
-            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList())
+            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList(), curToSend)
         } else {
-            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList())
+            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date, loc, lt, null, budgetIdToSend, selectedTagIds.toList(), curToSend)
         }
         if (keepOpen) {
             amount = ""
             note = ""
+        }
+    }
+
+    // 折合预览文案：原币 → 账户币种（转账模式不显示）。与 Web 端 transFxPreview 同语义。
+    val fxHint: String? = run {
+        if (type == "transfer") null
+        else {
+            val accCur = state.accounts.find { it.id == accountId }?.currency?.ifBlank { "CNY" }?.uppercase() ?: "CNY"
+            val cur = (currency ?: accCur).trim().uppercase()
+            val amt = amount.toDoubleOrNull() ?: 0.0
+            when {
+                cur == accCur || amt <= 0 -> null
+                state.fxLoading -> "汇率换算中…"
+                else -> {
+                    val p = state.fxPreview
+                    if (p != null) "$cur ${formatMoney(amt, cur)} × ${p.rate} → ≈ ${formatMoney(p.converted, accCur)}"
+                    else "汇率取不到，可手动折算"
+                }
+            }
         }
     }
 
@@ -459,9 +507,12 @@ fun AddTransactionScreen(
                 AmountBlock(
                     amount = amount,
                     note = note,
+                    currency = currency,
+                    fxHint = fxHint,
                     onAmountChange = { amount = it },
                     onNoteChange = { note = it },
-                    onEditNote = { noteDraft = note; showNoteDialog = true }
+                    onEditNote = { noteDraft = note; showNoteDialog = true },
+                    onPickCurrency = { currency = it }
                 )
 
                 NewKeypad(
@@ -1438,19 +1489,25 @@ private fun QuickChip(
     }
 }
 
-/** 5) ¥0.00 + 备注占位（截图：金额大字 + 占位备注） */
+/** 5) ¥0.00 + 备注占位（截图：金额大字 + 占位备注）
+ * 多币种方案B：金额符号随币种变，右侧币种 chip 切换原币，下方显示折合预览 */
 @Composable
 private fun AmountBlock(
     amount: String,
     note: String,
+    currency: String?,
+    fxHint: String?,
     onAmountChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
-    onEditNote: () -> Unit = {}
+    onEditNote: () -> Unit = {},
+    onPickCurrency: (String) -> Unit = {}
 ) {
+    var currencyMenuOpen by remember { mutableStateOf(false) }
+    val curLabel = (currency ?: "CNY").uppercase()
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                "¥",
+                currencySymbol(currency),
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 6.dp, bottom = 8.dp)
@@ -1461,6 +1518,36 @@ private fun AmountBlock(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            Spacer(Modifier.weight(1f))
+            Box {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { currencyMenuOpen = true }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(curLabel, style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(2.dp))
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "切换币种",
+                        modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                DropdownMenu(expanded = currencyMenuOpen, onDismissRequest = { currencyMenuOpen = false }) {
+                    supportedCurrencyCodes().forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text(code, style = MaterialTheme.typography.bodyMedium) },
+                            onClick = { onPickCurrency(code); currencyMenuOpen = false }
+                        )
+                    }
+                }
+            }
+        }
+        if (!fxHint.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(fxHint, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

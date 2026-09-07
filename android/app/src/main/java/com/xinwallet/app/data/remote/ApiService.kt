@@ -84,6 +84,14 @@ interface ApiService {
     @GET("transactions/summary")
     suspend fun getTransactionSummary(@Query("month") month: String): Response<ApiResponse<TxSummary>>
 
+    /** 实时汇率：GET /api/fx/rate?from=USD&to=CNY[&date=YYYY-MM-DD]，用于记账表单外币折算预览 */
+    @GET("fx/rate")
+    suspend fun getFxRate(
+        @Query("from") from: String,
+        @Query("to") to: String,
+        @Query("date") date: String? = null
+    ): Response<ApiResponse<FxRate>>
+
     /* 转账 */
     @GET("transfers")
     suspend fun getTransfers(@Query("month") month: String? = null): Response<ApiResponse<List<Transfer>>>

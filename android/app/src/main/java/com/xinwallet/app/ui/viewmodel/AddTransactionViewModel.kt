@@ -37,7 +37,19 @@ data class AddTxUiState(
      * 转账编辑模式下加载到的原始转账记录（来自 GET /transfers），UI 据此预填转出/转入/金额/备注/日期。
      * 与 [editing] 互斥：普通交易走 editing，折叠转账走这里。
      */
-    val editingTransfer: Transfer? = null
+    val editingTransfer: Transfer? = null,
+    /** 外币→账户币种 折算预览（多币种方案B）；null = 无折算或折算失败 */
+    val fxPreview: FxPreview? = null,
+    val fxLoading: Boolean = false
+)
+
+/** 折算预览结果：amount(原币) × rate → converted(账户币种金额) */
+data class FxPreview(
+    val converted: Double,
+    val rate: Double,
+    val rateDate: String?,
+    val from: String,
+    val to: String
 )
 
 class AddTransactionViewModel(
@@ -100,12 +112,14 @@ class AddTransactionViewModel(
 
     fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
                       location: String? = null, linkType: String? = null, linkId: Int? = null,
-                      budgetId: Int? = null, tagIds: List<Int>? = null) {
+                      budgetId: Int? = null, tagIds: List<Int>? = null, currency: String? = null) {
         val dt = normalizeDateTime(date)
         submit { txRepo.createTransaction(
-            // 多币种 P2-3c：currency 不显式传，后端按关联账户 currency 兜底
+            // 多币种方案B：currency 是用户输入的原币；后端按溢出折合成账户币种入账。
+            // 传 null（跟账户同币种/未选）时后端按关联账户 currency 兜底，向后兼容。
             CreateTransactionRequest(
                 accountId = accountId, categoryId = categoryId, type = type, amount = amount,
+                currency = currency,
                 note = note, date = dt, location = location, linkType = linkType,
                 linkId = linkId, budgetId = budgetId, tags = tagIds
             )
@@ -130,17 +144,51 @@ class AddTransactionViewModel(
     /** 编辑保存：date 已带时间（到秒），直接透传，不再回填原始时间 */
     fun submitEdit(id: Int, accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
                    location: String? = null, linkType: String? = null, linkId: Int? = null,
-                   budgetId: Int? = null, tagIds: List<Int>? = null) {
+                   budgetId: Int? = null, tagIds: List<Int>? = null, currency: String? = null) {
         val dt = normalizeDateTime(date)
         submit { txRepo.updateTransaction(
             id,
-            // 多币种 P2-3c：currency 不显式传，后端按新账户 currency → 老 currency → 'CNY' 兜底
+            // 多币种方案B：currency 是原币；编辑原币交易时表单已回填 original_currency，
+            // 后端按折算落账。传 null（跟账户同币种）时后端按新账户 currency 兜底。
             UpdateTransactionRequest(
                 accountId = accountId, categoryId = categoryId, type = type, amount = amount,
+                currency = currency,
                 note = note, date = dt, location = location, linkType = linkType,
                 linkId = linkId, budgetId = budgetId, tags = tagIds
             )
         ) }
+    }
+
+    /**
+     * 外币折算预览：原币 amount × 当日汇率 → 账户币种金额。
+     * from == to（同币种）或金额无效时清空预览（不发请求）。
+     */
+    fun previewFx(amount: Double, from: String?, to: String?, date: String) {
+        val f = (from ?: "").trim().uppercase()
+        val t = ((to ?: "CNY").ifBlank { "CNY" }).uppercase()
+        if (f.isBlank() || f == t || amount <= 0) {
+            clearFxPreview()
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(fxLoading = true)
+            when (val r = txRepo.getFxRate(f, t, date.take(10))) {
+                is ApiResult.Success -> {
+                    val rate = r.data.rate
+                    val converted = kotlin.math.round(amount * rate * 100) / 100.0
+                    _state.value = _state.value.copy(
+                        fxLoading = false,
+                        fxPreview = FxPreview(converted, rate, r.data.date, f, t)
+                    )
+                }
+                // 折算失败：清空预览，提交时后端会再兜底校验并报错，不阻塞记账
+                is ApiResult.Error -> clearFxPreview()
+            }
+        }
+    }
+
+    fun clearFxPreview() {
+        _state.value = _state.value.copy(fxPreview = null, fxLoading = false)
     }
 
     /**

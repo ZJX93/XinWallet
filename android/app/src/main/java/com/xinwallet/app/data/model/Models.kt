@@ -129,6 +129,14 @@ data class TransactionItem(
     val amount: Double = 0.0,
     /** 多币种 P2-3c：每笔交易的币种。后端列表/单条/ledger 三个接口均已 SELECT 透出 currency 字段，优先级 t.currency > 关联账户 currency > 'CNY' */
     val currency: String = "CNY",
+    /** 多币种方案B：原币金额（外币消费折成账户币种后，原币保留在此，列表回显「原 USD 50」） */
+    @SerializedName("original_amount") val originalAmount: Double? = null,
+    /** 原币（ISO 4217，如 USD）；null = 无折算（本就是账户币种入账） */
+    @SerializedName("original_currency") val originalCurrency: String? = null,
+    /** 折算汇率（1 原币 = ? 账户币） */
+    @SerializedName("exchange_rate") val exchangeRate: Double? = null,
+    /** 汇率报价日期 YYYY-MM-DD */
+    @SerializedName("rate_date") val rateDate: String? = null,
     val note: String? = null,
     val date: String = "",
     val location: String? = null,
@@ -185,6 +193,15 @@ data class Transaction(
     @SerializedName("cat_icon") val catIcon: String? = null,
     @SerializedName("acc_name") val accName: String? = null,
     @SerializedName("acc_icon") val accIcon: String? = null
+)
+
+/** GET /fx/rate 响应：1 from = rate to 的折算结果（外币折算预览用） */
+data class FxRate(
+    val rate: Double = 0.0,
+    val date: String? = null,
+    val source: String? = null,
+    val from: String = "",
+    val to: String = ""
 )
 
 data class CreateTransactionRequest(
