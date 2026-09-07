@@ -215,6 +215,15 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 if (!accountId) {
                     return { status: 422, body: { error: `第${txn.seq}笔未指定账户` } };
                 }
+                // ⚠️ 越权防线（H1）：account_id 必须属于当前用户且当前账本，
+                // 否则任何登录用户可借 AI 修正落账接口篡改他人账户余额（IDOR）。
+                const ownedAccount = await conn.queryOne(
+                    'SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?',
+                    [accountId, userId, bookId]
+                );
+                if (!ownedAccount) {
+                    return { status: 422, body: { error: `第${txn.seq}笔账户不存在或不属于当前账本` } };
+                }
                 // 类目回退：用抽取结果，若为空则按类型查默认类目（其他支出/其他收入）
                 let categoryId = txn.category_id || null;
                 if (!categoryId) {
@@ -243,7 +252,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 // 余额更新（复用现有副作用）
                 const newBal = await computeAccountBalance(conn, userId, accountId);
                 await enforceBalanceLimit(conn, userId, accountId, newBal);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, accountId]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBal, accountId, userId, bookId]);
                 await syncCreditCardDebt(conn, userId, accountId);
 
                 /*  ⚠️ 必须回填 note 与 date：这两个字段在服务端会被改写
@@ -262,6 +271,12 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 const amount = toNumber(txn.amount);
                 if (amount === null || amount <= 0) {
                     return { status: 422, body: { error: `第${txn.seq}笔转账金额无效` } };
+                }
+                // ⚠️ 越权防线（H1）：转出/转入账户必须都属于当前用户且当前账本
+                const fromAcc = await conn.queryOne('SELECT id, name FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [fromId, userId, bookId]);
+                const toAcc = await conn.queryOne('SELECT id, name FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [toId, userId, bookId]);
+                if (!fromAcc || !toAcc) {
+                    return { status: 422, body: { error: `第${txn.seq}笔转账账户不存在或不属于当前账本` } };
                 }
                 const note = txn.note || '';
                 const date = txn.date || new Date().toISOString().slice(0, 10);
@@ -285,9 +300,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 );
                 const transferId = ins.insertId;
 
-                // 转出/转入分录（备注措辞与旧 /chat 落账保持一致）
-                const fromAcc = await conn.queryOne('SELECT name FROM accounts WHERE id = ?', [fromId]);
-                const toAcc = await conn.queryOne('SELECT name FROM accounts WHERE id = ?', [toId]);
+                // 转出/转入分录（备注措辞与旧 /chat 落账保持一致；fromAcc/toAcc 已在落账前校验归属并查得 name）
                 await conn.query(
                     `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
                      VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
@@ -308,8 +321,8 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 const toBal = await computeAccountBalance(conn, userId, toId);
                 await enforceBalanceLimit(conn, userId, fromId, fromBal);
                 await enforceBalanceLimit(conn, userId, toId, toBal);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, fromId]);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, toId]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, fromId, userId, bookId]);
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, toId, userId, bookId]);
 
                 committedTxns.push({ id: transferId, seq: txn.seq, type: 'transfer', amount, from_account_id: fromId, to_account_id: toId });
             } else {

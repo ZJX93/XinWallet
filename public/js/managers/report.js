@@ -216,17 +216,17 @@ const ReportManager = {
         return `
             <div class="report-kpi-card income">
                 <div class="report-kpi-label">${escapeHtml(tt('report.kpi.income', '总收入'))}</div>
-                <div class="report-kpi-value">${fmt(s.income)}</div>
+                <div class="report-kpi-value">${fmt(s.income, s.currency)}</div>
                 <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.txnCount', '{n} 笔交易').replace('{n}', s.transactionCount))}</div>
             </div>
             <div class="report-kpi-card expense">
                 <div class="report-kpi-label">${escapeHtml(tt('report.kpi.expense', '总支出'))}</div>
-                <div class="report-kpi-value">${fmt(s.expense)}</div>
-                <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.avgDaily', '日均 {amt}').replace('{amt}', fmt(s.avgDailyExpense)))}</div>
+                <div class="report-kpi-value">${fmt(s.expense, s.currency)}</div>
+                <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.avgDaily', '日均 {amt}').replace('{amt}', fmt(s.avgDailyExpense, s.currency)))}</div>
             </div>
             <div class="report-kpi-card balance">
                 <div class="report-kpi-label">${escapeHtml(tt('report.kpi.balance', '净结余'))}</div>
-                <div class="report-kpi-value">${fmt(s.balance)}</div>
+                <div class="report-kpi-value">${fmt(s.balance, s.currency)}</div>
                 <div class="report-kpi-sub">${escapeHtml(tt('report.kpi.savingsRateSub', '储蓄率 {pct}%').replace('{pct}', s.savingsRate.toFixed(1)))}</div>
             </div>
             <div class="report-kpi-card rate">
@@ -248,18 +248,18 @@ const ReportManager = {
                 <div class="report-compare-grid">
                     <div class="report-compare-row">
                         <span class="report-compare-label">${escapeHtml(tt('report.compare.income', '收入'))}</span>
-                        <span class="report-compare-value">${fmt(c.income)}</span>
-                        <span class="report-compare-diff ${incDiff >= 0 ? 'up' : 'down'}">${incDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(incDiff))}</span>
+                        <span class="report-compare-value">${fmt(c.income, c.currency)}</span>
+                        <span class="report-compare-diff ${incDiff >= 0 ? 'up' : 'down'}">${incDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(incDiff), c.currency)}</span>
                     </div>
                     <div class="report-compare-row">
                         <span class="report-compare-label">${escapeHtml(tt('report.compare.expense', '支出'))}</span>
-                        <span class="report-compare-value">${fmt(c.expense)}</span>
-                        <span class="report-compare-diff ${expDiff <= 0 ? 'up' : 'down'}">${expDiff <= 0 ? '↓' : '↑'} ${fmt(Math.abs(expDiff))}</span>
+                        <span class="report-compare-value">${fmt(c.expense, c.currency)}</span>
+                        <span class="report-compare-diff ${expDiff <= 0 ? 'up' : 'down'}">${expDiff <= 0 ? '↓' : '↑'} ${fmt(Math.abs(expDiff), c.currency)}</span>
                     </div>
                     <div class="report-compare-row">
                         <span class="report-compare-label">${escapeHtml(tt('report.compare.balance', '结余'))}</span>
-                        <span class="report-compare-value">${fmt(c.balance)}</span>
-                        <span class="report-compare-diff ${balDiff >= 0 ? 'up' : 'down'}">${balDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(balDiff))}</span>
+                        <span class="report-compare-value">${fmt(c.balance, c.currency)}</span>
+                        <span class="report-compare-diff ${balDiff >= 0 ? 'up' : 'down'}">${balDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(balDiff), c.currency)}</span>
                     </div>
                 </div>
             </div>
@@ -338,7 +338,7 @@ const ReportManager = {
                         </div>
                         <div class="report-top-meta">${String(t.date).slice(0, 10)}</div>
                     </div>
-                    <div class="report-top-amount">${fmt(t.amount)}</div>
+                    <div class="report-top-amount">${fmt(t.amount, t.currency)}</div>
                 </div>
             `;
         }).join('');

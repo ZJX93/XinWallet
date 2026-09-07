@@ -53,11 +53,16 @@ async function resolveBookContext(req, res, next) {
         let bookId = null;
 
         if (headerBookId) {
-            const b = await db.queryOne(
-                'SELECT id FROM books WHERE id = ? AND user_id = ?',
-                [parseInt(headerBookId, 10), req.userId]
-            );
-            if (b) bookId = b.id;
+            // X-Book-Id 必须是正整数：非数字会 parseInt 成 NaN 导致 SQL 参数异常（受保护接口全部 500），
+            // 这里校验不合法则忽略该头、回落到默认账本，避免被畸形头自 DoS。
+            const parsedBookId = parseInt(headerBookId, 10);
+            if (Number.isInteger(parsedBookId) && parsedBookId > 0) {
+                const b = await db.queryOne(
+                    'SELECT id FROM books WHERE id = ? AND user_id = ?',
+                    [parsedBookId, req.userId]
+                );
+                if (b) bookId = b.id;
+            }
         }
         if (!bookId) {
             const def = await db.queryOne(

@@ -122,6 +122,10 @@ router.post('/demo', async (req, res) => {
         if (process.env.ALLOW_DEMO !== 'true') {
             return res.status(403).json(fail('演示登录未启用，请设置环境变量 ALLOW_DEMO=true'));
         }
+        // 生产环境禁止演示登录：即使误设 ALLOW_DEMO=true 也不能成为免密后门（demo 账号密码硬编码）
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(403).json(fail('生产环境禁止演示账号登录'));
+        }
 
         let user = await db.queryOne('SELECT * FROM users WHERE username = ?', ['demo']);
         if (!user) {

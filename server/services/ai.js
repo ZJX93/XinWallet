@@ -34,13 +34,17 @@ function describeProviderError(body, statusCode) {
 
 // HTTP POST JSON 请求（通用）。
 // ⚠️ 调用前必须经 assertPublicUrl() 校验（SSRF 防护）。Node http.request 默认不跟随重定向。
-// AI Provider 的 base_url 由用户配置，本地 Ollama（127.0.0.1）及局域网自定义服务商是合法场景，
-// 故放行回环与私有内网地址；链路本地 169.254.0.0/16（含云 metadata）仍始终拦截。
+// AI Provider 的 base_url 由用户私有配置，本地 Ollama（127.0.0.1）默认放行；
+// 内网/局域网地址默认拦截（防 SSRF），确需局域网自建服务商时设置 ALLOW_PRIVATE_AI=true。
+// 链路本地 169.254.0.0/16（含云 metadata）始终拦截，不受开关影响。
 // 关键修正：非 2xx 视为调用失败，抛 AiProviderError 携带真实错误，避免被当成成功响应解析。
 // ⚠️ SSRF 闭环：assertPublicUrl 校验后返回锁定 IP（v.ip），这里直连该 IP 并带原 Host / TLS SNI（v.host），
 // 不再二次 DNS 解析，彻底杜绝 DNS Rebinding 时序绕过（TOCTOU）。
 async function httpsPostJson(url, headers, body) {
-    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
+    // SSRF 防护：本地 Ollama（回环）默认放行；内网/局域网地址默认拦截。
+    // base_url 虽为用户私有配置，但仍可能被恶意指向内网任意服务（数据库/云元数据），
+    // 服务端不应代为请求。确需局域网自建 LLM 时显式设置 ALLOW_PRIVATE_AI=true。
+    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: process.env.ALLOW_PRIVATE_AI === 'true' });
     return new Promise((resolve, reject) => {
         const u = v.url;
         const mod = u.protocol === 'https:' ? https : http;
@@ -354,7 +358,7 @@ function isMiniMaxHost(url) {
 
 // 发送原始字节 body（multipart 等），用于语音转写
 async function httpsPostRaw(url, headers, bufferBody) {
-    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: true });
+    const v = await assertPublicUrl(url, { allowLoopback: true, allowPrivate: process.env.ALLOW_PRIVATE_AI === 'true' });
     return new Promise((resolve, reject) => {
         const u = v.url;
         const mod = u.protocol === 'https:' ? https : http;

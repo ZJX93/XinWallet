@@ -53,12 +53,15 @@ function getKey() {
         // 同步到 /app/data/.encryption-key：拉 GHCR 镜像的设备首次启动自动把 .env 里的
         // ENCRYPTION_KEY 持久化到命名 volume；文件已存在且与 env 不一致时记录警告不覆盖。
         const existing = readKeyFile();
-        if (existing !== trimmed) {
-            if (!existing) {
-                writeKeyFile(trimmed);
-            } else if (process.env.NODE_ENV !== 'production') {
-                console.warn(`⚠️  ENCRYPTION_KEY 文件值与 env 不一致，保留文件原值`);
-            }
+        if (existing && existing !== trimmed) {
+            // env 与已持久化密钥文件不一致：继续采用 env 会导致旧密文（AI/OCR 凭证）无法解密，
+            // 相当于静默丢数据。必须显式决策——拒绝启动比悄悄换钥更安全，避免「换钥后全部凭证失效」。
+            console.error('❌ ENCRYPTION_KEY 环境变量与已持久化密钥文件不一致，拒绝启动（避免既有凭证无法解密）。'
+                + '若确要更换密钥，请先导出备份、手动删除密钥文件 ' + KEY_FILE + ' 后重启。');
+            process.exit(1);
+        }
+        if (!existing) {
+            writeKeyFile(trimmed);
         }
         return deriveKey(trimmed);
     }

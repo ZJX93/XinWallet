@@ -658,7 +658,7 @@ const TransactionManager = {
                 : (typeof getCat === 'function' ? getCat(t.categoryId || t.category_id) : { name: tt('trans.uncategorized', '未分类'), icon: '📌' });
             const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(catObj.icon || "📌")}</span><span>${escapeHtml(catObj.name || tt('trans.uncategorized', '未分类'))}</span>`;
             const tagsHtml = (t.tags && t.tags.length)
-                ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
+                ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${escapeHtml(tg.color)}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
                 : '';
 
                         // 只有配成对的转账（有 transfer 主记录）才渲染成「A → B」。

@@ -625,9 +625,9 @@ router.post('/import', upload.single('file'), async (req, res) => {
             await conn.query('DELETE FROM investments WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM investment_transactions WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM debts WHERE user_id = ? AND book_id = ?', [userId, bookId]);
-            await conn.query('DELETE FROM debt_repayments WHERE user_id = ?', [userId]);
+            await conn.query('DELETE FROM debt_repayments WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM savings_goals WHERE user_id = ? AND book_id = ?', [userId, bookId]);
-            await conn.query('DELETE FROM savings_transactions WHERE user_id = ?', [userId]);
+            await conn.query('DELETE FROM savings_transactions WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM budgets WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM tags WHERE user_id = ? AND book_id = ?', [userId, bookId]);
             await conn.query('DELETE FROM accounts WHERE user_id = ? AND book_id = ?', [userId, bookId]);
