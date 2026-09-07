@@ -290,6 +290,9 @@ function localizeNode(node, depth) {
 async function api(path, method = 'GET', body = null, opts = {}) {
     const { silent = false } = opts;
     const headers = { 'Content-Type': 'application/json' };
+    // 注：auth.js 的全局 fetch 劫持同样会注入 Authorization / X-Book-Id，并额外负责
+    // 401 的 refresh 重试与跳转登录。此处保留注入属防御性——utils.js 可能独立于
+    // auth.js 被加载（如登录页）；两侧写入的值一致（幂等），不会互相覆盖。
     const token = (typeof localStorage !== 'undefined') ? localStorage.getItem('xin_token') : null;
     if (token) headers['Authorization'] = 'Bearer ' + token;
     // 多账本：携带当前账本 ID（后端据此做数据隔离）
@@ -308,8 +311,9 @@ async function api(path, method = 'GET', body = null, opts = {}) {
         try { data = await res.json(); } catch (e) { data = { success: res.ok, message: res.statusText || `HTTP ${res.status}` }; }
 
         if (res.status === 401) {
-            // 未授权：通知登录层弹出
-            if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            // 未授权：续期与跳转登录统一交给 auth.js 的全局 fetch 劫持
+            //（401 → refresh 重试 → 仍失败则 redirectToLogin）。此处只提示并抛错，
+            // 避免两套 401 处理互相打架。原先派发的 'auth:unauthorized' 事件无任何监听者，已移除。
             if (!silent && typeof showToast === 'function') showToast(data.message || tt('toast.sessionExpired', '登录已过期'), 'error');
             const err = new Error(data.message || tt('toast.unauthorized', '未授权'));
             err.payload = data;
