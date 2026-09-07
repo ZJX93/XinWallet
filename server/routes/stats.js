@@ -33,6 +33,28 @@ function _rowsToBreakdownMulti(rows, valueKeys) {
     return out;
 }
 
+/**
+ * 嵌套 breakdown → 单维度扁平 breakdown。
+ *
+ * _rowsToBreakdownMulti 产出的是「按币种 → {income, expense}」的嵌套结构，
+ * 但三端约定的 incomeBreakdown / expenseBreakdown 是「按币种 → 金额」的扁平结构：
+ *   web     fmtMix(breakdown)            注释写明输入 { CNY: 1000, USD: 50 }
+ *   安卓    formatMoneyMix(Map<String,Double>)  同上
+ *   鸿蒙    fmtMoneyMix(Record<string, number>) 同上
+ * 直接把嵌套对象透出，安卓 Gson 解析时会抛
+ * "Expected a double but was BEGIN_OBJECT"（首页 dashboard.month / 统计页 reports.summary 崩溃），
+ * web / 鸿蒙则把对象当数字渲染出 NaN。
+ * 因此：服务端内部继续用嵌套结构做主货币取值，仅在**输出给客户端**时按维度拍平。
+ */
+function _flattenBreakdown(breakdown, key) {
+    const out = {};
+    Object.entries(breakdown || {}).forEach(([cur, v]) => {
+        const val = (typeof v === 'object' && v !== null) ? (v[key] || 0) : (v || 0);
+        out[cur] = parseFloat(val) || 0;
+    });
+    return out;
+}
+
 function _pickPrimaryCurrency(breakdown) {
     let primary = 'CNY', max = -1;
     Object.entries(breakdown).forEach(([cur, v]) => {
@@ -321,7 +343,8 @@ router.get('/dashboard', async (req, res) => {
             const savings = subtractAmounts(income, expense);
             const rec = {
                 month: m.month, currency: primaryCur, income, expense, savings,
-                incomeBreakdown: m.breakdown, expenseBreakdown: m.breakdown,
+                incomeBreakdown: _flattenBreakdown(m.breakdown, 'income'),
+                expenseBreakdown: _flattenBreakdown(m.breakdown, 'expense'),
                 savingsRate: percentOf(savings, income, 1),
                 incomeMoM: null, expenseMoM: null, balanceMoM: null
             };
@@ -411,12 +434,14 @@ router.get('/dashboard', async (req, res) => {
             today: { expense: todayExpense, currency: todayCurrency, expenseBreakdown: todayExpenseBreakdown },
             week: {
                 income: weekIncome, expense: weekExpense, currency: weekCurrency,
-                incomeBreakdown: weekBreakdown, expenseBreakdown: weekBreakdown,
+                incomeBreakdown: _flattenBreakdown(weekBreakdown, 'income'),
+                expenseBreakdown: _flattenBreakdown(weekBreakdown, 'expense'),
                 start: weekStart, end: weekEnd
             },
             month: {
                 income: monthIncome, expense: monthExpense, currency: monthCurrency,
-                incomeBreakdown: monthBreakdown, expenseBreakdown: monthBreakdown,
+                incomeBreakdown: _flattenBreakdown(monthBreakdown, 'income'),
+                expenseBreakdown: _flattenBreakdown(monthBreakdown, 'expense'),
                 balance: subtractAmounts(monthIncome, monthExpense),
                 savings: roundAmount(monthNetSavings),
                 savingsCurrency,
@@ -425,7 +450,8 @@ router.get('/dashboard', async (req, res) => {
             },
             year: {
                 income: yearIncome, expense: yearExpense, currency: yearCurrency,
-                incomeBreakdown: yearBreakdown, expenseBreakdown: yearBreakdown,
+                incomeBreakdown: _flattenBreakdown(yearBreakdown, 'income'),
+                expenseBreakdown: _flattenBreakdown(yearBreakdown, 'expense'),
                 balance: subtractAmounts(yearIncome, yearExpense)
             },
             // 净资产 = 总资产 - 债务余额，首屏核心指标，精确计算（主货币值；前端 kpiHero 已用 FxManager 折算 baseCurrency）
@@ -434,7 +460,8 @@ router.get('/dashboard', async (req, res) => {
             balance: subtractAmounts(monthIncome, monthExpense),
             // 全部历史累计金额（前端用于储蓄率 = 累计净储蓄 / 总资产）
             totalIncome, totalExpense, currency: lifetimeCurrency,
-            totalIncomeBreakdown: lifetimeBreakdown, totalExpenseBreakdown: lifetimeBreakdown,
+            totalIncomeBreakdown: _flattenBreakdown(lifetimeBreakdown, 'total_income'),
+            totalExpenseBreakdown: _flattenBreakdown(lifetimeBreakdown, 'total_expense'),
             totalSavings: subtractAmounts(totalIncome, totalExpense),
             months: monthsOut,
             accounts: accounts.map(a => ({ ...a, balance: parseFloat(a.balance) })),
@@ -443,7 +470,8 @@ router.get('/dashboard', async (req, res) => {
             savingsGoals,
             investments: {
                 totalCost: invTotalCost, totalValue: invTotalValue, currency: invCurrency,
-                totalCostBreakdown: invBreakdown, totalValueBreakdown: invBreakdown,
+                totalCostBreakdown: _flattenBreakdown(invBreakdown, 'total_cost'),
+                totalValueBreakdown: _flattenBreakdown(invBreakdown, 'total_value'),
                 // 金额精度（M3）：浮盈 = 市值 - 成本，整数分精确减法
                 totalProfit: subtractAmounts(invTotalValue, invTotalCost),
                 holdings: investmentHoldings

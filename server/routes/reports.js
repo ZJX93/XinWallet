@@ -65,6 +65,23 @@ function _rowsToBreakdownMulti(rows, valueKeys) {
     return out;
 }
 
+/**
+ * 嵌套 breakdown → 单维度扁平 breakdown（与 stats.js#_flattenBreakdown 严格同义）。
+ *
+ * _rowsToBreakdownMulti / _groupDailyByCurrency 产出「按币种 → {income, expense}」，
+ * 而三端约定 incomeBreakdown / expenseBreakdown 是「按币种 → 金额」：
+ * 透出嵌套对象会让安卓 Gson 抛 "Expected a double but was BEGIN_OBJECT"，
+ * 统计页 summary 与日趋势 breakdown 即由此崩溃。仅输出时拍平，内部取值逻辑不变。
+ */
+function _flattenBreakdown(breakdown, key) {
+    const out = {};
+    Object.entries(breakdown || {}).forEach(([cur, v]) => {
+        const val = (typeof v === 'object' && v !== null) ? (v[key] || 0) : (v || 0);
+        out[cur] = parseFloat(val) || 0;
+    });
+    return out;
+}
+
 function _pickPrimaryCurrency(breakdown) {
     let primary = 'CNY', max = -1;
     Object.entries(breakdown).forEach(([cur, v]) => {
@@ -105,7 +122,8 @@ function _groupDailyByCurrency(rows) {
         return {
             date, currency: cur,
             income: v.income, expense: v.expense,
-            incomeBreakdown: breakdown, expenseBreakdown: breakdown
+            incomeBreakdown: _flattenBreakdown(breakdown, 'income'),
+            expenseBreakdown: _flattenBreakdown(breakdown, 'expense')
         };
     }).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -550,7 +568,8 @@ async function buildReport(userId, bookId, type, period) {
             period: prev.period, label: prevRange.label,
             currency: compareCurrency,
             income: pi, expense: pe, balance: pi - pe,
-            incomeBreakdown: compareBreakdown, expenseBreakdown: compareBreakdown
+            incomeBreakdown: _flattenBreakdown(compareBreakdown, 'income'),
+            expenseBreakdown: _flattenBreakdown(compareBreakdown, 'expense')
         };
     }
 
@@ -628,7 +647,8 @@ async function buildReport(userId, bookId, type, period) {
         summary: {
             income, expense, balance,
             currency: summaryCurrency,
-            incomeBreakdown: summaryBreakdown, expenseBreakdown: summaryBreakdown,
+            incomeBreakdown: _flattenBreakdown(summaryBreakdown, 'income'),
+            expenseBreakdown: _flattenBreakdown(summaryBreakdown, 'expense'),
             savingsRate: income > 0 ? ((balance / income) * 100) : 0,
             transactionCount: txCountTotal,
             avgDailyExpense: expense / days
@@ -656,7 +676,9 @@ async function buildReport(userId, bookId, type, period) {
             investments: investmentsTotal,
             currency: accountsCurrency,
             accountsBreakdown,
-            investmentsBreakdown: invBreakdown
+            // invBreakdown 是嵌套结构（{CUR:{total_value,total_cost}}），此处语义是「持仓市值按币种」，
+            // 与 accountsBreakdown 对齐拍平成 {CUR: 市值}。
+            investmentsBreakdown: _flattenBreakdown(invBreakdown, 'total_value')
         },
         debts: {
             count: debtList.length,
