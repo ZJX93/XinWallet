@@ -349,10 +349,8 @@ const DebtManager = {
         const sel = document.getElementById(selId);
         if (!sel) return;
         const current = selectedId != null && selectedId !== '' ? String(selectedId) : sel.value;
-        sel.innerHTML = `<option value="">${escapeHtml(tt('debt.form.noAccount', '— 不关联 —'))}</option>`;
-        (cache.accounts || []).forEach(a => {
-            sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}</option>`;
-        });
+        sel.innerHTML = `<option value="">${escapeHtml(tt('debt.form.noAccount', '— 不关联 —'))}</option>`
+            + accountOptionsHtml(cache.accounts, { selectedId: current });
         if (current) sel.value = current;
     },
 
@@ -528,8 +526,8 @@ const DebtManager = {
             }
         }
         const sel = document.getElementById('repayAccount');
-        sel.innerHTML = `<option value="">${escapeHtml(tt('repay.accountPh', '-- 请选择账户 * --'))}</option>`;
-        (cache.accounts || []).forEach(a => { sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}</option>`; });
+        sel.innerHTML = `<option value="">${escapeHtml(tt('repay.accountPh', '-- 请选择账户 * --'))}</option>`
+            + accountOptionsHtml(cache.accounts);
         const debtAcc = (cache.accounts || []).find(a => String(a.id) === String(debt && debt.account_id));
         const isCreditAcc = !!debtAcc && (debtAcc.type === 'credit_card'
             || (debtAcc.type === 'electronic_payment' && parseFloat(debtAcc.credit_limit) > 0));

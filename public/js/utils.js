@@ -366,14 +366,19 @@ async function api(path, method = 'GET', body = null, opts = {}) {
  * @param {Array} accounts 账户数组（已销户的自动排除 —— 销户账户不能记账）
  * @param {object} [opts]
  * @param {boolean} [opts.withBalance] 是否在账户名后附余额（转账下拉用，便于判断转出方够不够）
- * @returns {string} 可直接赋给 select.innerHTML
+ * @param {number|string} [opts.selectedId] 选中项：给匹配的 option 直接加 selected
+ * @param {number|string} [opts.excludeId] 排除项（如储蓄目标存入/取回要排除目标自身账户）
+ * @returns {string} 可直接赋给 select.innerHTML（或 += 追加到既有占位项之后）
  */
 function accountOptionsHtml(accounts, opts = {}) {
     const withBalance = !!(opts && opts.withBalance);
+    const selectedId = (opts && opts.selectedId != null && opts.selectedId !== '') ? String(opts.selectedId) : null;
+    const excludeId = (opts && opts.excludeId != null && opts.excludeId !== '') ? Number(opts.excludeId) : null;
     const typeOrder = ['cash', 'bank_card', 'credit_card', 'electronic_payment', 'financial_account', 'digital', 'other'];
     const groups = {};
     (accounts || []).forEach(a => {
         if (a.closed) return;
+        if (excludeId != null && Number(a.id) === excludeId) return;
         const key = a.type || 'other';
         (groups[key] = groups[key] || []).push(a);
     });
@@ -383,7 +388,8 @@ function accountOptionsHtml(accounts, opts = {}) {
             const items = groups[t];
             const optionsHtml = items.map(a => {
                 const bal = withBalance ? ` (${fmt(a.balance, a.currency || 'CNY')})` : '';
-                return `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}${bal}</option>`;
+                const sel = (selectedId != null && String(a.id) === selectedId) ? ' selected' : '';
+                return `<option value="${a.id}"${sel}>${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}${bal}</option>`;
             }).join('');
             return `<optgroup label="${escapeHtml(tt('accType.plain.' + t, t))}（${items.length}）">${optionsHtml}</optgroup>`;
         }).join('');

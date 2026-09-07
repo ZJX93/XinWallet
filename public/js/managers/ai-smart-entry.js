@@ -179,9 +179,8 @@ const AISmartEntry = {
         const catList = cats.filter(c => c.type === (item.type === 'income' ? 'income' : 'expense'));
         const perField = this._perField(item.seq);
 
-        const accOpts = (selId) => accounts.map(a =>
-            `<option value="${a.id}" ${a.id === selId ? 'selected' : ''}>${escapeHtml(a.icon || '🏦')} ${escapeHtml(a.name)}</option>`
-        ).join('');
+        // 按账户类型分组（账户多时平铺找不到），选中项由 selectedId 直接标在 option 上
+        const accOpts = (selId) => accountOptionsHtml(accounts, { selectedId: selId });
 
         // 转账走「转出 → 转入」双账户，普通收支走单账户
         const accountCell = isTransfer

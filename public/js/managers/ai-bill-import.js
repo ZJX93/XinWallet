@@ -397,7 +397,7 @@ const AIBillImport = {
             return `<div class="ai-edit-row" data-idx="${i}">
                 <div class="ai-edit-col ai-edit-acc">
                     <select class="ai-edit-acc-sel" data-field="account" data-idx="${i}">
-                        ${accounts.map(a => `<option value="${a.id}" ${a.id === accId ? 'selected' : ''}>${escapeHtml(a.icon || "🏦")} ${escapeHtml(a.name)}</option>`).join('')}
+                        ${accountOptionsHtml(accounts, { selectedId: accId })}
                     </select>
                 </div>
                 <div class="ai-edit-col ai-edit-type">

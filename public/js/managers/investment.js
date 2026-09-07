@@ -62,7 +62,8 @@ const InvestmentManager = {
         cache.investmentTypes.filter(t => t.is_active != false).forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</option>`; });
         // 账户下拉
         const accSel = document.getElementById('investAccount');
-        cache.accounts.forEach(a => { accSel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`; });
+        // 按账户类型分组（与记账/债务/储蓄目标一致）
+        accSel.innerHTML = accountOptionsHtml(cache.accounts);
         // 自动联动计算
         this.bindAutoCalc();
         // 加仓/减仓弹窗事件

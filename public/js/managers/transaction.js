@@ -251,7 +251,9 @@ const TransactionManager = {
             }
         });
         const accSel = document.getElementById('transAccFilter');
-        cache.accounts.forEach(a => { accSel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`; });
+        // 按类型分组。用 += 追加而非覆盖：首个「所有账户」是 index.html 里的静态占位 option，
+        // 覆盖掉就没法再筛全量了。
+        accSel.innerHTML += accountOptionsHtml(cache.accounts);
         this.updateCatSelect('expense');
         this.updateAccSelect();
     },
