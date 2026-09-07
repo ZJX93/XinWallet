@@ -133,6 +133,12 @@ test.before(async () => {
     } catch (err) {
         console.warn('[multi-currency] 数据库不可用，相关测试将跳过:', err.message);
     }
+    // 确保测试库结构最新（自愈补列，如 accounts/transactions.currency），否则老库
+    // 缺列会让本套件直接 500。对齐「服务启动时已 initDatabase」的假设，让测试自给自足。
+    if (dbAvailable) {
+        try { await db.initDatabase(); }
+        catch (e) { console.warn('[multi-currency] initDatabase 警告（不影响测试）:', e.message); }
+    }
 });
 
 test.after(async () => {

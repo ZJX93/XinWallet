@@ -46,6 +46,10 @@ async function req(method, path, body) {
 }
 
 test.before(async () => {
+    // 确保测试库结构最新（自愈补列，如 accounts.currency），否则老库缺列会让
+    // POST /api/accounts 直接 500。对齐「服务启动时已 initDatabase」的假设，让测试自给自足。
+    try { await db.initDatabase(); }
+    catch (e) { console.warn('[accounts-detail] initDatabase 警告（不影响测试）:', e.message); }
     await listen();
     // 模拟多账本 resolveBookContext：为测试用户确保默认账本并注入 bookId
     testBookId = await db.ensureDefaultBookId(TEST_USER_ID);
