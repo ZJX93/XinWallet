@@ -32,6 +32,18 @@ const FxRates = {
         return Number(r[code]) || 0;
     },
 
+    /** 渲染币种「名称」单元格：命中 i18n 时直接显示本地化名；
+     *  未命中（fallback === code）时套用 .fx-name-fb 灰色样式 + 「暂无本地化名」标签，
+     *  让「代码 · 代码」的中英文混乱变成清晰的「未翻译」提示，
+     *  也避免对没补 currency.name.* 的小币种呈现为视觉重复。 */
+    _nameHtml(code) {
+        const name = tt('currency.name.' + code, code);
+        if (name !== code) return escapeHtml(name);
+        const label = tt('fx.untranslated', '暂无本地化名');
+        const tip = tt('fx.untranslatedTip', '该币种暂无本地化名称');
+        return `<span class="fx-name-fb" title="${escapeHtml(tip)}（${escapeHtml(code)}）">${escapeHtml(label)}</span>`;
+    },
+
     /** baseAmount 的 from 币种 → to 币种 */
     _convert(amount, from, to) {
         if (from === to) return Number(amount) || 0;
@@ -99,7 +111,7 @@ const FxRates = {
             const amt = this._convert(amount, quote, c);
             return `<tr>
                 <td class="fx-code">${escapeHtml(c)}</td>
-                <td>${escapeHtml(tt('currency.name.' + c, c))}</td>
+                <td>${this._nameHtml(c)}</td>
                 <td class="fx-amt">${escapeHtml(fmt(amt, c))}</td>
                 <td><button type="button" class="fx-setbase" data-fx-base="${escapeHtml(c)}">${escapeHtml(tt('fx.setBase', '设为基准'))}</button></td>
             </tr>`;

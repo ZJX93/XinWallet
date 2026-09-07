@@ -18,6 +18,9 @@
             cursor: pointer; font-size: 12px; padding: 2px 6px; border-radius: 6px; }
         .fx-setbase:hover { background: var(--surface-hover); }
         .fx-scroll { max-height: 62vh; overflow: auto; }
+        /* fallback 渲染：i18n 未命中的币种名（2026-09-07 加，避免「代码 · 代码」的视觉混乱） */
+        .fx-name-fb { color: var(--text-secondary); font-style: italic; font-size: 12.5px;
+            border-bottom: 1px dashed var(--border-subtle); cursor: help; }
     </style>
 
     <div class="fx-wrap">
