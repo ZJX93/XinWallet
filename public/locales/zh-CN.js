@@ -1302,6 +1302,7 @@ window.I18N_DICT['zh-CN'] = {
     'aiInsights.desc': '现金流预测、消费洞察与财务建议一屏总览',
     'aiInsights.cashflow.title': '现金流预测',
     'aiInsights.cashflow.desc': '基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）',
+    'aiInsights.readout.title': 'AI 解读',
     // AI 建议
     'aiAdvice.title': 'AI 建议',
     'aiAdvice.desc': '结合本地记账习惯与月度对比，给出可量化洞察与建议',
@@ -1393,6 +1394,7 @@ window.I18N_DICT['zh-CN'] = {
     'aiAdvice.lv.info': '关注',
     'aiAdvice.lv.tip': '小建议',
     'aiAdvice.fallback.insightTitle': '洞察',
+    'aiAdvice.fallback.adviceTitle': '建议',
     'aiAdvice.empty.insights': '暂无洞察',
     'aiAdvice.empty.title': '本月没有可执行的建议',
     'aiAdvice.empty.desc': '记账样本不足，AI 暂时无法量化建议。多记几笔后再来看看',
@@ -1597,6 +1599,20 @@ window.I18N_DICT['zh-CN'] = {
     'aiInsights.cashflow.balance': '期末余额',
     'aiInsights.cashflow.empty': '现金流数据不足，先记录一段时间账单吧',
     'aiInsights.cashflow.err': '加载失败：{msg}',
+
+    // AI 解读（2026-09 整页重构：合并 insight + advice 为统一卡片流）
+    'aiInsights.readout.empty': '暂无洞察',
+    'aiInsights.summary.empty': '本月财务数据不足，建议继续记账后再来生成洞察',
+    'aiInsights.summary.risk': '本月发现 {n} 项需重视的洞察，{m} 项可执行建议',
+    'aiInsights.summary.ok': '本月暂无重大风险，{n} 项建议值得关注',
+    'aiInsights.kpi.futureBalance': '未来 3 月期末余额',
+    'aiInsights.kpi.futureBalanceCap': '基于历史 + 订阅 / 债务',
+    'aiInsights.kpi.riskCount': '需重视项',
+    'aiInsights.kpi.riskCountCap': 'warning + danger + 高优先',
+    'aiInsights.kpi.actionCount': '可执行项',
+    'aiInsights.kpi.actionCountCap': '关注 + 小建议 + 中低优先',
+    'aiInsights.kpi.netFlow': '未来 3 月净流入',
+    'aiInsights.kpi.netFlowCap': '流入 - 流出',
 
     // ============ AI 运维（2026-09 收纳学习统计+画像，从顶栏齿轮迁到 AI 实验室侧栏） ============
     'aiStatus.title': '运维',

@@ -1298,6 +1298,7 @@ window.I18N_DICT['en-US'] = {
     'aiInsights.desc': 'Cash flow forecast, spending insights and financial advice in one view',
     'aiInsights.cashflow.title': 'Cash flow forecast',
     'aiInsights.cashflow.desc': 'Projected cash flow from historical income/expense plus subscription and debt schedules (last 3 months)',
+    'aiInsights.readout.title': 'AI insights & advice',
     // AI advice
     'aiAdvice.title': 'AI advice',
     'aiAdvice.desc': 'Quantified insights and advice based on your local habits and month-over-month comparison',
@@ -1389,6 +1390,7 @@ window.I18N_DICT['en-US'] = {
     'aiAdvice.lv.info': 'Note',
     'aiAdvice.lv.tip': 'Tip',
     'aiAdvice.fallback.insightTitle': 'Insight',
+    'aiAdvice.fallback.adviceTitle': 'Suggestion',
     'aiAdvice.empty.insights': 'No insights yet',
     'aiAdvice.empty.title': 'No actionable advice for this month',
     'aiAdvice.empty.desc': 'Not enough transaction samples for AI to quantify advice. Log a few more entries and come back.',
@@ -1593,6 +1595,20 @@ window.I18N_DICT['en-US'] = {
     'aiInsights.cashflow.balance': 'Ending balance',
     'aiInsights.cashflow.empty': 'Insufficient cash flow data — log some transactions first',
     'aiInsights.cashflow.err': 'Failed to load: {msg}',
+
+    // AI readout (2026-09 page redesign: unified insight + advice card stream)
+    'aiInsights.readout.empty': 'No insights yet',
+    'aiInsights.summary.empty': 'Not enough financial data this month — keep logging and come back',
+    'aiInsights.summary.risk': 'Found {n} items requiring attention and {m} actionable suggestions this month',
+    'aiInsights.summary.ok': 'No major risks this month; {n} suggestions worth a look',
+    'aiInsights.kpi.futureBalance': '3-month ending balance',
+    'aiInsights.kpi.futureBalanceCap': 'Based on history + subscriptions / debt',
+    'aiInsights.kpi.riskCount': 'Attention items',
+    'aiInsights.kpi.riskCountCap': 'warning + danger + high',
+    'aiInsights.kpi.actionCount': 'Actionable items',
+    'aiInsights.kpi.actionCountCap': 'info + tip + medium + low',
+    'aiInsights.kpi.netFlow': '3-month net inflow',
+    'aiInsights.kpi.netFlowCap': 'Inflow minus outflow',
 
     // ============ AI Ops (consolidated learning stats + profile in 2026-09; moved from header gear into AI Lab sidebar) ============
     'aiStatus.title': 'Ops',

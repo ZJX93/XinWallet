@@ -1,9 +1,14 @@
 <!--
-  ===== AI 洞察（2026-09 整体重构）=====
-  由「Tab 切换（AI 建议 / 现金流预测）」改为单页连续整合：
-  现金流预测快照 + 主动告警 + 消费洞察 + 财务建议 一屏展示，不再分块切换。
-  消费洞察/财务建议复用 AIAdvice 管理器的渲染逻辑（DOM id 保持不变），
-  现金流预测由 AIInsights 管理器直接拉取 /ai/forecast/cashflow。
+  ===== AI 洞察（2026-09 整页重构）=====
+  去掉"三个模块分块"（现金流预测 / 消费洞察 / 财务建议 + 告警），
+  整合为单页连续结构：
+    ① 一句话总评（动态摘要 + 生成时间）
+    ② KPI 横排（未来余额 / 风险项 / 可执行项 / 净流入）
+    ③ 现金流预测（一条横排 3 单元格）
+    ④ AI 解读统一卡片流（insights + advice 按级别融合排序）
+  数据源保持不变：GET /ai/forecast/cashflow · POST /ai/advice
+  DOM id 变更说明：#aiReadoutList 替代旧的 #aiInsightList / #aiAdviceList；
+                  #aiInsightsSummary / #aiInsightsKpi 为新增。
 -->
 <section class="page" id="page-ai-insights" data-lazy="pages/ai-insights.html">
     <div class="glass-card ai-page-card">
@@ -19,31 +24,32 @@
             </div>
         </div>
 
-        <div id="aiAdviceMeta" class="ai-page-meta"></div>
+        <!-- ① 一句话总评（动态生成：风险 / 建议数量 + 生成时间） -->
+        <div id="aiInsightsSummary" class="ai-insights-summary"></div>
 
-        <!-- 现金流预测（顶部快照） -->
+        <!-- ② KPI 横排（动态生成：未来余额 / 风险项 / 可执行项 / 净流入） -->
+        <div id="aiInsightsKpi" class="ai-insights-kpi"></div>
+
+        <!-- ③ 现金流预测（3 单元格横排） -->
         <div class="ai-cashflow">
-            <h4 class="ai-section-title"><span class="ai-section-bar ai-section-bar-cash"></span><span data-i18n="aiInsights.cashflow.title">现金流预测</span></h4>
+            <h4 class="ai-section-title">
+                <span class="ai-section-bar"></span>
+                <span data-i18n="aiInsights.cashflow.title">现金流预测</span>
+            </h4>
             <p class="ai-cashflow-desc" data-i18n="aiInsights.cashflow.desc">基于历史收支与订阅 / 债务计划的未来现金流推算（最近 3 个月）</p>
-            <div id="aiCashflowBody" class="ai-cashflow-grid"></div>
+            <div id="aiCashflowBody" class="ai-cashflow-strip"></div>
         </div>
 
-        <!-- 主动告警（有 warning/danger 级洞察时才显示） -->
-        <div id="aiInsightsAlerts" class="ai-insights-alerts" style="display:none"></div>
-
-        <!-- 消费洞察（观察型） -->
-        <div class="ai-insight-section">
-            <h4 class="ai-section-title"><span class="ai-section-bar"></span><span data-i18n="aiAdvice.section.insights">消费洞察</span></h4>
-            <div id="aiInsightList" class="ai-insight-list"></div>
+        <!-- ④ AI 解读统一卡片流（insights + advice 融合，按严重度排序） -->
+        <div class="ai-readout">
+            <h4 class="ai-section-title">
+                <span class="ai-section-bar alt"></span>
+                <span data-i18n="aiInsights.readout.title">AI 解读</span>
+            </h4>
+            <div id="aiReadoutList" class="ai-readout-list"></div>
         </div>
 
-        <!-- 财务建议（可执行型） -->
-        <div class="ai-advice-section">
-            <h4 class="ai-section-title"><span class="ai-section-bar alt"></span><span data-i18n="aiAdvice.section.advices">财务建议</span></h4>
-            <div id="aiAdviceList" class="ai-advice-list"></div>
-        </div>
-
-        <!-- AI 建议 loading -->
+        <!-- Loading -->
         <div id="aiAdviceLoading" class="ai-page-loading" style="display:none">
             <div class="skeleton-wrap" data-skeleton="text">
                 <div class="skeleton-line shimmer" style="width:78%"></div>
@@ -54,55 +60,218 @@
     </div>
 
     <style>
-    /* 分区标题带左侧强调色条（单列顺序布局，统一视觉） */
-    .ai-section-title { display: flex; align-items: center; gap: 10px; }
+    /* ====================================================
+       AI 洞察页（2026-09 整页重构）
+       设计原则：
+       - 减少分区装饰，仅保留两级区块标题（现金流 / AI 解读）
+       - 顶部 KPI 横排替代"现金预测独占大块"，让关键数字一眼可见
+       - 所有洞察 / 建议融合为统一卡片流（左侧 4px 级别色条 + 徽章）
+       ==================================================== */
+
+    .ai-page-card { padding: 18px 20px; }
+
+    .ai-page-header {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+        margin-bottom: 8px;
+    }
+    .ai-page-header .card-title { margin: 0; }
+    .ai-page-header .card-desc {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--text-secondary, #666);
+    }
+
+    /* ① 一句话总评：柔和高亮条 */
+    .ai-insights-summary {
+        margin: 6px 0 14px;
+        padding: 12px 16px;
+        border-radius: var(--radius-lg, 12px);
+        background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.06));
+        color: var(--text-primary);
+        font-size: 14px;
+        line-height: 1.5;
+        border: 1px solid rgba(99,102,241,0.14);
+    }
+    .ai-insights-summary strong { font-weight: var(--fw-semibold, 600); }
+    .ai-summary-meta { color: var(--text-tertiary, #999); font-size: 12px; margin-left: 4px; }
+
+    /* ② KPI 横排 */
+    .ai-insights-kpi {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin: 4px 0 22px;
+    }
+    .ai-kpi-card {
+        padding: 12px 14px;
+        border-radius: var(--radius-lg, 12px);
+        background: var(--surface-elevated, #fff);
+        border: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
+        display: flex; flex-direction: column; gap: 4px;
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .ai-kpi-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+    .ai-kpi-label {
+        font-size: 11px; color: var(--text-tertiary, #999);
+        text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+    }
+    .ai-kpi-val {
+        font-size: 22px; font-weight: var(--fw-semibold, 700);
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+    .ai-kpi-caption { font-size: 11px; color: var(--text-secondary, #666); }
+    .ai-kpi-card.warn {
+        border-color: rgba(245,166,35,.4);
+        background: linear-gradient(135deg, rgba(245,166,35,0.08), rgba(245,166,35,0.02));
+    }
+    .ai-kpi-card.warn .ai-kpi-val { color: #b97510; }
+    .ai-kpi-card.danger {
+        border-color: rgba(235,87,87,.4);
+        background: linear-gradient(135deg, rgba(235,87,87,0.10), rgba(235,87,87,0.02));
+    }
+    .ai-kpi-card.danger .ai-kpi-val { color: #c0392b; }
+
+    /* 区块标题（仅保留两个：现金流 / AI 解读） */
+    .ai-section-title {
+        display: flex; align-items: center; gap: 10px;
+        margin: 4px 0 8px;
+        font-size: 14px;
+        font-weight: var(--fw-semibold, 600);
+        color: var(--text-primary);
+    }
     .ai-section-bar {
-        display: inline-block; width: 4px; height: 16px; border-radius: 2px;
+        display: inline-block;
+        width: 4px; height: 16px;
+        border-radius: 2px;
         background: linear-gradient(180deg, var(--primary-500, #6366f1), var(--accent-500, #8b5cf6));
-        flex: none;
     }
     .ai-section-bar.alt {
         background: linear-gradient(180deg, var(--success-500, #22c55e), var(--primary-500, #6366f1));
     }
-    .ai-section-bar-cash {
-        background: linear-gradient(180deg, var(--accent-500, #8b5cf6), var(--success-500, #22c55e));
-    }
 
-    /* 消费洞察列表：单列纵向排列（原 .ai-twocol 布局已废弃） */
-    .ai-insight-list { display: flex; flex-direction: column; gap: 12px; }
-    .ai-insight-list .insight-item { margin-bottom: 0; }
-
-    /* 现金流预测快照 */
+    /* ③ 现金流预测：3 单元格横排 */
     .ai-cashflow { margin-top: 8px; }
-    .ai-cashflow-desc { margin: 2px 0 14px; font-size: 12px; color: var(--text-secondary, #666); }
-    .ai-cashflow-grid {
+    .ai-cashflow-desc {
+        margin: 0 0 10px;
+        font-size: 12px;
+        color: var(--text-secondary, #666);
+    }
+    .ai-cashflow-strip {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 12px;
-        padding: 14px 16px;
-        border-radius: var(--radius-lg, 14px);
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0;
+        border-radius: var(--radius-lg, 12px);
+        overflow: hidden;
         background: var(--surface-2, rgba(0,0,0,0.025));
+        border: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
     }
     .ai-cashflow-item {
-        display: flex; flex-direction: column; gap: 4px;
-        padding: 6px 4px;
+        text-align: center;
+        padding: 14px 12px;
+        position: relative;
+    }
+    .ai-cashflow-item + .ai-cashflow-item {
+        border-left: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
     }
     .ai-cashflow-label {
-        font-size: 12px; font-weight: 600; color: var(--text-tertiary, #999);
-        text-transform: uppercase; letter-spacing: 0.04em;
+        font-size: 11px;
+        color: var(--text-tertiary, #999);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
     }
     .ai-cashflow-val {
-        font-size: 22px; font-weight: var(--fw-semibold, 600);
-        color: var(--interactive-default, #6366f1);
+        font-size: 22px;
+        font-weight: var(--fw-semibold, 700);
+        color: var(--text-primary);
+        margin-top: 4px;
+        font-variant-numeric: tabular-nums;
+    }
+    .ai-cashflow-strip .ai-readout-empty {
+        grid-column: 1 / -1;
+        padding: 16px;
+    }
+    @media (max-width: 480px) {
+        .ai-cashflow-strip { grid-template-columns: 1fr; }
+        .ai-cashflow-item + .ai-cashflow-item { border-left: none; border-top: 1px solid var(--border-subtle, rgba(0,0,0,0.06)); }
     }
 
-    /* 告警区（有风险时悬浮在现金流与洞察之间） */
-    .ai-insights-alerts { margin: 16px 0 4px; display: flex; flex-direction: column; gap: 8px; }
-    .ai-alert { display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); align-items: flex-start; }
-    .ai-alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; }
-    .ai-alert-warning { border-color: rgba(245,166,35,.4); } .ai-alert-warning .ai-alert-dot { background: #f5a623; }
-    .ai-alert-danger, .ai-alert-error { border-color: rgba(235,87,87,.4); } .ai-alert-danger .ai-alert-dot, .ai-alert-error .ai-alert-dot { background: #eb5757; }
-    .ai-alert-title { font-weight: var(--fw-semibold, 600); font-size: 13px; color: var(--text-primary); }
-    .ai-alert-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    /* ④ AI 解读统一卡片流 */
+    .ai-readout { margin-top: 18px; }
+    .ai-readout-list { display: flex; flex-direction: column; gap: 10px; }
+    .ai-readout-item {
+        display: grid;
+        grid-template-columns: 4px 1fr;
+        gap: 14px;
+        padding: 12px 16px 12px 0;
+        border-radius: var(--radius-lg, 12px);
+        background: var(--surface-elevated, #fff);
+        border: 1px solid var(--border-subtle, rgba(0,0,0,0.06));
+        transition: box-shadow .15s ease;
+    }
+    .ai-readout-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .ai-readout-bar { border-radius: 2px; }
+    .ai-readout-item.warning .ai-readout-bar,
+    .ai-readout-item.danger .ai-readout-bar,
+    .ai-readout-item.error .ai-readout-bar,
+    .ai-readout-item.high .ai-readout-bar { background: #eb5757; }
+    .ai-readout-item.info .ai-readout-bar,
+    .ai-readout-item.medium .ai-readout-bar { background: #f5a623; }
+    .ai-readout-item.tip .ai-readout-bar,
+    .ai-readout-item.low .ai-readout-bar { background: #22c55e; }
+    .ai-readout-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+    .ai-readout-head {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .ai-readout-title {
+        font-size: 14px;
+        font-weight: var(--fw-semibold, 600);
+        color: var(--text-primary);
+    }
+    .ai-readout-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 600;
+        background: var(--surface-2, rgba(0,0,0,0.04));
+        color: var(--text-secondary);
+        white-space: nowrap;
+    }
+    .ai-readout-item.warning .ai-readout-badge,
+    .ai-readout-item.danger .ai-readout-badge,
+    .ai-readout-item.error .ai-readout-badge,
+    .ai-readout-item.high .ai-readout-badge { background: rgba(235,87,87,.12); color: #c0392b; }
+    .ai-readout-item.info .ai-readout-badge,
+    .ai-readout-item.medium .ai-readout-badge { background: rgba(245,166,35,.14); color: #b97510; }
+    .ai-readout-item.tip .ai-readout-badge,
+    .ai-readout-item.low .ai-readout-badge { background: rgba(34,197,94,.14); color: #1f8a47; }
+    .ai-readout-desc {
+        font-size: 13px;
+        color: var(--text-primary);
+        line-height: 1.55;
+    }
+    .ai-readout-action {
+        font-size: 12px;
+        color: var(--text-secondary);
+        padding: 5px 10px;
+        border-radius: 8px;
+        background: var(--surface-2, rgba(0,0,0,0.03));
+        align-self: flex-start;
+        margin-top: 2px;
+    }
+    .ai-readout-action strong { color: var(--interactive-default, #6366f1); }
+
+    /* 空状态 */
+    .ai-readout-empty {
+        padding: 20px;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    /* Loading */
+    .ai-page-loading { margin: 12px 0; text-align: center; color: var(--text-secondary); }
+    .ai-page-loading-text { margin: 8px 0 0; font-size: 12px; }
     </style>
 </section>
