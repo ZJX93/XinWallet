@@ -352,9 +352,47 @@ async function api(path, method = 'GET', body = null, opts = {}) {
     }
 }
 
+/**
+ * 账户下拉的 <option>/<optgroup> HTML：**按账户类型分组**。
+ *
+ * 账户一多（十几二十个）平铺在 <select> 里几乎无法定位 —— 只能靠记忆顺序找，
+ * 18 个账户的列表要滚半天。分组后每组一个标题，扫一眼就能跳到目标类型。
+ *
+ * 分组顺序与账户页（account.js typeOrder）、安卓（ACCOUNT_TYPE_ORDER）、
+ * 鸿蒙端保持一致，避免同一个App里四处顺序不同。
+ * 标题复用 accType.plain.* 纯文本词条：option 里已带账户自身 emoji 图标，
+ * 标题再叠 emoji 会重复且让 optgroup 变宽。
+ *
+ * @param {Array} accounts 账户数组（已销户的自动排除 —— 销户账户不能记账）
+ * @param {object} [opts]
+ * @param {boolean} [opts.withBalance] 是否在账户名后附余额（转账下拉用，便于判断转出方够不够）
+ * @returns {string} 可直接赋给 select.innerHTML
+ */
+function accountOptionsHtml(accounts, opts = {}) {
+    const withBalance = !!(opts && opts.withBalance);
+    const typeOrder = ['cash', 'bank_card', 'credit_card', 'electronic_payment', 'financial_account', 'digital', 'other'];
+    const groups = {};
+    (accounts || []).forEach(a => {
+        if (a.closed) return;
+        const key = a.type || 'other';
+        (groups[key] = groups[key] || []).push(a);
+    });
+    return typeOrder
+        .filter(t => groups[t] && groups[t].length)
+        .map(t => {
+            const items = groups[t];
+            const optionsHtml = items.map(a => {
+                const bal = withBalance ? ` (${fmt(a.balance, a.currency || 'CNY')})` : '';
+                return `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}${bal}</option>`;
+            }).join('');
+            return `<optgroup label="${escapeHtml(tt('accType.plain.' + t, t))}（${items.length}）">${optionsHtml}</optgroup>`;
+        }).join('');
+}
+
 // 暴露到全局：浏览器中挂 window.api，Node 测试中挂 module.exports
 if (typeof window !== 'undefined') {
     window.api = api;
+    window.accountOptionsHtml = accountOptionsHtml;
     window.tt = tt;
     window.localizeSystemNames = localizeSystemNames;
     window.confirmT = confirmT;
@@ -376,5 +414,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, localizeSystemNames, supportedCurrencies: _supportedCurrencies };
+    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, localizeSystemNames, accountOptionsHtml, supportedCurrencies: _supportedCurrencies };
 }

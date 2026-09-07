@@ -291,11 +291,10 @@ const TransactionManager = {
         }
     },
     updateTransferAccSelect() {
-        const populate = (sel) => {
-            sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)} (${fmt(a.balance, a.currency || 'CNY')})</option>`).join('');
-        };
-        populate(document.getElementById('transAccount'));
-        populate(document.getElementById('transToAccount'));
+        // 同 updateAccSelect 的类型分组；转账额外带余额 —— 选转出方时要看哪个账户够钱
+        const opts = accountOptionsHtml(cache.accounts, { withBalance: true });
+        document.getElementById('transAccount').innerHTML = opts;
+        document.getElementById('transToAccount').innerHTML = opts;
     },
     updateCatSelect(type) {
         const sel = document.getElementById('transCategory');
@@ -322,7 +321,9 @@ const TransactionManager = {
     },
     updateAccSelect() {
         const sel = document.getElementById('transAccount');
-        sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
+        // 按账户类型分组（<optgroup>）：账户多时平铺列表根本没法定位，
+        // 顺序与账户页 / 安卓 / 鸿蒙一致（accountOptionsHtml 内统一维护）
+        sel.innerHTML = accountOptionsHtml(cache.accounts);
         this.updateCurrencyFromAccount();
         this.refreshFxPreview();
     },

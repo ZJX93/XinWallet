@@ -63,10 +63,10 @@ const QuickAdd = {
         if (!hasCats) sel.innerHTML = `<option value="">${escapeHtml(tt('quick.noCatPlaceholder', '（暂无类别，将由系统自动归类）'))}</option>`;
     },
     updateAccSelect() {
-        document.getElementById('quickAccount').innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
+        document.getElementById('quickAccount').innerHTML = accountOptionsHtml(cache.accounts);
     },
     updateAccSelects() {
-        const opts = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`).join('');
+        const opts = accountOptionsHtml(cache.accounts);
         document.getElementById('quickFromAcc').innerHTML = opts;
         document.getElementById('quickToAcc').innerHTML = opts;
     },
