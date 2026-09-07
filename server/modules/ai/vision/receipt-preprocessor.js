@@ -136,6 +136,7 @@ function preprocessReceipt(text, opts = {}) {
 
     runStrategy1(lines, ctx, add);
     runStrategy1b(lines, ctx, add);
+    runStrategy1c(lines, ctx, add);   // 微信支付单笔详情页（2026-09-07 补）
     runStrategy2(lines, ctx, add);
     runStrategy3(lines, ctx, add);
     runStrategy4(lines, ctx, add);
@@ -278,6 +279,49 @@ function runStrategy1b(lines, ctx, add) {
     }
 }
 
+/**
+ * 策略1c：微信支付【单笔详情页】—「扫二维码付款·给 XXX」+ 独立负数行「-9.00」。
+ *
+ * ⛔ 2026-09-07 实测补的版式（用户截图：福建千里香馄饨 / -9.00 / 9 元早餐）：
+ *    微信「交易详情」页既不像策略1（要同行「支付金额 ¥X」），也不像策略1b
+ *    （要「支付金额」竖排标签）—— 它压根没有「支付金额」这几个字，真实版式是：
+ *        福建千里香馄饨                 ← 商家名 header
+ *        留言 / 主页 / 交易详情          ← 顶部 tab 与分享按钮（UI 噪声）
+ *        -9.00                         ← 大字金额：独立负数行，无标签
+ *        扫二维码付款·给福建千里香馄饨    ← 付款说明（商家名就在这里）
+ *        当前状态　支付成功
+ *        收款方备注　二维码收款
+ *        支付方式　零钱
+ *        转账时间　2026年09月07日 09:04:14
+ *        转账单号　1000…0592
+ *    于是 1 / 1b 双双落空，只剩策略5（为「账单列表」设计）从金额行向上【猜】
+ *    非噪声行 → 猜到 UI 的「主页」，商家被记成「主页」，下游还给 98% 置信度
+ *    （错了却显得很确定，用户看高置信度直接确认入账，比留空危险得多）。
+ *
+ * 做法：直接认微信详情页的强信号「扫二维码付款·给 X」—— X 就是商家，
+ *       不再靠噪声防线去猜；配合独立负数行取金额。
+ */
+function runStrategy1c(lines, ctx, add) {
+    // 微信详情页的付款说明：「扫二维码付款·给XXX」「扫二维码付款-给XXX」「付款给XXX」
+    const PAY_DESC = /(?:扫二维码付款|二维码付款|扫码付款|付款)[·•\-—\s]*给\s*(.+)/;
+    let name = null;
+    for (const line of lines) {
+        const m = line.match(PAY_DESC);
+        if (!m) continue;
+        const cand = sanitizeName(m[1]);
+        if (cand) { name = cand; break; }
+    }
+    if (!name) return;
+
+    // 金额：详情页的大字金额是独立负数行（-9.00）
+    for (const line of lines) {
+        const m = line.match(/^-\s*[¥￥]?\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元)?$/);
+        if (!m) continue;
+        add(name, parseFloat(m[1]), ctx.date, 's1c_wechat_pay_detail');
+        return;   // 详情页只有一笔
+    }
+}
+
 /** 策略2：支付宝单笔 — 商户名在上一行，「消费 ¥19.90」在本行 */
 function runStrategy2(lines, ctx, add) {
     for (let i = 1; i < lines.length; i++) {
@@ -337,10 +381,12 @@ function runStrategy5(lines, ctx, add) {
             const prod = lines[i - k].match(/^商品\s*(.+)/);
             if (prod) { name = prod[1].trim(); break; }
         }
-        // 其次向上找第一个非噪声行
+        // 其次向上找第一个「像商家名」的行
+        // ⛔ 不能只判 !isNoiseLine：微信详情页的「主页」「交易服务」等 UI 行过得了
+        //    噪声防线却被当成商家（2026-09-07 实测：商家记成「主页」+ 98% 置信度）
         if (!name) {
             for (let k = 1; k <= 8 && i - k >= 0; k++) {
-                if (isNoiseLine(lines[i - k])) continue;
+                if (!looksLikeMerchantName(lines[i - k])) continue;
                 name = lines[i - k];
                 break;
             }
@@ -365,8 +411,19 @@ function runStrategy5(lines, ctx, add) {
  * ⛔ 这是整个模块的防线：v0.2 抽取器被单号/时间戳骗到 4.2e27 元，
  *    就是因为没有这一层。任何新增版式策略都必须先过它。
  */
-/** 常见 UI 控件/系统标签：账单截图里经常混进来，必须当噪声丢弃 */
-const UI_NOISE = /^(?:Top status bar|Bottom navigation bar|Navigation bar|Status bar|Action bar|Toolbar|标题栏|状态栏|导航栏|底部导航|Button|按钮|Label|标签|Icon|图标|Menu|菜单|Back|返回|More|更多|Share|分享|Like|点赞|Comment|留言|评论|Reply|回复|Close|关闭|Cancel|取消|Confirm|确认|Submit|提交|Search|搜索|Home|首页|Profile|我的|Message|消息|Discovery|发现|Settings|设置)$|\bbutton\b|\bstatus\s+bar\b|\bnavigation\s+bar\b|\baction\s+bar\b|\btoolbar\b|\bicon\b|\bmenu\b/i;
+/**
+ * 常见 UI 控件/系统标签：账单截图里经常混进来，必须当噪声丢弃。
+ *
+ * ⛔ 2026-09-07 补「主页 / 交易服务 / 对订单有疑惑 / 发起群收款 / 本服务由财付通提供」：
+ *    微信支付「交易详情」页的 OCR 原文里，金额行【上方】依次是
+ *        …/ 福建千里香馄饨 / 留言 / 主页 / 交易详情 / -9.00 / 扫二维码付款·给福建千里香馄饨 / …
+ *    其中「主页」是顶部 tab、「交易服务」「对订单有疑惑」「发起群收款」是底部按钮、
+ *    「本服务由财付通提供」是页脚 —— 它们全都不在原来的表里（原表只认英文 Home / 中文「首页」，
+ *    而微信用的是中文「主页」），于是过了噪声防线被策略5 当成商家，
+ *    实测把 9 元馄饨记成了「主页 9元」，下游还给到 98% 置信度
+ *    —— 错了却显得很确定，用户看高置信度直接确认入账，比留空危险得多。
+ */
+const UI_NOISE = /^(?:Top status bar|Bottom navigation bar|Navigation bar|Status bar|Action bar|Toolbar|标题栏|状态栏|导航栏|底部导航|Button|按钮|Label|标签|Icon|图标|Menu|菜单|Back|返回|More|更多|Share|分享|Like|点赞|Comment|留言|评论|Reply|回复|Close|关闭|Cancel|取消|Confirm|确认|Submit|提交|Search|搜索|Home|首页|主页|Profile|我的|Message|消息|Discovery|发现|Settings|设置|交易服务|对订单有疑惑|发起群收款|本服务由财付通提供|常见问题|联系客服|查看往来记录)$|\bbutton\b|\bstatus\s+bar\b|\bnavigation\s+bar\b|\baction\s+bar\b|\btoolbar\b|\bicon\b|\bmenu\b/i;
 
 function isNoiseLine(line) {
     const l = String(line || '').trim();
@@ -381,6 +438,40 @@ function isNoiseLine(line) {
     if (/^\d{10,}$/.test(l)) return true;             // 纯长数字 = 单号
     if (/^(?:交易单号|商户单号|收单机构|支付方式|商家小程序|账单服务|商户全称|商品|创建时间|支付时间)$/.test(l)) return true;
     return false;
+}
+
+/**
+ * 兜底场景下「这一行能不能当商家名」—— 比 isNoiseLine 更严的一层。
+ *
+ * ⛔ 不能只用 isNoiseLine：它是【黑名单】（命中已知噪声词才算噪声），而 UI 词枚举不完。
+ *    微信详情页的「主页」「交易服务」当年就不在表里，于是过了防线被策略5 当成商家
+ *    （2026-09-07 实测：9 元馄饨记成「主页 9元」，下游还给了 98% 置信度 ——
+ *     错了却显得很确定，用户看高置信度直接确认入账，比留空危险得多）。
+ *    ⇒ 从金额行向上【猜】商家的路径，必须反过来问「这一行像不像商家名」。
+ *
+ * @param {string} line
+ * @returns {boolean}
+ */
+function looksLikeMerchantName(line) {
+    const s = String(line || '').trim();
+    if (!s) return false;
+    if (isNoiseLine(s)) return false;                 // 既有黑名单照常生效
+    if (s.length < 2 || s.length > 30) return false;
+    /*  UI / 页脚特征词：tab、按钮、服务说明、客服入口、支付提供方。
+        ⚠️ 代价：真商家名里含「服务」「详情」等字的（如「物业服务」）会被拒绝，
+           但这类名字极罕见，且策略1 / 1b / 1c 命中时根本不走这条兜底路径。 */
+    if (/(?:主页|首页|详情|服务|疑惑|客服|记录|帮助|反馈|投诉|凭证|往来|提供|本服务|财付通|微信支付|常见问题)/.test(s)) return false;
+    /*  付款说明行（「扫二维码付款·给福建千里香馄饨」）不是商家名：它是一句【说明】，
+        真商家已由策略1c 从这句话里提取出来（「给」后面的部分）。
+        ⛔ 这里若再拿整句当商家，就会在同一张票据上多拆出一笔 ——
+           2026-09-07 实测：行序被打乱时策略1c 与策略5 各 add 一次，
+           同一笔 9 元馄饨变成两笔（一笔「福建千里香馄饨」、一笔「扫二维码付款·给…」）。
+        ⚠️ 这类行也过不了 NOISE_KEYWORDS：它写的是「付款」不是「支付」，
+           而 NOISE_KEYWORDS 里只有「支付|支付金额|付款方式」—— 必须在这里显式拦。 */
+    if (/(?:扫二维码付款|二维码付款|扫码付款|付款|转账)[·•\-—\s]*给/.test(s)) return false;
+    // 必须含中文或成词英文：纯标点 / 单字母 / 纯符号是 UI 噪声
+    if (!/[\u4e00-\u9fa5]/.test(s) && !/[a-zA-Z]{3,}/.test(s)) return false;
+    return true;
 }
 
 function isDateLine(line) {
@@ -498,5 +589,8 @@ module.exports = {
     looksLikeReceipt,
     preprocessReceipt,
     // 导出供单测直接验证防线
-    _internals: { isNoiseLine, sanitizeName, extractContextDate, parseDateFromLine, formatDateForNL, extractDescription },
+    _internals: {
+        isNoiseLine, sanitizeName, extractContextDate, parseDateFromLine,
+        formatDateForNL, extractDescription, looksLikeMerchantName,
+    },
 };
