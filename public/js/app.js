@@ -506,8 +506,9 @@ function renderUpdateLast(d) {
         const badge = document.createElement('span');
         badge.className = 'ul-badge ' + it.kind;
         badge.textContent = it.kind === 'ok' ? '✓'
-            : (it.kind === 'warn' ? '!')
-                : (it.kind === 'fix' ? '?' : '✕');
+            : it.kind === 'warn' ? '!'
+                : it.kind === 'fix' ? '?'
+                    : '✕';
         li.appendChild(badge);
         const txt = document.createElement('span');
         txt.textContent = it.text;
