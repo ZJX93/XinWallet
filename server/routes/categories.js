@@ -90,8 +90,12 @@ router.put('/:id', async (req, res) => {
         // 检查权限：必须是当前用户的私有分类（系统预设不允许修改）
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        // 允许登录用户改预置全局分类（user_id IS NULL）；仅阻止改他人私有分类
-        if (owner.user_id !== null && owner.user_id !== req.userId) {
+        // 系统预设分类（user_id IS NULL）为全局共享，只读，禁止任何用户修改（跨用户影响）
+        if (owner.user_id === null) {
+            return res.status(403).json(fail('系统预设分类不可修改，请新建自定义分类'));
+        }
+        // 仅允许编辑自己的私有分类
+        if (owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权修改该分类'));
         }
         await db.query(
@@ -107,8 +111,12 @@ router.delete('/:id', async (req, res) => {
     try {
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        // 允许登录用户删预置全局分类（user_id IS NULL）；仅阻止删他人私有分类
-        if (owner.user_id !== null && owner.user_id !== req.userId) {
+        // 系统预设分类（user_id IS NULL）为全局共享，只读，禁止删除（跨用户数据破坏）
+        if (owner.user_id === null) {
+            return res.status(403).json(fail('系统预设分类不可删除'));
+        }
+        // 仅允许删除自己的私有分类
+        if (owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权删除该分类'));
         }
         const used = await db.queryOne('SELECT COUNT(*) as cnt FROM transactions WHERE category_id = ?', [req.params.id]);

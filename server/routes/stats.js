@@ -261,9 +261,13 @@ router.get('/dashboard', async (req, res) => {
                 [req.userId, req.bookId]
             ),
             // 本月储蓄净额（savings_transactions 表可能还未创建，单独兜底不拖垮整批）
-            db.queryOne(
-                `SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) as net_savings
-                 FROM savings_transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+            // 多币种：按 currency 分组，避免混币种直接 SUM 产生无意义数值
+            db.query(
+                `SELECT COALESCE(t.currency, 'CNY') AS currency,
+                        COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) AS net_savings
+                 FROM savings_transactions t
+                 WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?
+                 GROUP BY COALESCE(t.currency, 'CNY')`,
                 [req.userId, req.bookId, currentMonth + '%']
             ).catch(err => {
                 console.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
@@ -395,7 +399,10 @@ router.get('/dashboard', async (req, res) => {
 
         // 本月储蓄净额（查询已并入上方 Promise.all，失败时返回 null 并已记录警告，
         // 修复报告 m4「空 catch 吞异常」——不再静默丢弃错误）
-        const monthNetSavings = savingsData ? parseFloat(savingsData.net_savings || 0) : 0;
+        // 多币种：savingsData 现为按 currency 分组的数组，转 breakdown 后取主货币（不再混币种直接相加）
+        const savingsBreakdown = _rowsToBreakdown(savingsData, 'net_savings');
+        const savingsCurrency = _pickPrimaryCurrency(savingsBreakdown);
+        const monthNetSavings = savingsBreakdown[savingsCurrency] || 0;
         // 金额精度（M3）：储蓄率用整数分域计算比值，避免浮点除法误差
         const savingsRate = percentOf(monthNetSavings, monthIncome, 1);
 
@@ -412,6 +419,8 @@ router.get('/dashboard', async (req, res) => {
                 incomeBreakdown: monthBreakdown, expenseBreakdown: monthBreakdown,
                 balance: subtractAmounts(monthIncome, monthExpense),
                 savings: roundAmount(monthNetSavings),
+                savingsCurrency,
+                savingsBreakdown,
                 savingsRate
             },
             year: {

@@ -719,6 +719,16 @@ router.get('/summary', async (req, res) => {
             }
             return (best.currency || 'CNY').toUpperCase();
         };
+        // 解析 db.jsonAgg 产出的币种字典 JSON（PG json_object_agg / MySQL JSON_OBJECTAGG）。
+        // 与 reports.js 的 _parseJsonBreakdown 语义一致（本文件局部复用，避免跨文件依赖）。
+        const _parseJsonBreakdown = (jsonStr) => {
+            if (!jsonStr) return { CNY: 0 };
+            let obj;
+            try { obj = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr; } catch { return { CNY: 0 }; }
+            const out = {};
+            Object.entries(obj || {}).forEach(([k, v]) => { out[(k || 'CNY').toUpperCase()] = parseFloat(v) || 0; });
+            return Object.keys(out).length ? out : { CNY: 0 };
+        };
         const incomeBreakdown = {};
         for (const r of incomeByCurRows) incomeBreakdown[(r.currency || 'CNY').toUpperCase()] = parseFloat(r.total);
         const expenseBreakdown = {};
@@ -738,16 +748,22 @@ router.get('/summary', async (req, res) => {
                SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
                FROM anc a JOIN categories p ON p.id = a.parent_id
              ),
-             agg AS (
-               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+             raw AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(t.currency, a2.currency, 'CNY') AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND CAST(t.date AS CHAR(10)) LIKE ?
-               GROUP BY a.ancestor_id
+               LEFT JOIN accounts a2 ON t.account_id = a2.id
+             ),
+             agg AS (
+               SELECT cat_id, currency, COALESCE(SUM(amount), 0) AS total
+               FROM raw GROUP BY cat_id, currency
              )
-             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             SELECT c.id, c.name, c.icon, c.parent_id,
+                    COALESCE(${db.jsonAgg('agg.currency', 'agg.total')}, ${db.jsonObj()}) AS total_breakdown_json
              FROM agg JOIN categories c ON c.id = agg.cat_id
-             ORDER BY agg.total DESC`,
+             GROUP BY c.id, c.name, c.icon, c.parent_id
+             ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
             [req.userId, req.bookId, month + '%']
         );
 
@@ -759,16 +775,22 @@ router.get('/summary', async (req, res) => {
                SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
                FROM anc a JOIN categories p ON p.id = a.parent_id
              ),
-             agg AS (
-               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+             raw AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(t.currency, a2.currency, 'CNY') AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'income' AND CAST(t.date AS CHAR(10)) LIKE ?
-               GROUP BY a.ancestor_id
+               LEFT JOIN accounts a2 ON t.account_id = a2.id
+             ),
+             agg AS (
+               SELECT cat_id, currency, COALESCE(SUM(amount), 0) AS total
+               FROM raw GROUP BY cat_id, currency
              )
-             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             SELECT c.id, c.name, c.icon, c.parent_id,
+                    COALESCE(${db.jsonAgg('agg.currency', 'agg.total')}, ${db.jsonObj()}) AS total_breakdown_json
              FROM agg JOIN categories c ON c.id = agg.cat_id
-             ORDER BY agg.total DESC`,
+             GROUP BY c.id, c.name, c.icon, c.parent_id
+             ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
             [req.userId, req.bookId, month + '%']
         );
 
@@ -785,8 +807,16 @@ router.get('/summary', async (req, res) => {
             currency: primaryCurrency,
             incomeBreakdown,
             expenseBreakdown,
-            expenseByCategory: expByCat.map(r => ({ ...r, total: parseFloat(r.total) })),
-            incomeByCategory: incByCat.map(r => ({ ...r, total: parseFloat(r.total) }))
+            expenseByCategory: expByCat.map(r => {
+                const bd = _parseJsonBreakdown(r.total_breakdown_json);
+                // total 统一用全局主货币（primaryCurrency）口径，保证饼图跨分类累加不混币种；
+                // 单币种账本下与旧行为一致。多币种账本非主货币分类暂为 0（需汇率折算，属后续批次）。
+                return { ...r, totalBreakdown: bd, currency: primaryCurrency, total: bd[primaryCurrency] || 0 };
+            }),
+            incomeByCategory: incByCat.map(r => {
+                const bd = _parseJsonBreakdown(r.total_breakdown_json);
+                return { ...r, totalBreakdown: bd, currency: primaryCurrency, total: bd[primaryCurrency] || 0 };
+            })
         }));
     } catch (err) {
         handleServerError(res, err);
