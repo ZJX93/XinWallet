@@ -13,7 +13,7 @@
   },
   "_comment": "⚠️ 本 manifest 专供 Docker 构建使用，请勿手动修改依赖版本；如需更新请同步根 package.json。",
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
