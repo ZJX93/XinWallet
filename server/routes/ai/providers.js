@@ -124,7 +124,19 @@ router.post('/providers/:id/test', async (req, res) => {
         const result = await callProvider(provider, [{ role: 'user', content: '回复"OK"' }]);
         res.json(success({ ok: true, reply: (result || '').slice(0, 100) }, '连接测试成功'));
     } catch (err) {
-        res.json(success({ ok: false, error: err.message }, '连接测试失败'));
+        // 安全修复（审计 M2）：不再原样回传 err.message（可能含服务商 base_url、
+        // 网络拓扑、上游响应片段）。只回传对排障有用且不泄露内部信息的错误码，
+        // 完整细节记录在服务端日志。
+        console.error('[AI 连接测试]', err.stack || err);
+        const SAFE_NET_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'CERT_HAS_EXPIRED'];
+        const netCode = err.code && SAFE_NET_CODES.includes(err.code) ? err.code : null;
+        const status = err.status || err.statusCode;
+        const httpHint = status === 401 || status === 403 ? '（凭证无效或无权访问）'
+            : status === 429 ? '（请求过于频繁或额度不足）' : '';
+        res.json(success({
+            ok: false,
+            error: netCode ? `连接失败（${netCode}）` : `连接失败${httpHint}，请检查网络与服务商配置`,
+        }, '连接测试失败'));
     }
 });
 

@@ -507,7 +507,7 @@ window.I18N_DICT['zh-CN'] = {
     'login.demo.fail': '演示账号登录失败',
     'login.error.incomplete': '请输入用户名和密码',
     'login.error.network': '操作失败，请重试',
-    'login.error.httpWeak': '（当前为 http，密码以弱加密保存）',
+    'login.error.httpWeak': '（当前为 http 非安全上下文，已禁用「记住密码」，请使用 HTTPS）',
 
     // ============ 通用 Modal / Confirm / Toast ============
     'modal.title.confirm': '请确认',

@@ -53,6 +53,13 @@ app.use(cors({
     credentials: allowedOrigins.length > 0
 }));
 
+// 反向代理信任设置（审计 M5）：express-rate-limit 与 req.ip 依赖 X-Forwarded-For，
+// 不声明 trust proxy 时反代部署下所有用户共享同一 IP 配额（限流误聚合），
+// 且 X-Forwarded-For 可被客户端伪造（绕过限制）。
+// 默认 'loopback'：只信任来自回环地址的代理（NAS/单机反代的常见形态），
+// 外网反代或代理链请在 .env 显式设置 TRUST_PROXY（如 1 或具体跳数/网段）。
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
+
 // 登录/注册接口限流，防止暴力破解与凭据爆破
 // 默认：5 分钟内每 IP 最多 60 次尝试（可通过 AUTH_RATE_LIMIT_MAX / AUTH_RATE_LIMIT_WINDOW_MIN 调整）
 // 修复（P2 降级点）：原实现依赖 req.body.username，但 limiter 早于 express.json 挂载，
@@ -267,7 +274,9 @@ app.get('/health/deep', async (req, res) => {
         await db.queryOne('SELECT 1 AS ok');
         checks.database = { ok: true, latencyMs: Date.now() - dbStart };
     } catch (err) {
-        checks.database = { ok: false, error: err.message };
+        // 安全修复（审计 M2）：错误细节可能含库地址/账号，只记录服务端日志
+        console.error('[health/deep] 数据库检查失败:', err.message);
+        checks.database = { ok: false, error: 'connection failed' };
     }
 
     // 2. 进程内存（运维可用，不含敏感信息）

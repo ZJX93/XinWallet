@@ -29,6 +29,17 @@ const EFFECTIVE_SECRET = JWT_SECRET || 'zhicai-dev-secret-change-me';
 // Token 有效期缩短到 1 小时（短期凭证），演示 / 离线环境可通过 JWT_EXPIRES 覆盖
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '1h';
 
+// M3 修复：refresh token 原与 access token 共用一个密钥（未显式设置
+// JWT_REFRESH_SECRET 时直接 fallback 到 EFFECTIVE_SECRET），两类令牌仅靠
+// payload.type 声明区分——一旦某处校验疏漏即可跨类型使用。现强制密钥分离：
+// 显式设置 JWT_REFRESH_SECRET 优先；否则用 HMAC 从主密钥确定性地派生
+// （无需额外配置、重启稳定、与 access 密钥不同）。
+// ⚠️ 副作用：本次升级后已签发的 refresh token 全部失效（最长 30 天），
+//    用户需重新登录一次（access token 1h 自然轮换不受影响）。
+const EFFECTIVE_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
+    || require('crypto').createHmac('sha256', EFFECTIVE_SECRET)
+        .update('xinwallet-refresh-token-v1').digest('hex');
+
 // 异步哈希（避免阻塞事件循环）
 async function hashPassword(plain) {
     return bcrypt.hash(plain, 10);
@@ -57,11 +68,10 @@ function signToken(user) {
 // 签发 Refresh Token（默认 30 天、独立 secret、payload 带 type='refresh' 区分）
 // ⚠️ 注释曾误写「7 天」而代码为 30d；时长现可由 JWT_REFRESH_EXPIRES 覆盖，避免注释与代码不一致。
 function signRefreshToken(user) {
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || EFFECTIVE_SECRET;
     const refreshExpires = process.env.JWT_REFRESH_EXPIRES || '30d';
     return jwt.sign(
         { id: Number(user.id), type: 'refresh' },
-        refreshSecret,
+        EFFECTIVE_REFRESH_SECRET,
         { algorithm: 'HS256', expiresIn: refreshExpires }
     );
 }
@@ -69,8 +79,7 @@ function signRefreshToken(user) {
 // 校验 refresh token：统一 refresh secret 取值逻辑（与 signRefreshToken 同源，避免两处硬编码漂移）。
 // 交由调用方判断 payload.type，本函数只负责验签。
 function verifyRefreshToken(token) {
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || EFFECTIVE_SECRET;
-    return jwt.verify(token, refreshSecret, { algorithms: ['HS256'] });
+    return jwt.verify(token, EFFECTIVE_REFRESH_SECRET, { algorithms: ['HS256'] });
 }
 
 // 路由鉴权中间件：校验 Bearer Token，注入 req.userId

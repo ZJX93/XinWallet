@@ -1006,8 +1006,9 @@ router.get('/quote', async (req, res) => {
         const data = await fetchQuoteByCategory(invCategory, c, { withName: true });
         return res.json(success({ type: data.source, ...data }));
     } catch (err) {
+        // 安全修复（审计 M2）：上游数据源细节（URL/网络信息）只进服务端日志
         console.error('[行情查询]', err.message);
-        res.status(502).json(fail('行情查询失败：' + err.message));
+        res.status(502).json(fail('行情查询失败，请稍后重试'));
     }
 });
 
@@ -1045,8 +1046,9 @@ router.post('/:id/refresh', async (req, res) => {
             actual_rate: actualRate, nav_date: navDate
         }, '行情已更新'));
     } catch (err) {
+        // 安全修复（审计 M2）：上游细节只进服务端日志
         console.error('[刷新持仓]', err.message);
-        res.status(502).json(fail('行情刷新失败：' + err.message));
+        res.status(502).json(fail('行情刷新失败，请稍后重试'));
     }
 });
 

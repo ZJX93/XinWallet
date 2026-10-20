@@ -30,8 +30,7 @@ const CRED_CIPHER_KEY = 'zhicai_pwd_cipher';   // base64 密文
 const CRED_IV_KEY = 'zhicai_pwd_iv';           // base64 iv
 const CRED_USER_KEY = 'zhicai_pwd_user';       // 配套用户名（明文，用户名不是秘密）
 const CRED_REMEMBER_KEY = 'zhicai_remember_pwd';
-const CRED_WEAK_FLAG = 'zhicai_pwd_weak';     // 标记：当前密文为弱混淆存储（非 AES-GCM）
-const WEAK_KEY = [0x5a, 0x3c, 0x9f, 0x1b];   // 弱混淆盐（非加密，仅防明文裸奔，可被还原）
+const CRED_WEAK_FLAG = 'zhicai_pwd_weak';     // 历史标记：旧版弱混淆存储的密文（新代码只清除不读取）
 
 function credAvailable() {
     return typeof indexedDB !== 'undefined' && window.crypto && window.crypto.subtle;
@@ -108,70 +107,52 @@ function credB64Decode(str) {
     return arr;
 }
 
-// 弱混淆（非加密）：crypto.subtle 在非安全上下文（http:// 非 localhost）下不可用，
-// 此时无法走 AES-GCM，退化为可被还原的简单 XOR+base64，仅防止密码以明文存储在 localStorage。
-// ⚠️ 安全性远低于 AES-GCM，仅适用于本机/局域网 http 部署；生产环境请上 HTTPS。
-function weakEncode(str) {
-    const bytes = new TextEncoder().encode(str);
-    let s = '';
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i] ^ WEAK_KEY[i % WEAK_KEY.length] ^ 0x37);
-    return btoa(s);
-}
-
-function weakDecode(b64) {
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) ^ WEAK_KEY[i % WEAK_KEY.length] ^ 0x37;
-    return new TextDecoder().decode(out);
-}
-
-/** 保存密码（加密）。⛔ 只能在登录成功后调用，否则会存下错误密码 */
+/** 保存密码（AES-GCM 加密）。
+ * ⛔ 只能在登录成功后调用，否则会存下错误密码。
+ * 安全修复（审计 M7）：原实现在非安全上下文（http:// 非 localhost）下降级为
+ * XOR+base64 弱混淆存储——那只是可还原的明文，等于把密码写进 localStorage。
+ * 现改为：crypto.subtle 不可用时直接不保存（功能不可用优于不安全可用），
+ * 由登录页禁用复选框并提示「请使用 HTTPS」。 */
 async function credSave(password, username) {
     if (!password) return;
-    // 优先走 AES-GCM（需要 crypto.subtle，即 https 或 localhost）。
-    if (credAvailable()) {
-        const key = await credGetKey(true);
-        if (key) {
-            try {
-                const iv = crypto.getRandomValues(new Uint8Array(12));   // GCM 标准 12 字节
-                const data = new TextEncoder().encode(password);
-                const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
-                localStorage.setItem(CRED_CIPHER_KEY, credB64Encode(cipher));
-                localStorage.setItem(CRED_IV_KEY, credB64Encode(iv));
-                localStorage.setItem(CRED_REMEMBER_KEY, '1');
-                localStorage.removeItem(CRED_WEAK_FLAG);   // 成功升级为强加密，清掉弱标记
-                // 用户名跟着凭据一起存（明文即可，用户名不是秘密）。
-                if (username) localStorage.setItem(CRED_USER_KEY, username);
-                return;
-            } catch (e) {
-                console.warn('[cred] AES 加密失败，降级弱存储:', e);
-            }
-        }
+    // 仅支持 AES-GCM（需要 crypto.subtle，即 https 或 localhost）
+    if (!credAvailable()) {
+        console.warn('[cred] 非安全上下文（http:// 非 localhost），已禁用记住密码（不落盘）');
+        return;
     }
-    // 降级：非安全上下文（http:// 局域网等）crypto.subtle 不可用，用轻量混淆存储。
+    const key = await credGetKey(true);
+    if (!key) {
+        console.warn('[cred] 无法获取加密密钥，未保存密码');
+        return;
+    }
     try {
-        localStorage.setItem(CRED_CIPHER_KEY, weakEncode(password));
+        const iv = crypto.getRandomValues(new Uint8Array(12));   // GCM 标准 12 字节
+        const data = new TextEncoder().encode(password);
+        const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+        localStorage.setItem(CRED_CIPHER_KEY, credB64Encode(cipher));
+        localStorage.setItem(CRED_IV_KEY, credB64Encode(iv));
         localStorage.setItem(CRED_REMEMBER_KEY, '1');
-        localStorage.setItem(CRED_WEAK_FLAG, '1');
+        // 用户名跟着凭据一起存（明文即可，用户名不是秘密）。
         if (username) localStorage.setItem(CRED_USER_KEY, username);
     } catch (e) {
-        console.warn('[cred] 弱存储失败，未保存密码:', e);
+        console.warn('[cred] AES 加密失败，未保存密码:', e);
     }
 }
 
-/** 读回密码（解密）；失败一律返回空串让用户手动输 */
+/** 读回密码（AES-GCM 解密）；失败一律返回空串让用户手动输。
+ * 安全修复（审计 M7）：历史版本在 http 下写入的弱混淆密文（CRED_WEAK_FLAG=1）
+ * 不再读取——直接清除，避免可还原的旧密码继续被使用。 */
 async function credLoad() {
     if (localStorage.getItem(CRED_REMEMBER_KEY) !== '1') return '';
     const cipherB64 = localStorage.getItem(CRED_CIPHER_KEY);
     if (!cipherB64) return '';
-    // 弱存储分支（http 等非安全上下文）：直接弱解码
+    // 历史弱存储数据：不读取，直接清除（迁移到「非安全上下文不保存」策略）
     if (localStorage.getItem(CRED_WEAK_FLAG) === '1') {
-        try {
-            return weakDecode(cipherB64);
-        } catch (e) {
-            console.warn('[cred] 弱解密失败:', e);
-            return '';
-        }
+        console.warn('[cred] 检测到历史弱加密凭据，已清除（请使用 HTTPS 后重新勾选记住密码）');
+        localStorage.removeItem(CRED_CIPHER_KEY);
+        localStorage.removeItem(CRED_WEAK_FLAG);
+        localStorage.removeItem(CRED_REMEMBER_KEY);
+        return '';
     }
     // AES-GCM 分支（https / localhost）
     const ivB64 = localStorage.getItem(CRED_IV_KEY);
@@ -263,13 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!rememberBox.checked) credClear();
     });
 
-    // 非安全上下文（http:// 非 localhost）下 crypto.subtle 不可用，记住密码降级为弱加密，给个提示
+    // 非安全上下文（http:// 非 localhost）下 crypto.subtle 不可用：记住密码不可用
+    // （安全修复 M7：不再降级为可还原的弱混淆存储）。禁用复选框并给出提示。
     if (rememberBox && !window.isSecureContext) {
+        rememberBox.disabled = true;
+        rememberBox.checked = false;
         const row = rememberBox.closest('.remember-row');
         if (row) {
             const tip = document.createElement('small');
             tip.dataset.i18n = 'login.error.httpWeak'; // 让语言切换时也跟随刷新
-            tip.textContent = (typeof I18N !== 'undefined') ? I18N.t('login.error.httpWeak') : '（当前为 http，密码以弱加密保存）';
+            tip.textContent = (typeof I18N !== 'undefined') ? I18N.t('login.error.httpWeak') : '（当前为 http 非安全上下文，已禁用「记住密码」，请使用 HTTPS）';
             tip.style.cssText = 'color:var(--text-muted,#888);font-size:11px;margin-left:6px;font-weight:normal;';
             row.appendChild(tip);
             // 切换语言后刷新这条动态注入的提示

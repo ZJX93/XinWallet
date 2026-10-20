@@ -507,7 +507,7 @@ window.I18N_DICT['en-US'] = {
     'login.demo.fail': 'Demo sign-in failed',
     'login.error.incomplete': 'Please enter both username and password',
     'login.error.network': 'Operation failed, please retry',
-    'login.error.httpWeak': '(current http, password saved with weak encryption)',
+    'login.error.httpWeak': '(insecure http context: "Remember password" is disabled, please use HTTPS)',
 
     // ============ 通用 Modal / Confirm / Toast ============
     'modal.title.confirm': 'Please confirm',
