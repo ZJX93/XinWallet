@@ -172,7 +172,8 @@ CREATE TABLE IF NOT EXISTS budgets (
   amount DECIMAL(15,2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (user_id, name, start_date, end_date)
+  -- 唯一约束含 book_id：同一用户在不同账本可建同名同期预算（多账本隔离）。
+  UNIQUE (user_id, book_id, name, start_date, end_date)
 );
 
 -- 投资理财分类体系（一级 投资理财 + 二级 投资买入 / 理财保险）

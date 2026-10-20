@@ -565,6 +565,56 @@ async function healDebtRate() {
   }
 }
 
+/**
+ * 预算唯一约束纳入 book_id（多账本修复，幂等）：
+ * 旧约束 UNIQUE (user_id, name, start_date, end_date) 不含账本列，导致同一用户
+ * 在不同账本建立同名同期预算时撞约束报 500，而 POST /budgets 的本意是按账本
+ * upsert（互不覆盖）。这里把约束迁移为
+ *   UNIQUE (user_id, book_id, name, start_date, end_date)。
+ * 旧约束下不可能存在跨账本重复行，故迁移不会与存量数据冲突。
+ */
+async function healBudgetsBookScope() {
+  if (DB_DIALECT === 'mysql') {
+    // MySQL：内联 UNIQUE 的索引名由引擎生成（通常为首列名），先按 information_schema
+    // 精确定位列集合为 (user_id, name, start_date, end_date) 的唯一索引再删除。
+    try {
+      const rows = await query(
+        `SELECT DISTINCT INDEX_NAME AS idx FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'budgets' AND NON_UNIQUE = 0
+         GROUP BY INDEX_NAME
+         HAVING COUNT(*) = 4 AND SUM(COLUMN_NAME IN ('user_id','name','start_date','end_date')) = 4`
+      );
+      for (const r of rows) {
+        try { await query(`ALTER TABLE budgets DROP INDEX \`${r.idx}\``); } catch (_) { /* 已删则跳过 */ }
+      }
+      await query('ALTER TABLE budgets ADD UNIQUE KEY `budgets_user_book_name_period` (user_id, book_id, name, start_date, end_date)');
+    } catch (err) {
+      // 已迁移（重复键名 1061/1062）属预期
+      if (!/already exists|duplicate key name|1061|1062/i.test(err.message)) {
+        console.warn('⚠️ 预算唯一约束迁移警告（不影响启动，下次启动重试）:', err.message);
+      }
+    }
+    return;
+  }
+  // PostgreSQL：按 pg_constraint 精确定位旧约束（不依赖自动生成的约束名），删旧建新。
+  try {
+    const cons = await query(
+      "SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'budgets'::regclass AND contype = 'u'"
+    );
+    for (const c of cons) {
+      if (/UNIQUE \(user_id, name, start_date, end_date\)/.test(c.def)) {
+        await query(`ALTER TABLE budgets DROP CONSTRAINT "${c.conname}"`);
+      }
+    }
+    await query('ALTER TABLE budgets ADD CONSTRAINT budgets_user_book_name_period UNIQUE (user_id, book_id, name, start_date, end_date)');
+  } catch (err) {
+    // 新约束已存在（重复约束）或表尚未创建均属预期
+    if (!/already exists|duplicate|does not exist|42P16|42P07/i.test(err.message)) {
+      console.warn('⚠️ 预算唯一约束迁移警告（不影响启动，下次启动重试）:', err.message);
+    }
+  }
+}
+
 async function healAiConstraints() {
   if (DB_DIALECT === 'mysql') return; // MySQL 不走 PG 这套约束自愈
   // 两个约束互不阻塞：任一失败都不应吃掉另一个的自愈机会
@@ -725,6 +775,14 @@ async function initDatabase() {
       console.log('✅ 信用卡债务遗留利率自愈完成（无遗留值时无任何变化）');
     } catch (err) {
       console.warn('⚠️ 信用卡债务遗留利率自愈警告（不影响启动，下次启动重试）:', err.message);
+    }
+
+    // 预算唯一约束纳入 book_id：修复多账本下同名同期预算跨账本撞约束 500（幂等）
+    try {
+      await healBudgetsBookScope();
+      console.log('✅ 预算唯一约束迁移完成（无需修复时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ 预算唯一约束迁移警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // AI CHECK 约束自愈：把 Phase 1 建的旧白名单升级到 Phase 3 的 8 个事件类型

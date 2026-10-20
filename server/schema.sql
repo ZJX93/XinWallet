@@ -192,7 +192,9 @@ CREATE TABLE IF NOT EXISTS budgets (
   amount DECIMAL(15,2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (user_id, name, start_date, end_date)
+  -- 唯一约束含 book_id：同一用户在不同账本可建同名同期预算（多账本隔离）；
+  -- 不含 book_id 会撞约束 500，且令 POST /budgets 的按账本 upsert 语义失效。
+  UNIQUE (user_id, book_id, name, start_date, end_date)
 );
 DROP TRIGGER IF EXISTS trg_budgets_updated ON budgets;
 CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -130,19 +130,18 @@ router.post('/', async (req, res) => {
         const baseDate = base_date || new Date().toISOString().split('T')[0];
         const range = calcPeriodRange(pType, baseDate);
         const nameStr = name.trim();
-        // 多账本：预算归属当前账本；同名同期预算按本账本 upsert，避免跨账本误覆盖
-        const existing = await db.queryOne(
-            'SELECT id FROM budgets WHERE user_id = ? AND book_id = ? AND name = ? AND start_date = ? AND end_date = ?',
-            [req.userId, req.bookId, nameStr, range.start, range.end]
+        // 多账本：预算归属当前账本；同名同期预算按本账本 upsert，避免跨账本误覆盖。
+        // 数据一致性修复（审计 H2）：原「先 SELECT 再 UPDATE/INSERT」存在 TOCTOU 双插
+        // 竞争——两个并发同名同期预算请求会双双通过存在性检查，最终依赖唯一约束兜底
+        // 撞 500。现改为依赖唯一约束 (user_id, book_id, name, start_date, end_date)
+        // 的原子 upsert：单条语句完成「存在则更新、不存在则插入」，无竞争窗口。
+        // 注：updated_at 由 PG 触发器 / MySQL 侧保持创建时间维护，不参与 upsert 列。
+        await db.query(
+            db.upsertSql('budgets',
+                ['user_id', 'book_id', 'name', 'start_date', 'end_date'],
+                ['period_type', 'amount']),
+            [req.userId, req.bookId, nameStr, range.start, range.end, pType, amountNum]
         );
-        if (existing) {
-            await db.query('UPDATE budgets SET amount = ? WHERE id = ?', [amountNum, existing.id]);
-        } else {
-            await db.query(
-                `INSERT INTO budgets (user_id, book_id, name, period_type, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, nameStr, pType, range.start, range.end, amountNum]
-            );
-        }
         res.json(success(null, '预算已设置'));
     } catch (err) {
         handleServerError(res, err);
@@ -175,8 +174,12 @@ router.delete('/:id', async (req, res) => {
     try {
         // BUG-2 修复：transactions.budget_id 无外键约束，删除预算前需先置空引用，
         // 否则产生悬空 budget_id（预算列表/统计可能误关联已删除预算）。
-        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
-        await db.query('DELETE FROM budgets WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+        // 数据一致性修复（审计 H2）：两条语句并入同一事务，避免「引用已置空但预算
+        // 删除失败」（或反向）留下的中间态。
+        await db.transaction(async (conn) => {
+            await conn.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+            await conn.query('DELETE FROM budgets WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+        });
         res.json(success(null, '预算已删除'));
     } catch (err) {
         handleServerError(res, err);
