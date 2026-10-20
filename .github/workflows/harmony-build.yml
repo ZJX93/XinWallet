@@ -325,6 +325,14 @@ jobs:
         id: sign
         env:
           SIGN_BUNDLE_B64: '${{ secrets.HARMONY_SIGN_BUNDLE_B64 }}'
+          # 签名密钥密码（审计 H2 修复）：原先以明文硬编码在本工作流中，凡可读仓库者
+          # 均可取得 keystore 密码并重签/伪造 HAP。现改为从 Secrets 读取，
+          # 需在仓库 Settings > Secrets 添加：
+          #   HARMONY_SIGN_KEY_PASSWORD  = material 目录中 keyPassword 的值
+          #   HARMONY_SIGN_STORE_PASSWORD = material 目录中 storePassword 的值
+          # （即此前硬编码的两串值，原样迁移即可，签名身份不变）
+          SIGN_KEY_PASSWORD: '${{ secrets.HARMONY_SIGN_KEY_PASSWORD }}'
+          SIGN_STORE_PASSWORD: '${{ secrets.HARMONY_SIGN_STORE_PASSWORD }}'
         run: |
           if [ -z "$SIGN_BUNDLE_B64" ]; then
             echo '::warning::未配置 HARMONY_SIGN_BUNDLE_B64，将以“仅编译验证”模式运行（不产出可安装 HAP）。如需出包请在仓库 Settings > Secrets 添加 HARMONY_SIGN_BUNDLE_B64（由本地 .ohos/config 的证书 + material 打包的 base64 zip）。'
@@ -338,6 +346,10 @@ jobs:
             '
             echo "signing=compile-only" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          if [ -z "$SIGN_KEY_PASSWORD" ] || [ -z "$SIGN_STORE_PASSWORD" ]; then
+            echo '::error::已配置 HARMONY_SIGN_BUNDLE_B64 但缺少 HARMONY_SIGN_KEY_PASSWORD / HARMONY_SIGN_STORE_PASSWORD。请在仓库 Settings > Secrets 添加这两个密钥密码（原值为工作流里已移除的硬编码串）。'
+            exit 1
           fi
           set -e
           mkdir -p .sign
@@ -354,15 +366,15 @@ jobs:
               material:{
                 certpath:  base+".cer",
                 keyAlias:  "debugKey",
-                keyPassword:"0000001B2148F9CCC2554BEBCCC4DF5CC76E5559B5E26494E28B65A2B11DE527C16244DEF201C9793729DA",
+                keyPassword: process.env.SIGN_KEY_PASSWORD,
                 profile:   base+".p7b",
                 signAlg:   "SHA256withECDSA",
                 storeFile: base+".p12",
-                storePassword:"0000001B5B987F7717A0E9D551B4F3D1031F9EBEF044797F58CE4F410547E78F58EB55000832BC3FCC485B"
+                storePassword: process.env.SIGN_STORE_PASSWORD
               }
             }];
             fs.writeFileSync(p, JSON.stringify(j,null,2));
-            console.log("已注入 bundle 签名配置（相对路径 + material 加密目录）");
+            console.log("已注入 bundle 签名配置（相对路径 + material 加密目录，密码来自 Secrets）");
           '
           echo "signing=real" >> "$GITHUB_OUTPUT"
 

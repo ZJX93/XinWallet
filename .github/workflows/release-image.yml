@@ -65,15 +65,12 @@ jobs:
           echo "FULL_TAG=${FULL_TAG}" >> $GITHUB_OUTPUT
           echo "📦 ${FULL_TAG}"
 
-      # 自动生成 ENCRYPTION_KEY（生产部署可覆盖：docker run -e ENCRYPTION_KEY=<your-key>）
-      - name: 生成加密密钥
-        id: genkey
-        run: |
-          KEY=$(openssl rand -hex 32)
-          echo "key=${KEY}" >> $GITHUB_OUTPUT
-          echo "🔐 已生成 ENCRYPTION_KEY（构建期内嵌于镜像）"
-          echo "📌 注意：重新部署此镜像将生成新密钥，原已加密数据将无法解密"
-
+      # 加密密钥不在构建期内嵌（审计 H1 修复）：
+      # 原实现生成 ENCRYPTION_KEY 并以 build-arg 传入，但 Dockerfile 从未声明
+      # ARG ENCRYPTION_KEY——密钥从未进入镜像（Docker 静默告警 not consumed），
+      # 且"密钥内嵌镜像层"本身是反模式（公开镜像可被分层提取）。
+      # 现改为运行期注入：docker run -e ENCRYPTION_KEY=<64hex>，
+      # 或依赖数据卷 /app/data/.encryption-key（crypto.js 首次启动自动生成）。
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -91,9 +88,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          # 自动生成生产环境加密密钥（避免启动崩溃），用户应在生产部署时显式注入
+          # ENCRYPTION_KEY 不参与构建（见上方说明）：运行期 -e 注入或数据卷自动生成
           build-args: |
-            ENCRYPTION_KEY=${{ steps.genkey.outputs.key }}
             VERSION=${{ steps.setup.outputs.VERSION }}
           tags: |
             ${{ steps.setup.outputs.FULL_TAG }}

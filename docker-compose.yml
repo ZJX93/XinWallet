@@ -19,7 +19,9 @@ services:
     restart: unless-stopped
     profiles: ["pg"]
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      # 必填（审计 M2）：无默认弱口令，避免"忘了改 .env 就静默带病上线"。
+      # 本地一键试用：cp .env.example .env 后填 DB_PASSWORD=$(openssl rand -hex 16)
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?必须设置 DB_PASSWORD（见 .env.example，可用 openssl rand -hex 16 生成）}
       POSTGRES_DB: ${DB_NAME:-xinwallet}
     volumes:
       - xinwallet-db-data:/var/lib/postgresql/data
@@ -40,7 +42,8 @@ services:
     restart: unless-stopped
     profiles: ["mysql"]
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      # 必填（审计 M2）：MySQL root 密码同样不设默认弱口令
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?必须设置 DB_PASSWORD（见 .env.example，可用 openssl rand -hex 16 生成）}
       MYSQL_DATABASE: ${DB_NAME:-xinwallet}
     command:
       - --character-set-server=utf8mb4
@@ -80,14 +83,24 @@ services:
       DB_HOST: ${DB_HOST:-db-pg}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      # 必填（审计 M2）：与 db-pg/db-mysql 同一个变量，缺了直接启动失败而非静默弱口令
+      DB_PASSWORD: ${DB_PASSWORD:?必须设置 DB_PASSWORD（见 .env.example，可用 openssl rand -hex 16 生成）}
       DB_NAME: ${DB_NAME:-xinwallet}
-      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
-      # ENCRYPTION_KEY 优先级：环境变量 > 数据卷持久化文件 > 启动时生成
+      # 必填（审计 M2）：JWT 泄露可伪造任意用户令牌，不设默认值
+      JWT_SECRET: ${JWT_SECRET:?必须设置 JWT_SECRET（openssl rand -hex 32）}
+      # ENCRYPTION_KEY 优先级：环境变量 > 数据卷持久化文件 > 首次启动自动生成并落盘
+      # （卷已挂载于下方 xinwallet-app-data:/app/data，生成即持久化，跨重启稳定）
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       ALLOW_DEMO: ${ALLOW_DEMO:-false}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # AI 行为开关透传（审计：此前 .env 里的 AI_* 不会进容器，被静默忽略）。
+      # 留空 = 走服务内置默认（见 server/modules/ai/services/ai-settings-service.js）
+      AI_FEWSHOT_ENABLED: ${AI_FEWSHOT_ENABLED:-}
+      AI_ALLOW_MODEL_ROUTE: ${AI_ALLOW_MODEL_ROUTE:-}
+      AI_MODEL_ROUTE_SIMPLE: ${AI_MODEL_ROUTE_SIMPLE:-}
+      AI_LLM_FIRST: ${AI_LLM_FIRST:-}
+      AI_PARSER_PROMPT_VERSION: ${AI_PARSER_PROMPT_VERSION:-}
       # 一键更新镜像（Web 端检测 + 应用）：镜像名与容器名，
       # 与下方 volumes 挂载的 docker.sock 配合使用
       UPDATE_IMAGE: ghcr.io/zjx93/xin-wallet/xinwallet:latest

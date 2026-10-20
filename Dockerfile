@@ -9,8 +9,11 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY server/package.json server/package-lock.json ./
-# 使用 npmmirror 镜像源加速，npm ci 在某些环境下有 bug
-RUN npm config set registry https://registry.npmmirror.com && npm ci --omit=dev
+# npmmirror 镜像源：默认走官方 registry（供应链安全：无 checksum 校验的第三方
+# 镜像源有投毒风险）；CN 网络环境可通过 build-arg 覆盖，例如
+#   docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com .
+ARG NPM_REGISTRY=https://registry.npmjs.org
+RUN npm config set registry "$NPM_REGISTRY" && npm ci --omit=dev
 
 # ---- 阶段 2：精简运行镜像 ----
 FROM node:22-alpine
@@ -47,10 +50,12 @@ RUN apk add --no-cache docker-cli
 
 # USER appuser   # 已禁用：与 docker.sock 自动更新方案互斥（sock 属主为 root）
 
-# 生产环境强烈建议显式注入 ENCRYPTION_KEY（用于 AI 凭证等敏感字段加密）
-# 不注入时，crypto.js 启动时会从 /app/data/.encryption-key 读取或自动生成
+# 加密密钥说明（ENCRYPTION_KEY）：
+#   - 不在镜像内嵌任何密钥（镜像层可被 pull 提取，内嵌即公开）
+#   - 运行期注入优先级：-e ENCRYPTION_KEY=<64hex> > 数据卷 /app/data/.encryption-key
+#   - 两者皆无时，crypto.js 会向数据卷自动生成并持久化（0600，跨重启稳定）
 # 使用：docker run -e ENCRYPTION_KEY=$(openssl rand -hex 32) ...
-ENV ENCRYPTION_KEY=
+# （原 ENV ENCRYPTION_KEY= 空变量已移除：它曾是无效配置，且会误导为"镜像自带密钥"）
 
 EXPOSE 18888
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \

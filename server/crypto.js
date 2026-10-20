@@ -102,14 +102,28 @@ function getKey() {
         }
         return deriveKey(keyHex);
     }
-    // 优先级 3：首次启动自动生成 + 持久化（仅非生产环境）
-    // 生产环境严禁自动生成密钥，更禁止把密钥明文写进日志——任何可读日志/标准输出者
-    // 即可解密全部已存的 AI/OCR 凭证。必须通过 ENCRYPTION_KEY 环境变量或数据卷密钥文件
-    // 显式提供；缺失即拒绝启动（参考 auth.js 对 JWT_SECRET 的硬失败做法）。
+    // 优先级 3：首次启动自动生成 + 持久化。
+    // 生产环境原本一律拒绝自动生成（重启即换钥 = 既有凭证全部无法解密），
+    // 但这让「docker compose 默认部署」（卷已挂载 /app/data）直接崩溃循环——
+    // 而卷内落盘的密钥同样跨重启稳定，拒绝启动并无安全收益。
+    // 现按「能否持久化」分流：
+    //   · 密钥目录可写（Docker 卷 / 常规部署目录）→ 生成并落盘 + 醒目告警
+    //   · 不可写（无法持久化，重启必换钥）→ 仍然拒绝启动，保持原有保证
     if (process.env.NODE_ENV === 'production') {
-        console.error('❌ 生产环境未提供 ENCRYPTION_KEY 且数据卷无可读密钥文件，拒绝以临时密钥启动'
-            + '（避免密钥泄露与既有凭证不可解密）。请显式设置 ENCRYPTION_KEY 环境变量或挂载密钥文件后重启。');
-        process.exit(1);
+        const dir = path.dirname(KEY_FILE);
+        let canPersist = false;
+        try {
+            canPersist = fs.existsSync(dir) && fs.accessSync(dir, fs.constants.W_OK) === undefined;
+        } catch (_) { canPersist = false; }
+        if (!canPersist) {
+            console.error('❌ 生产环境未提供 ENCRYPTION_KEY，且密钥目录 ' + dir + ' 不可写（无法持久化），'
+                + '拒绝以临时密钥启动（避免重启后既有凭证不可解密）。请显式设置 ENCRYPTION_KEY '
+                + '环境变量或挂载可写数据目录后重启。');
+            process.exit(1);
+        }
+        console.warn('⚠️ 生产环境未显式提供 ENCRYPTION_KEY，已自动生成并持久化到 ' + KEY_FILE
+            + '（仅存于本机数据目录，0600 权限，不进日志、不内嵌镜像）。'
+            + '跨主机迁移/备份恢复场景请在 .env 显式固定 ENCRYPTION_KEY。');
     }
     keyHex = crypto.randomBytes(32).toString('hex');
     // 并发安全：排他创建，若其他进程已先行写入（EEXIST），改用文件中的密钥，

@@ -18,7 +18,9 @@
  *   node scripts/heal-investment-txn-links.js          # 预演
  *   node scripts/heal-investment-txn-links.js --apply  # 执行
  */
-require('dotenv').config();
+// 审计 L4 修复：dotenv 显式指向仓库根 .env（原依赖 cwd，从别处运行会静默读错配置）
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const db = require('../server/db');
 
 const APPLY = process.argv.includes('--apply');

@@ -79,6 +79,16 @@ jobs:
       # 其证书指纹与 ApkVerifier.kt 的 EXPECTED_CERT_SHA256 绑定，必须长期稳定复用；
       # 因此 CI 直接复用仓库内已提交的 keystore，不再用 keytool 重新生成
       # （重新生成会变更证书指纹，导致打出的 APK 在运行时自校验失败）。
+      #
+      # ⚠️ 已知供应链风险（审计 H4，待 owner 决策，勿在未评估用户影响下直接改）：
+      #   发布版 APK 目前复用「密码为 android 的公开 debug.keystore」签名——
+      #   任何人均可重签同指纹 APK。彻底修复需要一次签名迁移，影响面：
+      #     1) 本地生成 release keystore（keytool -genkeypair -v -keystore release.jks ...）
+      #     2) 以 Secret 注入（ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS），
+      #        build.gradle.kts 的 signingConfig 改为优先读 gradle property，回退 debug
+      #     3) 同步更新 android/app/.../ApkVerifier.kt 的 EXPECTED_CERT_SHA256 为新证书指纹
+      #     4) 已安装旧签名用户无法覆盖升级到新签名包（需卸载重装）——需在 Release Notes 告知
+      #   在完成迁移前，本工作流的指纹钉死检查仍保证「不与历史版本签名漂移」。
 
       # 签名指纹钉死：本仓库的 debug.keystore 自提交 0b1cc86 起固定不变，
       # 所有发布版 APK 均用它签名，用户可跨版本覆盖安装、且 App 内 ApkVerifier 自校验通过。
