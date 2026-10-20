@@ -995,6 +995,26 @@ router.delete('/investments/:id', async (req, res) => {
         handleServerError(res, err);
     }
 });
+// ==========================================
+// 行情缓存与并发控制（审计 M1）
+// 原 /quote 无缓存（前端多组件/轮询会反复打上游）；refresh-all 串行 for
+// （单个上游超时 6-8s，N 个持仓最坏 N×8s 把单请求全程挂住）。
+// ==========================================
+const QUOTE_CACHE_TTL_MS = 60 * 1000; // 行情 60 秒短 TTL（日内行情本身非实时）
+const quoteCache = new Map();         // key = `${category}:${code}`
+
+function getCachedQuote(key) {
+    const hit = quoteCache.get(key);
+    if (!hit) return null;
+    if (hit.expiresAt <= Date.now()) { quoteCache.delete(key); return null; }
+    return hit.data;
+}
+function setCachedQuote(key, data) {
+    // 体积上限保护，防内存无界（key 空间=用户查过的代码数，有界；双保险）
+    if (quoteCache.size > 500) quoteCache.clear();
+    quoteCache.set(key, { data, expiresAt: Date.now() + QUOTE_CACHE_TTL_MS });
+}
+
 // 查询单个代码行情（自动识别类型）
 router.get('/quote', async (req, res) => {
     try {
@@ -1003,7 +1023,16 @@ router.get('/quote', async (req, res) => {
         const c = String(code).trim();
         // category 可以是 fund/stock/deposit/other，默认 fund
         const invCategory = category || 'fund';
+        // M1：60s 短 TTL 缓存，命中直接返回（X-Cache 头便于排查）
+        const cacheKey = `${invCategory}:${c}`;
+        const cached = getCachedQuote(cacheKey);
+        if (cached) {
+            res.set('X-Cache', 'HIT');
+            return res.json(success({ type: cached.source, ...cached }));
+        }
         const data = await fetchQuoteByCategory(invCategory, c, { withName: true });
+        setCachedQuote(cacheKey, data);
+        res.set('X-Cache', 'MISS');
         return res.json(success({ type: data.source, ...data }));
     } catch (err) {
         // 安全修复（审计 M2）：上游数据源细节（URL/网络信息）只进服务端日志
@@ -1063,31 +1092,50 @@ router.post('/refresh-all', async (req, res) => {
         );
         if (investments.length === 0) return res.json(success({ updated: 0, results: [] }, '无需要刷新的持仓'));
 
-        const results = [];
-        for (const inv of investments) {
-            try {
-                const strategy = getQuoteStrategy(inv.type_category, inv.code);
-                if (!strategy) {
-                    results.push({ id: inv.id, code: inv.code, status: 'skipped', reason: '该品类不支持行情查询' });
+        // M1：并发上限刷新（原串行 for：单个上游超时 6-8s，N 个持仓最坏 N×8s
+        // 把请求全程挂住）。并发度 4： enough 摊平 RTT，又不至于同时打爆上游。
+        const QUOTE_CONCURRENCY = 4;
+        // 整体软超时 30s：超时后尚未开始的项标记 skipped（已在途的跑完），
+        // 避免超大持仓列表把请求无限期挂住。
+        const deadline = Date.now() + 30 * 1000;
+        const results = new Array(investments.length);
+        let cursor = 0;
+        const worker = async () => {
+            while (true) {
+                const i = cursor++;
+                if (i >= investments.length) return;
+                const inv = investments[i];
+                if (Date.now() > deadline) {
+                    results[i] = { id: inv.id, code: inv.code, status: 'skipped', reason: '批量刷新超时，请稍后重试' };
                     continue;
                 }
-                const { price, navDate, name } = await fetchPriceForInvestment(inv);
+                try {
+                    const strategy = getQuoteStrategy(inv.type_category, inv.code);
+                    if (!strategy) {
+                        results[i] = { id: inv.id, code: inv.code, status: 'skipped', reason: '该品类不支持行情查询' };
+                        continue;
+                    }
+                    const { price, navDate, name } = await fetchPriceForInvestment(inv);
 
-                // H3 修复：市值抹圆到分；收益率为百分比（DECIMAL(8,4)），抹圆到 4 位
-                const qty = parseFloat(inv.quantity);
-                const currentValue = roundAmount(price * qty);
-                const totalCost = parseFloat(inv.total_cost);
-                const actualRate = totalCost > 0 ? roundPrice((currentValue - totalCost) / totalCost * 100) : 0;
+                    // H3 修复：市值抹圆到分；收益率为百分比（DECIMAL(8,4)），抹圆到 4 位
+                    const qty = parseFloat(inv.quantity);
+                    const currentValue = roundAmount(price * qty);
+                    const totalCost = parseFloat(inv.total_cost);
+                    const actualRate = totalCost > 0 ? roundPrice((currentValue - totalCost) / totalCost * 100) : 0;
 
-                await db.query(
-                    'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
-                    [price, currentValue, actualRate, navDate || null, inv.id, req.userId, req.bookId]
-                );
-                results.push({ id: inv.id, code: inv.code, name: name || inv.name, price, currentValue, actualRate, navDate, status: 'ok' });
-            } catch (e) {
-                results.push({ id: inv.id, code: inv.code, status: 'error', reason: e.message });
+                    await db.query(
+                        'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
+                        [price, currentValue, actualRate, navDate || null, inv.id, req.userId, req.bookId]
+                    );
+                    results[i] = { id: inv.id, code: inv.code, name: name || inv.name, price, currentValue, actualRate, navDate, status: 'ok' };
+                } catch (e) {
+                    results[i] = { id: inv.id, code: inv.code, status: 'error', reason: e.message };
+                }
             }
-        }
+        };
+        await Promise.all(
+            Array.from({ length: Math.min(QUOTE_CONCURRENCY, investments.length) }, worker)
+        );
         const updated = results.filter(r => r.status === 'ok').length;
         res.json(success({ updated, results }, `已更新 ${updated}/${investments.length} 个持仓`));
     } catch (err) {

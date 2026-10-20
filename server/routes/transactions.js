@@ -518,12 +518,12 @@ router.post('/', async (req, res) => {
             // 自动同步信用卡债务
             await syncCreditCardDebt(conn, req.userId, accId);
 
-            // 写入交易标签
+            // 写入交易标签（H5：多值 INSERT 一次往返，原逐条 for 循环 = N 次往返）
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
-            for (const tid of tags) {
+            if (tags.length) {
                 await conn.query(
-                    db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']),
-                    [insertResult.insertId, tid]
+                    db.insertIgnoreMultiSql('transaction_tags', ['transaction_id', 'tag_id'], tags.length),
+                    tags.flatMap(tid => [insertResult.insertId, tid])
                 );
             }
 
@@ -594,13 +594,13 @@ router.put('/:id', async (req, res) => {
                 [accId, catId, bId, type, fx.amount, fx.currency, finalNote, finalDate, src, dst, loc, lt, li, fx.original_amount, fx.original_currency, fx.exchange_rate, fx.rate_date, id, req.userId, req.bookId]
             );
 
-            // 重置交易标签
+            // 重置交易标签（H5：多值 INSERT 一次往返，原逐条 for 循环 = N 次往返）
             await conn.query('DELETE FROM transaction_tags WHERE transaction_id = ?', [id]);
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
-            for (const tid of tags) {
+            if (tags.length) {
                 await conn.query(
-                    db.insertIgnoreSql('transaction_tags', ['transaction_id', 'tag_id']),
-                    [id, tid]
+                    db.insertIgnoreMultiSql('transaction_tags', ['transaction_id', 'tag_id'], tags.length),
+                    tags.flatMap(tid => [id, tid])
                 );
             }
 

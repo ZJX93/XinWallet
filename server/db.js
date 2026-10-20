@@ -879,6 +879,21 @@ function insertIgnoreSql(table, cols) {
 }
 
 /**
+ * 双方言「幂等插入」多值版本：一次往返插完 rowCount 行。
+ * 审计 H5：原逐条 for 循环 INSERT 关联行（如 transaction_tags）等于 N 次往返。
+ * 参数按行展平：[row1col1, row1col2, row2col1, ...]。
+ */
+function insertIgnoreMultiSql(table, cols, rowCount) {
+  const colList = cols.join(', ');
+  const row = `(${cols.map(() => '?').join(', ')})`;
+  const values = Array.from({ length: rowCount }, () => row).join(', ');
+  if (DB_DIALECT === 'mysql') {
+    return `INSERT IGNORE INTO ${table} (${colList}) VALUES ${values}`;
+  }
+  return `INSERT INTO ${table} (${colList}) VALUES ${values} ON CONFLICT DO NOTHING`;
+}
+
+/**
  * 双方言 JSON 对象构造函数：MySQL `JSON_OBJECT(...)` ↔ PG `json_build_object(...)`。
  *
  * 用法：
@@ -923,5 +938,5 @@ function jsonAgg(...args) {
 module.exports = {
   pool, query, queryOne, transaction, initDatabase,
   healBooks, ensureDefaultBookId, DB_DIALECT, upsertSql,
-  buildInClause, insertIgnoreSql, jsonObj, jsonAgg, dateAddDays,
+  buildInClause, insertIgnoreSql, insertIgnoreMultiSql, jsonObj, jsonAgg, dateAddDays,
 };

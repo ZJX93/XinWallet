@@ -43,10 +43,10 @@ async function deleteRepaymentLegs(conn, userId, bookId, repayment) {
         [userId, bookId, repayment.id]
     );
     if (legs.length) {
-        for (const l of legs) {
-            await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [l.id, userId, bookId]);
-            if (l.account_id) affected.add(l.account_id);
-        }
+        // H5：批量删除（原逐条 for 循环 = N 次往返）。buildInClause 已防空数组误删全表。
+        legs.forEach(l => { if (l.account_id) affected.add(l.account_id); });
+        const { sql: inSql, params: inParams } = db.buildInClause(legs.map(l => l.id));
+        await conn.query(`DELETE FROM transactions WHERE user_id = ? AND book_id = ? AND id ${inSql}`, [userId, bookId, ...inParams]);
     } else if (repayment.transaction_id) {
         // 历史数据没有 link 标记：退化为只删主腿
         await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [repayment.transaction_id, userId, bookId]);

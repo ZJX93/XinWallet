@@ -161,24 +161,40 @@ app.use((req, res, next) => {
     const isHtml = urlPath === '/' || /\.html$/.test(urlPath);
     if (req.method !== 'GET' || !isHtml) return next();
     const filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
-    fs.readFile(filePath, 'utf8', (err, html) => {
-        if (err) return next();
-        const busted = html.replace(
-            /(src|href)="([^"]+\.(?:js|css))(\?v=[^"]*)?"/g,
-            (m, attr, file) => {
-                const abs = path.join(PUBLIC_DIR, file.replace(/^\/+/, ''));
-                try {
-                    const t = (fs.statSync(abs).mtimeMs | 0).toString();
-                    return `${attr}="${file}?v=${t}"`;
-                } catch (e) {
-                    return m; // 文件不存在则保持原样
-                }
-            }
-        );
-        res.setHeader('Cache-Control', 'no-store');
-        res.send(busted);
-    });
+    // H7：原实现在每个 HTML 请求路径上同步调用 fs.statSync 逐个探测引用资源，
+    // 阻塞事件循环。改为异步读取 HTML，再异步批量 stat 所有引用资源后拼接版本号。
+    fs.promises.readFile(filePath, 'utf8').then(async (html) => {
+        try {
+            const busted = await bustAssetVersions(html);
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(busted);
+        } catch (e) {
+            // 异常兜底：返回未加版本号的 HTML，不阻断页面访问
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(html);
+        }
+    }).catch(() => next());
 });
+
+// H7：用异步 stat 批量收集引用资源的 mtime（替代原 fs.statSync 同步阻塞事件循环）
+async function bustAssetVersions(html) {
+    const RE = /(src|href)="([^"]+\.(?:js|css))(\?v=[^"]*)?"/g;
+    const files = new Set();
+    let m;
+    while ((m = RE.exec(html)) !== null) files.add(m[2]);
+    const versions = new Map();
+    await Promise.all([...files].map(async (file) => {
+        const abs = path.join(PUBLIC_DIR, file.replace(/^\/+/, ''));
+        try {
+            const st = await fs.promises.stat(abs);
+            versions.set(file, (st.mtimeMs | 0).toString());
+        } catch (_) { /* 文件不存在则保持原样 */ }
+    }));
+    return html.replace(RE, (match, attr, file) => {
+        const v = versions.get(file);
+        return v ? `${attr}="${file}?v=${v}"` : match;
+    });
+}
 
 app.use(express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {

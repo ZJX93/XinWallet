@@ -70,21 +70,22 @@ function dockerExec(args, timeoutMs) {
 
 // ---- 更新状态读写（/app/data/.update/*，与应用同卷，重建后可读）----
 
-function readStateFile(name) {
+// H7：异步化（原 readFileSync/writeFileSync/mkdirSync 在请求路径上同步阻塞事件循环）
+async function readStateFile(name) {
     try {
-        return fs.readFileSync(path.join(STATE_DIR, name), 'utf8').trim();
+        return (await fs.promises.readFile(path.join(STATE_DIR, name), 'utf8')).trim();
     } catch (e) {
         return null;
     }
 }
 
 // 供 pull 失败等「主容器自己就能判断」的错误直接落盘（新容器起来后仍能看到）
-function writeStateNow(code, logText) {
+async function writeStateNow(code, logText) {
     try {
-        fs.mkdirSync(STATE_DIR, { recursive: true });
-        fs.writeFileSync(path.join(STATE_DIR, 'exit_code'), String(code));
-        fs.writeFileSync(path.join(STATE_DIR, 'ts'), new Date().toISOString());
-        fs.writeFileSync(path.join(STATE_DIR, 'last.log'), String(logText).slice(-200000));
+        await fs.promises.mkdir(STATE_DIR, { recursive: true });
+        await fs.promises.writeFile(path.join(STATE_DIR, 'exit_code'), String(code));
+        await fs.promises.writeFile(path.join(STATE_DIR, 'ts'), new Date().toISOString());
+        await fs.promises.writeFile(path.join(STATE_DIR, 'last.log'), String(logText).slice(-200000));
     } catch (e) {
         console.warn('[update] 写入更新状态失败:', e.message);
     }
@@ -186,9 +187,9 @@ router.get('/check', checkLimiter, async (req, res) => {
 //   让前端能区分「完全没挂」、「挂错位置」、「挂的是容器临时层」三种根因，
 //   并把 ENCRYPTION_KEY 不能持久化的更严重后果也带上。）
 router.get('/status', statusLimiter, async (req, res) => {
-    const exitCodeRaw = readStateFile('exit_code');
-    const ts = readStateFile('ts');
-    let logTail = readStateFile('last.log');
+    const exitCodeRaw = await readStateFile('exit_code');
+    const ts = await readStateFile('ts');
+    let logTail = await readStateFile('last.log');
     if (logTail && logTail.length > 8000) logTail = logTail.slice(-8000); // 只回传尾部，控制响应体积
     const hasStateDir = (() => { try { return fs.existsSync(STATE_DIR); } catch (e) { return false; } })();
 
@@ -280,7 +281,7 @@ async function runApply() {
     if (pull.err) {
         const reason = (pull.stderr || '').trim() || pull.err.message;
         console.error('[update] docker pull 失败，已保留当前版本:', reason);
-        writeStateNow(1, `docker pull ${UPDATE_IMAGE} 失败：${reason}`);
+        await writeStateNow(1, `docker pull ${UPDATE_IMAGE} 失败：${reason}`);
         return;
     }
     console.log('[update] 镜像拉取完成，开始重建容器:', UPDATE_IMAGE);
@@ -361,7 +362,7 @@ async function recreateSelf(oldImageId) {
     if (run.err) {
         console.error('[update] 启动重建辅助容器失败:', run.err.message);
         // 辅助容器都没起来：直接在本地落盘，让 UI 能显示失败原因
-        writeStateNow(1, `启动重建辅助容器失败：${run.err.message}`);
+        await writeStateNow(1, `启动重建辅助容器失败：${run.err.message}`);
         return;
     }
     console.log('[update] 重建辅助容器已启动:', String(run.stdout || '').trim().slice(0, 12));
