@@ -894,6 +894,21 @@ function jsonObj(...args) {
 }
 
 /**
+ * 双方言「日期 + N 天」表达式（审计 H6：替代 DATE(t.date) BETWEEN 这类
+ * 对列套函数的写法——函数会让 (user_id, date) 索引失效）。
+ * @param {string} expr 日期表达式（列名或参数占位符外的 SQL 片段）
+ * @param {number} days 天数（可为负）
+ * @returns {string} 方言适配的 SQL 片段
+ * 用法：t.date >= b.start_date AND t.date < ${db.dateAddDays('b.end_date', 1)}
+ */
+function dateAddDays(expr, days) {
+    if (DB_DIALECT === 'mysql') {
+        return `DATE_ADD(${expr}, INTERVAL ${days} DAY)`;
+    }
+    return `(${expr} + ${days})`; // PG: date + integer = date + N 天
+}
+
+/**
  * 双方言 JSON 对象聚合函数：MySQL `JSON_OBJECTAGG(k, v)` ↔ PG `json_object_agg(k, v)`。
  *
  * 用法：
@@ -908,5 +923,5 @@ function jsonAgg(...args) {
 module.exports = {
   pool, query, queryOne, transaction, initDatabase,
   healBooks, ensureDefaultBookId, DB_DIALECT, upsertSql,
-  buildInClause, insertIgnoreSql, jsonObj, jsonAgg,
+  buildInClause, insertIgnoreSql, jsonObj, jsonAgg, dateAddDays,
 };

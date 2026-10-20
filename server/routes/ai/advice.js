@@ -6,6 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, extractJson, callProvider, getActiveProvider, checkProvider, aiModule } = require('./_shared');
+const { monthRange } = require('../../services/date-range');
 const router = express.Router();
 router.post('/advice', async (req, res) => {
     try {
@@ -13,14 +14,18 @@ router.post('/advice', async (req, res) => {
         if (!checkProvider(res, provider)) return;
 
         // 收集用户财务数据：本月交易汇总、预算、储蓄目标、账户、债务
-        const currentMonth = new Date().toISOString().slice(0, 7);
+        // M7：当前月取本地口径（UTC+8 凌晨 toISOString 会落到上个月）
+        const _now = new Date();
+        const currentMonth = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
+        // H6：月度筛选改索引友好的左闭右开区间（原 CAST LIKE 令索引失效）
+        const curRange = monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' };
         const [summary, budgets, goals, accounts, debts] = await Promise.all([
             db.query(
                 `SELECT c.name AS category, t.type, SUM(t.amount) AS total, COUNT(*) AS cnt
                  FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+                 WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
                  GROUP BY c.name, t.type ORDER BY total DESC`,
-                [req.userId, req.bookId, currentMonth + '%']
+                [req.userId, req.bookId, curRange.start, curRange.endExclusive]
             ),
             db.query(
                 'SELECT name, amount FROM budgets WHERE user_id = ? AND book_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
@@ -42,16 +47,18 @@ router.post('/advice', async (req, res) => {
         ]);
 
         // 也获取上月数据用于环比
+        // M7：上月取本地口径（setMonth 处理跨年；toISOString 在 UTC+8 凌晨会错月）
         const prevMonth = (() => {
             const d = new Date(); d.setMonth(d.getMonth() - 1);
-            return d.toISOString().slice(0, 7);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         })();
+        const prevRange = monthRange(prevMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' };
         const prevSummary = await db.query(
             `SELECT c.name AS category, t.type, SUM(t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
              GROUP BY c.name, t.type ORDER BY total DESC`,
-            [req.userId, req.bookId, prevMonth + '%']
+            [req.userId, req.bookId, prevRange.start, prevRange.endExclusive]
         );
 
         const curExpense = summary.filter(r => r.type === 'expense').reduce((s, r) => s + parseFloat(r.total), 0);

@@ -10,6 +10,7 @@ const router = express.Router();
 
 // 财务分析工具（只读）：经 modules/ai 桶文件导出 —— 路由层不直接依赖 AI 内部模块
 const financeTools = aiModule.financeTools;
+const { monthRange } = require('../../services/date-range');
 
 router.post('/chat', async (req, res) => {
     try {
@@ -257,7 +258,11 @@ ${accRef}`;
             }
             if (name === 'query_stats') {
                 const metric = args.metric;
-                const month = args.month || new Date().toISOString().slice(0, 7);
+                // H6/M7：默认月份取本地当前月（UTC+8 凌晨 toISOString 会落到上个月）；
+                // 月度筛选同步改索引友好的左闭右开区间（原 CAST LIKE 令索引失效）。
+                const _now = new Date();
+                const month = args.month || `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
+                const range = monthRange(month) || { start: '9999-12-31', endExclusive: '9999-12-31' };
                 if (metric === 'total_balance') {
                     const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = ? AND book_id = ? AND status='active'", [req.userId, req.bookId]);
                     return { ok: true, metric, value: parseFloat(rows[0].b) };
@@ -266,8 +271,8 @@ ${accRef}`;
                     const rows = await db.query(
                         `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as inc,
                                 COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as exp
-                         FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ? AND type IN ('income','expense')`,
-                        [req.userId, req.bookId, month + '%']
+                         FROM transactions WHERE user_id = ? AND book_id = ? AND date >= ? AND date < ? AND type IN ('income','expense')`,
+                        [req.userId, req.bookId, range.start, range.endExclusive]
                     );
                     const inc = parseFloat(rows[0].inc), exp = parseFloat(rows[0].exp);
                     const value = metric === 'month_income' ? inc : metric === 'month_expense' ? exp : (inc - exp);
@@ -277,9 +282,9 @@ ${accRef}`;
                     const rows = await db.query(
                         `SELECT c.name, COALESCE(SUM(t.amount),0) as amt FROM transactions t
                          LEFT JOIN categories c ON t.category_id = c.id
-                         WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ? AND t.type='expense'
+                         WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ? AND t.type='expense'
                          GROUP BY c.name ORDER BY amt DESC LIMIT 8`,
-                        [req.userId, req.bookId, month + '%']
+                        [req.userId, req.bookId, range.start, range.endExclusive]
                     );
                     return { ok: true, metric, month, rows: rows.map(r => ({ name: r.name, amount: parseFloat(r.amt) })) };
                 }

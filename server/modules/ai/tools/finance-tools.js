@@ -17,7 +17,9 @@
       （历史教训：已删除的 tool-registry.js 实现就没有 book_id 过滤。）
    3. SQL 必须 PostgreSQL / MySQL 双方言兼容：
       禁用 TO_CHAR / DATE_TRUNC / CURDATE()-INTERVAL，
-      月度筛选统一用 CAST(date AS CHAR(10)) LIKE 'YYYY-MM%'。
+      月度筛选统一用左闭右开区间 date >= 'YYYY-MM-01' AND date < '次月-01'
+      （H6 修复：原 CAST(date AS CHAR(10)) LIKE 会对 date 列套函数导致索引失效；
+      区间写法双方言均可用且走 (user_id, date) 索引）。
 
    ⛔ 与已删除的 tools/tool-registry.js 的关系：
    它是同领域工具，但字段名与 schema 不符（trans_date/period/category_id）、
@@ -27,6 +29,7 @@
 
 const { calcDebtDueSummary } = require('../../../services/debt-summary');
 const { calcPortfolioMetrics } = require('../../../services/portfolio');
+const { monthRange } = require('../../../services/date-range');
 
 /** 金额统一 2 位小数，避免浮点尾数（如 638.4000000000001）污染 LLM 输入 */
 function round2(n) {
@@ -82,8 +85,8 @@ async function getFinancialOverview(db, { userId, bookId, month } = {}) {
                     COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
                FROM transactions
               WHERE user_id = ? AND book_id = ?
-                AND CAST(date AS CHAR(10)) LIKE ?`,
-            [userId, bookId, `${ym}%`]
+                AND date >= ? AND date < ?`,
+            [userId, bookId, (monthRange(ym) || { start: '9999-12-31', endExclusive: '9999-12-31' }).start, (monthRange(ym) || { start: '9999-12-31', endExclusive: '9999-12-31' }).endExclusive]
         ),
     ]);
 

@@ -7,6 +7,7 @@ const {
     ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict
 } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
+const { monthRange } = require('../services/date-range');
 
 // 转账分类解析：用户选定的优先，未选 / 非法则兜底「一般转账」。
 // 校验点有两个：必须是 transfer 类型（不能把支出分类挂到转账上），
@@ -51,9 +52,15 @@ router.get('/', async (req, res) => {
       WHERE t.user_id = ? AND t.book_id = ?`;
         const params = [req.userId, req.bookId];
 
+        // H6 修复：月度筛选改索引友好的左闭右开区间（原 CAST LIKE 令索引失效）
         if (month) {
-            sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
-            params.push(month + '%');
+            const range = monthRange(month);
+            if (range) {
+                sql += ' AND t.date >= ? AND t.date < ?';
+                params.push(range.start, range.endExclusive);
+            } else {
+                sql += ' AND 1=0'; // 月份格式非法：与原 CAST LIKE 一致查无结果
+            }
         }
 
         sql += ' ORDER BY t.date DESC, t.id DESC';

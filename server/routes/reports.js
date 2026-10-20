@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // 综合报表 API
 // ==========================================
 
@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly } = require('./_helpers');
+const { nextDay } = require('../services/date-range');
 
 // ==========================================
 // 轻量内存缓存：避免同一周期内重复聚合
@@ -305,11 +306,17 @@ function daysInRange(start, end) {
 async function buildReport(userId, bookId, type, period) {
     const range = parseReportPeriod(type, period);
     const start = range.start, end = range.end;
+    // H6/正确性修复：date 列是 TIMESTAMP，`date <= '月末'` 会把右值 Cast 成
+    // 当天 00:00:00，导致周期最后一天（除零点）的交易全部漏统计。统一改用
+    // 左闭右开区间：date >= start AND date < endExclusive（endExclusive=end+1天）。
+    // end 本身保持「含当天的截止日」语义，继续用于响应体与期间天数计算。
+    const endExclusive = nextDay(end);
     const days = daysInRange(start, end);
     const periodMonths = monthsInRange(start, end);
 
     const prev = prevPeriod(type, period);
     const prevRange = prev ? parseReportPeriod(prev.type, prev.period) : null;
+    const prevRangeEndExclusive = prevRange ? nextDay(prevRange.end) : null;
     const hasMonths = periodMonths.length > 0;
 
     // 性能优化：原实现串行执行约 13 次 DB 查询（接口延迟≈各查询耗时之和）。
@@ -329,10 +336,10 @@ async function buildReport(userId, bookId, type, period) {
                 COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense,
                 COUNT(*) AS tx_count
              FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
                AND t.type IN ('expense','income','transfer_in','transfer_out')
              GROUP BY a.currency`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         // 多币种 P2-2d：日趋势按 date × currency 双维度分组；JS 端用 _groupDailyByCurrency 折 breakdown
         db.query(
@@ -340,10 +347,10 @@ async function buildReport(userId, bookId, type, period) {
                 COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
                 COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
              FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
                AND t.type IN ('expense','income','transfer_in','transfer_out')
              GROUP BY CAST(t.date AS CHAR(10)), a.currency ORDER BY date`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         // 分类金额「子级向父级汇总」——在数据库层用递归 CTE 完成，语义同财务成本科目：
         // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和。
@@ -365,7 +372,7 @@ async function buildReport(userId, bookId, type, period) {
                JOIN transactions t
                  ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense'
-                AND t.date >= ? AND t.date <= ?
+                AND t.date >= ? AND t.date < ?
                LEFT JOIN accounts a2 ON t.account_id = a2.id
              ),
              agg AS (
@@ -378,7 +385,7 @@ async function buildReport(userId, bookId, type, period) {
              JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
              ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         db.query(
             `WITH RECURSIVE anc AS (
@@ -395,7 +402,7 @@ async function buildReport(userId, bookId, type, period) {
                JOIN transactions t
                  ON t.category_id = a.node
                 AND t.user_id = ? AND t.book_id = ? AND t.type = 'income'
-                AND t.date >= ? AND t.date <= ?
+                AND t.date >= ? AND t.date < ?
                LEFT JOIN accounts a2 ON t.account_id = a2.id
              ),
              agg AS (
@@ -408,17 +415,17 @@ async function buildReport(userId, bookId, type, period) {
              JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
              ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         // 多币种 P2-2d：账户净流加 currency 列（每账户单货币——账户本身就是 currency 的载体）
         db.query(
             `SELECT a.id, a.name, a.icon, a.type, a.currency,
                 COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0) as net
              FROM transactions t JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ? AND t.type IN ('expense','income','transfer_in','transfer_out')
              GROUP BY a.id, a.name, a.icon, a.type, a.currency
              ORDER BY ABS(COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0)) DESC`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         // 多币种 P2-2d：top 交易附加 currency（LEFT JOIN accounts）——前端展示按交易币种格式化
         db.query(
@@ -426,9 +433,9 @@ async function buildReport(userId, bookId, type, period) {
              FROM transactions t
              JOIN categories c ON t.category_id = c.id
              LEFT JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date < ?
              ORDER BY t.amount DESC LIMIT 5`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         // 仅当周期含月份时才查预算（无月份范围时预算执行无意义）
         // 多币种 P2-2d：actual 子查询用 JSON_OBJECTAGG 按账户币种 GROUP BY，合并到 budgetRows 单次查询
@@ -440,7 +447,7 @@ async function buildReport(userId, bookId, type, period) {
                            FROM (SELECT t.account_id, SUM(t.amount) AS cnt FROM transactions t
                                  LEFT JOIN categories c2 ON t.category_id = c2.id
                                  WHERE t.user_id = b.user_id AND t.book_id = b.book_id AND t.type = 'expense'
-                                   AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+                                   AND t.date >= b.start_date AND t.date < ${db.dateAddDays('b.end_date', 1)}
                                    AND (t.budget_id = b.id OR (c2.name = b.name AND c2.type = 'expense'))
                                  GROUP BY t.account_id) sums
                            LEFT JOIN accounts a ON sums.account_id = a.id) AS actual_breakdown_json
@@ -474,9 +481,9 @@ async function buildReport(userId, bookId, type, period) {
                     COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
                     COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
                  FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-                 WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+                 WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
                  GROUP BY a.currency`,
-                [userId, bookId, prevRange.start, prevRange.end]
+                [userId, bookId, prevRange.start, prevRangeEndExclusive]
             )
             : Promise.resolve([]),
         // 多币种 P2-2c：debts.currency 列已加，SELECT 显式读出
@@ -488,8 +495,8 @@ async function buildReport(userId, bookId, type, period) {
         // 多币种 P2-2d：debt_repayments.currency 列已加（跟随债务币种），SELECT 显式读出
         db.query(
             `SELECT debt_id, amount, principal_part, interest_part, paid_at, note, currency
-             FROM debt_repayments WHERE user_id = ? AND book_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
-            [userId, bookId, start, end]
+             FROM debt_repayments WHERE user_id = ? AND book_id = ? AND paid_at >= ? AND paid_at < ? ORDER BY paid_at DESC`,
+            [userId, bookId, start, endExclusive]
         ),
     ]);
 
@@ -915,6 +922,9 @@ async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, current
 
 // ==================== 现金流量表（按活动分类）====================
 async function buildCashFlow(userId, bookId, start, end, income, expense, debtRepayment, periodPaidBreakdown = null) {
+    // H6/正确性修复：date/investment_transactions.date 等是 TIMESTAMP/DATETIME，
+    // 闭区间会漏掉截止日当天零点后的记录。改左闭右开（endExclusive = end + 1 天）。
+    const endExclusive = nextDay(end);
     // 经营活动：日常收支（expense + income，不含投资交易和转账的净额）
     const operatingIncome = income;
     const operatingExpense = expense;
@@ -926,19 +936,19 @@ async function buildCashFlow(userId, bookId, start, end, income, expense, debtRe
     const [investBuy, investSell, debtNew] = await Promise.all([
         db.query(
             `SELECT currency, COALESCE(SUM(amount), 0) AS total FROM investment_transactions
-             WHERE user_id = ? AND book_id = ? AND type = 'buy' AND date BETWEEN ? AND ?
+             WHERE user_id = ? AND book_id = ? AND type = 'buy' AND date >= ? AND date < ?
              GROUP BY currency`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         db.query(
             `SELECT currency, COALESCE(SUM(amount), 0) AS total FROM investment_transactions
-             WHERE user_id = ? AND book_id = ? AND type = 'sell' AND date BETWEEN ? AND ?
+             WHERE user_id = ? AND book_id = ? AND type = 'sell' AND date >= ? AND date < ?
              GROUP BY currency`,
-            [userId, bookId, start, end]
+            [userId, bookId, start, endExclusive]
         ),
         db.query(
             `SELECT currency, COALESCE(SUM(principal), 0) AS total FROM debts
-             WHERE user_id = ? AND book_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?
+             WHERE user_id = ? AND book_id = ? AND status != 'paid_off' AND created_at >= ? AND created_at < ?
              GROUP BY currency`,
             [userId, bookId, start + ' 00:00:00', end + ' 23:59:59']
         ),
@@ -1037,15 +1047,18 @@ router.get('/top-transactions', async (req, res) => {
             return res.status(400).json(fail('请指定周期（YYYY-MM / YYYY / YYYY-MM~YYYY-MM）'));
         }
         const tType = type === 'income' ? 'income' : 'expense';
+        // H6/正确性修复：date 是 TIMESTAMP，闭区间 `<= 截止日` 会漏掉截止日当天
+        // 零点后的交易。改左闭右开（endExclusive = end + 1 天）。
+        const endExclusive = nextDay(end);
         // 多币种 P2-2d：LEFT JOIN accounts 取 currency——交易本身无 currency 列，币种跟随账户
         const rows = await db.query(
             `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon, a.currency
              FROM transactions t
              JOIN categories c ON t.category_id = c.id
              LEFT JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.book_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = ? AND t.date >= ? AND t.date < ?
              ORDER BY t.amount DESC LIMIT 5`,
-            [req.userId, req.bookId, tType, start, end]
+            [req.userId, req.bookId, tType, start, endExclusive]
         );
         res.json(success({
             items: rows.map(r => ({

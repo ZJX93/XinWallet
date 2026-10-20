@@ -74,7 +74,9 @@ router.get('/', async (req, res) => {
         // 既要求交易显式带 budget_id（多数记账不会带），又累计预算周期外的全部历史支出，
         // 导致进度条要么恒为 0、要么虚高）。
         // 现统一为：周期内「分类名 == 预算名」的支出 + 直接关联 budget_id 的支出（OR 覆盖两种记账习惯）。
-        // 日期用 CAST(date AS CHAR(10)) BETWEEN，跨方言且与 monthData 口径一致，且包含月末当天非零点时刻。
+        // 日期范围（H6 修复）：原 DATE(t.date) BETWEEN 对 date 列套函数导致
+        // (user_id, date) 索引失效。改「>= 周期起 AND < 周期止+1天」的左闭右开
+        // 区间——语义与原写法完全一致（含截止日全天），且双方言可走索引。
         let sql = `SELECT b.*,
             COALESCE((
               SELECT ${db.jsonAgg('a.currency', 'sums.cnt')} FROM (
@@ -83,7 +85,7 @@ router.get('/', async (req, res) => {
                 LEFT JOIN categories c ON t.category_id = c.id
                 WHERE t.user_id = b.user_id AND t.book_id = b.book_id
                   AND t.type = 'expense'
-                  AND DATE(t.date) BETWEEN b.start_date AND b.end_date
+                  AND t.date >= b.start_date AND t.date < ${db.dateAddDays('b.end_date', 1)}
                   AND (t.budget_id = b.id OR (c.name = b.name AND c.type = 'expense'))
                 GROUP BY t.account_id
               ) sums LEFT JOIN accounts a ON sums.account_id = a.id

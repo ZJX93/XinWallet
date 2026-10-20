@@ -99,9 +99,14 @@ test('get_financial_overview: month 参数只影响收支统计的月份筛选',
     await getFinancialOverview(db, { userId: USER_ID, bookId: BOOK_ID, month: '2026-05' });
 
     const txCall = db.calls.find(c => /FROM transactions/.test(c.sql));
-    assert.ok(txCall.params.includes('2026-05%'), '月度筛选应传 YYYY-MM%');
+    // H6 修复：月度筛选从 CAST(date AS CHAR(10)) LIKE 'YYYY-MM%'（索引失效）
+    // 改为左闭右开区间 date >= '2026-05-01' AND date < '2026-06-01'
+    assert.ok(txCall.params.includes('2026-05-01'), '月度筛选起点应为 2026-05-01');
+    assert.ok(txCall.params.includes('2026-06-01'), '月度筛选右开界应为 2026-06-01');
     // 跨方言要求：禁用 TO_CHAR / DATE_TRUNC
     assert.doesNotMatch(txCall.sql, /TO_CHAR|DATE_TRUNC/i);
+    // 不应对 date 列套函数（CAST/DATE 等都会令 (user_id, date) 索引失效）
+    assert.doesNotMatch(txCall.sql, /\b(CAST|DATE)\s*\(/i);
 });
 
 /* ─────────── 2. 债务 ─────────── */

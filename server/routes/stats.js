@@ -8,6 +8,7 @@ const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, ensureWeeklySnapshots, sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf } = require('./_helpers');
 // 组合指标统一走共享服务（修复 m2 重复实现）
 const { calcPortfolioMetrics } = require('../services/portfolio');
+const { monthRange, yearRange, nextDay } = require('../services/date-range');
 
 const router = express.Router();
 
@@ -153,34 +154,39 @@ router.get('/dashboard', async (req, res) => {
                 [req.userId, req.bookId, today]
             ),
             // 本周收支（周一~今天，多币种 P2-2d）
+            // H6 修复：date 是 TIMESTAMP，原 `t.date <= 今天(日期字面量)` 会把右值
+            // Cast 成当天 00:00:00，导致「今天的交易全部漏统计」。改左闭右开：
+            // >= 周一 AND < 明天，覆盖今天全天。
             db.query(
                 `SELECT a.currency AS currency,
                     COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
                     COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
        FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ?
+       WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
        GROUP BY a.currency`,
-                [req.userId, req.bookId, weekStart, weekEnd]
+                [req.userId, req.bookId, weekStart, nextDay(weekEnd)]
             ),
             // 本月收支（多币种 P2-2d）
+            // H6 修复：CAST LIKE 改索引友好的左闭右开区间
             db.query(
                 `SELECT a.currency AS currency,
         COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
         COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
        FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+       WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
        GROUP BY a.currency`,
-                [req.userId, req.bookId, currentMonth + '%']
+                [req.userId, req.bookId, (monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' }).start, (monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' }).endExclusive]
             ),
             // 本年收支（多币种 P2-2d）
+            // H6 修复：CAST LIKE 改索引友好的左闭右开区间
             db.query(
                 `SELECT a.currency AS currency,
         COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) AS income,
         COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS expense
        FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ?
+       WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date < ?
        GROUP BY a.currency`,
-                [req.userId, req.bookId, currentYear + '%']
+                [req.userId, req.bookId, (yearRange(currentYear) || { start: '9999-12-31', endExclusive: '9999-12-31' }).start, (yearRange(currentYear) || { start: '9999-12-31', endExclusive: '9999-12-31' }).endExclusive]
             ),
             // 最近6月趋势（多币种 P2-2d：month × currency 双维度分组）
             db.query(
@@ -291,9 +297,9 @@ router.get('/dashboard', async (req, res) => {
                 `SELECT COALESCE(t.currency, 'CNY') AS currency,
                         COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) AS net_savings
                  FROM savings_transactions t
-                 WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?
+                 WHERE user_id = ? AND book_id = ? AND date >= ? AND date < ?
                  GROUP BY COALESCE(t.currency, 'CNY')`,
-                [req.userId, req.bookId, currentMonth + '%']
+                [req.userId, req.bookId, (monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' }).start, (monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' }).endExclusive]
             ).catch(err => {
                 console.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
                 return null;
@@ -523,22 +529,27 @@ router.get('/dashboard/detail', async (req, res) => {
         const weekStart = fmtDateOnly(monday);
 
         let dateCondition, dateParams = [];
+        // H6 修复：date 是 TIMESTAMP，`t.date = 今天`/`<= 今天` 都会把右值 Cast 成
+        // 当天 00:00:00，导致今天的交易几乎全部漏统计（"今日收支"卡片恒为 0/缺当天）。
+        // 统一改左闭右开区间；月度/年度同时把 CAST LIKE 改为走索引的范围条件。
+        const _mr = monthRange(currentMonth) || { start: '9999-12-31', endExclusive: '9999-12-31' };
+        const _yr = yearRange(currentYear) || { start: '9999-12-31', endExclusive: '9999-12-31' };
         switch (type) {
             case 'today':
-                dateCondition = 't.date = ?';
-                dateParams = [today];
+                dateCondition = 't.date >= ? AND t.date < ?';
+                dateParams = [today, nextDay(today)];
                 break;
             case 'week':
-                dateCondition = 't.date >= ? AND t.date <= ?';
-                dateParams = [weekStart, today];
+                dateCondition = 't.date >= ? AND t.date < ?';
+                dateParams = [weekStart, nextDay(today)];
                 break;
             case 'month':
-                dateCondition = 'CAST(t.date AS CHAR(10)) LIKE ?';
-                dateParams = [currentMonth + '%'];
+                dateCondition = 't.date >= ? AND t.date < ?';
+                dateParams = [_mr.start, _mr.endExclusive];
                 break;
             case 'year':
-                dateCondition = 'CAST(t.date AS CHAR(10)) LIKE ?';
-                dateParams = [currentYear + '%'];
+                dateCondition = 't.date >= ? AND t.date < ?';
+                dateParams = [_yr.start, _yr.endExclusive];
                 break;
             case 'assets':
                 const accounts = await db.query(

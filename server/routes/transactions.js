@@ -13,6 +13,7 @@ const {
 const { syncCreditCardDebt, resolveNote } = require('./utils');
 const fxService = require('../services/fx-rates');
 const { toCents, fromCents, roundAmount, roundPrice } = require('../services/money');
+const { monthRange, addDays } = require('../services/date-range');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
@@ -232,14 +233,19 @@ router.get('/', async (req, res) => {
             sql += ' AND t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?)';
             params.push(parseInt(tag_id));
         }
-        // 日期范围：与 CAST(t.date AS CHAR(10)) 比较，按 YYYY-MM-DD 字符串序即可
+        // 日期范围：H6 修复——去掉 CAST（否则索引失效）。date 是 TIMESTAMP，
+        // 右界用「end_date 次日」的左闭右开区间，保证 end_date 当天全天都包含
+        // （原 CAST <= 字符串比较虽含全天，但 t.date <= 字面量会漏当天零点后交易）。
         if (start_date) {
-            sql += ' AND CAST(t.date AS CHAR(10)) >= ?';
+            sql += ' AND t.date >= ?';
             params.push(start_date);
         }
         if (end_date) {
-            sql += ' AND CAST(t.date AS CHAR(10)) <= ?';
-            params.push(end_date);
+            const endExclusive = addDays(end_date, 1);
+            if (endExclusive) {
+                sql += ' AND t.date < ?';
+                params.push(endExclusive);
+            }
         }
         // 金额范围（独立于旧的 amount_op/amount_val/amount_val2，UI 用 amount range 时走这里）
         if (min_amount !== undefined && min_amount !== '' && !isNaN(parseFloat(min_amount))) {
@@ -414,9 +420,15 @@ router.get('/ledger', async (req, res) => {
             LEFT JOIN categories c ON t.category_id = c.id
             WHERE t.user_id = ? AND t.book_id = ?`;
         const params = [req.userId, req.bookId];
+        // H6 修复：月度筛选改索引友好的左闭右开区间（同列表路由）
         if (month && month !== 'all') {
-            sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
-            params.push(month + '%');
+            const range = monthRange(month);
+            if (range) {
+                sql += ' AND t.date >= ? AND t.date < ?';
+                params.push(range.start, range.endExclusive);
+            } else {
+                sql += ' AND 1=0';
+            }
         }
         sql += ' ORDER BY t.date DESC, t.id DESC';
         const rows = await db.query(sql, params);
@@ -713,15 +725,20 @@ router.get('/summary', async (req, res) => {
         const { month } = req.query;
         if (!month) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('请指定月份'));
 
+        // H6 修复：月度筛选改索引友好的左闭右开区间（原 CAST(date AS CHAR(10)) LIKE
+        // 对 date 列套函数，(user_id, date) 索引失效）。非法月份用空区间表达
+        // （>= X AND < X 恒假），与原 CAST LIKE 查无结果的行为一致。
+        const range = monthRange(month) || { start: '9999-12-31', endExclusive: '9999-12-31' };
+
         const incomeRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND book_id = ? AND type = 'income' AND CAST(date AS CHAR(10)) LIKE ?`,
-            [req.userId, req.bookId, month + '%']
+       WHERE user_id = ? AND book_id = ? AND type = 'income' AND date >= ? AND date < ?`,
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
         const expenseRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND book_id = ? AND type = 'expense' AND CAST(date AS CHAR(10)) LIKE ?`,
-            [req.userId, req.bookId, month + '%']
+       WHERE user_id = ? AND book_id = ? AND type = 'expense' AND date >= ? AND date < ?`,
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
 
         // 多币种 P2-3c：按 currency GROUP BY 取各币种收支（COALESCE 兜底老数据 currency=NULL → CNY）。
@@ -732,9 +749,9 @@ router.get('/summary', async (req, res) => {
              FROM transactions t
              LEFT JOIN accounts a ON t.account_id = a.id
              WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'income'
-               AND CAST(t.date AS CHAR(10)) LIKE ?
+               AND t.date >= ? AND t.date < ?
              GROUP BY COALESCE(t.currency, a.currency, 'CNY')`,
-            [req.userId, req.bookId, month + '%']
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
         const expenseByCurRows = await db.query(
             `SELECT COALESCE(t.currency, a.currency, 'CNY') AS currency,
@@ -742,9 +759,9 @@ router.get('/summary', async (req, res) => {
              FROM transactions t
              LEFT JOIN accounts a ON t.account_id = a.id
              WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense'
-               AND CAST(t.date AS CHAR(10)) LIKE ?
+               AND t.date >= ? AND t.date < ?
              GROUP BY COALESCE(t.currency, a.currency, 'CNY')`,
-            [req.userId, req.bookId, month + '%']
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
         /**
          * breakdown 智能主货币：选 amount 绝对值最大的币种作 base（混币种账本下大概率是用户主力货币），
@@ -792,7 +809,7 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(t.currency, a2.currency, 'CNY') AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND CAST(t.date AS CHAR(10)) LIKE ?
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date < ?
                LEFT JOIN accounts a2 ON t.account_id = a2.id
              ),
              agg AS (
@@ -804,7 +821,7 @@ router.get('/summary', async (req, res) => {
              FROM agg JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
              ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
-            [req.userId, req.bookId, month + '%']
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
 
         const incByCat = await db.query(
@@ -819,7 +836,7 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(t.currency, a2.currency, 'CNY') AS currency, t.amount AS amount
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.book_id = ? AND t.type = 'income' AND CAST(t.date AS CHAR(10)) LIKE ?
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'income' AND t.date >= ? AND t.date < ?
                LEFT JOIN accounts a2 ON t.account_id = a2.id
              ),
              agg AS (
@@ -831,7 +848,7 @@ router.get('/summary', async (req, res) => {
              FROM agg JOIN categories c ON c.id = agg.cat_id
              GROUP BY c.id, c.name, c.icon, c.parent_id
              ORDER BY (SELECT COALESCE(SUM(total), 0) FROM agg a2 WHERE a2.cat_id = c.id) DESC`,
-            [req.userId, req.bookId, month + '%']
+            [req.userId, req.bookId, range.start, range.endExclusive]
         );
 
         const income = parseFloat(incomeRow.total);
