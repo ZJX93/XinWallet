@@ -147,7 +147,7 @@ const SavingsGoalManager = {
             const isObj = typeof p === 'object';
             const label = isObj ? p.label : fmt(p);
             const value = isObj ? (p.value > 0 ? Number(p.value).toFixed(2) : '') : String(p);
-            return `<button type="button" class="quick-amount" data-val="${value}">${label}</button>`;
+            return `<button type="button" class="quick-amount" data-val="${value}">${escapeHtml(label)}</button>`;
         }).join('');
         quick.querySelectorAll('.quick-amount').forEach(btn => {
             btn.addEventListener('click', () => {

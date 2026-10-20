@@ -335,9 +335,9 @@ const ChartManager = {
             empty.className = 'pie-empty';
             wrap.appendChild(empty);
         }
-        // 允许用 \n 换行
+        // 允许用 \n 换行（每行转义：msg 可能含动态拼接内容）
         empty.innerHTML = `<div class="empty-text">${
-            String(msg).split('\n').map(l => `<div>${l}</div>`).join('')
+            String(msg).split('\n').map(l => `<div>${escapeHtml(l)}</div>`).join('')
         }</div>`;
     },
 

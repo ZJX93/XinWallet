@@ -195,7 +195,8 @@ const AIRules = {
             const amount = typeof ev.amount === 'number' ? ev.amount.toFixed(2) : (ev.amount || '0.00');
             const merchant = escapeHtml(ev.merchant || ev.merchant_key || tt('aiRules.evidence.noMerchant', '无商家'));
             const cat = escapeHtml(ev.category_name || ev.category || tt('aiRules.evidence.unknownCategory', '未知类目'));
-            const note = ev.note ? `<div class="ai-rules-ev-note">${escapeHtml(tt('aiRules.evidence.notePrefix', '备注：'))}${escapeHtml(ev.note)}</div>` : '';
+            // 命名约定：持有已转义 HTML 片段的变量以 Html 结尾（lint 规则据此消音）
+            const noteHtml = ev.note ? `<div class="ai-rules-ev-note">${escapeHtml(tt('aiRules.evidence.notePrefix', '备注：'))}${escapeHtml(ev.note)}</div>` : '';
             return `<div class="ai-rules-ev-row">
                 <div class="ai-rules-ev-head">
                     <span class="ai-rules-ev-date">${escapeHtml(formatRelativeTime(occurred) || occurred)}</span>
@@ -204,7 +205,7 @@ const AIRules = {
                 <div class="ai-rules-ev-body">
                     ${escapeHtml(tt('aiRules.evidence.flow', '{merchant} → {category} · {amount}').replace('{merchant}', merchant).replace('{category}', cat).replace('{amount}', '¥' + amount))}
                 </div>
-                ${note}
+                ${noteHtml}
             </div>`;
         }).join('');
     },

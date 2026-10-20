@@ -137,13 +137,14 @@ const AIAdvice = {
         const priority = String(a.priority || 'medium').toLowerCase();
         card.className = `glass-card ai-advice-card priority-${escapeHtml(priority)}`;
         const escapedTitle = escapeHtml(a.title || '');
-        const content = escapeHtml(a.content || '');
-        const impact = escapeHtml(a.impact || '');
+        // 命名约定：持有已转义值的变量以 escaped 开头（lint 规则据此消音）
+        const escapedContent = escapeHtml(a.content || '');
+        const escapedImpact = escapeHtml(a.impact || '');
         card.innerHTML = `
             <div class="ai-advice-priority-tag">${escapeHtml(this._priorityLabel(priority))}</div>
             <h3 class="ai-advice-title">${escapedTitle}</h3>
-            <p class="ai-advice-content">${content}</p>
-            ${impact ? `<p class="ai-advice-impact">${escapeHtml(tt('aiAdvice.impact.label', '影响：'))}${impact}</p>` : ''}
+            <p class="ai-advice-content">${escapedContent}</p>
+            ${escapedImpact ? `<p class="ai-advice-impact">${escapeHtml(tt('aiAdvice.impact.label', '影响：'))}${escapedImpact}</p>` : ''}
         `;
         return card;
     },

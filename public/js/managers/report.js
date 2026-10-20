@@ -177,7 +177,7 @@ const ReportManager = {
         container.innerHTML = `
             <div class="report-header">
                 <h2 class="report-title">${escapeHtml(tt('report.title', '{label} 财务报告').replace('{label}', this.periodLabel(data.period, data.label)))}</h2>
-                <span class="report-date">${data.start} ~ ${data.end}</span>
+                <span class="report-date">${escapeHtml(String(data.start))} ~ ${escapeHtml(String(data.end))}</span>
             </div>
             <div class="report-grid report-grid--overview">
                 ${this.renderKPIs(data)}

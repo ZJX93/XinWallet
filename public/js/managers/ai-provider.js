@@ -234,7 +234,7 @@ const AIProviderManager = {
         empty.style.display = 'none';
         list.innerHTML = this.providers.map(p => {
             const caps = this.getProviderCaps(p);
-            const capBadges = caps.map(c => `<span class="provider-cap-badge ${c.cls}">${c.label}</span>`).join('');
+            const capBadges = caps.map(c => `<span class="provider-cap-badge ${c.cls}">${escapeHtml(c.label)}</span>`).join('');
             return `
             <div class="provider-card ${p.is_active ? 'active' : ''}">
                 <div class="provider-card-header">
@@ -554,7 +554,7 @@ const AIProviderManager = {
         };
         const capText = caps.map(c => capLabels[c] || c).join(' · ');
         const regionText = region === 'cn' ? tt('aiProvider.region.cn', '国内版') : region === 'en' ? tt('aiProvider.region.en', '国际版') : '';
-        const regionHtml = regionText ? ` <span class="preset-region-tag">${regionText}</span>` : '';
+        const regionHtml = regionText ? ` <span class="preset-region-tag">${escapeHtml(regionText)}</span>` : '';
         el.innerHTML = `${regionHtml}${escapeHtml(preset.desc)} <span style="color:var(--text-tertiary)">${escapeHtml(tt('aiProvider.card.capsTitle', '| 支持：'))}${escapeHtml(capText)}</span>`;
     },
 
