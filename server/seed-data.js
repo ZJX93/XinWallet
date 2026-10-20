@@ -239,7 +239,8 @@ async function seedUserData(userId, conn) {
     ];
     for (const t of transfers) {
         const d = new Date(y, m, Math.max(1, now.getDate() - t.daysAgo));
-        const dateStr = d.toISOString().split('T')[0];
+        // M7：本地日期构造必须用本地口径输出（toISOString 在 UTC+8 会少一天）
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const tr = await conn.query(
             `INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
@@ -392,7 +393,8 @@ async function seedUserData(userId, conn) {
     for (let w = 8; w >= 0; w--) {
         const d = new Date(today);
         d.setDate(d.getDate() - d.getDay() - w * 7);
-        const snapDate = d.toISOString().slice(0, 10);
+        // M7：本地日期构造必须用本地口径输出（toISOString 在 UTC+8 会少一天）
+        const snapDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         for (const inv of invList) {
             const cost = parseFloat(inv.total_cost);
             const baseValue = parseFloat(inv.current_value);

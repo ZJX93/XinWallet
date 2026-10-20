@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { toNumber } = require('../validate');
 const {
-    success, handleServerError, computeAccountBalance, enforceBalanceLimit,
+    success, handleServerError, computeAccountBalance, enforceBalanceLimit, normDate,
     ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict
 } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
@@ -78,7 +78,8 @@ router.post('/', async (req, res) => {
         // 金额非法 → 422（业务校验）
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
 
-        const transferDate = date || new Date().toISOString().replace('T', ' ').slice(0, 19);
+        // M7：默认时间取本地「现在」（UTC+8 凌晨用 toISOString 会落到前一天）
+        const transferDate = normDate(date);
 
         // 使用事务确保一致性
         const result = await db.transaction(async (conn) => {

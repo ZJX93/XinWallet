@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit, normDate } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit, normDate } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
 const { roundAmount, sumAmounts } = require('../services/money');
 
@@ -189,7 +189,9 @@ router.get('/', async (req, res) => {
         const repayTotals = await db.query('SELECT debt_id, COALESCE(SUM(amount),0) as paid FROM debt_repayments WHERE user_id = ? AND book_id = ? GROUP BY debt_id', [req.userId, req.bookId]);
         const paidMap = {};
         repayTotals.forEach(r => { paidMap[r.debt_id] = roundAmount(parseFloat(r.paid)); });
-        const ym = new Date().toISOString().slice(0, 7);
+        // M7：当前月取本地口径（UTC+8 凌晨用 toISOString 会落到上个月）
+        const _now = new Date();
+        const ym = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}`;
         const list = debts.map(d => {
             const auto = autoCalcMethods().includes(d.method);
             const monthly = auto
@@ -217,16 +219,18 @@ router.get('/', async (req, res) => {
         const activePayables = payables.filter(d => d.status === 'active');
         const activeReceivables = receivables.filter(d => d.status === 'active');
         // 应付总额（我欠别人）= 减项
-        const payableRemaining = payables.reduce((s, d) => s + d.remaining, 0);
-        const payableMonthly = activePayables.reduce((s, d) => s + d.monthly_payment, 0);
+        // H3：负债看板汇总走整数分精确求和（原浮点 reduce 随债务笔数累积分位噪声）
+        const payableRemaining = sumAmounts(payables, d => d.remaining);
+        const payableMonthly = sumAmounts(activePayables, d => d.monthly_payment);
         // 应收总额（别人欠我）= 加项（资产）
-        const receivableRemaining = receivables.reduce((s, d) => s + d.remaining, 0);
-        const receivableExpected = activeReceivables.reduce((s, d) => s + d.monthly_payment, 0);
+        const receivableRemaining = sumAmounts(receivables, d => d.remaining);
+        const receivableExpected = sumAmounts(activeReceivables, d => d.monthly_payment);
         // 净债务 = 应付 - 应收
-        const netDebt = payableRemaining - receivableRemaining;
+        const netDebt = roundAmount(payableRemaining - receivableRemaining);
 
         // 本月需还款 / 逾期：基于全部还款流水逐期核对（仅对应付生效）
-        const todayStr = new Date().toISOString().slice(0, 10);
+        // M7：todayStr 取本地今天（UTC+8 凌晨用 toISOString 会落到前一天）
+        const todayStr = fmtDateOnly(new Date());
         const allReps = await db.query(
             'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = ? AND book_id = ?',
             [req.userId, req.bookId]
@@ -410,7 +414,9 @@ router.get('/:id', async (req, res) => {
         const schedule = buildDebtSchedule({ ...debt, monthly_payment: monthly });
         res.json(success({
             debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: roundAmount(monthly), min_payment: parseFloat(debt.min_payment), paid_total: sumAmounts(repayments, r => r.amount), effective_rate: effectiveRate, interest_paid_total: interestPaidTotal, start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
-            repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: r.paid_at ? new Date(r.paid_at).toISOString().slice(0, 19).replace('T', ' ') : null })),
+            // M7：paid_at 展示统一走 fmtDateTime（本地口径），替代原来的 toISOString
+            // ——后者会把 UTC+8 的 14:30 显示成 06:30，用户看到的还款时间差 8 小时。
+            repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: r.paid_at ? fmtDateTime(r.paid_at) : null })),
             schedule
         }));
     } catch (err) { handleServerError(res, err); }

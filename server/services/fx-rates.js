@@ -114,7 +114,8 @@ async function loadLatestFromDb() {
   }
   return {
     base: row.base,
-    date: typeof row.date === 'string' ? row.date : row.date.toISOString().slice(0, 10),
+    // M7：DB DATE 值用本地口径格式化（toISOString 在 UTC+8 会少一天）
+    date: typeof row.date === 'string' ? row.date : localDateStr(row.date),
     rates: normalizeRates(rates),
     source: row.source,
     fetchedAt: new Date(row.fetched_at).toISOString(),
@@ -229,8 +230,14 @@ async function getRate(from, to, date) {
   throw new Error(`无法获取 ${f} → ${t} 汇率（${date ? `日期 ${date}` : '最新'}）`);
 }
 
+// M7：本地日期口径（YYYY-MM-DD）。UTC+8 用户在凌晨用 toISOString 会把
+// 「今天」落到前一天，导致汇率日期与本地记账日期错位。
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr();
 }
 
 /**

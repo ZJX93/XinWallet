@@ -18,6 +18,14 @@ function _parseJsonBreakdown(jsonStr) {
     }
 }
 
+// 本地日期格式化（YYYY-MM-DD）。
+// ⛔ 不能用 toISOString()：new Date(y, m+1, 0) 是「本地周日午夜」，UTC+8 下
+//    toISOString 会返回前一天 16:00Z，周期截止日整体少一天（负时区反而多一天），
+//    导致最后一天的交易被排除在预算 actual 统计之外。必须用本地口径输出。
+function fmtLocalDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // 计算周期时间范围辅助函数
 function calcPeriodRange(type, baseDate) {
     // 兼容 monthly/weekly/yearly → month/week/year
@@ -30,18 +38,18 @@ function calcPeriodRange(type, baseDate) {
     switch (t) {
         case 'month':
             start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-            end = new Date(y, m + 1, 0).toISOString().slice(0, 10);
+            end = fmtLocalDate(new Date(y, m + 1, 0));
             break;
         case 'quarter': {
             const q = Math.floor(m / 3);
             start = `${y}-${String(q * 3 + 1).padStart(2, '0')}-01`;
-            end = new Date(y, (q + 1) * 3, 0).toISOString().slice(0, 10);
+            end = fmtLocalDate(new Date(y, (q + 1) * 3, 0));
             break;
         }
         case 'half': {
             const half = m < 6 ? 0 : 1;
             start = `${y}-${half === 0 ? '01' : '07'}-01`;
-            end = new Date(y, half === 0 ? 6 : 12, 0).toISOString().slice(0, 10);
+            end = fmtLocalDate(new Date(y, half === 0 ? 6 : 12, 0));
             break;
         }
         case 'year':
@@ -50,7 +58,7 @@ function calcPeriodRange(type, baseDate) {
             break;
         default:
             start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-            end = new Date(y, m + 1, 0).toISOString().slice(0, 10);
+            end = fmtLocalDate(new Date(y, m + 1, 0));
     }
     return { start, end };
 }
@@ -127,7 +135,8 @@ router.post('/', async (req, res) => {
             return res.status(400).json(fail('预算名称和金额必填'));
         }
         const pType = period_type || 'month';
-        const baseDate = base_date || new Date().toISOString().split('T')[0];
+        // M7：默认基准日取「本地今天」（UTC+8 凌晨用 toISOString 会落到前一天）
+        const baseDate = base_date || fmtLocalDate(new Date());
         const range = calcPeriodRange(pType, baseDate);
         const nameStr = name.trim();
         // 多账本：预算归属当前账本；同名同期预算按本账本 upsert，避免跨账本误覆盖。
@@ -157,7 +166,8 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json(fail('名称和金额必填'));
         }
         const pType = period_type || 'month';
-        const baseDate = base_date || new Date().toISOString().split('T')[0];
+        // M7：默认基准日取「本地今天」（UTC+8 凌晨用 toISOString 会落到前一天）
+        const baseDate = base_date || fmtLocalDate(new Date());
         const range = calcPeriodRange(pType, baseDate);
         await db.query(
             'UPDATE budgets SET name = ?, period_type = ?, start_date = ?, end_date = ?, amount = ? WHERE id = ? AND user_id = ? AND book_id = ?',

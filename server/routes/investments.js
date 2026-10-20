@@ -11,7 +11,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, nowLocalDateTime } = require('./_helpers');
 const {
   getQuoteStrategy,
   fetchQuoteByCategory,
@@ -30,7 +30,9 @@ const router = express.Router();
  * 早期实现用 slice(0,10)/split('T')[0] 截到天，导致计息等日期丢失时分秒。
  */
 function normDate(d) {
-  if (!d) return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  // M7：默认时间取本地「现在」（与 _helpers.normDate 同口径；UTC+8 凌晨
+  // 用 toISOString 会把日期落到前一天，且带 Z 写 TIMESTAMP 列有风险）
+  if (!d) return nowLocalDateTime();
   return String(d).replace('T', ' ').replace(/\.\d+/, '').replace(/Z$/, '').slice(0, 19);
 }
 

@@ -113,7 +113,10 @@ router.get('/dashboard', async (req, res) => {
     try {
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const today = now.toISOString().slice(0, 10); // YYYY-MM-DD
+        // M7 修复：today/weekStart 与 currentMonth（本地口径）保持统一，改用本地格式化。
+        // 原 toISOString() 是 UTC 口径——UTC+8 用户在 00:00-08:00 之间 today 落到前一天，
+        // 与本地月/年口径自相矛盾（"今天的支出"查不到当天凌晨记的账）。
+        const today = fmtDateOnly(now); // YYYY-MM-DD
         const currentYear = now.getFullYear().toString();
 
         // 计算本周起止（周一 ~ 周日）
@@ -121,7 +124,7 @@ router.get('/dashboard', async (req, res) => {
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 周日修正
         const monday = new Date(now);
         monday.setDate(now.getDate() + mondayOffset);
-        const weekStart = monday.toISOString().slice(0, 10);
+        const weekStart = fmtDateOnly(monday);
         const weekEnd = today;
 
         // 当前月区间（下方预算查询需要，提前计算以便并入并发批次）
@@ -508,7 +511,8 @@ router.get('/dashboard/detail', async (req, res) => {
     try {
         const { type } = req.query;
         const now = new Date();
-        const today = now.toISOString().slice(0, 10);
+        // M7 修复：本地口径统一（同 /dashboard）
+        const today = fmtDateOnly(now);
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const currentYear = now.getFullYear().toString();
 
@@ -516,7 +520,7 @@ router.get('/dashboard/detail', async (req, res) => {
         const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
         const monday = new Date(now);
         monday.setDate(now.getDate() + mondayOffset);
-        const weekStart = monday.toISOString().slice(0, 10);
+        const weekStart = fmtDateOnly(monday);
 
         let dateCondition, dateParams = [];
         switch (type) {
@@ -657,7 +661,8 @@ router.get('/investments', async (req, res) => {
                 const key = Number(s.investment_id);
                 if (!snapsByInv.has(key)) snapsByInv.set(key, []);
                 snapsByInv.get(key).push({
-                    date: s.nav_date instanceof Date ? s.nav_date.toISOString().slice(0, 10) : String(s.nav_date).slice(0, 10),
+                    // M7：DB DATE 值用本地口径格式化（toISOString 在 UTC+8 会少一天）
+                    date: fmtDateOnly(s.nav_date),
                     value: parseFloat(s.total_value)
                 });
             }
@@ -678,7 +683,8 @@ router.get('/investments', async (req, res) => {
             // 总市值趋势：按日期汇总所有持仓市值，前端只画一条总市值线
             const totalByDate = new Map();
             for (const s of allSnaps) {
-                const d = s.nav_date instanceof Date ? s.nav_date.toISOString().slice(0, 10) : String(s.nav_date).slice(0, 10);
+                // M7：DB DATE 值用本地口径格式化（toISOString 在 UTC+8 会少一天）
+                const d = fmtDateOnly(s.nav_date);
                 totalByDate.set(d, (totalByDate.get(d) || 0) + parseFloat(s.total_value));
             }
             for (const d of [...totalByDate.keys()].sort()) {

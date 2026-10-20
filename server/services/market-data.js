@@ -21,6 +21,12 @@
 const https = require('https');
 const http = require('http');
 
+// M7：本地日期口径（YYYY-MM-DD）。UTC+8 用户在凌晨用 toISOString 会把
+// 「今天」落到前一天，净值日期会与用户本地日期错位。
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ==========================================
 // HTTP 工具
 // ==========================================
@@ -408,7 +414,7 @@ async function fetchQuoteByCategory(invTypeCategory, code, opts = {}) {
     const q = await fetchCryptoQuote(strategy.code);
     return {
       source: 'crypto', code: q.code, name: q.name,
-      price: q.price, nav: q.price, navDate: new Date().toISOString().slice(0, 10),
+      price: q.price, nav: q.price, navDate: localDateStr(),
       change: q.change, changePercent: q.changePercent,
       high: q.high, low: q.low, open: q.open
     };
@@ -428,7 +434,7 @@ async function fetchQuoteByCategory(invTypeCategory, code, opts = {}) {
       const stock = await fetchStockQuote(inferAsharePrefix(strategy.code) + strategy.code);
       return {
         source: 'stock', code: stock.code, name: stock.name,
-        price: stock.price, nav: stock.price, navDate: new Date().toISOString().slice(0, 10),
+        price: stock.price, nav: stock.price, navDate: localDateStr(),
         change: stock.change, changePercent: stock.changePercent,
         high: stock.high, low: stock.low, open: stock.open
       };
@@ -440,7 +446,7 @@ async function fetchQuoteByCategory(invTypeCategory, code, opts = {}) {
   return {
     source: invTypeCategory === 'commodity' ? 'commodity' : 'stock',
     code: q.code, name: q.name,
-    price: q.price, nav: q.price, navDate: new Date().toISOString().slice(0, 10),
+    price: q.price, nav: q.price, navDate: localDateStr(),
     change: q.change, changePercent: q.changePercent,
     high: q.high, low: q.low, open: q.open
   };

@@ -48,12 +48,21 @@ const failConflict = (msg) => fail(msg, ErrorCodes.CONFLICT);
 const failBadRequest = (msg) => fail(msg, ErrorCodes.BAD_REQUEST);
 
 /**
+ * 当前本地时间「YYYY-MM-DD HH:MM:SS」（精确到秒）。
+ * ⛔ 不能用 toISOString()：那是 UTC 口径，UTC+8 用户在每天 00:00-08:00
+ *    之间会落到「前一天」，且带 Z 后缀直接写 TIMESTAMP 列在部分方言下报错。
+ */
+function nowLocalDateTime() {
+    return fmtDateTime(new Date());
+}
+
+/**
  * 日期归一化为「YYYY-MM-DD HH:MM:SS」（精确到秒）。
  * 兼容三种前端输入：datetime-local（带 T）、ISO（带 Z/毫秒）、纯日期（YYYY-MM-DD）。
  * 必须去除 Z 与毫秒——否则直接写入 TIMESTAMP/DATETIME 在 PG/MySQL 下会报格式错误。
  */
 function normDate(d) {
-    if (!d) return new Date().toISOString().replace('T', ' ').slice(0, 19);
+    if (!d) return nowLocalDateTime();
     return String(d).replace('T', ' ').replace(/\.\d+/, '').replace(/Z$/, '').slice(0, 19);
 }
 
@@ -111,22 +120,21 @@ function maskKey(key) {
 
 /**
  * 尝试解密凭证，并返回是否成功 + 解密后的明文（用于诊断密钥是否匹配）
+ *
+ * M12 修复：与 crypto.js 的严格策略对齐——长度不足的短值（疑似旧版明文）
+ * 不再被当作"解密成功"原样返回，而是判失败，迫使调用方按"需重新保存凭证"处理。
+ * 旧实现会把旧明文当 ok:true 返回，既与 crypto.decrypt 的 null 语义矛盾，
+ * 也可能把未加密的敏感值继续当有效凭证使用。
+ *
  * @param {string} key 密文（hex）
  * @returns {{ ok: boolean, value: string, error?: string }}
  */
 function tryDecrypt(key) {
     if (!key) return { ok: true, value: '' };
     try {
-        const buf = Buffer.from(key, 'hex');
-        if (buf.length < 32) {
-            // 不是加密格式（旧数据明文），直接返回
-            return { ok: true, value: key };
-        }
-        // 通过 _helpers 暴露的内部解密（这里用相对路径的 crypto 模块）
         const { decrypt } = require('../crypto');
         const decrypted = decrypt(key);
-        // 如果解密返回原密文（说明失败 fallback），则不 ok
-        if (decrypted === key) {
+        if (decrypted === null || decrypted === undefined) {
             return { ok: false, value: '', error: '密钥不匹配或数据已损坏' };
         }
         return { ok: true, value: decrypted };
@@ -309,7 +317,10 @@ async function ensureWeeklySnapshots(userId, investments) {
     const dayOfWeek = today.getDay();
     const lastSunday = new Date(today);
     lastSunday.setDate(today.getDate() - dayOfWeek);
-    const lastSundayStr = lastSunday.toISOString().slice(0, 10);
+    // M7 修复：lastSunday 是本地日期构造，必须用本地口径格式化。
+    // toISOString() 会把它按 UTC 输出——UTC+8 下本地周日 00:00 变成周六 16:00Z，
+    // 快照日期整体少一天（负时区则多一天），趋势图横轴随之错位。
+    const lastSundayStr = fmtDateOnly(lastSunday);
 
     const invIds = investments.map(i => i.id);
 
@@ -347,9 +358,14 @@ async function ensureWeeklySnapshots(userId, investments) {
         const end = new Date(lastSunday);
         end.setDate(end.getDate() - 7);
 
-        while (start <= end) {
-            rows.push([userId, inv.book_id, inv.id, value, cost, start.toISOString().slice(0, 10)]);
+        // M7 修复：start/end 均为本地日期构造，用本地口径格式化（同 lastSundayStr）。
+        // L3 修复：firstDate 若为数据库脏数据（未来日期），setDate 回绕会导致
+        // start <= end 永久成立形成死循环——加迭代上限保护，超限即停止补历史快照。
+        let guard = 0;
+        while (start <= end && guard < 2000) {
+            rows.push([userId, inv.book_id, inv.id, value, cost, fmtDateOnly(start)]);
             start.setDate(start.getDate() + 7);
+            guard++;
         }
     }
     if (rows.length === 0) return;
@@ -372,7 +388,7 @@ async function ensureWeeklySnapshots(userId, investments) {
 }
 
 module.exports = {
-    success, fail, normDate, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
+    success, fail, normDate, nowLocalDateTime, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
     extractJson, stripThinkingTokens, polishChatReply, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failBadRequest,
