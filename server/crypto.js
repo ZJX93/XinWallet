@@ -35,13 +35,42 @@ function readKeyFile() {
     }
 }
 
+/**
+ * 原子写入密钥文件：先写同目录临时文件，再 rename 覆盖。
+ * ⛔ 为什么必须原子：多个进程同时初始化时（node --test 的并发子进程、
+ *    运维脚本与服务并行启动等），直接 writeFileSync 会被并发读者读到
+ *    「截断/半条」内容，进而误判为密钥不一致而 process.exit(1)——
+ *    曾表现为测试运行器 "Unable to deserialize cloned data" 子进程猝死。
+ *    rename 在同一文件系统内原子，读者只会看到旧内容或完整新内容。
+ */
 function writeKeyFile(keyHex) {
     try {
         const dir = path.dirname(KEY_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(KEY_FILE, keyHex, { mode: 0o600 }); // 仅 owner 可读
+        const tmp = `${KEY_FILE}.tmp-${process.pid}`;
+        fs.writeFileSync(tmp, keyHex, { mode: 0o600 }); // 仅 owner 可读
+        fs.renameSync(tmp, KEY_FILE);
     } catch (err) {
         console.warn(`⚠️  无法写入加密密钥文件 ${KEY_FILE}: ${err.message}`);
+    }
+}
+
+/**
+ * 排他创建密钥文件（O_EXCL 语义）：仅当文件不存在时写入成功。
+ * 用于「无环境变量时自动生成随机密钥」路径的并发安全竞争——保证多个
+ * 进程中只有一个赢家落盘，其余进程改用赢家写入的密钥，全进程一致。
+ * @returns {string|null} 竞争成功返回 keyHex；已被他人创建返回 null（调用方应采用文件内容）
+ */
+function writeKeyFileExclusive(keyHex) {
+    try {
+        const dir = path.dirname(KEY_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(KEY_FILE, keyHex, { flag: 'wx', mode: 0o600 });
+        return keyHex;
+    } catch (err) {
+        if (err.code === 'EEXIST') return null; // 并发赢家已先行写入
+        console.warn(`⚠️  无法写入加密密钥文件 ${KEY_FILE}: ${err.message}`);
+        return null;
     }
 }
 
@@ -83,7 +112,16 @@ function getKey() {
         process.exit(1);
     }
     keyHex = crypto.randomBytes(32).toString('hex');
-    writeKeyFile(keyHex);
+    // 并发安全：排他创建，若其他进程已先行写入（EEXIST），改用文件中的密钥，
+    // 避免各进程持不同密钥导致「A 进程加密、B 进程解密失败」。
+    if (writeKeyFileExclusive(keyHex) === null) {
+        const winner = readKeyFile();
+        if (winner) {
+            console.warn('🔐 检测到并发初始化，采用已持久化的 ENCRYPTION_KEY');
+            return deriveKey(winner);
+        }
+        writeKeyFile(keyHex); // 极端兜底：文件被并发删除，重试一次原子写入
+    }
     console.warn('🔐 首次启动自动生成 ENCRYPTION_KEY（已写入 ' + KEY_FILE + '）');
     console.warn('   后续容器重启将自动使用此密钥');
     return deriveKey(keyHex);
