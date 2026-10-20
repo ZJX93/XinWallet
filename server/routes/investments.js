@@ -518,26 +518,30 @@ router.post('/investments/:id/transactions', async (req, res) => {
 
         const dateNorm = normDate(date);
         let msg = '操作已记录';
-        const invTxn = await db.query(
-            `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+        // 数据一致性修复（审计 H1）：理财流水 INSERT、持仓 UPDATE、主账本入账与余额重算
+        // 原先跨两个事务执行（流水/持仓更新在事务外，仅主账本在事务内），主账本事务一旦
+        // 失败（如账户余额下限 409），流水与持仓已提交而主账本缺失，且无回滚。
+        // 现全部并入单一事务，任一环节失败整体回滚，保证四者原子一致。
+        await db.transaction(async (conn) => {
+            const invTxn = await conn.query(
+                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, dateNorm, parseFloat(fee) || 0, note || '']
-        );
-
-        // 如果是卖出，更新持仓（净投入本金口径：成本按回款全额扣减，与 recompute 一致）
-        if (type === 'sell') {
-            await db.query(
-                'UPDATE investments SET quantity = quantity - ?, total_cost = total_cost - ?, current_value = current_value - ? WHERE id = ? AND user_id = ?',
-                [parseFloat(quantity), parseFloat(amount), parseFloat(amount), investmentId, req.userId]
+                [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, dateNorm, parseFloat(fee) || 0, note || '']
             );
-        }
 
-        // 现金类流水（买入/卖出/分红/利息）同步记账到主交易（账户明细），并重算关联账户余额。
-        // buy/sell/dividend/interest 均需落主账本；红利再投不进现金、无台账。
-        if (['buy', 'sell', 'dividend', 'interest'].includes(type)) {
-            const investment = ownedInv;
-            if (investment && investment.account_id) {
-                await db.transaction(async (conn) => {
+            // 如果是卖出，更新持仓（净投入本金口径：成本按回款全额扣减，与 recompute 一致）
+            if (type === 'sell') {
+                await conn.query(
+                    'UPDATE investments SET quantity = quantity - ?, total_cost = total_cost - ?, current_value = current_value - ? WHERE id = ? AND user_id = ?',
+                    [parseFloat(quantity), parseFloat(amount), parseFloat(amount), investmentId, req.userId]
+                );
+            }
+
+            // 现金类流水（买入/卖出/分红/利息）同步记账到主交易（账户明细），并重算关联账户余额。
+            // buy/sell/dividend/interest 均需落主账本；红利再投不进现金、无台账。
+            if (['buy', 'sell', 'dividend', 'interest'].includes(type)) {
+                const investment = ownedInv;
+                if (investment && investment.account_id) {
                     if (type === 'buy') {
                         const isIns = await isInsuranceType(conn, investment.investment_type_id);
                         const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
@@ -563,22 +567,22 @@ router.post('/investments/:id/transactions', async (req, res) => {
                     // 以账本为准重算关联账户余额（单一真相，避免直接加减导致漂移）
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id, req.bookId);
                     await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, investment.account_id, req.userId, req.bookId]);
-                });
+                }
+                msg = type === 'buy' ? '买入已记录' : type === 'sell' ? '卖出已记录' : type === 'dividend' ? '分红已记录' : '利息已记录';
             }
-            msg = type === 'buy' ? '买入已记录' : type === 'sell' ? '卖出已记录' : type === 'dividend' ? '分红已记录' : '利息已记录';
-        }
 
-        // 如果是红利再投，增加持有份额（不进现金、不动账户余额）
-        if (type === 'reinvest') {
-            const nav = parseFloat(price) || parseFloat(ownedInv.current_price) || 0;
-            const newQty = parseFloat(ownedInv.quantity) + addedQty;
-            const newCurrentValue = newQty * nav;
-            await db.query(
-                'UPDATE investments SET quantity = ?, current_value = ? WHERE id = ? AND user_id = ?',
-                [newQty, newCurrentValue, investmentId, req.userId]
-            );
-            msg = '红利再投已记录，持有份额已增加';
-        }
+            // 如果是红利再投，增加持有份额（不进现金、不动账户余额）
+            if (type === 'reinvest') {
+                const nav = parseFloat(price) || parseFloat(ownedInv.current_price) || 0;
+                const newQty = parseFloat(ownedInv.quantity) + addedQty;
+                const newCurrentValue = newQty * nav;
+                await conn.query(
+                    'UPDATE investments SET quantity = ?, current_value = ? WHERE id = ? AND user_id = ?',
+                    [newQty, newCurrentValue, investmentId, req.userId]
+                );
+                msg = '红利再投已记录，持有份额已增加';
+            }
+        });
 
         res.json(success(null, msg));
     } catch (err) {

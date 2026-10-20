@@ -126,8 +126,14 @@ e2e('投资全流程', async (u, t) => {
   ok500(t, '投资-建仓', inv); assert.ok(inv.data && inv.data.id);
   const iid = inv.data.id;
   ok500(t, '投资-持仓列表', await call('GET', '/investments/investments', { token: u.token, bookId }));
-  ok500(t, '投资-记流水', await call('POST', `/investments/${iid}/transactions`, { token: u.token, bookId, json: { type: 'dividend', amount: 1, price: 0.1, quantity: 1, date: '2026-09-02', fee: 0 } }));
-  ok500(t, '投资-卖出', await call('PUT', `/investments/${iid}/sell`, { token: u.token, bookId, json: { sell_price: 2, date: '2026-09-03' } }));
+  // 路径说明：investments 路由器同时挂载于 /investment-types 与 /investments 两个前缀，
+  // 持仓相关接口完整路径为 /api/investments/investments/*（重复段，三端客户端已固化）。
+  // 修复（审计）：此前误写为 /investments/:id/transactions（404），而 ok500 只断言 <500
+  // 导致该用例空转——记流水/卖出流程实际从未被覆盖。现修正路径并显式断言 200。
+  const recTxn = await call('POST', `/investments/investments/${iid}/transactions`, { token: u.token, bookId, json: { type: 'dividend', amount: 1, price: 0.1, quantity: 1, date: '2026-09-02', fee: 0 } });
+  ok500(t, '投资-记流水', recTxn); assert.strictEqual(recTxn.status, 200, `记流水应返回 200，实得 ${recTxn.status} ${JSON.stringify(recTxn.json)}`);
+  const sell = await call('PUT', `/investments/investments/${iid}/sell`, { token: u.token, bookId, json: { sell_price: 2, date: '2026-09-03' } });
+  ok500(t, '投资-卖出', sell); assert.strictEqual(sell.status, 200, `卖出应返回 200，实得 ${sell.status} ${JSON.stringify(sell.json)}`);
 });
 
 e2e('报表', async (u, t) => {
