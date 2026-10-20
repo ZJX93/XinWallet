@@ -128,6 +128,20 @@ function percentOf(part, whole, digits = 2) {
     return Math.round((p / w) * 100 * factor) / factor;
 }
 
+/**
+ * 价格/数量规范化到 4 位小数（对应 DB 的 DECIMAL(15,4) 列）。
+ * 数量累加、均价/净值乘除的中间结果先 rounds 到列精度再进入下游计算，
+ * 避免浮点漂移在「乘/除 → 落库(4位) → 读出再算」链路中逐轮放大。
+ * @param {number|string|null|undefined} value
+ * @returns {number} 4 位小数的数值
+ */
+function roundPrice(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    if (!Number.isFinite(num)) return 0; // 与路由层 parseFloat(x)||0 的既有兜底一致
+    return Math.round(num * 10000) / 10000;
+}
+
 // toCents / fromCents 均被 portfolio.js 使用（前者用于分域比较，后者把分还原为元后接入 percentOf）。
 module.exports = {
     toCents,
@@ -136,5 +150,6 @@ module.exports = {
     addAmounts,
     subtractAmounts,
     roundAmount,
+    roundPrice,
     percentOf,
 };

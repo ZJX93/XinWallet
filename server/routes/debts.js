@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit, normDate } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
+const { roundAmount, sumAmounts } = require('../services/money');
 
 // 由 syncCreditCardDebt 自动同步出来的债务（信用卡 / 信用支付账户）：
 // 它的 remaining 必须与账户余额严格一致，否则会「账户已还清、债务还挂着余额」。
@@ -153,12 +154,14 @@ function buildDebtSchedule(debt) {
         }
         schedule.push({
             period: k,
-            payment: Math.round(payment * 100) / 100,
-            principal: Math.round(principalPart * 100) / 100,
-            interest: Math.round(interest * 100) / 100,
-            remainAfter: k === n ? 0 : Math.round((remain - principalPart) * 100) / 100
+            payment: roundAmount(payment),
+            principal: roundAmount(principalPart),
+            interest: roundAmount(interest),
+            remainAfter: k === n ? 0 : roundAmount(remain - principalPart)
         });
-        remain -= principalPart;
+        // H3 修复：remain 逐期抹圆到分，杜绝浮点漂移在「利息=remain×r →
+        // remain 扣减本金」链路上跨期放大（末期已强制还清，与原来一致）。
+        remain = roundAmount(remain - principalPart);
     }
     return schedule;
 }
@@ -185,7 +188,7 @@ router.get('/', async (req, res) => {
         );
         const repayTotals = await db.query('SELECT debt_id, COALESCE(SUM(amount),0) as paid FROM debt_repayments WHERE user_id = ? AND book_id = ? GROUP BY debt_id', [req.userId, req.bookId]);
         const paidMap = {};
-        repayTotals.forEach(r => { paidMap[r.debt_id] = parseFloat(r.paid); });
+        repayTotals.forEach(r => { paidMap[r.debt_id] = roundAmount(parseFloat(r.paid)); });
         const ym = new Date().toISOString().slice(0, 7);
         const list = debts.map(d => {
             const auto = autoCalcMethods().includes(d.method);
@@ -198,7 +201,7 @@ router.get('/', async (req, res) => {
                 remaining: parseFloat(d.remaining),
                 interest_rate: parseFloat(d.interest_rate),
                 term_months: parseInt(d.term_months) || 0,
-                monthly_payment: Math.round(monthly * 100) / 100,
+                monthly_payment: roundAmount(monthly),
                 min_payment: parseFloat(d.min_payment),
                 // 累计已还：全生命周期还款流水 SUM(amount)，纯展示指标。
                 // 与下方 calcDebtDueSummary 的 dueAmount/overdueAmount（基于月供逐期 FIFO 的「本月到期/逾期」）是
@@ -392,7 +395,8 @@ router.get('/:id', async (req, res) => {
         // 根据真实还款明细里的「利息」部分反推等效年化利率：
         // 仅当确实产生过利息（interest_part 累计 > 0）才给出，否则为 null（免息/未计息不显示）。
         // 单期实际利息率 = 累计利息 / 已还期数 / 占用本金，年化按 12 期/年折算。
-        const interestPaidTotal = repayments.reduce((s, r) => s + (parseFloat(r.interest_part) || 0), 0);
+        // H3 修复：累计利息为金额求和，走整数分精确累加
+        const interestPaidTotal = sumAmounts(repayments, r => r.interest_part);
         let effectiveRate = null;
         if (interestPaidTotal > 0) {
             const P = parseFloat(debt.principal) || 0;
@@ -405,7 +409,7 @@ router.get('/:id', async (req, res) => {
         }
         const schedule = buildDebtSchedule({ ...debt, monthly_payment: monthly });
         res.json(success({
-            debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: Math.round(monthly * 100) / 100, min_payment: parseFloat(debt.min_payment), paid_total: repayments.reduce((s, r) => s + parseFloat(r.amount), 0), effective_rate: effectiveRate, interest_paid_total: interestPaidTotal, start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
+            debt: { ...debt, principal: parseFloat(debt.principal), remaining: parseFloat(debt.remaining), interest_rate: parseFloat(debt.interest_rate), term_months: parseInt(debt.term_months) || 0, monthly_payment: roundAmount(monthly), min_payment: parseFloat(debt.min_payment), paid_total: sumAmounts(repayments, r => r.amount), effective_rate: effectiveRate, interest_paid_total: interestPaidTotal, start_date: fmtDateOnly(debt.start_date), due_date: fmtDateOnly(debt.due_date) },
             repayments: repayments.map(r => ({ ...r, amount: parseFloat(r.amount), principal_part: parseFloat(r.principal_part), interest_part: parseFloat(r.interest_part), paid_at: r.paid_at ? new Date(r.paid_at).toISOString().slice(0, 19).replace('T', ' ') : null })),
             schedule
         }));

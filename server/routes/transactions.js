@@ -12,6 +12,7 @@ const {
 } = require('./_helpers');
 const { syncCreditCardDebt, resolveNote } = require('./utils');
 const fxService = require('../services/fx-rates');
+const { toCents, fromCents, roundAmount, roundPrice } = require('../services/money');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
@@ -29,14 +30,19 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
         `SELECT * FROM investment_transactions WHERE investment_id = ? AND user_id = ? ORDER BY date ASC, id ASC`,
         [investmentId, userId]
     );
-    let qty = 0, cost = 0;
+    // 数据一致性修复（审计 H3）：原实现全程 IEEE-754 浮点累加，误差会经
+    // 「重算 → 写库 → 读出再算」逐轮放大（money.js 要消灭的正是该链路）。
+    // 现改为：数量按 1e-4 定点累加（quantity 为 DECIMAL(15,4)）、
+    // 成本按整数分累加（total_cost 为 DECIMAL(15,2)）。
+    let qtyUnits = 0;   // 数量 × 10000 的整数表示
+    let costCents = 0;  // 成本（分）
     for (const t of txns) {
-        const q = parseFloat(t.quantity) || 0;
-        const amt = parseFloat(t.amount) || 0;
+        const q = Math.round((parseFloat(t.quantity) || 0) * 10000);
+        const amtCents = toCents(parseFloat(t.amount) || 0);
         if (t.type === 'buy') {
             // 买入：用户真实现金投入，计入成本基数
-            qty += q;
-            cost += amt;
+            qtyUnits += q;
+            costCents += amtCents;
         } else if (t.type === 'reinvest') {
             // 红利再投：利息立刻再投资 → 仅增加持仓份额，**不计入成本基数**。
             // 用户的真实现金投入未增加（资金来源是已入账的利息，本应已通过 type='interest' 流水入账），
@@ -45,27 +51,31 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
             //   投资总览、报表、排序、止损预警等所有依赖成本基数的指标都会失真。
             // 修复（2026-09-07）：与 'interest' 保持一致地走「不动 cost」分支。
             // 旧数据修复见 scripts/fix-reinvest-cost-contamination.js。
-            qty += q;
+            qtyUnits += q;
         } else if (t.type === 'sell') {
             // 券商净投入本金口径：卖出按实际回款(amount)全额从成本基数扣减，
             // 而非按当时均价比例扣减。这样持仓盈亏与同花顺/东方财富等券商一致。
-            cost -= amt;
-            qty -= q;
+            costCents -= amtCents;
+            qtyUnits -= q;
         }
         // dividend / interest 仅产生现金入账，不影响持仓数量与成本
     }
-    if (qty < 0) qty = 0; // 异常保护：持仓数量不得为负
+    const qty = qtyUnits / 10000;
+    const qtyFinal = qty < 0 ? 0 : qty; // 异常保护：持仓数量不得为负
     // 注意：cost 可为负。净投入本金口径下，减仓把本金拿回后剩余持仓成本变负，
     // 即"零成本持股、利润已锁定在成本里"，属正确结果，不做归零（与同花顺/东方财富一致）。
+    const cost = fromCents(costCents);
     const currentPrice = parseFloat(row.current_price) || 0;
-    const currentValue = qty * currentPrice;
-    const buyPrice = qty > 0 ? cost / qty : 0;
+    // 市值/均价显式抹圆到列精度（current_value DECIMAL(15,2)、buy_price DECIMAL(15,4)），
+    // 保证 API 返回值与落库值一致，且乘除结果不依赖二进制浮点的偶然舍入。
+    const currentValue = roundAmount(qtyFinal * currentPrice);
+    const buyPrice = qtyFinal > 0 ? roundPrice(cost / qtyFinal) : 0;
     // 做T：数量归 0 也不立即标记 sold，保持 holding；隔夜由列表查询自动归档。
     // 手动清仓（sell 路由）会单独写 status='sold' + sold_date=today。
     await conn.query(
         `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status='holding', sold_date=NULL
          WHERE id=? AND user_id=?`,
-        [qty, cost, currentValue, buyPrice, investmentId, userId]
+        [qtyFinal, cost, currentValue, buyPrice, investmentId, userId]
     );
 }
 

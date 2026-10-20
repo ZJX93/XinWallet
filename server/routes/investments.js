@@ -19,6 +19,7 @@ const {
 } = require('../services/market-data');
 const transactionsRouter = require('./transactions');
 const recomputeInvestmentPosition = transactionsRouter.recomputeInvestmentPosition;
+const { roundAmount, roundPrice } = require('../services/money');
 
 const router = express.Router();
 
@@ -804,7 +805,9 @@ router.put('/investments/:id/sell', async (req, res) => {
         const investment = await db.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!investment) return res.status(404).json(fail('持仓不存在'));
 
-        const sellAmount = parseFloat(sell_price) * parseFloat(investment.quantity);
+        // H3 修复：卖出总额=价格×数量，抹圆到 2 位（current_value/amount 均为 DECIMAL(15,2)），
+        // 避免 API 返回 20600.000000000004 这类浮点噪声及 .xx5 边界反向舍入。
+        const sellAmount = roundAmount(parseFloat(sell_price) * parseFloat(investment.quantity));
 
         await db.transaction(async (conn) => {
             // 记录卖出
@@ -822,7 +825,8 @@ router.put('/investments/:id/sell', async (req, res) => {
 
             // 记录到主交易（如果关联了账户）
             if (investment.account_id) {
-                const profit = sellAmount - parseFloat(investment.total_cost);
+                // H3 修复：盈亏为金额差，抹圆到分后再写入备注
+                const profit = roundAmount(sellAmount - parseFloat(investment.total_cost));
                 const sellCatId = await getInvestmentSellCategoryId(conn);
                 await conn.query(
                     `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
@@ -862,11 +866,13 @@ router.post('/investments/:id/reduce', async (req, res) => {
         await db.transaction(async (conn) => {
             if (isBuy) {
                 // ===== 加仓 =====
-                const buyAmount = p * q + fee;
-                const newQty = parseFloat(investment.quantity) + q;
-                const newTotalCost = parseFloat(investment.total_cost) + buyAmount;
-                const avgCost = newQty > 0 ? newTotalCost / newQty : 0;
-                const newCurrentValue = newQty * parseFloat(investment.current_price || p);
+                // H3 修复：金额一律抹圆到分、数量抹圆到 1e-4、均价抹圆到 4 位，
+                // 与列精度（DECIMAL(15,2)/(15,4)）严格对齐，杜绝浮点噪声落库。
+                const buyAmount = roundAmount(p * q + fee);
+                const newQty = roundPrice(parseFloat(investment.quantity) + q);
+                const newTotalCost = roundAmount(parseFloat(investment.total_cost) + buyAmount);
+                const avgCost = newQty > 0 ? roundPrice(newTotalCost / newQty) : 0;
+                const newCurrentValue = roundAmount(newQty * parseFloat(investment.current_price || p));
 
                 const buyInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
@@ -892,16 +898,17 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 res.json(success(null, '已加仓'));
             } else {
                 // ===== 减仓/卖出 =====
-                const sellAmount = p * q - fee;
-                const remainingQty = parseFloat(investment.quantity) - q;
+                // H3 修复：金额抹圆到分、数量抹圆到 1e-4、均价抹圆到 4 位
+                const sellAmount = roundAmount(p * q - fee);
+                const remainingQty = roundPrice(parseFloat(investment.quantity) - q);
                 // 券商净投入本金口径：卖出按实际回款(sellAmount)全额从成本基数扣减，
                 // 与 recomputeInvestmentPosition 的 sell 分支保持一致（不再按当时均价比例扣减）。
-                const newTotalCost = parseFloat(investment.total_cost) - sellAmount;
-                const newCurrentValue = remainingQty * parseFloat(investment.current_price || p);
+                const newTotalCost = roundAmount(parseFloat(investment.total_cost) - sellAmount);
+                const newCurrentValue = roundAmount(remainingQty * parseFloat(investment.current_price || p));
                 // 台账备注用的"本笔盈亏"：按卖出前均价估算该笔卖出对应的成本（仅展示，不影响持仓成本口径）。
                 const beforeQty = parseFloat(investment.quantity);
-                const avgUnitCost = beforeQty > 0 ? parseFloat(investment.total_cost) / beforeQty : 0;
-                const reducedCost = avgUnitCost * q;
+                const avgUnitCost = beforeQty > 0 ? roundPrice(parseFloat(investment.total_cost) / beforeQty) : 0;
+                const reducedCost = roundAmount(avgUnitCost * q);
 
                 const sellInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
@@ -915,7 +922,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [remainingQty, newTotalCost, newCurrentValue, id, req.userId, req.bookId]
                 );
                 if (investment.account_id) {
-                    const profit = sellAmount - reducedCost;
+                    // H3 修复：盈亏为金额差，抹圆到分后再写入备注
+                    const profit = roundAmount(sellAmount - reducedCost);
                     const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
@@ -1018,10 +1026,11 @@ router.post('/:id/refresh', async (req, res) => {
         // 统一使用 market-data.js 的 fetchPriceForInvestment
         const { price, navDate, name } = await fetchPriceForInvestment(inv);
 
+        // H3 修复：市值抹圆到分；收益率为百分比（DECIMAL(8,4)），抹圆到 4 位
         const qty = parseFloat(inv.quantity);
-        const currentValue = price * qty;
+        const currentValue = roundAmount(price * qty);
         const totalCost = parseFloat(inv.total_cost);
-        const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
+        const actualRate = totalCost > 0 ? roundPrice((currentValue - totalCost) / totalCost * 100) : 0;
 
         await db.query(
             'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
@@ -1060,10 +1069,11 @@ router.post('/refresh-all', async (req, res) => {
                 }
                 const { price, navDate, name } = await fetchPriceForInvestment(inv);
 
+                // H3 修复：市值抹圆到分；收益率为百分比（DECIMAL(8,4)），抹圆到 4 位
                 const qty = parseFloat(inv.quantity);
-                const currentValue = price * qty;
+                const currentValue = roundAmount(price * qty);
                 const totalCost = parseFloat(inv.total_cost);
-                const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
+                const actualRate = totalCost > 0 ? roundPrice((currentValue - totalCost) / totalCost * 100) : 0;
 
                 await db.query(
                     'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=? AND book_id=?',
