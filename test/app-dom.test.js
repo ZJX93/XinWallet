@@ -209,6 +209,72 @@ test('renderUpdateLast：空数据隐藏、成功/告警/未挂载分支产出�
     assert.ok(el.querySelector('details'), 'fix 分支应带折叠修复指引');
 });
 
+test('TAG_PALETTE 已挂 window（供 managers/tag.js 这个 ES Module 访问）', () => {
+    const { window } = loadApp();
+    assert.ok(Array.isArray(window.TAG_PALETTE) && window.TAG_PALETTE.length === 10, 'window.TAG_PALETTE 应有 10 色');
+});
+
+test('initColorSwatches：按 TAG_PALETTE 渲染色块、高亮 input 当前值、点击切换', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body>' +
+        '<div id="sw" class="color-swatches"></div>' +
+        '<input id="tagColor" value="#10b981">' +
+        '</body></html>'
+    );
+    window.initColorSwatches('sw', 'tagColor');
+    const sw = window.document.querySelectorAll('#sw .color-swatch');
+    assert.strictEqual(sw.length, window.TAG_PALETTE.length, '色块数应等于调色板长度');
+    assert.strictEqual(window.document.querySelector('#sw .color-swatch.selected').dataset.color, '#10b981', '应高亮 input 当前值对应色块');
+    sw[0].click(); // 事件冒泡到 container 的监听
+    assert.strictEqual(window.document.getElementById('tagColor').value, window.TAG_PALETTE[0], '点击应写入 input.value');
+    assert.ok(sw[0].classList.contains('selected'), '被点击的色块应 selected');
+    assert.strictEqual(window.document.querySelectorAll('#sw .color-swatch.selected').length, 1, '同时仅一个 selected');
+});
+
+test('initAIConfigTabs：点击标签切换 active 与对应面板显隐', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body>' +
+        '<div id="aiConfigTabs"><button class="ai-config-tab" data-panel="providers">P</button><button class="ai-config-tab" data-panel="ocr">O</button></div>' +
+        '<div id="aiConfigPanel-providers"></div>' +
+        '<div id="aiConfigPanel-ocr" style="display:none"></div>' +
+        '</body></html>'
+    );
+    window.initAIConfigTabs();
+    const tabs = window.document.querySelectorAll('#aiConfigTabs .ai-config-tab');
+    tabs[1].click();
+    assert.ok(tabs[1].classList.contains('active'), '被点击标签应 active');
+    assert.ok(!tabs[0].classList.contains('active'));
+    assert.strictEqual(window.document.getElementById('aiConfigPanel-ocr').style.display, '', 'ocr 面板应显示');
+    assert.strictEqual(window.document.getElementById('aiConfigPanel-providers').style.display, 'none', 'providers 面板应隐藏');
+});
+
+test('initTransMonthFilter：生成「所有月份 + 近 12 月」共 13 项并默认选中 all', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body><select id="transMonthFilter"></select></body></html>'
+    );
+    window.initTransMonthFilter();
+    const opts = window.document.querySelectorAll('#transMonthFilter option');
+    assert.strictEqual(opts.length, 13, '选项应为 13（all + 12 月）');
+    assert.strictEqual(window.document.getElementById('transMonthFilter').value, 'all', '默认选中所有月份');
+});
+
+test('refreshUpdateLast：fetch 成功渲染 ok 徽章；非 200 隐藏容器', async () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body><div id="aboutUpdateLast"></div></body></html>'
+    );
+    const el = window.document.getElementById('aboutUpdateLast');
+    // 成功分支
+    window.fetch = async () => ({ ok: true, json: async () => ({ success: true, data: { last: { ok: true, ts: '2026-01-01T00:00:00Z' } } }) });
+    await window.refreshUpdateLast();
+    assert.strictEqual(el.hidden, false, '成功应显示容器');
+    assert.ok(el.querySelector('.ul-badge.ok'), '成功应渲染 ok 徽章');
+    // 非 200（旧镜像无该路由）→ 静默隐藏
+    el.hidden = false;
+    window.fetch = async () => ({ ok: false, status: 404 });
+    await window.refreshUpdateLast();
+    assert.strictEqual(el.hidden, true, '非 200 应隐藏容器');
+});
+
 test('导航：showPage 设置标题 / 高亮当前导航 / 显示当前页 / 更新 currentPage', async () => {
     const { window } = loadApp(
         '<!doctype html><html><head></head><body>' +
