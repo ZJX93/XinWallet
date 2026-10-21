@@ -35,6 +35,9 @@ test('app.js 在 jsdom 中无异常加载且核心函数暴露到 window', () =>
         'currentRoute',
         'pageUrl',
         'renderUpdateLast',
+        'showPage',
+        'switchPage',
+        'getCurrentPage',
     ]) {
         assert.strictEqual(typeof window[fn], 'function', `${fn} 应暴露为全局函数`);
     }
@@ -204,4 +207,55 @@ test('renderUpdateLast：空数据隐藏、成功/告警/未挂载分支产出�
     window.renderUpdateLast({ appData: { type: 'none' } });
     assert.ok(el.querySelector('.ul-badge.fix'), '未挂载应渲染 fix 徽章');
     assert.ok(el.querySelector('details'), 'fix 分支应带折叠修复指引');
+});
+
+test('导航：showPage 设置标题 / 高亮当前导航 / 显示当前页 / 更新 currentPage', async () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body>' +
+        '<h1 id="pageTitle"></h1><p id="pageSubtitle"></p>' +
+        '<a class="nav-item" data-page="transactions">T</a>' +
+        '<a class="nav-item" data-page="budget">B</a>' +
+        '<section class="page" id="page-transactions"></section>' +
+        '<section class="page" id="page-budget"></section>' +
+        '<button id="quickAddBtn"></button>' +
+        '</body></html>'
+    );
+    // 桩：I18N（t 回退 key，确定可断言）/ PageLoader（避免真实懒加载请求）
+    window.I18N = { t: (k, fb) => (fb == null ? k : fb), lang: 'zh' };
+    window.PageLoader = { ensureLoaded: async () => {} };
+    await window.showPage('transactions');
+    assert.strictEqual(window.document.getElementById('pageTitle').textContent, 'pageTitle.transactions');
+    const t = window.document.querySelector('.nav-item[data-page="transactions"]');
+    const b = window.document.querySelector('.nav-item[data-page="budget"]');
+    assert.ok(t.classList.contains('active'), 'transactions 导航应高亮');
+    assert.ok(!b.classList.contains('active'), 'budget 导航不应高亮');
+    assert.strictEqual(window.getCurrentPage(), 'transactions');
+    assert.ok(window.document.getElementById('page-transactions').classList.contains('active'), '当前页 section 应加 active');
+});
+
+test('导航：switchPage 写入 history 并切换 currentPage', async () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body>' +
+        '<h1 id="pageTitle"></h1><p id="pageSubtitle"></p>' +
+        '<a class="nav-item" data-page="dashboard">D</a>' +
+        '<a class="nav-item" data-page="budget">B</a>' +
+        '<section class="page" id="page-dashboard"></section>' +
+        '<section class="page" id="page-budget"></section>' +
+        '<button id="quickAddBtn"></button>' +
+        '</body></html>'
+    );
+    window.I18N = { t: (k, fb) => (fb == null ? k : fb), lang: 'zh' };
+    window.PageLoader = { ensureLoaded: async () => {} };
+    window.switchPage('budget');
+    assert.strictEqual(window.history.state && window.history.state.page, 'budget', 'history 应记录当前页');
+    // showPage 为 async fire-and-forget，等一拍让 currentPage / 标题更新
+    await new Promise(r => setTimeout(r, 0));
+    assert.strictEqual(window.getCurrentPage(), 'budget');
+    assert.strictEqual(window.document.getElementById('pageTitle').textContent, 'pageTitle.budget');
+});
+
+test('导航元数据：window.PAGE_META 已暴露且含核心页', () => {
+    const { window } = loadApp();
+    assert.ok(window.PAGE_META && typeof window.PAGE_META === 'object', 'window.PAGE_META 应存在');
+    assert.ok('transactions' in window.PAGE_META && 'budget' in window.PAGE_META && 'dashboard' in window.PAGE_META);
 });
