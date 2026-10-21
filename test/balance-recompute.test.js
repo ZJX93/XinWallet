@@ -17,6 +17,8 @@ const db = require('../server/db');
 const { computeAccountBalance } = require('../server/routes/_helpers');
 const transactionsRouter = require('../server/routes/transactions');
 const transfersRouter = require('../server/routes/transfers');
+const savingsRouter = require('../server/routes/savings');
+const investmentsRouter = require('../server/routes/investments');
 
 let dbAvailable = false;
 function dbTest(name, fn) {
@@ -71,12 +73,19 @@ async function getAnyCategory(type) {
     return row ? Number(row.id) : null;
 }
 
+async function getAnyInvestmentType() {
+    const row = await db.queryOne('SELECT id FROM investment_types LIMIT 1');
+    return row ? Number(row.id) : null;
+}
+
 const app = express();
 app.use(express.json());
 // 测试桩：注入 userId / bookId（真实链路由 auth + 账本解析中间件完成）
 app.use((req, res, next) => { req.userId = user.id; req.bookId = bookId; next(); });
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/transfers', transfersRouter);
+app.use('/api/savings', savingsRouter);
+app.use('/api/investments', investmentsRouter);
 
 async function listen() {
     return new Promise((resolve) => {
@@ -120,7 +129,7 @@ test.after(async () => {
         if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
         server.close();
     }
-    try { await db.pool.end(); } catch (_) {}
+    // 不在此 end 共享连接池：其余测试文件复用同一 db 模块，过早关闭会让兄弟文件失败。
 });
 
 // ───────────────────────── 交易：新增/删除 余额重算 ─────────────────────────
@@ -179,6 +188,44 @@ dbTest('转账：双账户余额原子更新，且都等于 canonical 重算', a
     assert.strictEqual(await getBalance(B), 300, '转入账户应为 300（独立预期）');
     assert.strictEqual(await getBalance(A), await computeAccountBalance(db, user.id, A, bookId));
     assert.strictEqual(await getBalance(B), await computeAccountBalance(db, user.id, B, bookId));
+});
+
+// ───────────────────────── 储蓄：存入/取回 余额重算 ─────────────────────────
+dbTest('储蓄·存入/取回：来源与储蓄账户余额重算一致', async () => {
+    const src = await createAccount('储蓄来源', 1000);
+    const sav = await createAccount('储蓄账户', 0);
+    const g = await req('POST', '/api/savings', {
+        name: '旅游基金', account_id: sav, source_account_id: src,
+    });
+    assert.strictEqual(g.json.success, true, '储蓄目标应创建成功');
+    const gid = g.json.data.id;
+
+    const alloc = await req('POST', `/api/savings/${gid}/allocate`, { amount: 200, account_id: src });
+    assert.strictEqual(alloc.json.success, true, '存入应成功');
+    assert.strictEqual(await getBalance(src), 800, '来源账户应扣 200（独立预期）');
+    assert.strictEqual(await getBalance(sav), 200, '储蓄账户应加 200（独立预期）');
+    assert.strictEqual(await getBalance(src), await computeAccountBalance(db, user.id, src, bookId));
+    assert.strictEqual(await getBalance(sav), await computeAccountBalance(db, user.id, sav, bookId));
+
+    const wd = await req('POST', `/api/savings/${gid}/withdraw`, { amount: 100, account_id: src });
+    assert.strictEqual(wd.json.success, true, '取回应成功');
+    assert.strictEqual(await getBalance(sav), 100, '储蓄账户应剩 100（独立预期）');
+    assert.strictEqual(await getBalance(src), 900, '来源账户应回 900（独立预期）');
+    assert.strictEqual(await getBalance(sav), await computeAccountBalance(db, user.id, sav, bookId));
+    assert.strictEqual(await getBalance(src), await computeAccountBalance(db, user.id, src, bookId));
+});
+
+// ───────────────────────── 理财：买入 余额重算 ─────────────────────────
+dbTest('理财·买入：关联账户余额扣减且等于 canonical 重算', async () => {
+    const typeId = await getAnyInvestmentType();
+    assert.ok(typeId, '需存在投资类型');
+    const acc = await createAccount('理财账户', 1000);
+    const r = await req('POST', '/api/investments/investments', {
+        account_id: acc, investment_type_id: typeId, name: '测试基金', total_cost: 300, buy_date: '2026-10-21',
+    });
+    assert.strictEqual(r.json.success, true, '买入应成功');
+    assert.strictEqual(await getBalance(acc), 700, '买入扣 300 应得 700（独立预期）');
+    assert.strictEqual(await getBalance(acc), await computeAccountBalance(db, user.id, acc, bookId));
 });
 
 // ───────────────────────── 批量写回 helper 单测 ─────────────────────────
