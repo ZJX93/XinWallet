@@ -21,6 +21,9 @@ private val Context.dataStore by preferencesDataStore(name = "xin_wallet_session
  */
 class SessionManager(private val context: Context) {
 
+    // P0-11：token 改存加密的 TokenStore（不再明文落 DataStore）
+    private val tokenStore = TokenStore(context)
+
     companion object {
         val ACCESS_TOKEN = stringPreferencesKey("access_token")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
@@ -49,10 +52,28 @@ class SessionManager(private val context: Context) {
     }
 
     suspend fun saveTokens(access: String, refresh: String) {
-        // 后端 refresh 可能不返回新 refreshToken；空串时不要覆盖本地已有的，避免会话失效
+        // P0-11：token 改存加密的 TokenStore，不再明文落 DataStore
+        tokenStore.save(access, refresh.ifBlank { null })
+        // 清掉可能残留的旧明文 token，避免双重存储
         context.dataStore.edit {
-            it[ACCESS_TOKEN] = access
-            if (refresh.isNotBlank()) it[REFRESH_TOKEN] = refresh
+            it.remove(ACCESS_TOKEN)
+            it.remove(REFRESH_TOKEN)
+        }
+    }
+
+    /**
+     * 一次性迁移：旧版把 token 明文存进 DataStore。升级后首次读取时若 TokenStore 为空、
+     * 而 DataStore 仍有明文 token，则加密落到 TokenStore 并删除明文，避免用户被迫重新登录。
+     */
+    private suspend fun migrateLegacyTokensIfNeeded() {
+        if (tokenStore.accessToken().isNotBlank()) return
+        val legacyAccess = context.dataStore.data.first()[ACCESS_TOKEN] ?: ""
+        if (legacyAccess.isBlank()) return
+        val legacyRefresh = context.dataStore.data.first()[REFRESH_TOKEN] ?: ""
+        tokenStore.save(legacyAccess, legacyRefresh.ifBlank { null })
+        context.dataStore.edit {
+            it.remove(ACCESS_TOKEN)
+            it.remove(REFRESH_TOKEN)
         }
     }
 
@@ -88,10 +109,17 @@ class SessionManager(private val context: Context) {
             it.remove(USERNAME)
             it.remove(CURRENT_BOOK_ID)
         }
+        tokenStore.clear()
     }
 
-    suspend fun accessToken(): String = context.dataStore.data.first()[ACCESS_TOKEN] ?: ""
-    suspend fun refreshToken(): String? = context.dataStore.data.first()[REFRESH_TOKEN]
+    suspend fun accessToken(): String {
+        migrateLegacyTokensIfNeeded()
+        return tokenStore.accessToken()
+    }
+    suspend fun refreshToken(): String? {
+        migrateLegacyTokensIfNeeded()
+        return tokenStore.refreshToken()
+    }
     suspend fun baseUrl(): String = context.dataStore.data.first()[BASE_URL] ?: ""
     suspend fun themeMode(): String = context.dataStore.data.first()[THEME_MODE] ?: "system"
     suspend fun username(): String = context.dataStore.data.first()[USERNAME] ?: ""

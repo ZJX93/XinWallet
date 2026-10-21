@@ -4,6 +4,7 @@
  */
 import dataPreferences from '@ohos.data.preferences';
 import common from '@ohos.app.ability.common';
+import { CredentialStore } from './Credential';
 
 const PREF_NAME = 'xinwallet_session';
 
@@ -41,12 +42,50 @@ class SessionStore {
 
   async getAccessToken(): Promise<string> {
     const prefs = await this.getPrefs();
-    return prefs ? ((await prefs.get('accessToken', '')) as string) : '';
+    if (!prefs) {
+      return '';
+    }
+    // P0-11：优先读加密 token
+    const c = (await prefs.get('tokAccessCipher', '')) as string;
+    if (c && c.length > 0) {
+      const n = (await prefs.get('tokAccessNonce', '')) as string;
+      const t = (await prefs.get('tokAccessTag', '')) as string;
+      const plain = await CredentialStore.decryptSecret({ cipher: c, nonce: n, tag: t });
+      if (plain && plain.length > 0) {
+        return plain;
+      }
+    }
+    // 迁移：旧版明文 token 仍在 preferences，读出来加密后落到密文键并清除明文
+    const legacy = (await prefs.get('accessToken', '')) as string;
+    if (legacy && legacy.length > 0) {
+      const r = (await prefs.get('refreshToken', '')) as string;
+      await this.saveTokens(legacy, r);
+      return legacy;
+    }
+    return '';
   }
 
   async getRefreshToken(): Promise<string> {
     const prefs = await this.getPrefs();
-    return prefs ? ((await prefs.get('refreshToken', '')) as string) : '';
+    if (!prefs) {
+      return '';
+    }
+    const c = (await prefs.get('tokRefreshCipher', '')) as string;
+    if (c && c.length > 0) {
+      const n = (await prefs.get('tokRefreshNonce', '')) as string;
+      const t = (await prefs.get('tokRefreshTag', '')) as string;
+      const plain = await CredentialStore.decryptSecret({ cipher: c, nonce: n, tag: t });
+      if (plain && plain.length > 0) {
+        return plain;
+      }
+    }
+    const legacy = (await prefs.get('refreshToken', '')) as string;
+    if (legacy && legacy.length > 0) {
+      const a = (await prefs.get('accessToken', '')) as string;
+      await this.saveTokens(a, legacy);
+      return legacy;
+    }
+    return '';
   }
 
   async getCurrentBookId(): Promise<number> {
@@ -120,13 +159,29 @@ class SessionStore {
     return c && c.cacheDir ? c.cacheDir : '';
   }
 
+  /**
+   * 保存 token（P0-11 加固）：经 HUKS AES-256-GCM 加密后存 preferences，不再明文落盘。
+   * 加密失败时**不回退明文**（宁可重启需重登，也不把 bearer token 明文留在磁盘）。
+   */
   async saveTokens(accessToken: string, refreshToken: string): Promise<void> {
     const prefs = await this.getPrefs();
     if (!prefs) {
       return;
     }
-    prefs.put('accessToken', accessToken);
-    prefs.put('refreshToken', refreshToken);
+    const aBundle = await CredentialStore.encryptSecret(accessToken);
+    let rBundle: { cipher: string; nonce: string; tag: string } | null = null;
+    if (refreshToken && refreshToken.length > 0) {
+      rBundle = await CredentialStore.encryptSecret(refreshToken);
+    }
+    prefs.put('tokAccessCipher', aBundle ? aBundle.cipher : '');
+    prefs.put('tokAccessNonce', aBundle ? aBundle.nonce : '');
+    prefs.put('tokAccessTag', aBundle ? aBundle.tag : '');
+    prefs.put('tokRefreshCipher', rBundle ? rBundle.cipher : '');
+    prefs.put('tokRefreshNonce', rBundle ? rBundle.nonce : '');
+    prefs.put('tokRefreshTag', rBundle ? rBundle.tag : '');
+    // 清掉可能残留的旧明文 token，避免双重存储
+    prefs.put('accessToken', '');
+    prefs.put('refreshToken', '');
     await prefs.flush();
   }
 
@@ -158,6 +213,13 @@ class SessionStore {
     if (!prefs) {
       return;
     }
+    // 清密文 token 与明文 token（双保险）
+    prefs.put('tokAccessCipher', '');
+    prefs.put('tokAccessNonce', '');
+    prefs.put('tokAccessTag', '');
+    prefs.put('tokRefreshCipher', '');
+    prefs.put('tokRefreshNonce', '');
+    prefs.put('tokRefreshTag', '');
     prefs.put('accessToken', '');
     prefs.put('refreshToken', '');
     prefs.put('bookId', 0);

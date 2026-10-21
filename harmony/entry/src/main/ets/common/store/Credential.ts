@@ -32,7 +32,7 @@ const NONCE_LEN = 12;   // GCM 标准 nonce 长度
 const TAG_LEN = 16;     // GCM authTag 长度
 
 /** 加密结果：密文 + nonce + authTag，三者缺一不可解密 */
-interface CipherBundle {
+export interface CipherBundle {
   cipher: string;  // base64
   nonce: string;   // base64
   tag: string;     // base64
@@ -261,6 +261,19 @@ class CredentialStoreImpl {
       return '';
     }
     const bundle: CipherBundle = { cipher: cipher, nonce: nonce, tag: tag };
+    return await this.decrypt(bundle);
+  }
+
+  /**
+   * 通用加密（P0-11）：token 等敏感串复用本类已验证的 HUKS AES-256-GCM 逻辑，
+   * 避免 Session 在 preferences 里再写一份明文。加密失败返回 null（调用方应降级，不可回退明文）。
+   */
+  async encryptSecret(plain: string): Promise<CipherBundle | null> {
+    return await this.encrypt(plain);
+  }
+
+  /** 通用解密（P0-11）：对应 encryptSecret。解密失败（密钥失效等）返回空串。 */
+  async decryptSecret(bundle: CipherBundle): Promise<string> {
     return await this.decrypt(bundle);
   }
 

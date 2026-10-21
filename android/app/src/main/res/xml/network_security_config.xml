@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Demo 阶段：全量放行明文 HTTP，便于把任意电脑 IP（含 DHCP 变动）作为后端地址联调。
-    上线前请收紧：把 base-config 改回 cleartextTrafficPermitted="false"，再用
-    domain-config 精确列出允许明文的主机（localhost / 127.0.0.1 / 10.0.2.2 / 具体 NAS IP）。
-    外部下载 / 接口（GitHub、NAS）若走 HTTPS，本配置与它们无关。
+    安全默认（P0-11 加固）：base-config 禁止明文 HTTP。任何真实网络地址（含 LAN NAS）
+    必须走 HTTPS，否则 token 会以明文在网络上传输、可被同网段嗅探。
+    仅对设备回环地址放行明文（localhost / 127.0.0.1 / 10.0.2.2），便于本地联调——
+    回环流量不出设备，无被嗅探风险，且兼容默认 baseUrl（http://localhost:18888/api/）。
+    生产环境 NAS 用 HTTPS 时本配置无需再改。
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
 </network-security-config>
