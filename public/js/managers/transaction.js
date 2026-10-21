@@ -185,12 +185,13 @@ const TransactionManager = {
         }));
         document.getElementById('transForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
     },
-    debounce(fn, delay = 300) {
-        clearTimeout(this._filterTimer);
-        this._filterTimer = setTimeout(fn, delay);
-    },
+    // 交易列表搜索防抖：复用 utils.js 的 debounce 工厂（统一实现，单一真相），
+    // 缓存一份 debounced 实例，确保连续输入只触发最后一次刷新。
     debouncedRefresh() {
-        this.debounce(() => this.refresh({ syncUrl: true }));
+        if (!this._refreshDebounced) {
+            this._refreshDebounced = debounce(() => this.refresh({ syncUrl: true }), 300);
+        }
+        this._refreshDebounced();
     },
     restoreFiltersFromUrl() {
         if (window.location.pathname.replace(/\/+$/, '').split('/').pop() !== 'transactions') return;

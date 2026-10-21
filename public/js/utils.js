@@ -415,6 +415,17 @@ function accountOptionsHtml(accounts, opts = {}) {
         }).join('');
 }
 
+// 防抖工厂：连续调用时只在停止 delay 毫秒后执行最后一次（之前的调用被取消）。
+// 统一替代各 manager 里零散的 setTimeout/clearTimeout 写法，逻辑集中、便于测试。
+// 返回的函数每次调用都会重置计时器；delay 默认 300ms（交易列表搜索即此值）。
+function debounce(fn, delay = 300) {
+    let timer = null;
+    return function (...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { timer = null; fn.apply(this, args); }, delay);
+    };
+}
+
 // 暴露到全局：浏览器中挂 window.api，Node 测试中挂 module.exports
 if (typeof window !== 'undefined') {
     window.api = api;
@@ -430,6 +441,7 @@ if (typeof window !== 'undefined') {
     window.csvCell = csvCell;
     window.blobToBase64 = blobToBase64;
     window.formatRelativeTime = formatRelativeTime;
+    window.debounce = debounce;
     // 生产环境静默调试日志（console.log），保留 warn/error 用于真实错误。
     // 仅在本地/调试态（localhost 或 window.XIN_DEBUG=true）才打印，避免生产 console 噪声。
     // 注：utils.js 以经典脚本先于各模块执行，故此处覆盖对全应用 console.log 生效；
@@ -440,5 +452,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, localizeSystemNames, accountOptionsHtml, supportedCurrencies: _supportedCurrencies };
+    module.exports = { escapeHtml, fmt, fmtMix, fmtCompact, csvCell, api, blobToBase64, formatRelativeTime, tt, confirmT, localizeSystemNames, accountOptionsHtml, supportedCurrencies: _supportedCurrencies, debounce };
 }
