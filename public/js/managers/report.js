@@ -931,7 +931,7 @@ const ReportManager = {
         const period = d.period;
         const s = d.summary;
         let csv = '\uFEFF' + tt('report.csv.title', '鑫钱包财务报告') + ',\n';
-        csv += `${tt('report.csv.period', '报表周期')},${this.periodLabel(d.period, d.label)},\n`;
+        csv += `${tt('report.csv.period', '报表周期')},${csvCell(this.periodLabel(d.period, d.label))},\n`;
         csv += `${tt('report.csv.income', '总收入')},${s.income.toFixed(2)},\n`;
         csv += `${tt('report.csv.expense', '总支出')},${s.expense.toFixed(2)},\n`;
         csv += `${tt('report.csv.balance', '净结余')},${s.balance.toFixed(2)},\n`;
@@ -939,11 +939,11 @@ const ReportManager = {
         const amountCol = tt('report.csv.amount', '金额');
         const shareCol = tt('report.csv.share', '占比');
         csv += `${tt('report.csv.expenseCategory', '支出类别')},${amountCol},${shareCol}\n`;
-        this.rollupCategories(d.expenseByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.expense > 0 ? (e.rolledTotal / d.summary.expense * 100).toFixed(2) : 0}%\n`; });
+        this.rollupCategories(d.expenseByCategory).forEach(e => { csv += `${csvCell(e.name)},${e.rolledTotal.toFixed(2)},${d.summary.expense > 0 ? (e.rolledTotal / d.summary.expense * 100).toFixed(2) : 0}%\n`; });
         csv += `\n${tt('report.csv.incomeCategory', '收入类别')},${amountCol},${shareCol}\n`;
-        this.rollupCategories(d.incomeByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.income > 0 ? (e.rolledTotal / d.summary.income * 100).toFixed(2) : 0}%\n`; });
+        this.rollupCategories(d.incomeByCategory).forEach(e => { csv += `${csvCell(e.name)},${e.rolledTotal.toFixed(2)},${d.summary.income > 0 ? (e.rolledTotal / d.summary.income * 100).toFixed(2) : 0}%\n`; });
         csv += `\n${tt('report.csv.date', '日期')},${tt('report.csv.colIncome', '收入')},${tt('report.csv.colExpense', '支出')}\n`;
-        d.dailyTrend.forEach(t => { csv += `${fmtDateTime(t.date)},${t.income.toFixed(2)},${t.expense.toFixed(2)}\n`; });
+        d.dailyTrend.forEach(t => { csv += `${csvCell(fmtDateTime(t.date))},${t.income.toFixed(2)},${t.expense.toFixed(2)}\n`; });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url;

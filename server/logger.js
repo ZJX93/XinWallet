@@ -93,10 +93,6 @@ const logger = {
         }
     },
 
-    // 性能监控：慢查询
-    slowQuery(sql, durationMs, ctx = {}) {
-        log('warn', 'Slow Query', { sql, durationMs: Math.round(durationMs), ...ctx });
-    },
 };
 
 module.exports = logger;

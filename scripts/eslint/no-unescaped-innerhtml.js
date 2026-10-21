@@ -87,7 +87,7 @@ module.exports = {
     // ---- 白名单：返回安全值的函数名（数值/字符串构造器，输出非用户原文）----
     const SAFE_CALLS = new Set([
       'escapeHtml', 'escapeHtmlAttr', 'fmt', 'fmtSigned', 'fmtCompact', 'fmtMix', 'fmtDate',
-      'fmtDateOnly', 'fmtDateTime', 'fmtNum', 'toFixed', 'toLocaleString', 'toUpperCase',
+      'fmtDateOnly', 'fmtDateTime', 'toFixed', 'toLocaleString', 'toUpperCase',
       'toLowerCase', 'padStart', 'padEnd', 'repeat', 'trim', 'String', 'Number', 'parseInt',
       'parseFloat', 'Boolean', 'isNaN', 'encodeURIComponent', 'decodeURIComponent',
       'Math.round', 'Math.floor', 'Math.ceil', 'Math.abs', 'Math.min', 'Math.max', 'Math.pow',

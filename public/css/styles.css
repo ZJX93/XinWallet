@@ -359,11 +359,6 @@ header.top-bar.top-bar-sticky {
 .see-all:hover { color: var(--interactive-hover); }
 
 /* Dashboard stat cards */
-.overview-cards {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-3); margin-bottom: var(--space-4);
-}
-
 .overview-card {
   display: flex; align-items: center; gap: var(--space-3);
   background:
@@ -2029,11 +2024,9 @@ header.top-bar.top-bar-sticky {
    13. RESPONSIVE
    -------------------------------------------------------------------------- */
 @media (max-width: 1200px) {
-  .overview-cards { grid-template-columns: repeat(3, 1fr); }
   .inv-charts-row { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 1024px) {
-  .overview-cards { grid-template-columns: repeat(2, 1fr); }
   .dash-charts-row { grid-template-columns: 1fr; }
   .inv-charts-row { grid-template-columns: 1fr; }
   .inv-charts-row { grid-template-columns: 1fr; }
@@ -2105,7 +2098,6 @@ header.top-bar.top-bar-sticky {
   .dash-grid { grid-template-columns: 1fr; gap: var(--space-3); }
 
   /* 通用页面 */
-  .overview-cards { grid-template-columns: 1fr; }
   .budget-summary-row { grid-template-columns: 1fr; }
   .filter-bar { flex-direction: column; align-items: stretch; gap: var(--space-2); }
   .filter-bar-top { flex-direction: column; }

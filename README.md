@@ -64,7 +64,7 @@ xin-wallet/
 │       ├── config.js       # 前端配置
 │       ├── bootstrap.js    # 前端引导
 │       ├── page-loader.js  # 页面懒加载
-│       ├── utils.js        # 通用工具（escapeHtml / fmt / csvCell）
+│       ├── utils.js        # 通用工具（escapeHtml / fmt）
 │       ├── managers/       # 业务页管理器（account/transaction/report/dashboard/...）
 │       └── vendor/         # 第三方前端库（Chart.js、xlsx 等）
 ├── server/
@@ -1193,7 +1193,7 @@ npm test
 ```
 
 - `test/validate.test.js`：后端数值校验 `toNumber`、交易类型枚举、CSV 行解析 `parseCsvLine`。
-- `test/utils.test.js`：前端 `escapeHtml`（XSS 防护）、`csvCell`、货币格式化 `fmt`。
+- `test/utils.test.js`：前端 `escapeHtml`（XSS 防护）、货币格式化 `fmt`。
 - `test/debt-summary.test.js`：负债汇总逻辑单元测试。
 
 > 另见 `scripts/`：`verify-routes.js`（路由自检）、`smoke-test.js`（冒烟）、`full-verify.js`（全量校验）等排查脚本。

@@ -44,12 +44,6 @@ function fmtSigned(n, type) {
     const numPart = full.replace(/^[^\d.-]+/, '');
     return sign + '¥' + numPart;
 }
-// 无符号 ¥ 前缀的纯数字（用于已含 ¥ 的拼接场景，避免双重符号）
-function fmtNum(n) {
-    const v = Number(n);
-    if (!isFinite(v)) return '0.00';
-    return fmt(v).replace(/^[^\d.-]+/, '');
-}
 function fmtDate(d) {
     /**
      * 返回 datetime-local 的 value：YYYY-MM-DDTHH:mm
