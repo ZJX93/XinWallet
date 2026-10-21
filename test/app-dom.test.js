@@ -28,6 +28,9 @@ test('app.js 在 jsdom 中无异常加载且核心函数暴露到 window', () =>
         'switchPage',
         'getCat',
         'getAcc',
+        'showSkeleton',
+        'showEmpty',
+        'getTransferCats',
     ]) {
         assert.strictEqual(typeof window[fn], 'function', `${fn} 应暴露为全局函数`);
     }
@@ -111,4 +114,49 @@ test('getCat：从 window.cache 取分类（god-file 缓存访问器）', () => 
     window.cache.categories = [{ id: 7, name: '餐饮', icon: '🍜' }];
     assert.strictEqual(window.getCat(7).name, '餐饮');
     assert.strictEqual(window.getCat(999).name, '未知', '缺失分类回退未知');
+});
+
+test('showSkeleton：写入骨架屏 DOM 且按 variant/rows 渲染', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body><div id="box"></div></body></html>'
+    );
+    const box = window.document.getElementById('box');
+    window.showSkeleton(box, 2, 'list');
+    assert.strictEqual(box.querySelector('.skeleton-wrap').getAttribute('data-skeleton'), 'list');
+    assert.strictEqual(box.querySelectorAll('.skeleton-row').length, 2, 'list 形态应生成 2 行');
+    const grid = window.document.createElement('div');
+    window.showSkeleton(grid, 3, 'grid');
+    assert.strictEqual(grid.querySelectorAll('.skeleton-card').length, 3, 'grid 形态应生成 3 卡');
+    // 空 el 不应抛错
+    assert.doesNotThrow(() => window.showSkeleton(null, 2, 'list'));
+});
+
+test('showEmpty：写入空态 DOM 并转义文本（防 XSS）', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body><div id="box"></div></body></html>'
+    );
+    const box = window.document.getElementById('box');
+    window.showEmpty(box, '<b>暂无</b>', '📭');
+    const html = box.innerHTML;
+    assert.ok(html.includes('empty-state'), '应包含 empty-state');
+    assert.ok(html.includes('empty-icon'), '提供 icon 时应渲染图标');
+    assert.ok(html.includes('&lt;b&gt;'), '文本应被 escapeHtml 转义，避免 XSS');
+    assert.ok(!html.includes('<b>暂无</b>'), '原始标签不应原样注入');
+    // 空 el 不应抛错
+    assert.doesNotThrow(() => window.showEmpty(null, 'x'));
+});
+
+test('缓存访问器：getAcc / getExpCats / getIncCats / getTransferCats 从 window.cache 取数', () => {
+    const { window } = loadApp();
+    window.cache.accounts = [{ id: 3, name: '现金', icon: '💵' }];
+    window.cache.categories = [
+        { id: 1, name: '餐饮', type: 'expense' },
+        { id: 2, name: '工资', type: 'income' },
+        { id: 4, name: '转账', type: 'transfer' },
+    ];
+    assert.strictEqual(window.getAcc(3).name, '现金');
+    assert.strictEqual(window.getAcc(999).name, '未知', '缺失账户回退未知');
+    assert.strictEqual(window.getExpCats().length, 1);
+    assert.strictEqual(window.getIncCats().length, 1);
+    assert.strictEqual(window.getTransferCats().length, 1);
 });

@@ -182,3 +182,15 @@ function mergeTransferPairs(transactions) {
     }
     return result;
 }
+
+// ==========================================
+// 缓存访问器（审计 id 18：从 app.js 抽离）。
+// 原 app.js 用局部 lexical `cache`；此处改用 window.cache（app.js 顶部已执行
+// window.cache = cache，且全仓未对 cache 重新赋值，二者为同一引用），
+// 从而脱离 app.js 局部作用域、可在本文件直接复用。仅依赖 utils 的 tt。
+// ==========================================
+function getCat(id) { return window.cache.categories.find(c => c.id === id) || { id, name: tt('common.unknown', '未知'), icon: '📌' }; }
+function getAcc(id) { return window.cache.accounts.find(a => a.id === id) || { id, name: tt('common.unknown', '未知'), icon: '💰' }; }
+function getExpCats() { return window.cache.categories.filter(c => c.type === 'expense'); }
+function getIncCats() { return window.cache.categories.filter(c => c.type === 'income'); }
+function getTransferCats() { return window.cache.categories.filter(c => c.type === 'transfer'); }

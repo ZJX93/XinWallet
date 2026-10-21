@@ -19,6 +19,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const UTILS_PATH = path.join(REPO_ROOT, 'public', 'js', 'utils.js');
 const CORE_PATH = path.join(REPO_ROOT, 'public', 'js', 'core.js');
+const UI_PATH = path.join(REPO_ROOT, 'public', 'js', 'ui.js');
 const APP_PATH = path.join(REPO_ROOT, 'public', 'js', 'app.js');
 
 function loadApp(html) {
@@ -37,8 +38,8 @@ function loadApp(html) {
     });
     const { window } = dom;
 
-    // 顺序与 index.html 一致：utils.js → core.js → app.js
-    for (const file of [UTILS_PATH, CORE_PATH, APP_PATH]) {
+    // 顺序与 index.html 一致：utils.js → core.js → ui.js → app.js
+    for (const file of [UTILS_PATH, CORE_PATH, UI_PATH, APP_PATH]) {
         const code = fs.readFileSync(file, 'utf8');
         const script = window.document.createElement('script');
         script.textContent = code;

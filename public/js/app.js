@@ -37,26 +37,7 @@ function showToast(msg, type = 'info') {
 // 合并转账配对已抽到 core.js（见 public/js/core.js），全局可直接复用。
 
 // 骨架屏：数据加载中展示的微光占位
-function showSkeleton(el, rows = 3, variant = 'list') {
-    if (!el) return;
-    let html = '';
-    if (variant === 'list') {
-        for (let i = 0; i < rows; i++) {
-            html += `<div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div><div class="skeleton-line shimmer" style="width:70%"></div></div><div class="skeleton-amt shimmer"></div></div>`;
-        }
-    } else if (variant === 'grid') {
-        for (let i = 0; i < rows; i++) html += `<div class="skeleton-card shimmer"></div>`;
-    } else if (variant === 'text') {
-        for (let i = 0; i < rows; i++) html += `<div class="skeleton-line shimmer" style="width:${60 + (i % 3) * 12}%"></div>`;
-    }
-    el.innerHTML = `<div class="skeleton-wrap" data-skeleton="${variant}">${html}</div>`;
-}
-
-// 空状态：纯文字提示（图标已按 UI 规范移除，保留 icon 参数仅为兼容历史调用）
-function showEmpty(el, text, icon = '') {
-    if (!el) return;
-    el.innerHTML = `<div class="empty-state">${icon ? `<div class="empty-icon">${icon}</div>` : ''}<div class="empty-text">${escapeHtml(text)}</div></div>`;
-}
+// 骨架屏/空态渲染已抽到 ui.js（见 public/js/ui.js），全局可直接复用。
 
 // ==========================================
 // 初始化缓存
@@ -88,11 +69,7 @@ async function initCache() {
     cache.budgets = budgetsData || [];
 }
 
-function getCat(id) { return cache.categories.find(c => c.id === id) || { id, name: tt('common.unknown', '未知'), icon: '📌' }; }
-function getAcc(id) { return cache.accounts.find(a => a.id === id) || { id, name: tt('common.unknown', '未知'), icon: '💰' }; }
-function getExpCats() { return cache.categories.filter(c => c.type === 'expense'); }
-function getIncCats() { return cache.categories.filter(c => c.type === 'income'); }
-function getTransferCats() { return cache.categories.filter(c => c.type === 'transfer'); }
+// 缓存访问器已抽到 core.js（见 public/js/core.js），全局可直接复用。
 
 // ==========================================
 // 页面标题映射
