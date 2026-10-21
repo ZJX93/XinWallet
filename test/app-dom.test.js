@@ -34,6 +34,7 @@ test('app.js 在 jsdom 中无异常加载且核心函数暴露到 window', () =>
         'siteBase',
         'currentRoute',
         'pageUrl',
+        'renderUpdateLast',
     ]) {
         assert.strictEqual(typeof window[fn], 'function', `${fn} 应暴露为全局函数`);
     }
@@ -169,4 +170,38 @@ test('路由 URL 助手：siteBase / pageUrl / currentRoute（默认根路径）
     assert.strictEqual(window.siteBase(), '', '无 XIN_API_BASE 时 siteBase 为 ""');
     assert.strictEqual(window.pageUrl('reports'), '/reports');
     assert.strictEqual(window.currentRoute(), 'dashboard', '根路径回退 dashboard');
+});
+
+test('renderUpdateLast：空数据隐藏、成功/告警/未挂载分支产出对应徽章', () => {
+    const { window } = loadApp(
+        '<!doctype html><html><head></head><body><div id="aboutUpdateLast"></div></body></html>'
+    );
+    const el = window.document.getElementById('aboutUpdateLast');
+
+    // 1) null → 隐藏且无列表
+    window.renderUpdateLast(null);
+    assert.strictEqual(el.hidden, true, 'null 应隐藏容器');
+    assert.strictEqual(el.querySelector('ul'), null, 'null 不应渲染列表');
+
+    // 2) 空对象（无记录/无镜像偏差/无 appData）→ 无项，隐藏
+    window.renderUpdateLast({});
+    assert.strictEqual(el.hidden, true, '空对象应隐藏容器');
+
+    // 3) 命令成功且无镜像偏差 → 一条 ok 徽章
+    window.renderUpdateLast({ last: { ok: true, ts: '2026-01-01T00:00:00Z' } });
+    assert.strictEqual(el.hidden, false);
+    assert.strictEqual(el.querySelectorAll('li').length, 1, '成功分支渲染 1 条');
+    assert.ok(el.querySelector('.ul-badge.ok'), 'ok 徽章应存在');
+
+    // 4) 镜像偏差但命令成功 → warn 徽章
+    window.renderUpdateLast({
+        current: { containerImage: 'x:1', latestImage: 'x:latest', latestId: 'id', isLatest: false },
+        last: { ok: true },
+    });
+    assert.ok(el.querySelector('.ul-badge.warn'), '镜像偏差应渲染 warn 徽章');
+
+    // 5) /app/data 未挂载(type=none) → fix 徽章 + 折叠修复指引
+    window.renderUpdateLast({ appData: { type: 'none' } });
+    assert.ok(el.querySelector('.ul-badge.fix'), '未挂载应渲染 fix 徽章');
+    assert.ok(el.querySelector('details'), 'fix 分支应带折叠修复指引');
 });
