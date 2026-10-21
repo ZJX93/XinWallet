@@ -30,3 +30,19 @@ function showEmpty(el, text, icon = '') {
     if (!el) return;
     el.innerHTML = `<div class="empty-state">${icon ? `<div class="empty-icon">${icon}</div>` : ''}<div class="empty-text">${escapeHtml(text)}</div></div>`;
 }
+
+// ==========================================
+// 轻量提示 toast（审计 id 18：从 app.js 抽离）。
+// 仅依赖 #toastContainer 与 setTimeout，无 app.js 局部状态；error 走 role=alert。
+// ==========================================
+function showToast(msg, type = 'info') {
+    const c = document.getElementById('toastContainer');
+    if (!c) { console.log(`[toast:${type}]`, msg); return; }
+    // error 走 role=alert 让屏幕阅读器立刻播报；其他用 role=status 走 polite
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 300); }, 3000);
+}

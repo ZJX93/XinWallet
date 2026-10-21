@@ -19,17 +19,7 @@ window.cache = cache; // ES Module 无法访问 let 声明的顶级变量，显�
 // ==========================================
 // Toast
 // ==========================================
-function showToast(msg, type = 'info') {
-    const c = document.getElementById('toastContainer');
-    if (!c) { console.log(`[toast:${type}]`, msg); return; }
-    // error 走 role=alert 让屏幕阅读器立刻播报；其他用 role=status 走 polite
-    const t = document.createElement('div');
-    t.className = `toast ${type}`;
-    t.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    t.textContent = msg;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 300); }, 3000);
-}
+// 轻量提示 toast 已抽到 ui.js（见 public/js/ui.js），全局可直接复用。
 
 // 金额/日期格式化与转账配对已抽到 core.js（见 public/js/core.js），
 // 该脚本在 index.html 中于 utils.js 之后、本文件之前加载，全局可直接复用。
@@ -180,22 +170,7 @@ if (window.innerWidth <= 720) initBottomNav();
 window.addEventListener('resize', () => { if (window.innerWidth <= 720) initBottomNav(); });
 
 // 当前站点根路径（兼容反向代理子路径）：XIN_API_BASE 形如 /xin/api → 根为 /xin
-function siteBase() {
-    return (window.XIN_API_BASE || '/api').replace(/\/api$/, '');
-}
-// 从 pathname 解析当前路由页（去掉站点根前缀与首尾斜杠）
-function currentRoute() {
-    let p = window.location.pathname;
-    const base = siteBase();
-    if (base && p.startsWith(base)) p = p.slice(base.length);
-    p = p.replace(/^\/+/, '').replace(/\/+$/, '');
-    return p || 'dashboard';
-}
-// 路由页对应的 URL（所有页面统一为 /<page>，dashboard 也是 /dashboard）
-function pageUrl(page) {
-    const base = siteBase();
-    return base + '/' + page;
-}
+// 路由 URL 助手已抽到 core.js（见 public/js/core.js），全局可直接复用。
 
 // 拉取「上次更新结果」并渲染到关于页（对应服务端 /api/update/status，
 // 2026-09-07 新增：暴露辅助容器重建的真实 exit code + 运行镜像是否真的切到 :latest）

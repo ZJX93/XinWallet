@@ -194,3 +194,24 @@ function getAcc(id) { return window.cache.accounts.find(a => a.id === id) || { i
 function getExpCats() { return window.cache.categories.filter(c => c.type === 'expense'); }
 function getIncCats() { return window.cache.categories.filter(c => c.type === 'income'); }
 function getTransferCats() { return window.cache.categories.filter(c => c.type === 'transfer'); }
+
+// ==========================================
+// 路由 URL 助手（审计 id 18：从 app.js 抽离）。
+// 仅依赖 window.XIN_API_BASE / window.location，纯函数、无 app.js 局部状态。
+// ==========================================
+function siteBase() {
+    return (window.XIN_API_BASE || '/api').replace(/\/api$/, '');
+}
+// 从 pathname 解析当前路由页（去掉站点根前缀与首尾斜杠）
+function currentRoute() {
+    let p = window.location.pathname;
+    const base = siteBase();
+    if (base && p.startsWith(base)) p = p.slice(base.length);
+    p = p.replace(/^\/+/, '').replace(/\/+$/, '');
+    return p || 'dashboard';
+}
+// 路由页对应的 URL（所有页面统一为 /<page>，dashboard 也是 /dashboard）
+function pageUrl(page) {
+    const base = siteBase();
+    return base + '/' + page;
+}

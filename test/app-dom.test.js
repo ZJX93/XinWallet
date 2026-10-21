@@ -31,6 +31,9 @@ test('app.js 在 jsdom 中无异常加载且核心函数暴露到 window', () =>
         'showSkeleton',
         'showEmpty',
         'getTransferCats',
+        'siteBase',
+        'currentRoute',
+        'pageUrl',
     ]) {
         assert.strictEqual(typeof window[fn], 'function', `${fn} 应暴露为全局函数`);
     }
@@ -159,4 +162,11 @@ test('缓存访问器：getAcc / getExpCats / getIncCats / getTransferCats 从 w
     assert.strictEqual(window.getExpCats().length, 1);
     assert.strictEqual(window.getIncCats().length, 1);
     assert.strictEqual(window.getTransferCats().length, 1);
+});
+
+test('路由 URL 助手：siteBase / pageUrl / currentRoute（默认根路径）', () => {
+    const { window } = loadApp();
+    assert.strictEqual(window.siteBase(), '', '无 XIN_API_BASE 时 siteBase 为 ""');
+    assert.strictEqual(window.pageUrl('reports'), '/reports');
+    assert.strictEqual(window.currentRoute(), 'dashboard', '根路径回退 dashboard');
 });
