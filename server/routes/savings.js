@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { success, fail, handleServerError, computeAccountBalance, enforceBalanceLimit, normDate } = require('./_helpers');
+const { success, fail, handleServerError, computeAccountBalance, enforceBalanceLimit, writeAccountBalances, normDate } = require('./_helpers');
 const { toAmount } = require('../validate');
 const { ensureCategory } = require('./utils');
 
@@ -121,8 +121,7 @@ router.post('/:id/allocate', async (req, res) => {
             const savBal = await computeAccountBalance(conn, req.userId, goal.account_id, req.bookId);
             await enforceBalanceLimit(conn, req.userId, srcId, srcBal, req.bookId);
             await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal, req.bookId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [srcBal, srcId, req.userId, req.bookId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
+            await writeAccountBalances(conn, req.userId, req.bookId, { [srcId]: srcBal, [goal.account_id]: savBal });
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note, currency) VALUES (?, ?, ?, ?, \'deposit\', ?, ?, ?, ?)',
                 [req.userId, req.bookId, id, srcId, amount, opDate, `存入「${goal.name}」`, savCurrency]);
@@ -168,8 +167,7 @@ router.post('/:id/withdraw', async (req, res) => {
             const destBal = await computeAccountBalance(conn, req.userId, destId, req.bookId);
             await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal, req.bookId);
             await enforceBalanceLimit(conn, req.userId, destId, destBal, req.bookId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [savBal, goal.account_id, req.userId, req.bookId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [destBal, destId, req.userId, req.bookId]);
+            await writeAccountBalances(conn, req.userId, req.bookId, { [goal.account_id]: savBal, [destId]: destBal });
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, book_id, goal_id, account_id, type, amount, date, note, currency) VALUES (?, ?, ?, ?, \'withdraw\', ?, ?, ?, ?)',
                 [req.userId, req.bookId, id, destId, amount, opDate, `取出「${goal.name}」`, savCurrency]);

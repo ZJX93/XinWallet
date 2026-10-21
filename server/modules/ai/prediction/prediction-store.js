@@ -14,7 +14,7 @@
    ============================================ */
 
 const db = require('../../../db');
-const { computeAccountBalance, enforceBalanceLimit } = require('../../../routes/_helpers');
+const { computeAccountBalance, enforceBalanceLimit, writeAccountBalances } = require('../../../routes/_helpers');
 const { syncCreditCardDebt, resolveNote } = require('../../../routes/utils');
 const { validateResult } = require('../validation/result-validator');
 const { toAmount, toNumber } = require('../../../validate');
@@ -270,7 +270,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 // 余额更新（复用现有副作用）
                 const newBal = await computeAccountBalance(conn, userId, accountId);
                 await enforceBalanceLimit(conn, userId, accountId, newBal);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBal, accountId, userId, bookId]);
+                await writeAccountBalances(conn, userId, bookId, { [accountId]: newBal });
                 await syncCreditCardDebt(conn, userId, accountId);
 
                 /*  ⚠️ 必须回填 note 与 date：这两个字段在服务端会被改写
@@ -345,8 +345,7 @@ async function doCommit(id, userId, bookId, action, correctedTxns, idem) {
                 const toBal = await computeAccountBalance(conn, userId, toId);
                 await enforceBalanceLimit(conn, userId, fromId, fromBal);
                 await enforceBalanceLimit(conn, userId, toId, toBal);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, fromId, userId, bookId]);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, toId, userId, bookId]);
+                await writeAccountBalances(conn, userId, bookId, { [fromId]: fromBal, [toId]: toBal });
 
                 committedTxns.push({ id: transferId, seq: txn.seq, type: 'transfer', amount, from_account_id: fromId, to_account_id: toId });
             } else {

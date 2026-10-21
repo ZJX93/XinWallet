@@ -10,7 +10,7 @@ const multer = require('multer');
 const ExcelJS = require('exceljs');
 
 const db = require('../db');
-const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
+const { success, fail, handleServerError, computeAccountBalance, writeAccountBalances } = require('./_helpers');
 const { toAmount } = require('../validate');
 const { recomputeInvestmentPosition } = require('./transactions');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
@@ -1159,10 +1159,9 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
 
             // 8) 以账本为准重算所有导入账户余额，避免直接写入导致漂移
-            for (const name of Object.keys(acMap)) {
-                const newBal = await computeAccountBalance(conn, userId, acMap[name], bookId);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBal, acMap[name], userId, bookId]);
-            }
+            const backupBalances = {};
+            for (const name of Object.keys(acMap)) backupBalances[acMap[name]] = await computeAccountBalance(conn, userId, acMap[name], bookId);
+            await writeAccountBalances(conn, userId, bookId, backupBalances);
             // 9) 以「账户余额」为唯一真相重新校准自动同步的授信债务。
             //    债务表的 remaining 只是导出时的快照，而上面的余额重算可能已改变信用卡余额
             //    （还款双腿重建后信用卡回血）。不校准就会出现「账户已还清、债务还挂着欠款」。

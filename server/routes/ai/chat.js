@@ -6,6 +6,7 @@
    ============================================ */
 
 const { express, db, success, fail, handleServerError, aiModule, getActiveProvider, checkProvider, chatWithTools, fmtDateTime, stripThinkingTokens, polishChatReply, toAmount, syncCreditCardDebt, computeAccountBalance, enforceBalanceLimit, aiSettingsSvc } = require('./_shared');
+const { writeAccountBalances } = require('../_helpers');
 const router = express.Router();
 
 // 财务分析工具（只读）：经 modules/ai 桶文件导出 —— 路由层不直接依赖 AI 内部模块
@@ -414,8 +415,8 @@ ${accRef}`;
                     const newBalances = {};
                     for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
                     for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
+                    await writeAccountBalances(conn, req.userId, req.bookId, newBalances);
                     for (const aid of affected) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });
@@ -443,8 +444,8 @@ ${accRef}`;
                     const newBalances = {};
                     for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affectedAccounts) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                    await writeAccountBalances(conn, req.userId, req.bookId, newBalances);
                     for (const aid of affectedAccounts) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });

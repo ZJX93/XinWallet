@@ -387,9 +387,43 @@ async function ensureWeeklySnapshots(userId, investments) {
     }
 }
 
+/**
+ * 批量写回账户余额（审计 N+1 深度批处理）。
+ * 把原本散落各路由的 `UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?`
+ * 收敛为统一的批量 UPDATE（CASE WHEN ... THEN ... ELSE balance END），将 N 次写 → 1 次，
+ * 既消除重复的 SQL 字符串（"7 处重复模式"），又消灭 N+1 写入。
+ *
+ * @param {object} conn    事务连接或连接池（需有 .query）
+ * @param {number} userId
+ * @param {number} bookId
+ * @param {Object|Map} balances  键为 accountId（number），值为余额（number，单位元，整数分精确）
+ *                                不在其中的账户余额保持不变（ELSE balance）。
+ */
+async function writeAccountBalances(conn, userId, bookId, balances) {
+    const entries = [];
+    if (balances instanceof Map) {
+        for (const [k, v] of balances) entries.push([Number(k), v]);
+    } else {
+        for (const k of Object.keys(balances)) entries.push([Number(k), balances[k]]);
+    }
+    if (entries.length === 0) return;
+    const whenClauses = entries.map(() => 'WHEN id = ? THEN ?').join(' ');
+    const params = [];
+    for (const [id, v] of entries) params.push(id, v);
+    params.push(userId, bookId);
+    const inPlaceholders = entries.map(() => '?').join(',');
+    for (const [id] of entries) params.push(id);
+    await conn.query(
+        `UPDATE accounts SET balance = CASE ${whenClauses} ELSE balance END ` +
+        `WHERE user_id = ? AND book_id = ? AND id IN (${inPlaceholders})`,
+        params
+    );
+}
+
 module.exports = {
     success, fail, normDate, nowLocalDateTime, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
     extractJson, stripThinkingTokens, polishChatReply, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
+    writeAccountBalances,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failBadRequest,
     tryDecrypt,

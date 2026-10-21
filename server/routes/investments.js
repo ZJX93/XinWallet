@@ -11,7 +11,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, nowLocalDateTime } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, writeAccountBalances, nowLocalDateTime } = require('./_helpers');
 const {
   getQuoteStrategy,
   fetchQuoteByCategory,
@@ -153,7 +153,7 @@ async function createInvestmentCreateTxn(conn, userId, bookId, accId, cost, name
     );
     // 以账本为准重算关联账户余额（严格按当前账本隔离）
     const newBalance = await computeAccountBalance(conn, userId, accId, bookId);
-    await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, userId, bookId]);
+    await writeAccountBalances(conn, userId, bookId, { [accId]: newBalance });
     return txResult.insertId;
 }
 
@@ -163,7 +163,7 @@ async function rollbackInvestmentCreateTxn(conn, userId, bookId, txId, accId) {
     await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [txId, userId, bookId]);
     if (accId) {
         const newBalance = await computeAccountBalance(conn, userId, accId, bookId);
-        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, userId, bookId]);
+        await writeAccountBalances(conn, userId, bookId, { [accId]: newBalance });
     }
 }
 
@@ -569,7 +569,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
                     }
                     // 以账本为准重算关联账户余额（单一真相，避免直接加减导致漂移）
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id, req.bookId);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, investment.account_id, req.userId, req.bookId]);
+                    await writeAccountBalances(conn, req.userId, req.bookId, { [investment.account_id]: newBalance });
                 }
                 msg = type === 'buy' ? '买入已记录' : type === 'sell' ? '卖出已记录' : type === 'dividend' ? '分红已记录' : '利息已记录';
             }
@@ -687,10 +687,9 @@ router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
             // 用剩余流水重算持仓（做T：数量归0也保持holding，隔夜自动归档）
             await recomputeInvestmentPosition(conn, investmentId, req.userId);
             // 关联账户余额重算（单一真相）
-            for (const aid of affected) {
-                const newBalance = await computeAccountBalance(conn, req.userId, aid, req.bookId);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, aid, req.userId, req.bookId]);
-            }
+            const invBalances = {};
+            for (const aid of affected) invBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
+            await writeAccountBalances(conn, req.userId, req.bookId, invBalances);
         });
 
         res.json(success(null, '已删除'));
@@ -787,10 +786,9 @@ router.put('/investments/:id/transactions/:txnId', async (req, res) => {
 
             // 4) 统一重算持仓（含新流水）+ 同步受影响账户余额（单一真相）
             await recomputeInvestmentPosition(conn, investmentId, req.userId);
-            for (const aid of affected) {
-                const newBalance = await computeAccountBalance(conn, req.userId, aid, req.bookId);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, aid, req.userId, req.bookId]);
-            }
+            const invBalances = {};
+            for (const aid of affected) invBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId);
+            await writeAccountBalances(conn, req.userId, req.bookId, invBalances);
         });
 
         res.json(success(null, msg));
@@ -837,7 +835,7 @@ router.put('/investments/:id/sell', async (req, res) => {
                 );
                 // 以账本为准重算账户余额
                 const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id, req.bookId);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, investment.account_id, req.userId, req.bookId]);
+                await writeAccountBalances(conn, req.userId, req.bookId, { [investment.account_id]: newBalance });
             }
         });
 
@@ -895,7 +893,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id, req.bookId);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, investment.account_id, req.userId, req.bookId]);
+                    await writeAccountBalances(conn, req.userId, req.bookId, { [investment.account_id]: newBalance });
                 }
                 res.json(success(null, '已加仓'));
             } else {
@@ -934,7 +932,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id, req.bookId);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, investment.account_id, req.userId, req.bookId]);
+                    await writeAccountBalances(conn, req.userId, req.bookId, { [investment.account_id]: newBalance });
                 }
                 res.json(success(null, remainingQty > 0 ? '已减仓' : '已清仓'));
             }
@@ -984,11 +982,9 @@ router.delete('/investments/:id', async (req, res) => {
             await conn.query('DELETE FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
 
             // 以账本为准统一重算受影响账户余额
-            for (const aid of affectedAccounts) {
-                if (!aid) continue;
-                const newBalance = await computeAccountBalance(conn, req.userId, aid, req.bookId);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, aid, req.userId, req.bookId]);
-            }
+            const delBalances = {};
+            for (const aid of affectedAccounts) { if (!aid) continue; delBalances[aid] = await computeAccountBalance(conn, req.userId, aid, req.bookId); }
+            await writeAccountBalances(conn, req.userId, req.bookId, delBalances);
         });
         res.json(success(null, '持仓已删除'));
     } catch (err) {

@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { toNumber } = require('../validate');
 const {
-    success, handleServerError, computeAccountBalance, enforceBalanceLimit, normDate,
+    success, handleServerError, computeAccountBalance, enforceBalanceLimit, writeAccountBalances, normDate,
     ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict
 } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
@@ -137,8 +137,7 @@ router.post('/', async (req, res) => {
             const toBal = await computeAccountBalance(conn, req.userId, to_account_id, req.bookId);
             await enforceBalanceLimit(conn, req.userId, from_account_id, fromBal, req.bookId);
             await enforceBalanceLimit(conn, req.userId, to_account_id, toBal, req.bookId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, from_account_id, req.userId, req.bookId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, to_account_id, req.userId, req.bookId]);
+            await writeAccountBalances(conn, req.userId, req.bookId, { [from_account_id]: fromBal, [to_account_id]: toBal });
 
             // 转账会改变授信账户（信用卡 / 带额度的电子支付）的已用额度，
             // 债务必须跟着变，否则会出现「钱已还进信用卡、债务列表还挂着欠款」
@@ -214,9 +213,7 @@ router.put('/:id', async (req, res) => {
             for (const aid of affectedAccounts) {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
-            for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
-            }
+            await writeAccountBalances(conn, req.userId, req.bookId, newBalances);
             // 改后的余额同样要同步授信账户债务（见 POST 处说明）
             for (const aid of affectedAccounts) {
                 await syncCreditCardDebt(conn, req.userId, aid);
@@ -244,8 +241,7 @@ router.delete('/:id', async (req, res) => {
             const toBal = await computeAccountBalance(conn, req.userId, transfer.to_account_id, req.bookId);
             await enforceBalanceLimit(conn, req.userId, transfer.from_account_id, fromBal, req.bookId);
             await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal, req.bookId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [fromBal, transfer.from_account_id, req.userId, req.bookId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [toBal, transfer.to_account_id, req.userId, req.bookId]);
+            await writeAccountBalances(conn, req.userId, req.bookId, { [transfer.from_account_id]: fromBal, [transfer.to_account_id]: toBal });
             // 删掉转账后授信账户的已用额度回退，债务也要跟着回退
             await syncCreditCardDebt(conn, req.userId, transfer.from_account_id);
             await syncCreditCardDebt(conn, req.userId, transfer.to_account_id);

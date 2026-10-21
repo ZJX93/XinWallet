@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, normDate, sumAmounts, addAmounts, subtractAmounts, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
+const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, normDate, sumAmounts, addAmounts, subtractAmounts, writeAccountBalances, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
 const { syncCreditCardDebt } = require('./utils');
 
 // 获取所有账户。默认只返回正常账户；?all=1 时连已销户账户一起返回（总资产仍只累计正常账户）
@@ -236,7 +236,7 @@ router.post('/reconcile', async (req, res) => {
             const computed = await computeAccountBalance(db, req.userId, acc.id, req.bookId);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
-                await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [computed, acc.id, req.userId, req.bookId]);
+                await writeAccountBalances(db, req.userId, req.bookId, { [acc.id]: computed });
                 fixed++;
                 // 金额精度（M3）：差额先收集，最后整数分求和，避免逐次浮点累加
                 diffs.push(subtractAmounts(computed, stored));

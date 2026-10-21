@@ -7,7 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
-    success, handleServerError, fmtDateTime, normDate, computeAccountBalance, enforceBalanceLimit,
+    success, handleServerError, fmtDateTime, normDate, computeAccountBalance, enforceBalanceLimit, writeAccountBalances,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
 const { syncCreditCardDebt, resolveNote } = require('./utils');
@@ -513,7 +513,7 @@ router.post('/', async (req, res) => {
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
             const newBalance = await computeAccountBalance(conn, req.userId, accId, req.bookId);
             await enforceBalanceLimit(conn, req.userId, accId, newBalance, req.bookId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, accId, req.userId, req.bookId]);
+            await writeAccountBalances(conn, req.userId, req.bookId, { [accId]: newBalance });
 
             // 自动同步信用卡债务
             await syncCreditCardDebt(conn, req.userId, accId);
@@ -613,8 +613,8 @@ router.put('/:id', async (req, res) => {
             for (const aid of affected) {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
+            await writeAccountBalances(conn, req.userId, req.bookId, newBalances);
             for (const aid of affected) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                 // 自动同步信用卡债务
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -691,8 +691,8 @@ router.delete('/:id', async (req, res) => {
             for (const aid of affectedAccounts) {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid], req.bookId);
             }
+            await writeAccountBalances(conn, req.userId, req.bookId, newBalances);
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalances[aid], aid, req.userId, req.bookId]);
                 // 自动同步信用卡债务（删除交易后余额变化）
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
