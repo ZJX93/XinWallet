@@ -26,18 +26,28 @@ test('app.js 在 jsdom 中无异常加载且核心函数暴露到 window', () =>
         'showToast',
         'showPage',
         'switchPage',
+        'getCurrentPage',
         'getCat',
         'getAcc',
+        'getExpCats',
+        'getIncCats',
+        'getTransferCats',
         'showSkeleton',
         'showEmpty',
-        'getTransferCats',
         'siteBase',
         'currentRoute',
         'pageUrl',
         'renderUpdateLast',
-        'showPage',
-        'switchPage',
-        'getCurrentPage',
+        'initCache',
+        'refreshUpdateLast',
+        'initAIConfigTabs',
+        'initTransMonthFilter',
+        'initColorSwatches',
+        'initLangSwitcher',
+        'initPresetCategoryLocalization',
+        'initBottomNav',
+        'refreshPage',
+        'boot',
     ]) {
         assert.strictEqual(typeof window[fn], 'function', `${fn} 应暴露为全局函数`);
     }
@@ -324,4 +334,47 @@ test('导航元数据：window.PAGE_META 已暴露且含核心页', () => {
     const { window } = loadApp();
     assert.ok(window.PAGE_META && typeof window.PAGE_META === 'object', 'window.PAGE_META 应存在');
     assert.ok('transactions' in window.PAGE_META && 'budget' in window.PAGE_META && 'dashboard' in window.PAGE_META);
+});
+
+test('状态中枢（state.js）：window.API 由 XIN_API_BASE 推导、window.cache 含核心字段', () => {
+    const { window } = loadApp();
+    assert.strictEqual(typeof window.API, 'string', 'window.API 应为字符串');
+    assert.ok(window.API.startsWith('/'), '默认根路径下 API 应以 / 开头');
+    assert.ok(window.cache && typeof window.cache === 'object', 'window.cache 应存在');
+    for (const k of ['accounts', 'categories', 'investmentTypes', 'investments', 'tags', 'currentMonth']) {
+        assert.ok(k in window.cache, `window.cache 应含字段 ${k}`);
+    }
+    // cache 与初始数组引用一致（init.js 的 initCache 会就地填充这些数组）
+    // 注意：jsdom 内创建的数组是「jsdom 域 Array」，与 Node 域 [] 跨域，
+    // deepStrictEqual 会因原型身份不同失败，故改用 Array.isArray + length 断言。
+    assert.ok(Array.isArray(window.cache.accounts) && window.cache.accounts.length === 0, 'accounts 初始应为空数组');
+});
+
+test('refreshPage：按页面分派到对应 Manager.refresh；无 Manager / ai-config 守卫不抛错', async () => {
+    const { window } = loadApp();
+    let called = null;
+    window.DashboardManager = { refresh: async () => { called = 'dashboard'; } };
+    window.ReportManager = { refresh: async () => { called = 'reports'; } };
+    await window.refreshPage('dashboard');
+    assert.strictEqual(called, 'dashboard', 'dashboard 应分派到 DashboardManager.refresh');
+    await window.refreshPage('reports');
+    assert.strictEqual(called, 'reports', 'reports 应分派到 ReportManager.refresh');
+    // 无对应 Manager 的页面被 if 守卫跳过，不应抛错
+    await assert.doesNotReject(() => window.refreshPage('tags'));
+    // ai-config 分支还会调用 initAIConfigTabs（无 #aiConfigTabs 时应早返回，不抛错）
+    await assert.doesNotReject(() => window.refreshPage('ai-config'));
+});
+
+test('boot：启动编排在无后端/Manager 时也能跑完（I18N/PreferencesManager/initCache/showPage 以桩替换，Manager 缺失被 safeInit 容错）', async () => {
+    const { window } = loadApp();
+    let showPageCalled = false;
+    // 生产环境由 managers/index.js / i18n.js 在 boot 前注入；harness 未加载，以桩替代。
+    // 注意 boot 在 try/catch 之外会读 PreferencesManager.lang / I18N.lang，故需真实桩对象。
+    window.I18N = { init: async () => {}, setLang: async () => {}, lang: 'zh' };
+    window.PreferencesManager = { load: async () => {}, lang: null };
+    window.initCache = async () => {};           // 否则会真实请求 /api 并抛错中断 boot
+    window.showPage = async () => { showPageCalled = true; };
+    // 各业务 Manager 缺失时 safeInit 仅 warn，不中断 boot
+    await window.boot();
+    assert.strictEqual(showPageCalled, true, 'boot 应到达 showPage 恢复页面');
 });

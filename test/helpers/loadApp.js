@@ -18,11 +18,14 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const UTILS_PATH = path.join(REPO_ROOT, 'public', 'js', 'utils.js');
+const STATE_PATH = path.join(REPO_ROOT, 'public', 'js', 'state.js');
 const CORE_PATH = path.join(REPO_ROOT, 'public', 'js', 'core.js');
 const UI_PATH = path.join(REPO_ROOT, 'public', 'js', 'ui.js');
 const NAV_PATH = path.join(REPO_ROOT, 'public', 'js', 'nav.js');
 const APP_PATH = path.join(REPO_ROOT, 'public', 'js', 'app.js');
 const INIT_PATH = path.join(REPO_ROOT, 'public', 'js', 'init.js');
+const REFRESH_PATH = path.join(REPO_ROOT, 'public', 'js', 'refresh.js');
+const BOOT_PATH = path.join(REPO_ROOT, 'public', 'js', 'boot.js');
 
 function loadApp(html) {
     const doc =
@@ -40,8 +43,8 @@ function loadApp(html) {
     });
     const { window } = dom;
 
-    // 顺序与 index.html 一致：utils.js → core.js → ui.js → nav.js → app.js → init.js
-    for (const file of [UTILS_PATH, CORE_PATH, UI_PATH, NAV_PATH, APP_PATH, INIT_PATH]) {
+    // 顺序与 index.html 一致：utils.js → state.js → core.js → ui.js → nav.js → app.js → init.js → refresh.js → boot.js
+    for (const file of [UTILS_PATH, STATE_PATH, CORE_PATH, UI_PATH, NAV_PATH, APP_PATH, INIT_PATH, REFRESH_PATH, BOOT_PATH]) {
         const code = fs.readFileSync(file, 'utf8');
         const script = window.document.createElement('script');
         script.textContent = code;

@@ -128,6 +128,7 @@ const initBottomNav = () => {
 };
 if (window.innerWidth <= 720) initBottomNav();
 window.addEventListener('resize', () => { if (window.innerWidth <= 720) initBottomNav(); });
+window.initBottomNav = initBottomNav; // 暴露为全局（与同文件其它 init* 函数声明一致，供测试/跨脚本访问）
 
 // ---------- AI 配置标签页 ----------
 function initAIConfigTabs() {

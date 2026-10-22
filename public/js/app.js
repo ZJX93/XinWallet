@@ -5,12 +5,7 @@
 // 统一 API 调用、格式化函数：来自 utils.js（已挂载 window.api / window.fmt）
 // 这样 app.js / auth.js 共用同一份 api() 实现，避免行为分裂。
 
-// API 基址
-const API = window.XIN_API_BASE || '/api';
-
-// 全局缓存
-let cache = { accounts: [], categories: [], investmentTypes: [], investments: [], tags: [], currentMonth: '' };
-window.cache = cache; // ES Module 无法访问 let 声明的顶级变量，显式挂载到 window
+// 全局状态中枢（API 基址 + 前端内存缓存 cache）已抽到 state.js（见 public/js/state.js）
 
 // ==========================================
 // api() / fmt() / escapeHtml() 已通过 utils.js 注入到 window，无需重复定义
@@ -73,32 +68,7 @@ document.querySelectorAll('.see-all').forEach(el => el.addEventListener('click',
 
 // AI 配置标签页（initAIConfigTabs）已抽到 init.js（见 public/js/init.js）
 
-async function refreshPage(page) {
-    // 各 Manager 通过 ES Module 异步注入到 window（见 managers/index.js），
-    // 统一使用 window.xxx 避免裸标识符在模块加载前的 ReferenceError
-    const M = window;
-    if (page === 'dashboard' && M.DashboardManager) await M.DashboardManager.refresh();
-    if (page === 'accounts' && M.AccountManager) await M.AccountManager.refresh();
-    if (page === 'transactions' && M.TransactionManager) await M.TransactionManager.refresh();
-    if (page === 'budget' && M.BudgetManager) await M.BudgetManager.refresh();
-    if (page === 'investments') {
-        if (M.InvestmentManager) { await M.InvestmentManager.refresh(); await M.InvestmentManager.autoRefreshQuotes(); }
-        if (M.SavingsGoalManager) await M.SavingsGoalManager.refresh();
-    }
-    if (page === 'debts' && M.DebtManager) await M.DebtManager.refresh();
-    if (page === 'data-center' && M.DataManager) await M.DataManager.refresh();
-    if (page === 'tags' && M.TagManager) await M.TagManager.refresh();
-    if (page === 'ai-recognition') {
-        if (M.AISmartEntry) M.AISmartEntry.refresh();
-        if (M.AIBillImport) await M.AIBillImport.refresh();
-        if (M.AIChat) M.AIChat.refresh();
-    }
-    if (page === 'ai-insights' && M.AIInsights) await M.AIInsights.refresh();
-    if (page === 'ai-rules' && M.AIRules) await M.AIRules.refresh();
-    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } if (M.AISettings) await M.AISettings.refresh(); initAIConfigTabs(); }
-    if (page === 'ai-status' && M.AITools) await M.AITools.refresh();
-    if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
-}
+// 页面数据刷新分派（refreshPage）已抽到 refresh.js（见 public/js/refresh.js）
 
 // 导航访问器（getCurrentPage / refreshCurrentPage）已抽到 nav.js（见 public/js/nav.js）
 
@@ -124,56 +94,4 @@ window.addEventListener('book:changed', async () => {
 
 // 预置分类本地化（initPresetCategoryLocalization）已抽到 init.js（见 public/js/init.js）
 
-async function boot() {
-    const DEBUG = window.XIN_DEBUG === true || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    const log = (...a) => { if (DEBUG) console.log(...a); };  // 启动横幅仅在本地/调试态打印
-    log(tt('app.boot.start', '🚀 鑫钱包启动...'));
-    try { await I18N.init(); log('  ✅ i18n'); } catch(e) { console.warn(tt('app.boot.warnI18n', '  ⚠️  i18n init 失败(跳过):'), e.message); }
-    try { await PreferencesManager.load(); log('  ✅ preferences'); } catch(e) { console.warn(tt('app.boot.warnPref', '  ⚠️  preferences (跳过):'), e.message); }
-    const prefLang = PreferencesManager.lang;
-    if (prefLang && prefLang !== I18N.lang) { await I18N.setLang(prefLang); log(tt('app.boot.langSynced', '  ✅ 语言按偏好同步 -> ') + ' ' + prefLang); }
-    initLangSwitcher();
-    initPresetCategoryLocalization();
-    // ⛔ safeInit 必须先定义再调用：const 不会 hoist，提前调用会 TDZ 抛 ReferenceError
-    const safeInit = (name, fn) => { try { fn(); log('  ✅ '+name); } catch(e) { console.warn(tt('app.boot.warnSkip', '  ⚠️  {name} (跳过):').replace('{name}', name), e.message); } };
-    safeInit('FxManager', () => FxManager.init());   // 多币种 P2-2b：拉取汇率（汇率查询页与金额折算依赖，原顶栏入口已移除）
-    try { await initCache(); log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
-    // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后
-    safeInit('TransMonthFilter', () => initTransMonthFilter());
-    safeInit('ThemeManager', () => ThemeManager.init());
-    safeInit('AccountManager', () => AccountManager.init());
-    safeInit('TransactionManager', () => TransactionManager.init());
-    safeInit('BudgetManager', () => BudgetManager.init());
-    safeInit('InvestmentManager', () => InvestmentManager.init());
-    safeInit('DebtManager', () => DebtManager.init());
-    safeInit('TagManager', () => TagManager.init());
-    safeInit('DataManager', () => DataManager.init());
-    safeInit('SavingsGoalManager', () => SavingsGoalManager.init());
-    safeInit('AISmartEntry', () => AISmartEntry.init());
-    safeInit('AIBillImport', () => AIBillImport.init());
-    safeInit('AIAdvice', () => AIAdvice.init());
-    safeInit('AIChat', () => AIChat.init());
-    safeInit('AIRules', () => AIRules.init());
-    safeInit('AILearning', () => AILearning.init());
-    safeInit('AIInsights', () => AIInsights.init());
-    safeInit('AIProviderManager', () => AIProviderManager.init());
-    safeInit('AIChat', () => AIChat.init());
-    safeInit('AISettings', () => AISettings.init());
-    safeInit('ReportManager', () => ReportManager.init());
-    safeInit('QuickAdd', () => QuickAdd.init());
-    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn(tt('app.boot.warnDashboard', '  ⚠️  Dashboard (跳过):'), e.message); }
-
-    // 从 URL path 恢复页面状态（干净路由：/transactions）
-    const page = currentRoute();
-    const validPages = Object.keys(window.PAGE_META);
-    if (validPages.includes(page)) {
-        history.replaceState({ page }, '', pageUrl(page));
-        await showPage(page);
-    } else {
-        history.replaceState({ page: 'dashboard' }, '', pageUrl('dashboard'));
-        await showPage('dashboard');
-    }
-    log(tt('app.boot.ready', '✅ 鑫钱包系统已就绪'));
-}
-
-// boot() 由 js/managers/index.js 在 DOMContentLoaded 后直接调用；app.js 加载为普通 script，所有变量已在全局
+// 启动编排（boot）已抽到 boot.js（见 public/js/boot.js）；由 js/managers/index.js 在 DOMContentLoaded 后调用 window.boot()
