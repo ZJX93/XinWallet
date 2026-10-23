@@ -64,7 +64,7 @@ window.I18N_DICT['zh-CN'] = {
     'currency.toast.failed': '汇率刷新失败：{msg}',
 
     // ============ 导航 ============
-    'nav.dashboard': '仪表盘',
+    'nav.dashboard': '总览',
     'nav.budget': '预算',
     'nav.transactions': '交易',
     'nav.investments': '理财',
@@ -104,7 +104,7 @@ window.I18N_DICT['zh-CN'] = {
     'lang.en': '英文',
 
     // ============ 页面标题/副标题 ============
-    'pageTitle.dashboard': '仪表盘',
+    'pageTitle.dashboard': '总览',
     'pageSubtitle.dashboard': '财务总览与快速洞察',
     'pageTitle.accounts': '账户管理',
     'pageSubtitle.accounts': '管理您的资金账户',

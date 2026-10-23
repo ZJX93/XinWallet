@@ -64,7 +64,7 @@ window.I18N_DICT['en-US'] = {
     'currency.toast.failed': 'Failed to refresh rates: {msg}',
 
     // ============ 导航 ============
-    'nav.dashboard': 'Dashboard',
+    'nav.dashboard': 'Overview',
     'nav.budget': 'Budgets',
     'nav.transactions': 'Transactions',
     'nav.investments': 'Investments',
@@ -104,7 +104,7 @@ window.I18N_DICT['en-US'] = {
     'lang.en': 'English',
 
     // ============ 页面标题/副标题（Top-bar） ============
-    'pageTitle.dashboard': 'Dashboard',
+    'pageTitle.dashboard': 'Overview',
     'pageSubtitle.dashboard': 'Financial overview and quick insights',
     'pageTitle.accounts': 'Accounts',
     'pageSubtitle.accounts': 'Manage your money accounts',
