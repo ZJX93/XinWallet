@@ -11,6 +11,14 @@
      持久卷，通过 docker inspect 宿主卷 Source 挂进辅助容器），主容器据此
      新增 GET /status：返回上次更新结果，并实时对比「容器实际运行镜像 vs
      UPDATE_IMAGE(:latest) 解析出的镜像 ID」，Web 端据此红字告警。
+
+   2026-10-23 修复「更新失败（退出码 1）且运行镜像仍是旧版」：
+   - compose 路径原样还原部署时的 -f / --env-file（读容器标签
+     com.docker.compose.project.config_files / environment_file）。此前辅助
+     容器只挂 workDir 并依赖默认文件发现，部署若用自定义 compose 文件名 /
+     多 -f / --env-file（.env 不叫 .env），DB_PASSWORD/JWT_SECRET 这类 :?
+     必填校验会让 up 在「动容器之前」就退出 1，旧容器原样保留。
+   - 日志头部新增 /compose-dir 内容与 docker compose version，失败一眼可辨。
    ============================================ */
 
 const express = require('express');
@@ -126,7 +134,11 @@ async function fetchLatestVersion() {
 // 用此在 /status 返回 appData 诊断，前端可按持久化状态给出不同的修复指引，
 // 不再像旧版仅看 /app/data/.update 子目录是否存在（首次更新前误报"未挂载"）。
 async function collectContainerInfo() {
-    const info = { project: null, service: null, workDir: null, appDataSource: null, appDataType: 'unknown' };
+    const info = {
+        project: null, service: null, workDir: null,
+        configFiles: [], envFile: null,
+        appDataSource: null, appDataType: 'unknown',
+    };
     const labelR = await dockerExec(['inspect', UPDATE_CONTAINER, '--format', '{{json .Config.Labels}}']);
     if (!labelR.err && labelR.stdout.trim()) {
         try {
@@ -134,6 +146,11 @@ async function collectContainerInfo() {
             info.project = labels['com.docker.compose.project'] || null;
             info.service = labels['com.docker.compose.service'] || null;
             info.workDir = labels['com.docker.compose.project.working_dir'] || null;
+            // compose v2 记录部署时实际使用的 -f 文件列表与 --env-file。
+            // 自更新必须原样还原，否则辅助容器按默认文件名找，找不到即失败。
+            info.configFiles = String(labels['com.docker.compose.project.config_files'] || '')
+                .split(':').map(s => s.trim()).filter(Boolean);
+            info.envFile = labels['com.docker.compose.project.environment_file'] || null;
         } catch (e) {
             console.error('[update] 解析 compose labels JSON 失败:', e.message);
         }
@@ -299,6 +316,28 @@ async function runApply() {
  * 优先走 compose（能完整还原端口/卷/网络/环境变量等编排配置）；
  * 容器缺少 compose 标签（如手工 docker run 启动）时退回 docker CLI 重建。
  */
+// shell 单引号包裹：脚本经 sh -c 执行，路径含空格/特殊字符时必须引用
+function shq(s) {
+    return `'` + String(s).replace(/'/g, `'\\''`) + `'`;
+}
+
+// 宿主 compose/env 文件路径 → 辅助容器内路径：
+//   位于 workDir 下 → /compose-dir/<相对路径>（workDir 已整体挂载，无需额外 -v）；
+//   位于 workDir 外 → /compose-extra-<i>/<文件名>（调用方负责 -v 单独挂载）。
+// 兼容 Windows 宿主路径（反斜杠 / 大小写不敏感前缀）；返回 null 表示路径异常，
+// 调用方跳过该文件、回退 compose 默认文件发现。
+function mapHostPathToHelper(hostPath, workDir, idx) {
+    const sNorm = String(hostPath || '').replace(/\\/g, '/');
+    if (!sNorm) return null;
+    const wd = String(workDir || '').replace(/\/+$/, '').replace(/\\/g, '/');
+    if (wd && sNorm.toLowerCase().startsWith(wd.toLowerCase() + '/')) {
+        const rel = sNorm.slice(wd.length + 1);
+        if (rel) return '/compose-dir/' + rel;
+    }
+    const name = path.posix.basename(sNorm);
+    return name ? `/compose-extra-${idx}/${name}` : null;
+}
+
 async function recreateSelf(oldImageId) {
     const info = await collectContainerInfo();
     const args = ['run', '-d', '--rm', '-v', '/var/run/docker.sock:/var/run/docker.sock'];
@@ -311,9 +350,27 @@ async function recreateSelf(oldImageId) {
         // 不用「宿主路径:同名路径」，因为 Windows 宿主路径（D:\...）不是合法的
         // 容器内路径，同名挂载会直接失败。
         args.push('-v', `${info.workDir}:/compose-dir`, '-w', '/compose-dir');
+        // 原样还原部署时的 -f / --env-file（读容器标签）。不还原时辅助容器按
+        // 默认 compose 文件与默认 .env 找，一旦部署用了自定义文件名/多 -f/
+        // --env-file，或 .env 里有 DB_PASSWORD/JWT_SECRET 这类 :? 必填校验，
+        // up 会在「动容器之前」退出 1，旧容器原样保留（更新失败且镜像不切换）。
+        const fParts = [];
+        let extraIdx = 0;
+        const addHostFile = (flag, hostPath) => {
+            const inHelper = mapHostPathToHelper(hostPath, info.workDir, extraIdx++);
+            if (!inHelper) return;
+            if (inHelper.startsWith('/compose-extra-')) {
+                args.push('-v', `${hostPath}:${inHelper}`);
+            }
+            fParts.push(`${flag} ${shq(inHelper)}`);
+        };
+        (info.configFiles || []).forEach(f => addHostFile('-f', f));
+        addHostFile('--env-file', info.envFile);
+        // 一个都没还原出来（旧版 compose 无这些标签）→ 保持旧行为：默认文件发现
+        const fArgs = fParts.length ? fParts.join(' ') + ' ' : '';
         // --no-deps 只重建 app 不牵动数据库；--force-recreate 确保载入新镜像层。
-        coreCmd = `docker compose -p ${info.project} up -d --no-deps --force-recreate ${info.service}`;
-        mode = 'compose rebuild';
+        coreCmd = `docker compose -p ${info.project} ${fArgs}up -d --no-deps --force-recreate ${info.service}`;
+        mode = fParts.length ? 'compose rebuild (recorded -f/--env-file)' : 'compose rebuild';
     } else {
         // 兜底：无 compose 标签（手工 docker run 启动）时无法还原编排配置，
         // 只能重启容器——此路径下镜像不会更新，需用户手动重建；状态里如实标注。
@@ -346,9 +403,15 @@ async function recreateSelf(oldImageId) {
         'docker image prune -f >/dev/null 2>&1 || true',
     ].join('\n');
 
+    // 日志开头追加现场诊断：/compose-dir 实际内容（是否空挂载/缺文件）与 compose 版本，
+    // 让「找不到 compose 文件 / 缺 .env / 缺 compose 插件」这类失败一眼可辨。
+    const diag = (info.project && info.service && info.workDir)
+        ? 'echo "--- /compose-dir:"; ls -A /compose-dir 2>&1 | head -20; '
+          + 'echo "--- compose:"; docker compose version 2>&1 | head -1; echo "---";'
+        : '';
     const script = [
         'sleep 2',
-        `( echo "== ${mode} @ $(date -u +%Y-%m-%dT%H:%M:%SZ) =="; ${coreCmd}; ) > /tmp/xw-update.log 2>&1`,
+        `( echo "== ${mode} @ $(date -u +%Y-%m-%dT%H:%M:%SZ) =="; ${diag} ${coreCmd}; ) > /tmp/xw-update.log 2>&1`,
         'code=$?',
         writeState,
         cleanCmd,
