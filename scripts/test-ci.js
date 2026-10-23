@@ -44,6 +44,11 @@ function runFile(file) {
       '--test',
       '--test-reporter=tap',
       `--test-timeout=${CASE_TIMEOUT_MS}`,
+      // 用例全部通过后，MySQL 连接池(enableKeepAlive) / 临时 express server 等句柄
+      // 会让进程无法自然退出，node --test 会一直等到 --test-timeout 再把整个文件
+      // 判为 cancelled/HANDLE-LEAK（假失败）。--test-force-exit 让进程在用例跑完后
+      // 强制退出；真正的单用例挂起仍由上面的 --test-timeout 捕获，不会被掩盖。
+      '--test-force-exit',
       path.join('test', file),
     ];
     const child = spawn(process.execPath, args, {
