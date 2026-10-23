@@ -109,6 +109,9 @@ jobs:
       # 且"密钥内嵌镜像层"本身是反模式（公开镜像可被分层提取）。
       # 现改为运行期注入：docker run -e ENCRYPTION_KEY=<64hex>，
       # 或依赖数据卷 /app/data/.encryption-key（crypto.js 首次启动自动生成）。
+      - name: 设置 QEMU（多架构构建所需）
+        uses: docker/setup-qemu-action@v3
+
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -119,29 +122,59 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 构建并推送多架构镜像
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          # 仅在有真实版本 tag（正式发布）时推送；手动派发未带 tag 时只构建验证、不推送
-          push: ${{ needs.gate.outputs.tag != '' }}
-          # ENCRYPTION_KEY 不参与构建（见上方说明）：运行期 -e 注入或数据卷自动生成
-          build-args: |
-            VERSION=${{ steps.setup.outputs.VERSION }}
-          tags: |
-            ${{ steps.setup.outputs.FULL_TAG }}
-            ${{ env.REGISTRY }}/${{ steps.setup.outputs.IMAGE_PATH }}:latest
-          labels: |
-            org.opencontainers.image.title=XIN Wallet
-            org.opencontainers.image.description=鑫钱包 - 个人财务助手
-            org.opencontainers.image.vendor=${{ github.repository_owner }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=MIT
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: 构建并推送多架构镜像（含自动重试）
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          set -eu
+          VERSION="${{ steps.setup.outputs.VERSION }}"
+          IMAGE_PATH="${{ steps.setup.outputs.IMAGE_PATH }}"
+          REGISTRY="${{ env.REGISTRY }}"
+          FULL_TAG="${REGISTRY}/${IMAGE_PATH}:${VERSION}"
+          LATEST="${REGISTRY}/${IMAGE_PATH}:latest"
+
+          # 正式发布（有真实 tag）才推送并生成 provenance；手动空 tag 仅构建验证、不推送
+          PUSH_ARGS=""
+          if [ -n "$TAG" ]; then
+            PUSH_ARGS="--push --attest type=provenance,mode=max,builder-id=https://github.com/ZJX93/XinWallet/actions/runs/${{ github.run_id }}"
+          fi
+
+          # buildx 的 gha 缓存在 GitHub runner 上偶发 "failed to reserve cache"（瞬时抖动），
+          # 07025ca / 7f4b2eb 两次发版均因此自动失败、需手动重跑。这里自动重试最多 3 次，
+          # 并把缓存 mode 由 max 降为 min（减少缓存写入量，降低抖动触发概率）。
+          MAX=3
+          OK=0
+          for i in $(seq 1 "$MAX"); do
+            echo "::group::第 ${i}/${MAX} 次尝试：docker buildx build"
+            if docker buildx build \
+                --platform linux/amd64,linux/arm64 \
+                $PUSH_ARGS \
+                --build-arg VERSION="${VERSION}" \
+                --tag "${FULL_TAG}" \
+                --tag "${LATEST}" \
+                --label "org.opencontainers.image.title=XIN Wallet" \
+                --label "org.opencontainers.image.description=鑫钱包 - 个人财务助手" \
+                --label "org.opencontainers.image.vendor=${{ github.repository_owner }}" \
+                --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+                --label "org.opencontainers.image.revision=${{ github.sha }}" \
+                --label "org.opencontainers.image.licenses=MIT" \
+                --cache-from type=gha \
+                --cache-to type=gha,mode=min \
+                . ; then
+              echo "::endgroup::"
+              echo "✅ 构建成功（第 ${i} 次尝试）"
+              OK=1
+              break
+            fi
+            echo "::endgroup::"
+            echo "::warning::构建第 ${i} 次失败，$((MAX-i)) 次重试机会，5 秒后重试…"
+            sleep 5
+          done
+
+          if [ "$OK" -ne 1 ]; then
+            echo "::error::构建在 ${MAX} 次尝试后仍失败（请检查 gha 缓存服务是否异常）"
+            exit 1
+          fi
 
       - name: 构建摘要
         if: success()
