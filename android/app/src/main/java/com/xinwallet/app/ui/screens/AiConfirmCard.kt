@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -146,7 +146,7 @@ fun AiConfirmCard(
             // ---- 账本 chip（卡片级，整批共用一个账本；切账本走全局 switchBook）----
             val currentBook = books.firstOrNull { it.id == currentBookId }
             AiQuickChip(
-                icon = Icons.Filled.MenuBook,
+                icon = Icons.AutoMirrored.Filled.MenuBook,
                 label = currentBook?.name ?: "选择账本",
                 active = currentBook != null,
                 onClick = { showBookSheet = true },

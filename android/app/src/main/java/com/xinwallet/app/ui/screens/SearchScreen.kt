@@ -16,7 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.FilterAlt
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -262,7 +262,7 @@ private fun EmptyState() {
             // 装饰图标：放大镜叠在卡片/账单图标上，模拟截图中的放大镜找单据插画
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Outlined.ReceiptLong,
+                    Icons.AutoMirrored.Outlined.ReceiptLong,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.size(72.dp)

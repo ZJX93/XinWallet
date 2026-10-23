@@ -44,7 +44,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LinkOff
@@ -607,7 +607,7 @@ private fun ChatInputBar(
             }
             IconButton(onClick = onSend, enabled = input.isNotBlank() && !sending, modifier = Modifier.size(40.dp)) {
                 Icon(
-                    Icons.Filled.Send,
+                    Icons.AutoMirrored.Filled.Send,
                     contentDescription = "发送",
                     tint = if (input.isNotBlank() && !sending) Brown500 else MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Wallet
@@ -184,7 +184,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         QuickAction("分类管理", Icons.Filled.Category, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
                         QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
                         QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) },
-                        QuickAction("理财管理", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) }
+                        QuickAction("理财管理", Icons.AutoMirrored.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) }
                     )
                     val row2 = listOf(
                         QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav) { navController.navigate(Screen.SavingsGoals.route) },

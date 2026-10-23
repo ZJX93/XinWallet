@@ -35,7 +35,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PieChart
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -186,7 +186,7 @@ sealed class Screen(val route: String) {
  */
 private val bottomItems = listOf(
     Screen.Home to ("首页" to Icons.Outlined.Home),
-    Screen.Transactions to ("账单" to Icons.Outlined.ReceiptLong),
+    Screen.Transactions to ("账单" to Icons.AutoMirrored.Outlined.ReceiptLong),
     Screen.Reports to ("统计" to Icons.Outlined.PieChart),
     Screen.Profile to ("我的" to Icons.Outlined.Person)
 )

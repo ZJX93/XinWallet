@@ -32,11 +32,11 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.AccountBox
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -1300,7 +1300,7 @@ private fun ContextChipsRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             QuickChip(
-                icon = Icons.Filled.MenuBook,
+                icon = Icons.AutoMirrored.Filled.MenuBook,
                 label = bookName,
                 onClick = onPickBook,
                 modifier = Modifier.weight(0.9f).fillMaxHeight(),
@@ -1647,7 +1647,7 @@ private fun KeypadCell(
     ) {
         when (label) {
             "⌫" -> Icon(
-                Icons.Filled.Backspace,
+                Icons.AutoMirrored.Filled.Backspace,
                 contentDescription = "退格",
                 tint = if (isAction) MaterialTheme.colorScheme.onSurfaceVariant else fg,
                 modifier = Modifier.size(22.dp)

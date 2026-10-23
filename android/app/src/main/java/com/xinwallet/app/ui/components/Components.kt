@@ -24,7 +24,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -425,7 +425,7 @@ fun LinearProgress(percent: Float, color: Color, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.ReceiptLong) {
+fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.AutoMirrored.Filled.ReceiptLong) {
     Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         icon?.let {
             Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), modifier = Modifier.size(48.dp))
@@ -444,7 +444,7 @@ fun EmptyState(
     title: String,
     desc: String = "",
     modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.ReceiptLong
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.AutoMirrored.Filled.ReceiptLong
 ) {
     Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         icon?.let {

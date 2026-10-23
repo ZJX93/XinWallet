@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -338,7 +338,7 @@ private fun PinKeypad(onDigit: (String) -> Unit, onBackspace: () -> Unit, onClea
                 row.forEach { key ->
                     when (key) {
                         "清空" -> KeypadBtn("清空", onClick = onClear, isAction = true)
-                        "⌫" -> KeypadBtn("⌫", icon = Icons.Filled.Backspace, onClick = onBackspace, isAction = true)
+                        "⌫" -> KeypadBtn("⌫", icon = Icons.AutoMirrored.Filled.Backspace, onClick = onBackspace, isAction = true)
                         else -> KeypadBtn(key, onClick = { onDigit(key) })
                     }
                 }

@@ -577,26 +577,26 @@ private fun ringSegmentPath(
     // 2) 末端外角：外弧 → 径向内收
     val cornerOuterEnd = polar(rOuter, endDeg)
     val pOuterEndIn = polar(rOuter - corner, endDeg)
-    path.quadraticBezierTo(cornerOuterEnd.x, cornerOuterEnd.y, pOuterEndIn.x, pOuterEndIn.y)
+    path.quadraticTo(cornerOuterEnd.x, cornerOuterEnd.y, pOuterEndIn.x, pOuterEndIn.y)
     // 3) 末端径向边
     val pInnerEndOut = polar(rInner + corner, endDeg)
     path.lineTo(pInnerEndOut.x, pInnerEndOut.y)
     // 4) 末端内角：径向 → 内弧
     val cornerInnerEnd = polar(rInner, endDeg)
     val pInnerArcEnd = polar(rInner, endDeg - dIn)
-    path.quadraticBezierTo(cornerInnerEnd.x, cornerInnerEnd.y, pInnerArcEnd.x, pInnerArcEnd.y)
+    path.quadraticTo(cornerInnerEnd.x, cornerInnerEnd.y, pInnerArcEnd.x, pInnerArcEnd.y)
     // 5) 内弧（反向回到起端）
     path.arcTo(innerRect, endDeg - dIn, -(sweepDeg - dIn * 2f), false)
     // 6) 起端内角：内弧 → 径向外扩
     val cornerInnerStart = polar(rInner, startDeg)
     val pInnerStartOut = polar(rInner + corner, startDeg)
-    path.quadraticBezierTo(cornerInnerStart.x, cornerInnerStart.y, pInnerStartOut.x, pInnerStartOut.y)
+    path.quadraticTo(cornerInnerStart.x, cornerInnerStart.y, pInnerStartOut.x, pInnerStartOut.y)
     // 7) 起端径向边
     val pOuterStartIn = polar(rOuter - corner, startDeg)
     path.lineTo(pOuterStartIn.x, pOuterStartIn.y)
     // 8) 起端外角：径向 → 外弧起点
     val cornerOuterStart = polar(rOuter, startDeg)
-    path.quadraticBezierTo(cornerOuterStart.x, cornerOuterStart.y, pStartOuter.x, pStartOuter.y)
+    path.quadraticTo(cornerOuterStart.x, cornerOuterStart.y, pStartOuter.x, pStartOuter.y)
     path.close()
     return path
 }
