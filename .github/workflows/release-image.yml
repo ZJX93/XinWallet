@@ -1,8 +1,9 @@
 # ============================================
 # 鑫钱包 · 自动构建 Docker 镜像
-# 触发条件：
-#   - 手动 workflow_dispatch（tag 输入，由 auto-tag.yml 派发，形如 vX.Y.Z）
-#   - 推送形如 vX.Y.Z 的 tag（人工兜底）
+# 触发前置条件：Auto Tag 工作流【完成】后（workflow_run，与 android-build 一致）。
+#   auto-tag 仅在「PR Test Gate 全绿」后才打 vX.Y.Z 标，镜像/APK/HAP 版本始终对齐；
+#   auto-tag 因仅 docs/chore/ci/test 跳过打标时，由 gate 作业跳过（不构建）。
+# 另保留 workflow_dispatch 作为手动兜底（带 tag 则推送正式镜像，留空仅验证构建）。
 # 行为：构建多架构镜像（amd64 + arm64），推送到 GitHub Container Registry
 # 版本号：与安卓客户端共用 vX.Y.Z（由 auto-tag.yml 统一推导），镜像 tag 同步为
 #         ghcr.io/zjx93/xin-wallet/xinwallet:vX.Y.Z 外加 :latest
@@ -15,13 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  # 前置条件：Auto Tag 完成后触发（与 android-build 一致）。auto-tag 仅在
+  # 「PR Test Gate 全绿」后才打 vX.Y.Z 标，镜像/APK/HAP 版本始终对齐。
+  workflow_run:
+    workflows: ["Auto Tag"]
+    types: [completed]
+    branches: [ main, master ]
+  # 手动兜底
   workflow_dispatch:
     inputs:
       tag:
-        description: '手动构建的版本号'
+        description: '版本标签（形如 vX.Y.Z）；留空则构建 dev-<sha> 不推送'
         required: false
         default: ''
 
@@ -31,7 +36,42 @@ env:
   IMAGE_REPO_LOWER: xin-wallet
 
 jobs:
+  # 门禁：仅当 auto-tag 在本次 commit 上打了 vX.Y.Z 标才放行构建（与 android-build 一致）
+  gate:
+    name: 版本门禁
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: 判断是否需构建
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+            if [ -z "$TAG" ]; then
+              echo "::notice::Auto Tag 未在本次 commit 上打标（可能仅 docs/chore/ci/test），跳过镜像构建。"
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              echo "tag=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::notice::Auto Tag 已打标 $TAG，开始构建镜像。"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,18 +81,16 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          # workflow_dispatch 时 checkout 对应 tag 的代码，而非默认分支 HEAD
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.workflow_run.head_sha || github.event.inputs.tag || github.ref }}
 
       # 一个 step 同时计算 tag + 转小写 owner，输出供后续步骤引用
       - name: 准备镜像配置
         id: setup
         run: |
-          # 1) 计算 VERSION（推送的 tag / 手动参数 / dev-<sha>）
-          if [ "${{ github.event_name }}" = "push" ]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          elif [ -n "${{ github.event.inputs.tag }}" ]; then
-            VERSION=${{ github.event.inputs.tag }}
+          # 版本号由 gate 作业统一解出：workflow_run 取 auto-tag 打的标；手动派发取输入（可空）
+          TAG="${{ needs.gate.outputs.tag }}"
+          if [ -n "$TAG" ]; then
+            VERSION="$TAG"
           else
             VERSION=dev-${GITHUB_SHA::7}
           fi
@@ -87,7 +125,8 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          # 仅在有真实版本 tag（正式发布）时推送；手动派发未带 tag 时只构建验证、不推送
+          push: ${{ needs.gate.outputs.tag != '' }}
           # ENCRYPTION_KEY 不参与构建（见上方说明）：运行期 -e 注入或数据卷自动生成
           build-args: |
             VERSION=${{ steps.setup.outputs.VERSION }}
