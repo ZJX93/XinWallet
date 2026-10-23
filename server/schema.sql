@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS budgets (
   amount DECIMAL(15,2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  book_id INT DEFAULT NULL,                            -- 所属账本（多账本隔离）；须在 UNIQUE 之前定义，否则新建库报 column "book_id" named in key does not exist
   -- 唯一约束含 book_id：同一用户在不同账本可建同名同期预算（多账本隔离）；
   -- 不含 book_id 会撞约束 500，且令 POST /budgets 的按账本 upsert 语义失效。
   UNIQUE (user_id, book_id, name, start_date, end_date)
