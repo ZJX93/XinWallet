@@ -167,13 +167,14 @@ jobs:
         # 仅在未使用 PAT 时需要：GITHUB_TOKEN 推送的 tag 不会拉起 on: push: tags 的 workflow
         # （GitHub anti-loop）。这里改用 workflow_dispatch 显式派发同一个 tag，
         # 保证「push main → 自动打 tag → 自动出镜像/APK/HAP」链路不断。
-        # 三个下游 workflow 均已声明 workflow_dispatch 且输入为 tag，并已支持按 tag 发布产物。
+        # release-image / harmony-build 靠这里派发；android-build.yml 已改为
+        # workflow_run(Auto Tag) 触发，不在此派发以免重复触发。
         if: steps.version.outputs.skip == 'false' && steps.push.outputs.used_pat == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.new_tag }}"
-          for wf in release-image.yml android-build.yml harmony-build.yml; do
+          for wf in release-image.yml harmony-build.yml; do
             if gh workflow run "$wf" --ref main -f tag="$TAG"; then
               echo "::notice::已派发 $wf (tag=$TAG)"
             else
