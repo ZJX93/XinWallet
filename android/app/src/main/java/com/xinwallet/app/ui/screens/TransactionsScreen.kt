@@ -144,7 +144,11 @@ fun TransactionsScreen(navController: NavHostController, initialMonth: String? =
     // 从「记一笔 / 编辑 / AI 记账」返回本页时（NavBackStackEntry 重新 RESUME）自动刷新，
     // 保证列表与账户余额同步，不用用户手动下拉。
     var firstResume by remember { mutableStateOf(true) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner()
+    // androidx.compose.ui.platform.LocalLifecycleOwner 已标记弃用，官方建议迁到
+    // androidx.lifecycle.compose；但该替换 API 在不同 lifecycle-runtime-compose 版本间
+    // 签名不稳定（函数/CompositionLocal 之争），迁移需按具体版本验证，暂保留原写法。
+    @Suppress("DEPRECATION")
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {

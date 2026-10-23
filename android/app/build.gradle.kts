@@ -103,7 +103,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-process:2.8.4") // ProcessLifecycleOwner：整个 APP 进出后台才触发（系统选择器跳转不算后台）
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4") // 提供 androidx.lifecycle.compose.LocalLifecycleOwner（compose.ui.platform 版已弃用）
     implementation("androidx.navigation:navigation-compose:2.8.2")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     // 「记住密码」用：EncryptedSharedPreferences（密钥由 Android KeyStore 托管，
